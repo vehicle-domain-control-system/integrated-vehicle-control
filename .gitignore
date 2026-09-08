@@ -1,0 +1,139 @@
+# ============================================================
+# Temporary .gitignore baseline
+# Project: Vehicle Domain Control System
+# Target: Embedded / NXP S32 Design Studio / S32K
+#
+# Policy:
+# - Ignore build outputs, temporary files, logs, and local IDE state.
+# - Keep project configuration and generated source that may be
+#   required to reproduce/import the project.
+# - Review this file again after the real firmware structure is fixed.
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Build output directories
+# ------------------------------------------------------------
+Debug/
+Release/
+Debug_FLASH/
+Debug_RAM/
+Release_FLASH/
+Release_RAM/
+
+build/
+out/
+
+
+# ------------------------------------------------------------
+# Compiler / linker artifacts
+# ------------------------------------------------------------
+*.o
+*.obj
+*.d
+*.dep
+
+*.elf
+*.axf
+*.map
+*.hex
+*.bin
+*.srec
+*.mot
+
+*.lst
+*.lss
+*.su
+
+*.a
+*.lib
+
+
+# ------------------------------------------------------------
+# Coverage / profiling artifacts
+# ------------------------------------------------------------
+*.gcda
+*.gcno
+*.gcov
+
+
+# ------------------------------------------------------------
+# Temporary / backup files
+# ------------------------------------------------------------
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.swp
+*.swo
+*~
+.#*
+
+
+# ------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------
+*.log
+logs/
+
+
+# ------------------------------------------------------------
+# OS-generated files
+# ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ------------------------------------------------------------
+# Editor / local workspace settings
+# ------------------------------------------------------------
+.vscode/
+.idea/
+
+# Eclipse/S32DS workspace metadata should not be inside the repo.
+.metadata/
+
+
+# ------------------------------------------------------------
+# Python helper/tool artifacts
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+
+# ------------------------------------------------------------
+# Local environment / secrets
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+
+# ------------------------------------------------------------
+# Archives / temporary transfer packages
+# ------------------------------------------------------------
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+
+
+# ============================================================
+# IMPORTANT: intentionally NOT ignored
+# ============================================================
+# .project
+# .cproject
+# .settings/
+# generate/
+# generated/
+#
+# S32DS project metadata and generated configuration/source can be
+# required by other team members to import and reproduce a project.
+# Do not ignore them until the team explicitly decides otherwise.
+# ============================================================
