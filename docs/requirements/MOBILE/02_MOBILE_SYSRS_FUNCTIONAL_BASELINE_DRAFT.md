@@ -86,6 +86,7 @@
 | <a id="mb-sys-req-009"></a>MB-SYS-REQ-009 | 연결 상태가 `AUTHENTICATED`가 아닌 경우 제어 요청을 생성하지 않아야 하며 그 사유를 표시해야 한다. |
 | <a id="mb-sys-req-010"></a>MB-SYS-REQ-010 | 최근 제어 요청의 결과를 정의된 건수만큼 보관하고 사용자가 확인할 수 있도록 해야 한다. |
 | <a id="mb-sys-req-011"></a>MB-SYS-REQ-011 | `UNKNOWN` 상태의 요청을 자동으로 재전송하지 않아야 하며, 재요청은 사용자의 조작에 의해서만 이루어져야 한다. |
+| <a id="mb-sys-req-012"></a>MB-SYS-REQ-012 | 수신 정보의 신뢰성이 `OK`가 아닌 경우 새로운 제어 요청을 생성하지 않아야 한다. |
 
 ## 4.2 상태 표시
 
@@ -134,6 +135,7 @@
 | <a id="mb-sys-sec-003"></a>MB-SYS-SEC-003 | 인증이 완료되지 않은 상태에서 제어 요청을 전송하지 않아야 한다. |
 | <a id="mb-sys-sec-004"></a>MB-SYS-SEC-004 | 인증 실패 사유를 사용자에게 표시하되 인증 정보 자체를 노출하지 않아야 한다. |
 | <a id="mb-sys-sec-005"></a>MB-SYS-SEC-005 | 차량 등록을 해제한 경우 보관 중인 인증 정보를 삭제해야 한다. |
+| <a id="mb-sys-sec-006"></a>MB-SYS-SEC-006 | 사용자 인증의 성공 여부를 자체적으로 판정하지 않고 차량의 판정 결과를 반영해야 한다. |
 
 ---
 
@@ -243,7 +245,7 @@ SENT ──▶ ACCEPTED ──▶ IN_PROGRESS ──▶ DONE
 | <a id="mb-sys-int-004"></a>MB-SYS-INT-004 | 요구된 Fan 출력 수준과 실제 동작 상태를 각각 제공받아야 한다. |
 | <a id="mb-sys-int-005"></a>MB-SYS-INT-005 | 온도 장치의 동작 방향과 동작 상태를 제공받아야 한다. |
 | <a id="mb-sys-int-006"></a>MB-SYS-INT-006 | 선행 공조의 수행 상태와 설정된 탑승 예정 시각을 제공받아야 한다. |
-| <a id="mb-sys-int-007"></a>MB-SYS-INT-007 | 조명 사용 설정 상태, 현재 밝기 수준 및 현재 적용 중인 표시 종류를 제공받아야 한다. |
+| <a id="mb-sys-int-007"></a>MB-SYS-INT-007 | 조명 사용 설정 상태, 현재 밝기 수준 및 현재 적용 중인 알림 종류를 제공받아야 한다. |
 | <a id="mb-sys-int-008"></a>MB-SYS-INT-008 | 각 상태 값에 대한 신뢰성 정보를 함께 제공받아야 한다. |
 | <a id="mb-sys-int-009"></a>MB-SYS-INT-009 | 각 상태 값의 최신 여부를 판단할 수 있는 근거를 제공받아야 한다. |
 | <a id="mb-sys-int-010"></a>MB-SYS-INT-010 | 제어 요청의 처리 결과와 거부 또는 실패 사유를 제공받아야 한다. |
@@ -294,6 +296,7 @@ SENT ──▶ ACCEPTED ──▶ IN_PROGRESS ──▶ DONE
 | <a id="mb-sys-saf-003"></a>MB-SYS-SAF-003 | 요청 결과가 확인되지 않은 상태를 성공으로 표시하지 않아야 한다. |
 | <a id="mb-sys-saf-004"></a>MB-SYS-SAF-004 | 애플리케이션의 오류가 차량 기능의 동작에 영향을 주지 않아야 한다. |
 | <a id="mb-sys-saf-005"></a>MB-SYS-SAF-005 | 사용자 확인 조작이 경고 상태 자체를 해제하지 않아야 한다. |
+| <a id="mb-sys-saf-006"></a>MB-SYS-SAF-006 | 제어 요청의 허용 여부를 자체적으로 판정하여 차량의 판정을 대체하지 않아야 한다. |
 
 ---
 
@@ -376,6 +379,9 @@ SENT ──▶ ACCEPTED ──▶ IN_PROGRESS ──▶ DONE
 | Reconnect backoff | 반복 실패 시 재연결 간격이 증가함 |
 | Reconnect refresh | 연결 복구 후 이전 보관 값이 정상 값으로 표시되지 않음 |
 | Background alert | 화면에 없는 상태에서 발생한 경고를 사용자가 인지 가능 |
+| Untrusted no request | 수신 신뢰성이 `OK`가 아닌 상태에서 제어 요청이 생성되지 않음 |
+| No local permission | 차량이 거부한 요청을 앱이 자체 판정으로 성공 처리하지 않음 |
+| No local auth | 차량 인증 응답 없이 인증 성공 상태로 전이되지 않음 |
 
 ---
 
