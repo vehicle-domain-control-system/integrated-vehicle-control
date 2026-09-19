@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="588" viewBox="0 0 1040 588" role="img" aria-labelledby="network-title network-description">
+  <title id="network-title">논리 역할과 연결 구성 제안</title>
+  <desc id="network-description">App은 BLE 중계 역할을 통해 Central에 연결한다. Central은 CIS와 센싱 정보를 교환하고, 공유 CAN을 통해 BCM, WINDOW 및 ELS, VSS와 통신한다. 표시된 역할 배치와 연결 방식은 설계안이며 실제 보드 배치와 인터페이스는 협의가 필요하다.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto-start-reverse"><path d="M1 1 L7 4 L1 7" fill="none" stroke="#4c6b7a" stroke-width="1.3"/></marker>
+    <style>
+      text{font-family:"Noto Sans CJK KR","Noto Sans KR","Malgun Gothic",sans-serif;fill:#203b4b}
+      .node{fill:#f5f8fa;stroke:#b7cbd5;stroke-width:1.5;rx:12}
+      .central{fill:#e4f2ef;stroke:#43877b;stroke-width:2;rx:12}
+      .title{font-size:18px;font-weight:700}
+      .detail{font-size:14px;fill:#526b79}
+      .label{font-size:13px;fill:#486673}
+      .wire{stroke:#4c6b7a;stroke-width:2;fill:none}
+    </style>
+  </defs>
+  <rect width="1040" height="588" fill="#fff"/>
+  <text x="24" y="31" font-size="19" font-weight="700">논리 역할과 연결 구성 제안</text>
+  <rect x="70" y="69" width="240" height="78" class="node"/>
+  <text x="190" y="99" text-anchor="middle" class="title">App</text>
+  <text x="190" y="124" text-anchor="middle" class="detail">사용자 요청 · 상태 · 결과 · 경고</text>
+  <rect x="410" y="69" width="250" height="78" class="node"/>
+  <text x="535" y="99" text-anchor="middle" class="title">BLE 중계 · ESP32 예시</text>
+  <text x="535" y="124" text-anchor="middle" class="detail">등록 · 연결 · 메시지 전달</text>
+  <path d="M314 108 H406" class="wire" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="360" y="93" text-anchor="middle" class="label">BLE 제안</text>
+  <path d="M535 152 V219" class="wire" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="551" y="189" class="label">UART A 제안</text>
+  <rect x="410" y="225" width="250" height="102" class="central"/>
+  <text x="535" y="256" text-anchor="middle" class="title">Central</text>
+  <text x="535" y="281" text-anchor="middle" class="detail">차량 정책 · 요청 조정 · 노드 관리</text>
+  <text x="535" y="305" text-anchor="middle" class="detail">App 정보 제공 · 필수 경고 보관</text>
+  <rect x="775" y="225" width="225" height="102" class="node"/>
+  <text x="887" y="256" text-anchor="middle" class="title">CIS</text>
+  <text x="887" y="281" text-anchor="middle" class="detail">센싱 · 인지 정보</text>
+  <text x="887" y="305" text-anchor="middle" class="detail">측정값 · 품질 · 생성 시점</text>
+  <path d="M665 276 H770" class="wire" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="718" y="260" text-anchor="middle" class="label">UART B 제안</text>
+  <text x="80" y="249" class="detail">실행 노드는 자신의 기능과</text>
+  <text x="80" y="273" class="detail">피드백·보호를 담당한다.</text>
+  <text x="80" y="305" class="label">기능 간 정보 연계는 Central을 경유</text>
+  <path d="M535 327 V390 M190 390 H885 M190 390 V438 M535 390 V438 M885 390 V438" class="wire"/>
+  <rect x="388" y="370" width="294" height="32" rx="16" fill="#e8f0f5" stroke="#b7cbd5"/>
+  <text x="535" y="391" text-anchor="middle" class="label">공유 CAN FD 제안 · 공통 통신 규칙</text>
+  <rect x="60" y="438" width="260" height="83" class="node"/>
+  <text x="190" y="469" text-anchor="middle" class="title">BCM</text>
+  <text x="190" y="496" text-anchor="middle" class="detail">도어 · 실내 조명 · 열출력 · 팬</text>
+  <rect x="400" y="438" width="270" height="83" class="node"/>
+  <text x="535" y="469" text-anchor="middle" class="title">WINDOW · ELS</text>
+  <text x="535" y="496" text-anchor="middle" class="detail">창문 · 외부 조명 · 로컬 보호</text>
+  <rect x="770" y="438" width="230" height="83" class="node"/>
+  <text x="885" y="469" text-anchor="middle" class="title">VSS</text>
+  <text x="885" y="496" text-anchor="middle" class="detail">음향 선택 · 출력 · 고장 관리</text>
+  <text x="24" y="560" class="label">이 그림은 역할과 연결의 설계안이다. 보드 통합·분리, 속도, 핀, 메시지 형식은 인터페이스 협의 후 결정한다.</text>
+</svg>
