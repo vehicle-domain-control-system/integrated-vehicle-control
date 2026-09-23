@@ -122,25 +122,25 @@ stateDiagram-v2
 
 ### 3.1 입력 정보
 
-| Logical input | Producer 후보 | CIS 사용 목적 | 계약 상태 |
+| Logical input | Producer | CIS 사용 목적 | 계약 상태 |
 |---|---|---|---|
-| `VEHICLE_POWER_PERMISSION` | Central Controller | 후방 감지 활성 판단 | `BASELINE` |
+| `VEHICLE_POWER_PERMISSION` | Central Controller | 후방 감지 활성 판단 (단일 활성 조건) | `BASELINE` |
 | `VEHICLE_POWER_PERMISSION_QUALITY` | Central Controller | 허용·불허·확인 불가 구분 | `BASELINE` |
-| `REVERSE_GEAR_STATE` | Central Controller | 선택 구성의 후진 연계 | `PROVISIONAL` |
-| `REVERSE_GEAR_QUALITY` | Central Controller | 후진 상태의 신뢰성 확인 | `PROVISIONAL` |
+| `REVERSE_GEAR_STATE` | Central Controller | CIS 입력으로 사용하지 않음 (Central 전담) | `EXCLUDED` |
 
 ### 3.2 활성 규칙
 
-- 기본 구성은 유효한 `VEHICLE_POWER_PERMISSION`이 허용일 때 후방 감지를 활성화한다. `[BASELINE]`
-- 전원 불허와 전원 허용 확인 불가를 구분하며, 어느 경우도 유효한 정상 거리 값으로 바꾸지 않는다. `[BASELINE]`
-- 후진 연계는 선택 구성이다. 현재 기본 구성에서 후진 미수신만으로 감지를 차단하지 않는다. `[BASELINE]`
-- 후진 연계를 채택하면 전원 허용과 유효한 후진 상태가 함께 확인될 때만 활성화한다. `[PROVISIONAL]`
-- CIS 보드에 전원이 인가된 사실만으로 차량 전원 허용을 만들어서는 안 된다. `[BASELINE]`
+- **단일 활성 조건**: 유효한 `VEHICLE_POWER_PERMISSION`이 허용(`ALLOW`)일 때 후방 감지를 상시 활성화하여 측정·필터링된 결과를 Central Controller에 계속 제공한다. `[BASELINE]`
+- **비활성 및 확인 불가 처리**: 전원 불허(`DENIED`) 또는 전원 확인 불가(품질 불량, 미수신, 만료) 시 후방 감지는 비활성(`INACTIVE`)으로 처리하며, 가짜 숫자 거리나 정상 미감지로 대체하지 않는다. `[BASELINE]`
+- **후진 기어 연계 책임 분리**: `REVERSE_GEAR_STATE`는 CIS가 수신하지 않는다. CIS는 전원 허용 시 상시 측정하여 제공하고, Central Controller가 차량 기어(R단 여부)를 직접 확인하여 후방 경고 로직(`CAUTION / EMERGENCY`) 실행 여부를 전담 판단한다. `[BASELINE]`
+- **재활성 시 신규 측정 보장**: 전원 복구 또는 비활성(`INACTIVE`)에서 활성(`ACTIVE`)으로 재전이될 때, 이전의 마지막 측정값을 재사용하지 않으며 반드시 새 유효 측정(필터 안정화 포함)이 확정된 이후에 정상 제공을 개시한다. `[BASELINE]`
+- **보드 전원과 차량 전원의 분리**: CIS 보드에 물리적 전원이 인가된 사실만으로 차량 전원 허용 상태를 임의로 추정하거나 생성해서는 안 된다. `[BASELINE]`
 
 ### 3.3 CIS가 받지 않는 외부 Product Command
 
 | Command | 판단 | 이유 |
 |---|---|---|
+| `REAR_SENSING_ENABLE` | `NOT REQUIRED` | 별도의 On/Off 명령을 두지 않으며, 전원 허용 시 상시 센싱하여 중앙으로 제공 |
 | `SET_OCCUPANT_RESULT` | `NOT REQUIRED` | 상위 ECU가 CIS 판정 결과를 지정하지 않음 |
 | `SET_REAR_RISK_LEVEL` | `NOT REQUIRED` | 위험 수준은 Central의 결과이며 CIS 입력이 아님 |
 | `START_WARNING_SOUND` | `NOT REQUIRED` | CIS는 음향을 재생하지 않음 |

@@ -54,10 +54,14 @@ flowchart LR
 
 ## 3. External → CIS
 
-| Information Need | Purpose | Source | Protocol |
-|---|---|---|---|
-| 차량 전원 상태 | 센싱 기능 활성/비활성 조건 판단 | Central Controller | Deferred |
-| 차량 후진 기어 상태 | 후방 근접 감지 활성 조건 판단 (필요 여부 TBD) | Central Controller | Deferred |
+| Information Need | Purpose | Source | Protocol | Status |
+|---|---|---|---|---|
+| 차량 전원 상태 (`VEHICLE_POWER_PERMISSION`) | 후방 감지 및 센싱 기능 활성/비활성 판단 (단일 활성 조건) | Central Controller | Deferred | `BASELINE` |
+| 차량 후진 기어 상태 (`REVERSE_GEAR_STATE`) | CIS 입력으로 사용하지 않음 (Central 전담 판단) | - | - | `EXCLUDED` |
+| 별도 활성 명령 (`REAR_SENSING_ENABLE`) | CIS 입력으로 사용하지 않음 (전원 허용 시 상시 센싱) | - | - | `NOT REQUIRED` |
+
+> CIS는 유효한 차량 전원 허용 상태에서 후방 감지를 상시 수행하여 Central Controller에 제공한다.  
+> 차량 기어(R단 여부)에 따른 후방 경고 활용 및 VSS 전달 여부는 Central Controller가 전담하여 판단한다.
 
 ---
 

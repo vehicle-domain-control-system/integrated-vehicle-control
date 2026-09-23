@@ -117,9 +117,9 @@ stateDiagram-v2
 | <a id="cis-sys-fun-011"></a>CIS-SYS-FUN-011 | CIS는 환경 측정 정보의 유효 여부를 구분해야 한다. |
 | <a id="cis-sys-fun-012"></a>CIS-SYS-FUN-012 | CIS는 센서 정보를 신뢰할 수 있기 전에는 해당 정보에 기반한 값을 확정하지 않아야 한다. |
 | <a id="cis-sys-fun-013"></a>CIS-SYS-FUN-013 | CIS는 센서 오류의 복구 조건이 충족되기 전에는 측정값을 정상으로 확정하지 않아야 한다. |
-| <a id="cis-sys-fun-014"></a>CIS-SYS-FUN-014 | CIS는 후방 물체와의 거리를 측정해야 한다. |
-| <a id="cis-sys-fun-015"></a>CIS-SYS-FUN-015 | CIS는 거리 측정 정보의 유효 여부를 구분해야 한다. |
-| <a id="cis-sys-fun-016"></a>CIS-SYS-FUN-016 | CIS는 측정한 거리와 그 유효 여부를 중앙처리장치에 제공해야 한다. |
+| <a id="cis-sys-fun-014"></a>CIS-SYS-FUN-014 | CIS는 유효한 차량 전원 허용 상태(`VEHICLE_POWER_PERMISSION`)에서 후방 물체와의 거리를 상시 측정·필터링하여 중앙처리장치에 제공해야 한다. |
+| <a id="cis-sys-fun-015"></a>CIS-SYS-FUN-015 | CIS는 거리 측정 정보의 유효 여부를 구분해야 하며, 전원 불허 또는 전원 미확인 시 후방 감지를 비활성(`INACTIVE`)으로 처리하고 정상 거리값으로 대체하지 않아야 한다. |
+| <a id="cis-sys-fun-016"></a>CIS-SYS-FUN-016 | CIS는 측정한 거리와 그 유효 여부를 중앙처리장치에 제공해야 하며, 비활성에서 활성으로 재전이 시 과거 측정값을 재사용하지 않고 새 유효 측정이 확정된 이후에 정상 제공을 개시해야 한다. |
 | <a id="cis-sys-fun-017"></a>CIS-SYS-FUN-017 | CIS는 거리 측정 정보를 신뢰할 수 있기 전에는 해당 값을 정상 정보로 확정하지 않아야 한다. |
 | <a id="cis-sys-fun-018"></a>CIS-SYS-FUN-018 | CIS는 특정 센서 또는 비전 기능에 오류가 발생하더라도, 오류와 무관한 다른 판정·측정 기능을 불필요하게 중단하지 않아야 한다. |
 | <a id="cis-sys-fun-019"></a>CIS-SYS-FUN-019 | CIS는 통신 오류 동안 마지막 정상 값을 현재 정상 값으로 표시하지 않아야 한다. |
@@ -180,8 +180,8 @@ CIS가 중앙처리장치로 제공해야 하는 **의미 정보의 종류**만 
 
 | ID | Requirement |
 |---|---|
-| <a id="cis-sys-int-001"></a>CIS-SYS-INT-001 | CIS는 후방 근접 감지 활성 조건 판단을 위해 차량 전원 상태를 제공받아야 한다. |
-| <a id="cis-sys-int-002"></a>CIS-SYS-INT-002 | CIS는 후방 근접 감지 활성 조건 판단을 위해 차량 후진 기어 상태를 제공받을 수 있어야 한다. |
+| <a id="cis-sys-int-001"></a>CIS-SYS-INT-001 | CIS는 후방 근접 감지 활성 조건 판단을 위해 유효한 차량 전원 허용 상태(`VEHICLE_POWER_PERMISSION`) 및 그 품질 정보를 제공받아야 한다. |
+| <a id="cis-sys-int-002"></a>CIS-SYS-INT-002 | 차량 후진 기어 상태(`REVERSE_GEAR_STATE`) 연계 및 별도 활성 명령(`REAR_SENSING_ENABLE`)은 Central Controller의 책임이며, CIS는 후진 기어나 별도 활성 신호를 직접 수신하지 않고 유효한 차량 전원 허용 상태에서 후방 감지를 상시 수행한다. |
 
 ## 7.2 CIS가 외부에 제공해야 하는 정보
 
