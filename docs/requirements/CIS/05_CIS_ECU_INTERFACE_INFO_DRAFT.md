@@ -24,8 +24,8 @@
 - CAN/UART 등 실제 물리 경로, Message ID, DLC, bit layout, byte order
 - 송신 주기, Timeout, freshness 한계의 최종값
 - Alive counter, CRC, E2E, bus-off 복구 방식
-- 센서 모델, 거리 필터, 영상 모델, 측정 단위와 범위
-- 후방 위험 임계값과 `CLEAR / CAUTION / EMERGENCY` 판단
+- 초음파 센서는 `HC-SR04`(물리 측정 범위 2~500 cm)로 확정되었으나, 거리 필터 파라미터 및 최종 유효 관측 범위(`TBD 후보: 10 ≤ d ≤ 100 cm`)
+- 후방 위험 임계값과 `CLEAR / CAUTION / EMERGENCY` 판단 (Central 책임)
 - 실제 오류 코드, DTC, retry 횟수와 time budget
 
 ### 0.2 주요 SysRS 근거
@@ -156,15 +156,16 @@ stateDiagram-v2
 
 | Data | 의미 | Consumer | 상태 |
 |---|---|---|---|
-| `OCCUPANT_PRESENCE` | 탑승자 존재 여부 | Central | `BASELINE` |
-| `OCCUPANT_COUNT` | 탑승자 인원수 | Central | `BASELINE` |
-| `CABIN_TEMPERATURE` | 실내 온도 | Central | `BASELINE` |
-| `CABIN_HUMIDITY` | 실내 습도 | Central | `BASELINE` |
-| `CABIN_ILLUMINANCE` | 실내 조도 | Central | `BASELINE` |
-| `REAR_DISTANCE` | 후방 물체 거리(raw, filtered) | Central | `BASELINE` |
-| `CIS_STATE` | 전체 ECU 상태 | Central | `BASELINE` |
-| `FUNCTION_STATUS` | 기능별 준비·오류·복구 상태 | Central | `BASELINE` |
-| `INTERFACE_STATUS` | 제공 경로의 가용성·통신 이상 | Central | `BASELINE` |
+| `OCCUPANT_PRESENCE` | 탑승자 존재 여부 (`PRESENT` / `ABSENT` / `UNKNOWN`) | Central | `BASELINE` |
+| `OCCUPANT_COUNT` | 탑승자 인원수 (`0 ~ 5명`) | Central | `BASELINE` |
+| `CABIN_TEMPERATURE` | 실내 온도 (°C) | Central | `BASELINE` |
+| `CABIN_HUMIDITY` | 실내 습도 (%) | Central | `BASELINE` |
+| `CABIN_ILLUMINANCE` | 실내 조도 (lx) | Central | `BASELINE` |
+| `REAR_DISTANCE` | 후방 물체 거리 (cm 단위, raw/filtered) | Central | `BASELINE` |
+| `PROXIMITY_STATUS` | 후방 감지 상태 (`VALID_DISTANCE` / `NO_OBJECT` / `UNAVAILABLE` / `INACTIVE` / `FAULT`) | Central | `BASELINE` |
+| `CIS_STATE` | 전체 ECU 상태 (`STARTUP` / `READY` / `ACTIVE` / `FAULT`) | Central | `BASELINE` |
+| `FUNCTION_STATUS` | 기능별 준비·오류·복구 상태 (`READY` / `VALID` / `UNAVAILABLE` / `FAULT` / `RECOVERING`) | Central | `BASELINE` |
+| `INTERFACE_STATUS` | 제공 경로 가용성·통신 상태 (`AVAILABLE` / `DEGRADED` / `UNAVAILABLE`) | Central | `BASELINE` |
 | `FAULT_STATUS` / `LAST_FAULT` | 현재 오류와 최근 주요 오류 | Central | `BASELINE` |
 
 ### 4.2 모든 값에 연결하는 품질 정보
@@ -173,8 +174,8 @@ stateDiagram-v2
 
 | Metadata | 의미 |
 |---|---|
-| `VALIDITY` | 현재 값이 CIS가 신뢰 가능한 정상 값으로 확정되었는지 |
-| `QUALITY_REASON` | `NOT_READY`, `OUT_OF_RANGE`, `SENSOR_FAULT`, `VISION_FAULT`, `STALE`, `NO_DATA` 등의 확인 불가 사유 후보 |
+| `VALIDITY` | 현재 값이 CIS가 신뢰 가능한 정상 값으로 확정되었는지 (`VALID` / `INVALID`) |
+| `QUALITY_REASON` | `NOT_READY`, `OUT_OF_RANGE`, `SENSOR_FAULT`, `VISION_FAULT`, `STALE`, `NO_DATA` 등의 확인 불가 사유 |
 | `SOURCE_TIMESTAMP` 또는 `AGE` | 센서/비전 결과가 처음 생성된 때 또는 그 시점부터의 경과 시간 |
 | `UPDATE_SEQUENCE` | 새 결과와 과거 메시지의 중복·재전달을 구분하는 갱신 식별자 |
 | `FUNCTION_STATUS` | 값을 만든 기능의 현재 상태 |
@@ -183,8 +184,9 @@ stateDiagram-v2
 
 ### 4.3 탑승자 결과 일관성
 
+- `OCCUPANT_COUNT`의 유효 판정 범위는 `0 ~ 5명`이다. `[BASELINE]`
 - `OCCUPANT_PRESENCE=ABSENT`와 양수 `OCCUPANT_COUNT`를 같은 판정 회차의 정상 결과로 동시에 제공하지 않는다. `[BASELINE]`
-- 존재 여부와 인원수는 같은 판정 회차인지 식별 가능해야 한다. `[PROVISIONAL - common sequence]`
+- 존재 여부와 인원수는 같은 판정 회차인지 식별할 수 있도록 동일한 `UPDATE_SEQUENCE`를 공유해야 한다. `[BASELINE]`
 - 신뢰할 수 없는 영상, 비전 복구 확인 전 상태, 값의 freshness 만료는 탑승자 없음으로 바꾸지 않는다. `[BASELINE]`
 
 ### 4.4 환경 값 독립성
@@ -195,15 +197,16 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    US["Ultrasonic sensor"] --> CIS["CIS: measurement + filtering"]
-    CIS -->|"REAR_DISTANCE + quality + age"| CENTRAL["Central: risk classification"]
+    US["Ultrasonic sensor (HC-SR04)"] --> CIS["CIS: measurement + filtering"]
+    CIS -->|"REAR_DISTANCE + PROXIMITY_STATUS + quality + age"| CENTRAL["Central: risk classification"]
     CENTRAL -->|"CLEAR / CAUTION / EMERGENCY + quality"| VSS["VSS"]
 ```
 
-- CIS는 중앙에 `REAR_DISTANCE`와 품질만 제공한다. `[BASELINE]`
+- 센서는 `HC-SR04`를 사용하며 물리적 측정 범위는 `2 ~ 500 cm`이다. 단위는 `cm`를 사용한다. `[BASELINE]`
+- 유효 측정 및 감지 범위는 `TBD [후보: 10 ≤ d ≤ 100 cm]`로 두며, 벤치 검증을 통해 최종 확정한다. `[PROVISIONAL]`
+- CIS는 중앙에 `REAR_DISTANCE`, `PROXIMITY_STATUS` 및 품질 메타데이터만 제공한다. `[BASELINE]`
 - 거리 임계값, 위험 상태 전이, clear 조건, 음향 시작과 종료는 중앙/VSS의 책임이다. `[EXCLUDED]`
-- `NO_OBJECT`가 지원되는 경우 정상 측정으로 물체가 없음을 확인한 상태로 표시해야 한다. 측정 불가·범위 밖·무응답을 `CLEAR`로 바꾸면 안 된다. `[BASELINE]`
-- 실제 단위(cm 후보), 유효 범위, 필터, 히스테리시스와 central-side threshold는 `TBD`다.
+- `NO_OBJECT`는 센서가 정상 동작하여 탐지 범위 내에 장애물이 없음을 확인한 상태다. 측정 불가·차폐·범위 밖·무응답인 `UNAVAILABLE`과 엄격히 구분해야 하며, 측정 실패를 `NO_OBJECT`나 안전 상태로 바꾸면 안 된다. `[BASELINE]`
 
 ---
 
