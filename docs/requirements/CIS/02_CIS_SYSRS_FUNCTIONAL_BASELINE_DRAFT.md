@@ -109,29 +109,31 @@ stateDiagram-v2
 | <a id="cis-sys-fun-003"></a>CIS-SYS-FUN-003 | CIS는 실내 영상을 이용하여 탑승자 존재 여부를 판정해야 한다. |
 | <a id="cis-sys-fun-004"></a>CIS-SYS-FUN-004 | CIS는 실내 영상을 이용하여 탑승자 인원수를 판정해야 하며, 판정 가능한 인원수 범위는 `0 ~ 5명`으로 한다. |
 | <a id="cis-sys-fun-005"></a>CIS-SYS-FUN-005 | CIS는 탑승자 판정 결과의 유효 여부를 구분해야 한다. |
-| <a id="cis-sys-fun-006"></a>CIS-SYS-FUN-006 | CIS는 탑승자 존재 여부와 인원수 판정 결과가 동일한 판정 회차의 일관성을 갖도록 제공해야 하며, 부재(`ABSENT`) 상태와 1명 이상의 인원수를 같은 판정 회차의 정상 결과로 동시에 제공하지 않아야 한다. |
-| <a id="cis-sys-fun-007"></a>CIS-SYS-FUN-007 | CIS는 비전 정보를 신뢰할 수 있기 전에는 해당 정보에 기반한 판정 결과를 확정하지 않아야 하며, 비전 오류나 인식 불가를 탑승자 부재로 대체하지 않아야 한다. |
-| <a id="cis-sys-fun-008"></a>CIS-SYS-FUN-008 | CIS는 비전 오류의 복구 조건이 충족되기 전에는 탑승자 상태를 정상으로 확정하지 않아야 한다. |
-| <a id="cis-sys-fun-009"></a>CIS-SYS-FUN-009 | CIS는 실내 온도를 측정해야 한다. |
-| <a id="cis-sys-fun-010"></a>CIS-SYS-FUN-010 | CIS는 실내 습도를 측정해야 한다. |
-| <a id="cis-sys-fun-011"></a>CIS-SYS-FUN-011 | CIS는 조도를 측정해야 한다. |
-| <a id="cis-sys-fun-012"></a>CIS-SYS-FUN-012 | CIS는 환경 측정 정보의 유효 여부를 구분해야 한다. |
-| <a id="cis-sys-fun-013"></a>CIS-SYS-FUN-013 | CIS는 센서 정보를 신뢰할 수 있기 전에는 해당 정보에 기반한 값을 확정하지 않아야 한다. |
-| <a id="cis-sys-fun-014"></a>CIS-SYS-FUN-014 | CIS는 센서 오류의 복구 조건이 충족되기 전에는 측정값을 정상으로 확정하지 않아야 한다. |
-| <a id="cis-sys-fun-015"></a>CIS-SYS-FUN-015 | CIS는 초음파 센서(HC-SR04, 물리 측정 범위 `2 ~ 500 cm`)를 이용하여 후방 물체와의 거리를 `cm` 단위로 측정해야 한다. |
-| <a id="cis-sys-fun-016"></a>CIS-SYS-FUN-016 | CIS는 후방 물체 거리의 유효 측정 범위(`[TBD 후보: 10 ≤ d ≤ 100 cm]`, HW 특성 검토 후 확정)를 정의하고, 범위 초과/미달 시 이를 유효하지 않음으로 구분해야 한다. |
-| <a id="cis-sys-fun-017"></a>CIS-SYS-FUN-017 | CIS는 정상 측정 결과 감지 범위 내에 장애물이 없는 상태(`NO_OBJECT`)와 센서 미응답·고장·차폐 등 측정 불가/실패(`UNAVAILABLE`)를 명확히 구분하여 제공해야 하며, 측정 실패를 정상 무장애로 대체하지 않아야 한다. |
-| <a id="cis-sys-fun-018"></a>CIS-SYS-FUN-018 | CIS는 측정한 거리와 그 유효 여부를 중앙처리장치에 제공해야 한다. |
-| <a id="cis-sys-fun-019"></a>CIS-SYS-FUN-019 | CIS는 거리 측정 정보를 신뢰할 수 있기 전에는 해당 값을 정상 정보로 확정하지 않아야 한다. |
-| <a id="cis-sys-fun-020"></a>CIS-SYS-FUN-020 | CIS는 특정 센서 또는 비전 기능에 오류가 발생하더라도, 오류와 무관한 다른 판정·측정 기능을 불필요하게 중단하지 않아야 한다. |
-| <a id="cis-sys-fun-021"></a>CIS-SYS-FUN-021 | CIS는 통신 오류 동안 마지막 정상 값을 현재 정상 값으로 표시하지 않아야 한다. |
-| <a id="cis-sys-fun-022"></a>CIS-SYS-FUN-022 | CIS는 유효한 탑승자 판정 결과, 환경 측정값 및 후방 거리 측정값을 정의된 주기로 중앙처리장치에 전송해야 한다. |
-| <a id="cis-sys-fun-023"></a>CIS-SYS-FUN-023 | CIS는 전송하는 각 관측값에 대해 유효 여부(`VALIDITY`)와, 유효하지 않은 경우 그 사유(`QUALITY_REASON`)를 함께 제공해야 한다. |
-| <a id="cis-sys-fun-024"></a>CIS-SYS-FUN-024 | CIS는 각 관측값의 원본 생성 시점 또는 경과 시간(`SOURCE_TIMESTAMP`/`AGE`)과 갱신 식별자(`UPDATE_SEQUENCE`)를 함께 제공하여 새 결과와 과거 데이터의 재전달을 구분할 수 있도록 해야 한다. |
-| <a id="cis-sys-fun-025"></a>CIS-SYS-FUN-025 | CIS는 전체 ECU 상태(`CIS_STATE`) 외에도 기능별 상태(`FUNCTION_STATUS`) 및 제공 경로 상태(`INTERFACE_STATUS`)를 제공해야 한다. |
-| <a id="cis-sys-fun-026"></a>CIS-SYS-FUN-026 | CIS는 통신 오류가 발생한 경우 해당 오류 상태를 상위 시스템이 식별할 수 있도록 제공해야 한다. |
-| <a id="cis-sys-fun-027"></a>CIS-SYS-FUN-027 | CIS는 통신 오류가 해제되고 새로운 유효 값이 확인된 경우에만 정상 전송을 재개해야 한다. |
-| <a id="cis-sys-fun-028"></a>CIS-SYS-FUN-028 | CIS는 실내 영상을 탑승자 인식 목적 범위를 벗어나 저장하거나 외부로 전송하지 않아야 한다. |
+| <a id="cis-sys-fun-006"></a>CIS-SYS-FUN-006 | CIS는 비전 정보를 신뢰할 수 있기 전에는 해당 정보에 기반한 판정 결과를 확정하지 않아야 하며, 인식 불가 상태를 탑승자 부재로 대체하지 않아야 한다. |
+| <a id="cis-sys-fun-007"></a>CIS-SYS-FUN-007 | CIS는 비전 오류의 복구 조건이 충족되기 전에는 탑승자 상태를 정상으로 확정하지 않아야 한다. |
+| <a id="cis-sys-fun-008"></a>CIS-SYS-FUN-008 | CIS는 실내 온도를 측정해야 한다. |
+| <a id="cis-sys-fun-009"></a>CIS-SYS-FUN-009 | CIS는 실내 습도를 측정해야 한다. |
+| <a id="cis-sys-fun-010"></a>CIS-SYS-FUN-010 | CIS는 조도를 측정해야 한다. |
+| <a id="cis-sys-fun-011"></a>CIS-SYS-FUN-011 | CIS는 환경 측정 정보의 유효 여부를 구분해야 한다. |
+| <a id="cis-sys-fun-012"></a>CIS-SYS-FUN-012 | CIS는 센서 정보를 신뢰할 수 있기 전에는 해당 정보에 기반한 값을 확정하지 않아야 한다. |
+| <a id="cis-sys-fun-013"></a>CIS-SYS-FUN-013 | CIS는 센서 오류의 복구 조건이 충족되기 전에는 측정값을 정상으로 확정하지 않아야 한다. |
+| <a id="cis-sys-fun-014"></a>CIS-SYS-FUN-014 | CIS는 유효한 차량 전원 허용 상태(`VEHICLE_POWER_PERMISSION`)에서 후방 물체와의 거리를 상시 측정·필터링하여 중앙처리장치에 제공해야 한다. |
+| <a id="cis-sys-fun-015"></a>CIS-SYS-FUN-015 | CIS는 거리 측정 정보의 유효 여부를 구분해야 하며, 전원 불허 또는 전원 미확인 시 후방 감지를 비활성(`INACTIVE`)으로 처리하고 정상 거리값으로 대체하지 않아야 한다. |
+| <a id="cis-sys-fun-016"></a>CIS-SYS-FUN-016 | CIS는 측정한 거리와 그 유효 여부를 중앙처리장치에 제공해야 하며, 비활성에서 활성으로 재전이 시 과거 측정값을 재사용하지 않고 새 유효 측정이 확정된 이후에 정상 제공을 개시해야 한다. |
+| <a id="cis-sys-fun-017"></a>CIS-SYS-FUN-017 | CIS는 거리 측정 정보를 신뢰할 수 있기 전에는 해당 값을 정상 정보로 확정하지 않아야 한다. |
+| <a id="cis-sys-fun-018"></a>CIS-SYS-FUN-018 | CIS는 특정 센서 또는 비전 기능에 오류가 발생하더라도, 오류와 무관한 다른 판정·측정 기능을 불필요하게 중단하지 않아야 한다. |
+| <a id="cis-sys-fun-019"></a>CIS-SYS-FUN-019 | CIS는 통신 오류 동안 마지막 정상 값을 현재 정상 값으로 표시하지 않아야 한다. |
+| <a id="cis-sys-fun-020"></a>CIS-SYS-FUN-020 | CIS는 유효한 탑승자 판정 결과, 환경 측정값 및 후방 거리 측정값을 정의된 주기로 중앙처리장치에 전송해야 한다. |
+| <a id="cis-sys-fun-021"></a>CIS-SYS-FUN-021 | CIS는 전송하는 각 값에 대해 유효 여부(`VALIDITY`) 플래그와, 유효하지 않은 경우 그 사유(`QUALITY_REASON`)를 함께 제공해야 한다. |
+| <a id="cis-sys-fun-022"></a>CIS-SYS-FUN-022 | CIS는 통신 오류가 발생한 경우 해당 오류 상태를 상위 시스템이 식별할 수 있도록 제공해야 한다. |
+| <a id="cis-sys-fun-023"></a>CIS-SYS-FUN-023 | CIS는 통신 오류가 해제되고 새로운 유효 값이 확인된 경우에만 정상 전송을 재개해야 한다. |
+| <a id="cis-sys-fun-024"></a>CIS-SYS-FUN-024 | CIS는 실내 영상을 탑승자 인식 목적 범위를 벗어나 저장하거나 외부로 전송하지 않아야 한다. |
+| <a id="cis-sys-fun-025"></a>CIS-SYS-FUN-025 | CIS는 탑승자 존재 여부와 인원수 판정 결과가 동일한 판정 회차의 일관성을 갖도록 제공해야 하며, 부재(`ABSENT`) 상태와 1명 이상의 인원수를 같은 판정 회차의 정상 결과로 동시에 제공하지 않아야 한다. |
+| <a id="cis-sys-fun-026"></a>CIS-SYS-FUN-026 | CIS는 초음파 센서(HC-SR04, 물리 측정 범위 `2 ~ 500 cm`)를 이용하여 후방 물체와의 거리를 `cm` 단위로 측정해야 한다. |
+| <a id="cis-sys-fun-027"></a>CIS-SYS-FUN-027 | CIS는 후방 물체 거리의 유효 측정 범위(`[TBD 후보: 10 ≤ d ≤ 100 cm]`, HW 특성 검토 후 확정)를 정의하고, 범위 초과/미달 시 이를 유효하지 않음으로 구분해야 한다. |
+| <a id="cis-sys-fun-028"></a>CIS-SYS-FUN-028 | CIS는 정상 측정 결과 감지 범위 내에 장애물이 없는 상태(`NO_OBJECT`)와 센서 미응답·고장·차폐 등 측정 불가/실패(`UNAVAILABLE`)를 명확히 구분하여 제공해야 하며, 측정 실패를 정상 무장애로 대체하지 않아야 한다. |
+| <a id="cis-sys-fun-029"></a>CIS-SYS-FUN-029 | CIS는 각 관측값의 원본 생성 시점 또는 경과 시간(`SOURCE_TIMESTAMP`/`AGE`)과 갱신 식별자(`UPDATE_SEQUENCE`)를 함께 제공하여 새 결과와 과거 데이터의 재전달을 구분할 수 있도록 해야 한다. |
+| <a id="cis-sys-fun-030"></a>CIS-SYS-FUN-030 | CIS는 전체 ECU 상태(`CIS_STATE`) 외에도 기능별 상태(`FUNCTION_STATUS`) 및 제공 경로 상태(`INTERFACE_STATUS`)를 제공해야 한다. |
 
 ---
 
@@ -192,8 +194,8 @@ CIS가 중앙처리장치로 제공해야 하는 **의미 정보의 종류**만 
 
 | ID | Requirement |
 |---|---|
-| <a id="cis-sys-int-001"></a>CIS-SYS-INT-001 | CIS는 후방 근접 감지 활성 조건 판단을 위해 차량 전원 상태를 제공받아야 한다. |
-| <a id="cis-sys-int-002"></a>CIS-SYS-INT-002 | CIS는 후방 근접 감지 활성 조건 판단을 위해 차량 후진 기어 상태를 제공받을 수 있어야 한다. |
+| <a id="cis-sys-int-001"></a>CIS-SYS-INT-001 | CIS는 후방 근접 감지 활성 조건 판단을 위해 유효한 차량 전원 허용 상태(`VEHICLE_POWER_PERMISSION`) 및 그 품질 정보를 제공받아야 한다. |
+| <a id="cis-sys-int-002"></a>CIS-SYS-INT-002 | 차량 후진 기어 상태(`REVERSE_GEAR_STATE`) 연계 및 별도 활성 명령(`REAR_SENSING_ENABLE`)은 Central Controller의 책임이며, CIS는 후진 기어나 별도 활성 신호를 직접 수신하지 않고 유효한 차량 전원 허용 상태에서 후방 감지를 상시 수행한다. |
 
 ## 7.2 CIS가 외부에 제공해야 하는 정보
 
