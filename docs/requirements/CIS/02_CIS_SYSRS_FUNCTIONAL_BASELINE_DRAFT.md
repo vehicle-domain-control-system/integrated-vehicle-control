@@ -107,9 +107,9 @@ stateDiagram-v2
 | <a id="cis-sys-fun-001"></a>CIS-SYS-FUN-001 | CIS는 전원 인가 후 자체 초기화를 수행하고 정상적인 경우 `READY` 상태로 전이해야 한다. |
 | <a id="cis-sys-fun-002"></a>CIS-SYS-FUN-002 | CIS는 `READY` 상태에서 최초 유효 센싱 데이터가 확보되면 `ACTIVE` 상태로 전이해야 한다. |
 | <a id="cis-sys-fun-003"></a>CIS-SYS-FUN-003 | CIS는 실내 영상을 이용하여 탑승자 존재 여부를 판정해야 한다. |
-| <a id="cis-sys-fun-004"></a>CIS-SYS-FUN-004 | CIS는 실내 영상을 이용하여 탑승자 인원수를 판정해야 한다. |
+| <a id="cis-sys-fun-004"></a>CIS-SYS-FUN-004 | CIS는 실내 영상을 이용하여 탑승자 인원수를 판정해야 하며, 판정 가능한 인원수 범위는 `0 ~ 5명`으로 한다. |
 | <a id="cis-sys-fun-005"></a>CIS-SYS-FUN-005 | CIS는 탑승자 판정 결과의 유효 여부를 구분해야 한다. |
-| <a id="cis-sys-fun-006"></a>CIS-SYS-FUN-006 | CIS는 비전 정보를 신뢰할 수 있기 전에는 해당 정보에 기반한 판정 결과를 확정하지 않아야 한다. |
+| <a id="cis-sys-fun-006"></a>CIS-SYS-FUN-006 | CIS는 비전 정보를 신뢰할 수 있기 전에는 해당 정보에 기반한 판정 결과를 확정하지 않아야 하며, 인식 불가 상태를 탑승자 부재로 대체하지 않아야 한다. |
 | <a id="cis-sys-fun-007"></a>CIS-SYS-FUN-007 | CIS는 비전 오류의 복구 조건이 충족되기 전에는 탑승자 상태를 정상으로 확정하지 않아야 한다. |
 | <a id="cis-sys-fun-008"></a>CIS-SYS-FUN-008 | CIS는 실내 온도를 측정해야 한다. |
 | <a id="cis-sys-fun-009"></a>CIS-SYS-FUN-009 | CIS는 실내 습도를 측정해야 한다. |
@@ -124,10 +124,16 @@ stateDiagram-v2
 | <a id="cis-sys-fun-018"></a>CIS-SYS-FUN-018 | CIS는 특정 센서 또는 비전 기능에 오류가 발생하더라도, 오류와 무관한 다른 판정·측정 기능을 불필요하게 중단하지 않아야 한다. |
 | <a id="cis-sys-fun-019"></a>CIS-SYS-FUN-019 | CIS는 통신 오류 동안 마지막 정상 값을 현재 정상 값으로 표시하지 않아야 한다. |
 | <a id="cis-sys-fun-020"></a>CIS-SYS-FUN-020 | CIS는 유효한 탑승자 판정 결과, 환경 측정값 및 후방 거리 측정값을 정의된 주기로 중앙처리장치에 전송해야 한다. |
-| <a id="cis-sys-fun-021"></a>CIS-SYS-FUN-021 | CIS는 전송하는 각 값에 대해 유효 여부 플래그를 함께 제공해야 한다. |
+| <a id="cis-sys-fun-021"></a>CIS-SYS-FUN-021 | CIS는 전송하는 각 값에 대해 유효 여부(`VALIDITY`) 플래그와, 유효하지 않은 경우 그 사유(`QUALITY_REASON`)를 함께 제공해야 한다. |
 | <a id="cis-sys-fun-022"></a>CIS-SYS-FUN-022 | CIS는 통신 오류가 발생한 경우 해당 오류 상태를 상위 시스템이 식별할 수 있도록 제공해야 한다. |
 | <a id="cis-sys-fun-023"></a>CIS-SYS-FUN-023 | CIS는 통신 오류가 해제되고 새로운 유효 값이 확인된 경우에만 정상 전송을 재개해야 한다. |
 | <a id="cis-sys-fun-024"></a>CIS-SYS-FUN-024 | CIS는 실내 영상을 탑승자 인식 목적 범위를 벗어나 저장하거나 외부로 전송하지 않아야 한다. |
+| <a id="cis-sys-fun-025"></a>CIS-SYS-FUN-025 | CIS는 탑승자 존재 여부와 인원수 판정 결과가 동일한 판정 회차의 일관성을 갖도록 제공해야 하며, 부재(`ABSENT`) 상태와 1명 이상의 인원수를 같은 판정 회차의 정상 결과로 동시에 제공하지 않아야 한다. |
+| <a id="cis-sys-fun-026"></a>CIS-SYS-FUN-026 | CIS는 초음파 센서(HC-SR04, 물리 측정 범위 `2 ~ 500 cm`)를 이용하여 후방 물체와의 거리를 `cm` 단위로 측정해야 한다. |
+| <a id="cis-sys-fun-027"></a>CIS-SYS-FUN-027 | CIS는 후방 물체 거리의 유효 측정 범위(`[TBD 후보: 10 ≤ d ≤ 100 cm]`, HW 특성 검토 후 확정)를 정의하고, 범위 초과/미달 시 이를 유효하지 않음으로 구분해야 한다. |
+| <a id="cis-sys-fun-028"></a>CIS-SYS-FUN-028 | CIS는 정상 측정 결과 감지 범위 내에 장애물이 없는 상태(`NO_OBJECT`)와 센서 미응답·고장·차폐 등 측정 불가/실패(`UNAVAILABLE`)를 명확히 구분하여 제공해야 하며, 측정 실패를 정상 무장애로 대체하지 않아야 한다. |
+| <a id="cis-sys-fun-029"></a>CIS-SYS-FUN-029 | CIS는 각 관측값의 원본 생성 시점 또는 경과 시간(`SOURCE_TIMESTAMP`/`AGE`)과 갱신 식별자(`UPDATE_SEQUENCE`)를 함께 제공하여 새 결과와 과거 데이터의 재전달을 구분할 수 있도록 해야 한다. |
+| <a id="cis-sys-fun-030"></a>CIS-SYS-FUN-030 | CIS는 전체 ECU 상태(`CIS_STATE`) 외에도 기능별 상태(`FUNCTION_STATUS`) 및 제공 경로 상태(`INTERFACE_STATUS`)를 제공해야 한다. |
 
 ---
 
@@ -139,20 +145,28 @@ CIS가 중앙처리장치로 제공해야 하는 **의미 정보의 종류**만 
 
 ## 5.1 CIS → Central Controller
 
-| Semantic Value | Meaning | Class |
-|---|---|---|
-| `OCCUPANT_PRESENCE` | 탑승자 존재 여부 | Occupant |
-| `OCCUPANT_COUNT` | 탑승자 인원수 | Occupant |
-| `CABIN_TEMPERATURE` | 실내 온도 | Environment |
-| `CABIN_HUMIDITY` | 실내 습도 | Environment |
-| `CABIN_ILLUMINANCE` | 조도 | Environment |
-| `REAR_DISTANCE` | 후방 물체 거리 (raw) | Proximity |
-| `<value>_VALID` | 각 값의 유효 여부 | Validity |
-| `CIS_STATE` | CIS 상태(`READY`/`ACTIVE`/`FAULT`) | Diagnostic |
+| Semantic Value | Meaning | Type / Values | Class |
+|---|---|---|---|
+| `OCCUPANT_PRESENCE` | 탑승자 존재 여부 | `PRESENT` / `ABSENT` / `UNKNOWN` | Occupant |
+| `OCCUPANT_COUNT` | 탑승자 인원수 | `0 ~ 5명` | Occupant |
+| `CABIN_TEMPERATURE` | 실내 온도 | `°C` (물리 측정값) | Environment |
+| `CABIN_HUMIDITY` | 실내 습도 | `%` (물리 측정값) | Environment |
+| `CABIN_ILLUMINANCE` | 실내 조도 | `lx` (물리 측정값) | Environment |
+| `REAR_DISTANCE` | 후방 물체 거리 | `cm` (HC-SR04 기반 raw/filtered) | Proximity |
+| `PROXIMITY_STATUS` | 후방 감지 상태 | `VALID_DISTANCE` / `NO_OBJECT` / `UNAVAILABLE` / `INACTIVE` / `FAULT` | Proximity |
+| `VALIDITY` | 각 관측값의 유효 여부 | `VALID` / `INVALID` | Validity |
+| `QUALITY_REASON` | 유효하지 않거나 특수 상태의 사유 | `NOT_READY`, `OUT_OF_RANGE`, `SENSOR_FAULT`, `VISION_FAULT`, `STALE`, `NO_DATA` | Validity |
+| `SOURCE_TIMESTAMP` / `AGE` | 관측값 원본 생성 시점 또는 경과 시간 | ms / 시간 단위 | Timing |
+| `UPDATE_SEQUENCE` | 판정/측정 회차 식별자 | 순차 카운터 / Sequence ID | Timing |
+| `CIS_STATE` | 전체 모듈 상태 | `STARTUP` / `READY` / `ACTIVE` / `FAULT` | State |
+| `FUNCTION_STATUS` | 기능별 준비·오류·복구 상태 | `READY` / `VALID` / `UNAVAILABLE` / `FAULT` / `RECOVERING` | State |
+| `INTERFACE_STATUS` | 제공 경로 가용성 상태 | `AVAILABLE` / `DEGRADED` / `UNAVAILABLE` | State |
+| `FAULT_STATUS` / `LAST_FAULT` | 현재 오류 및 최근 주요 오류 식별 | 오류 식별자 | Diagnostic |
 
-> `REAR_DISTANCE`와 그 유효성은 중앙처리장치가 후방 근접 위험 수준을 판단하는 데 사용하는 입력이다.
-> CIS는 이 값을 이용해 스스로 위험 수준을 분류하지 않는다.  
-> 실제 신호명, 숫자 값, 메시지 배치 및 전송 방식은 후속 인터페이스 설계에서 확정한다.
+> - `REAR_DISTANCE`와 그 유효성은 중앙처리장치가 후방 근접 위험 수준을 판단하는 데 사용하는 입력이다. CIS는 이 값을 이용해 스스로 위험 수준을 분류하지 않는다.  
+> - `NO_OBJECT`는 센서가 정상 동작하여 범위 내 장애물이 없음을 확인한 것이며, 센서 미응답·고장인 `UNAVAILABLE`과 구분된다.  
+> - `OCCUPANT_PRESENCE`와 `OCCUPANT_COUNT`는 동일한 `UPDATE_SEQUENCE`를 공유하여 판정 일관성을 보장한다.  
+> - 실제 신호명, 숫자 값, 메시지 배치 및 전송 방식은 후속 인터페이스 설계에서 확정한다.
 
 ---
 
@@ -187,12 +201,12 @@ CIS가 중앙처리장치로 제공해야 하는 **의미 정보의 종류**만 
 
 | ID | Requirement |
 |---|---|
-| <a id="cis-sys-int-003"></a>CIS-SYS-INT-003 | CIS는 탑승자 존재 여부 및 인원수를 중앙처리장치가 확인할 수 있도록 제공해야 한다. |
-| <a id="cis-sys-int-004"></a>CIS-SYS-INT-004 | CIS는 실내 온도·습도·조도 측정값을 중앙처리장치가 확인할 수 있도록 제공해야 한다. |
-| <a id="cis-sys-int-005"></a>CIS-SYS-INT-005 | CIS는 후방 물체 거리 및 그 유효 여부를, 중앙처리장치가 근접 위험 수준을 판단하는 데 사용할 수 있도록 제공해야 한다. |
-| <a id="cis-sys-int-006"></a>CIS-SYS-INT-006 | CIS는 각 제공 정보의 유효 여부를 함께 제공해야 한다. |
-| <a id="cis-sys-int-007"></a>CIS-SYS-INT-007 | CIS는 정상/오류 상태를 외부 시스템이 확인할 수 있도록 해야 한다. |
-| <a id="cis-sys-int-008"></a>CIS-SYS-INT-008 | CIS가 오류에서 복구된 경우 외부 시스템이 정상 복귀 여부를 확인할 수 있도록 해야 한다. |
+| <a id="cis-sys-int-003"></a>CIS-SYS-INT-003 | CIS는 탑승자 존재 여부 및 인원수(`0 ~ 5명`)를 중앙처리장치가 확인할 수 있도록 동일한 판정 회차 일관성(`UPDATE_SEQUENCE`)과 함께 제공해야 한다. |
+| <a id="cis-sys-int-004"></a>CIS-SYS-INT-004 | CIS는 실내 온도·습도·조도 측정값을 독립적인 유효성과 함께 중앙처리장치가 확인할 수 있도록 제공해야 한다. |
+| <a id="cis-sys-int-005"></a>CIS-SYS-INT-005 | CIS는 후방 물체 거리(`cm` 단위)와 감지 상태(`VALID_DISTANCE` / `NO_OBJECT` / `UNAVAILABLE`) 및 유효성을, 중앙처리장치가 근접 위험 수준을 판단하는 데 사용할 수 있도록 제공해야 한다. |
+| <a id="cis-sys-int-006"></a>CIS-SYS-INT-006 | CIS는 각 관측 정보에 대해 유효 여부(`VALIDITY`), 사유 집합(`QUALITY_REASON`), 원본 시점/경과 시간(`SOURCE_TIMESTAMP`/`AGE`), 갱신 식별자(`UPDATE_SEQUENCE`)를 함께 제공해야 한다. |
+| <a id="cis-sys-int-007"></a>CIS-SYS-INT-007 | CIS는 전체 ECU 상태(`CIS_STATE`), 기능별 상태(`FUNCTION_STATUS`), 제공 경로 상태(`INTERFACE_STATUS`)를 외부 시스템이 확인할 수 있도록 제공해야 한다. |
+| <a id="cis-sys-int-008"></a>CIS-SYS-INT-008 | CIS는 모듈 또는 개별 기능/제공 경로가 오류에서 복구된 경우, 새 유효 관측값 취득 및 갱신 시퀀스와 함께 정상 복귀 여부를 외부 시스템이 확인할 수 있도록 제공해야 한다. |
 
 ## 7.3 본 단계에서 결정하지 않는 항목
 
