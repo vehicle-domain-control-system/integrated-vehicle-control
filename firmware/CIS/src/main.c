@@ -20,6 +20,13 @@
 #include "hcsr04.h"
 #include "rear_logic.h"
 
+/* Set to 1 to find out where PTE7 (TRIG) is: PTE7 is held HIGH (about 5 V) and
+ * the green LED is on. Measure with a multimeter between a header pin and GND.
+ * Set back to 0 for the distance demo. */
+#ifndef HCSR04_PIN_TEST
+#define HCSR04_PIN_TEST 0
+#endif
+
 #define NEAR_MM         500u     /* red at or below 50 cm, green above (adjustable) */
 
 #define LED_BLUE_PIN    0u       /* PTD0,  active low */
@@ -95,6 +102,12 @@ int main(void)
 
     rear_init(&g_rear);
     hcsr04_init();
+
+#if HCSR04_PIN_TEST
+    PTE_PSOR = (1u << 7);                  /* PTE7 (TRIG) = HIGH */
+    led_show(1u << LED_GREEN_PIN);
+    for (;;) { }
+#endif
 
     {
         uint32_t last_color = 0u;
