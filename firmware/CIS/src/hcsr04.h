@@ -15,6 +15,9 @@
 
 void hcsr04_init(void);
 
+/* True while no measurement is in progress (safe moment for a long blocking job). */
+bool hcsr04_idle(void);
+
 /* Call often from the main loop. Never blocks (except the 10 us trigger pulse).
  * Returns true when a measurement finished and `s` was updated. */
 bool hcsr04_step(rear_state_t *s, uint32_t now_ms);

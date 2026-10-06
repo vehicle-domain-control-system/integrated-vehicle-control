@@ -34,21 +34,31 @@
 /* PCC: peripheral clock control (offset from the Reference Manual) */
 #define PCC_BASE            0x40065000u
 #define PCC_FTM0            REG32(PCC_BASE + 0x0E0u)
+#define PCC_PORTA           REG32(PCC_BASE + 0x124u)
 #define PCC_PORTD           REG32(PCC_BASE + 0x130u)
 #define PCC_PORTE           REG32(PCC_BASE + 0x134u)
 #define PCC_CGC             (1u << 30)           /* clock gate control */
 #define PCC_PCS(n)          ((uint32_t)(n) << 24) /* peripheral clock source */
 
 /* PORT */
+#define PORTA_BASE          0x40049000u
 #define PORTD_BASE          0x4004C000u
 #define PORTE_BASE          0x4004D000u
+#define PORTA_PCR(n)        REG32(PORTA_BASE + 4u * (n))
 #define PORTD_PCR(n)        REG32(PORTD_BASE + 4u * (n))
 #define PORTE_PCR(n)        REG32(PORTE_BASE + 4u * (n))
 #define PCR_MUX(n)          ((uint32_t)(n) << 8)
+#define PCR_PS_PULLUP       (1u << 0)            /* pull select: pull-up */
+#define PCR_PE              (1u << 1)            /* pull enable */
 
 /* GPIO */
+#define PTA_BASE            0x400FF000u
 #define PTD_BASE            0x400FF0C0u
 #define PTE_BASE            0x400FF100u
+#define PTA_PSOR            REG32(PTA_BASE + 0x04u)
+#define PTA_PCOR            REG32(PTA_BASE + 0x08u)
+#define PTA_PDIR            REG32(PTA_BASE + 0x10u)
+#define PTA_PDDR            REG32(PTA_BASE + 0x14u)
 #define PTD_PSOR            REG32(PTD_BASE + 0x04u)
 #define PTD_PCOR            REG32(PTD_BASE + 0x08u)
 #define PTD_PDDR            REG32(PTD_BASE + 0x14u)

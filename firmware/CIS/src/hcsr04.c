@@ -54,6 +54,11 @@ void hcsr04_init(void)
     s_first = true;
 }
 
+bool hcsr04_idle(void)
+{
+    return s_state == ST_IDLE;
+}
+
 static void send_trigger(void)
 {
     uint16_t t0 = timebase_cnt();

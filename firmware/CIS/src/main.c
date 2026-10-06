@@ -9,8 +9,13 @@
  *                   (no echo / sensor fault / recovering)
  *   red + blue (magenta) = oscillator did not start (clock problem)
  *
- * Wiring: HC-SR04 VCC -> 5 V, GND -> GND, TRIG -> PTE7, ECHO -> PTE8.
- * Debugger variables: g_distance_mm, g_status, g_reason, g_sequence, g_age_ms.
+ * Wiring: HC-SR04 VCC -> 5 V, GND -> GND, TRIG -> PTE7 (J2-14), ECHO -> PTE8 (J2-8).
+ *         DHT22  VCC -> 5 V, GND -> GND, DATA -> PTA14 (J2-16).
+ * Debugger variables:
+ *   rear : g_distance_mm, g_status, g_reason, g_sequence, g_age_ms
+ *   DHT22: g_temp_c01 (0.01 degC), g_hum_c01 (0.01 %RH), g_env_*_valid, g_env_*_seq,
+ *          g_env_*_age_ms, g_env_*_reason, g_dht_ok / g_dht_no_response /
+ *          g_dht_timeout / g_dht_checksum (read results), g_dht_raw[5]
  */
 
 #include <stdint.h>
@@ -18,6 +23,7 @@
 #include "regs_s32k144.h"
 #include "timebase.h"
 #include "hcsr04.h"
+#include "dht22.h"
 #include "rear_logic.h"
 
 /* Wiring tests (set back to 0 for the distance demo):
@@ -44,12 +50,24 @@
 #define LED_HOLD_MS     400u     /* keep the last good colour this long after a missed measurement */
 
 static rear_state_t g_rear;
+static env_state_t  g_env;
 
 volatile uint32_t g_distance_mm;
 volatile uint32_t g_status;
 volatile uint32_t g_reason;
 volatile uint32_t g_sequence;
 volatile uint32_t g_age_ms;
+
+volatile int32_t  g_temp_c01;
+volatile int32_t  g_hum_c01;
+volatile uint32_t g_env_temp_valid;
+volatile uint32_t g_env_hum_valid;
+volatile uint32_t g_env_temp_seq;
+volatile uint32_t g_env_hum_seq;
+volatile uint32_t g_env_temp_age_ms;
+volatile uint32_t g_env_hum_age_ms;
+volatile uint32_t g_env_temp_reason;
+volatile uint32_t g_env_hum_reason;
 
 /* HCSR04_PIN_TEST == 2 */
 volatile uint32_t g_echo_pulses;
@@ -113,6 +131,8 @@ int main(void)
 
     rear_init(&g_rear);
     hcsr04_init();
+    env_init(&g_env);
+    dht22_init();
 
 #if HCSR04_PIN_TEST == 1
     PTE_PSOR = (1u << 7);                  /* PTE7 (TRIG) = HIGH */
@@ -168,6 +188,20 @@ int main(void)
                 g_sequence = g_rear.value.sequence;
             }
             g_age_ms = cis_value_age_ms(&g_rear.value, now_ms);
+
+            /* The DHT22 read blocks for ~5 ms: only start it while no echo is pending. */
+            dht22_step(&g_env, now_ms, hcsr04_idle());
+            env_check_stale(&g_env, now_ms);
+            g_temp_c01 = g_env.temperature.value;
+            g_hum_c01 = g_env.humidity.value;
+            g_env_temp_valid = g_env.temperature.valid;
+            g_env_hum_valid = g_env.humidity.valid;
+            g_env_temp_seq = g_env.temperature.sequence;
+            g_env_hum_seq = g_env.humidity.sequence;
+            g_env_temp_age_ms = cis_value_age_ms(&g_env.temperature, now_ms);
+            g_env_hum_age_ms = cis_value_age_ms(&g_env.humidity, now_ms);
+            g_env_temp_reason = (uint32_t)g_env.temperature.reason;
+            g_env_hum_reason = (uint32_t)g_env.humidity.reason;
 
             color = answered_color(&g_rear, &answered);
             if (answered) {
