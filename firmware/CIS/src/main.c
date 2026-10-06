@@ -1,114 +1,80 @@
 /*
- * CIS common module smoke test for the S32K144EVB.
+ * CIS rear distance demo for the S32K144EVB (HC-SR04 on FTM0_CH6).
  *
- * Runs a set of checks on the common module (value / fault / state) and shows
- * the result on the on-board RGB LED:
- *   green LED on = all checks passed
- *   red   LED on = at least one check failed (see g_fail_line in the debugger)
- * g_pass / g_fail / g_fail_line are also readable in the debugger.
+ * RGB LED:
+ *   red    = object close   (valid distance, <= NEAR_MM)
+ *   green  = object far     (valid distance, > NEAR_MM)
+ *   blue   = outside the recognizable range (nothing within range, or too close)
+ *   blue blinking = no usable measurement (no echo / sensor fault / recovering)
+ *   red + blue (magenta) = oscillator did not start (clock problem)
  *
- * Registers are accessed by address so this file does not depend on the
- * register names of a particular device header.
+ * Wiring: HC-SR04 VCC -> 5 V, GND -> GND, TRIG -> PTE7, ECHO -> PTE8.
+ * Debugger variables: g_distance_mm, g_status, g_reason, g_sequence, g_age_ms.
  */
 
 #include <stdint.h>
 
-#include "cis_value.h"
-#include "cis_fault.h"
-#include "cis_state.h"
+#include "regs_s32k144.h"
+#include "timebase.h"
+#include "hcsr04.h"
+#include "rear_logic.h"
 
-/*
- * Register access by address, so this file does not depend on the register
- * names of a particular device header (the RTD header names them IP_WDOG,
- * IP_PORTD, ... while the Cookbook header uses WDOG, PORTD, ...).
- * Offsets are from the S32K144 Reference Manual; base addresses are the
- * S32K144 memory map. If in doubt, compare with IP_WDOG_BASE, IP_PCC_BASE,
- * IP_PORTD_BASE and IP_PTD_BASE in the project's S32K144.h.
- */
-#define REG32(addr)         (*(volatile uint32_t *)(addr))
+#define NEAR_MM         500u     /* red at or below 50 cm, green above (adjustable) */
 
-#define WDOG_BASE           0x40052000u
-#define WDOG_CS             REG32(WDOG_BASE + 0x0u)
-#define WDOG_CNT            REG32(WDOG_BASE + 0x4u)
-#define WDOG_TOVAL          REG32(WDOG_BASE + 0x8u)
+#define LED_BLUE_PIN    0u       /* PTD0,  active low */
+#define LED_RED_PIN     15u      /* PTD15, active low */
+#define LED_GREEN_PIN   16u      /* PTD16, active low */
+#define LED_MASK        ((1u << LED_BLUE_PIN) | (1u << LED_RED_PIN) | (1u << LED_GREEN_PIN))
 
-#define PCC_BASE            0x40065000u
-#define PCC_PORTD           REG32(PCC_BASE + 0x130u)     /* PCC_PORTD offset 0x130 */
-#define PCC_CGC             (1u << 30)                   /* clock gate control */
+#define BLINK_HALF_MS   250u
 
-#define PORTD_BASE          0x4004C000u
-#define PORTD_PCR(n)        REG32(PORTD_BASE + 4u * (n)) /* PCR n at offset 4n */
-#define PCR_MUX_GPIO        0x00000100u
+static rear_state_t g_rear;
 
-#define PTD_BASE            0x400FF0C0u
-#define PTD_PSOR            REG32(PTD_BASE + 0x04u)
-#define PTD_PCOR            REG32(PTD_BASE + 0x08u)
-#define PTD_PDDR            REG32(PTD_BASE + 0x14u)
-
-#define LED_RED     15u      /* PTD15, active low */
-#define LED_GREEN   16u      /* PTD16, active low */
-#define EXPECTED_CHECKS 14u
-
-volatile uint32_t g_pass = 0;
-volatile uint32_t g_fail = 0;
-volatile uint32_t g_fail_line = 0;
-
-#define CHECK(c) do { if (c) { g_pass++; } else { g_fail++; g_fail_line = __LINE__; } } while (0)
+volatile uint32_t g_distance_mm;
+volatile uint32_t g_status;
+volatile uint32_t g_reason;
+volatile uint32_t g_sequence;
+volatile uint32_t g_age_ms;
 
 static void WDOG_disable(void)
 {
-    WDOG_CNT = 0xD928C520u;     /* unlock */
-    WDOG_TOVAL = 0x0000FFFFu;   /* max timeout */
-    WDOG_CS = 0x00002100u;      /* disable */
+    WDOG_CNT = 0xD928C520u;      /* unlock */
+    WDOG_TOVAL = 0x0000FFFFu;    /* max timeout */
+    WDOG_CS = 0x00002100u;       /* disable */
 }
 
 static void led_init(void)
 {
-    PCC_PORTD |= PCC_CGC;                                /* clock to PORTD */
-    PORTD_PCR(LED_RED)   = PCR_MUX_GPIO;                 /* MUX = GPIO */
-    PORTD_PCR(LED_GREEN) = PCR_MUX_GPIO;
-    PTD_PDDR |= (1u << LED_RED) | (1u << LED_GREEN);     /* outputs */
-    PTD_PSOR  = (1u << LED_RED) | (1u << LED_GREEN);     /* both off (active low) */
+    PCC_PORTD |= PCC_CGC;
+    PORTD_PCR(LED_BLUE_PIN)  = PCR_MUX(1);
+    PORTD_PCR(LED_RED_PIN)   = PCR_MUX(1);
+    PORTD_PCR(LED_GREEN_PIN) = PCR_MUX(1);
+    PTD_PDDR |= LED_MASK;
+    PTD_PSOR  = LED_MASK;        /* all off (active low) */
 }
 
-static void run_checks(void)
+/* mask = LEDs to turn on, all others off */
+static void led_show(uint32_t on_mask)
 {
-    cis_value_t v;
-    cis_fault_t f;
-    cis_func_status_t fn[CIS_FN_COUNT];
-    int i;
+    PTD_PSOR = LED_MASK;
+    PTD_PCOR = on_mask;
+}
 
-    /* Resend: AGE grows, SEQUENCE stays */
-    cis_value_init(&v);
-    CHECK(cis_value_new_sample(&v, 235, 1000));
-    CHECK(v.sequence == 1);
-    CHECK(cis_value_age_ms(&v, 1600) == 600);
-    CHECK(v.sequence == 1);
-
-    /* Fault -> rejected -> recovering -> new sample -> valid */
-    cis_value_fault(&v, CIS_REASON_SENSOR_FAULT);
-    CHECK(!cis_value_new_sample(&v, 2, 1700));
-    cis_value_begin_recovery(&v);
-    CHECK(v.status == CIS_FUNC_RECOVERING);
-    CHECK(!v.valid);
-    CHECK(cis_value_new_sample(&v, 3, 1800));
-    CHECK(v.valid);
-    CHECK(v.sequence == 2);
-
-    /* Fault history is kept after the fault clears */
-    cis_fault_init(&f);
-    cis_fault_set(&f, CIS_FAULT_TEMPERATURE_SENSOR);
-    CHECK(f.active_fault == 3);
-    cis_fault_clear(&f, CIS_FAULT_TEMPERATURE_SENSOR);
-    CHECK(f.active_fault == 0 && f.last_fault == 3);
-
-    /* CIS_STATE */
-    for (i = 0; i < CIS_FN_COUNT; i++) {
-        fn[i] = CIS_FUNC_NOT_READY;
+static uint32_t led_color_for(const rear_state_t *s, uint32_t now_ms)
+{
+    switch (s->status) {
+    case CIS_PROX_VALID_DISTANCE:
+        return ((uint32_t)s->value.value <= NEAR_MM) ? (1u << LED_RED_PIN) : (1u << LED_GREEN_PIN);
+    case CIS_PROX_NO_OBJECT:
+        return 1u << LED_BLUE_PIN;                          /* beyond range */
+    case CIS_PROX_UNAVAILABLE:
+        if (s->value.reason == CIS_REASON_OUT_OF_RANGE) {
+            return 1u << LED_BLUE_PIN;                      /* too close */
+        }
+        /* fall through: no usable measurement */
+    default:
+        return ((now_ms / BLINK_HALF_MS) & 1u) ? (1u << LED_BLUE_PIN) : 0u;
     }
-    CHECK(cis_state_eval(CIS_INIT_DONE, false, fn) == CIS_STATE_READY);
-    fn[CIS_FN_REAR] = CIS_FUNC_ACTIVE;
-    CHECK(cis_state_eval(CIS_INIT_DONE, false, fn) == CIS_STATE_ACTIVE);
 }
 
 int main(void)
@@ -116,15 +82,25 @@ int main(void)
     WDOG_disable();
     led_init();
 
-    run_checks();
-
-    if (g_fail == 0u && g_pass == EXPECTED_CHECKS) {
-        PTD_PCOR = (1u << LED_GREEN);       /* green on: PASS */
-    } else {
-        PTD_PCOR = (1u << LED_RED);         /* red on: FAIL */
+    if (!timebase_init()) {
+        led_show((1u << LED_RED_PIN) | (1u << LED_BLUE_PIN));
+        for (;;) { }
     }
 
+    rear_init(&g_rear);
+    hcsr04_init();
+
     for (;;) {
-        /* put a breakpoint here and inspect g_pass / g_fail / g_fail_line */
+        uint32_t now_ms = timebase_now_ms();    /* also keeps the 16-bit counter tracked */
+
+        if (hcsr04_step(&g_rear, now_ms)) {
+            g_distance_mm = (uint32_t)g_rear.value.value;
+            g_status = (uint32_t)g_rear.status;
+            g_reason = (uint32_t)g_rear.value.reason;
+            g_sequence = g_rear.value.sequence;
+        }
+        g_age_ms = cis_value_age_ms(&g_rear.value, now_ms);
+
+        led_show(led_color_for(&g_rear, now_ms));
     }
 }

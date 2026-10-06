@@ -46,6 +46,15 @@ typedef enum {
     CIS_FN_COUNT
 } cis_function_t;
 
+/* PROXIMITY_STATUS (network_design_draft_v0.1.md, proposal) */
+typedef enum {
+    CIS_PROX_VALID_DISTANCE = 0,
+    CIS_PROX_NO_OBJECT,
+    CIS_PROX_UNAVAILABLE,
+    CIS_PROX_FAULT,
+    CIS_PROX_RECOVERING
+} cis_proximity_t;
+
 /* FAULT_MASK bits. fault code = bit number + 1, code 0 = no fault. */
 typedef enum {
     CIS_FAULT_INITIALIZATION_FAILURE = 0,
