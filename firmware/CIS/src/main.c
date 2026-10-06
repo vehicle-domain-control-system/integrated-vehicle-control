@@ -11,11 +11,15 @@
  *
  * Wiring: HC-SR04 VCC -> 5 V, GND -> GND, TRIG -> PTE7 (J2-14), ECHO -> PTE8 (J2-8).
  *         DHT22  VCC -> 5 V, GND -> GND, DATA -> PTA14 (J2-16).
+ *         VEML7700 VCC -> 5 V, GND -> GND, SDA -> PTA2 (J1-1), SCL -> PTA3 (J1-3).
  * Debugger variables:
  *   rear : g_distance_mm, g_status, g_reason, g_sequence, g_age_ms
  *   DHT22: g_temp_c01 (0.01 degC), g_hum_c01 (0.01 %RH), g_env_*_valid, g_env_*_seq,
  *          g_env_*_age_ms, g_env_*_reason, g_dht_ok / g_dht_no_response /
  *          g_dht_timeout / g_dht_checksum (read results), g_dht_raw[5]
+ *   VEML7700: g_lux, g_lux_valid, g_lux_seq, g_lux_age_ms, g_lux_reason,
+ *          g_veml_ok / g_veml_nack / g_veml_timeout / g_veml_bus_error, g_veml_raw,
+ *          g_veml_conf, g_veml_present, g_i2c_sda_idle / g_i2c_scl_idle
  */
 
 #include <stdint.h>
@@ -24,6 +28,7 @@
 #include "timebase.h"
 #include "hcsr04.h"
 #include "dht22.h"
+#include "veml7700.h"
 #include "rear_logic.h"
 
 /* Wiring tests (set back to 0 for the distance demo):
@@ -51,12 +56,19 @@
 
 static rear_state_t g_rear;
 static env_state_t  g_env;
+static lux_state_t  g_lux_state;
 
 volatile uint32_t g_distance_mm;
 volatile uint32_t g_status;
 volatile uint32_t g_reason;
 volatile uint32_t g_sequence;
 volatile uint32_t g_age_ms;
+
+volatile uint32_t g_lux;
+volatile uint32_t g_lux_valid;
+volatile uint32_t g_lux_seq;
+volatile uint32_t g_lux_age_ms;
+volatile uint32_t g_lux_reason;
 
 volatile int32_t  g_temp_c01;
 volatile int32_t  g_hum_c01;
@@ -133,6 +145,8 @@ int main(void)
     hcsr04_init();
     env_init(&g_env);
     dht22_init();
+    lux_init(&g_lux_state);
+    (void)veml7700_init();                  /* g_veml_present shows whether it answered */
 
 #if HCSR04_PIN_TEST == 1
     PTE_PSOR = (1u << 7);                  /* PTE7 (TRIG) = HIGH */
@@ -202,6 +216,15 @@ int main(void)
             g_env_hum_age_ms = cis_value_age_ms(&g_env.humidity, now_ms);
             g_env_temp_reason = (uint32_t)g_env.temperature.reason;
             g_env_hum_reason = (uint32_t)g_env.humidity.reason;
+
+            /* I2C transactions also block for up to ~1 ms: same rule as the DHT22. */
+            veml7700_step(&g_lux_state, now_ms, hcsr04_idle());
+            lux_check_stale(&g_lux_state, now_ms);
+            g_lux = (uint32_t)g_lux_state.illuminance.value;
+            g_lux_valid = g_lux_state.illuminance.valid;
+            g_lux_seq = g_lux_state.illuminance.sequence;
+            g_lux_age_ms = cis_value_age_ms(&g_lux_state.illuminance, now_ms);
+            g_lux_reason = (uint32_t)g_lux_state.illuminance.reason;
 
             color = answered_color(&g_rear, &answered);
             if (answered) {
