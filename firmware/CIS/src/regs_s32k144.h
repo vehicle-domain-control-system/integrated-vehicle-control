@@ -52,6 +52,7 @@
 #define PTD_PSOR            REG32(PTD_BASE + 0x04u)
 #define PTD_PCOR            REG32(PTD_BASE + 0x08u)
 #define PTD_PDDR            REG32(PTD_BASE + 0x14u)
+#define PTE_PDIR            REG32(PTE_BASE + 0x10u)
 #define PTE_PSOR            REG32(PTE_BASE + 0x04u)
 #define PTE_PCOR            REG32(PTE_BASE + 0x08u)
 #define PTE_PDDR            REG32(PTE_BASE + 0x14u)
