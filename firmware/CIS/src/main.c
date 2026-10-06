@@ -12,11 +12,15 @@
  * Wiring: HC-SR04 VCC -> 5 V, GND -> GND, TRIG -> PTE7 (J2-14), ECHO -> PTE8 (J2-8).
  *         DHT22  VCC -> 5 V, GND -> GND, DATA -> PTA14 (J2-16).
  *         VEML7700 VCC -> 5 V, GND -> GND, SDA -> PTA2 (J1-1), SCL -> PTA3 (J1-3).
+ *         Raspberry Pi: OpenSDA USB (J7) -> Pi USB port (LPUART1, 115200 8N1).
  * Debugger variables:
  *   rear : g_distance_mm, g_status, g_reason, g_sequence, g_age_ms
  *   DHT22: g_temp_c01 (0.01 degC), g_hum_c01 (0.01 %RH), g_env_*_valid, g_env_*_seq,
  *          g_env_*_age_ms, g_env_*_reason, g_dht_ok / g_dht_no_response /
  *          g_dht_timeout / g_dht_checksum (read results), g_dht_raw[5]
+ *   Pi camera: g_occ_count, g_occ_presence (0 absent, 1 present, 255 unknown), g_occ_valid,
+ *          g_occ_seq, g_occ_age_ms, g_occ_reason, g_pi_link_up, g_pi_frames_ok, g_pi_bad_crc,
+ *          g_pi_bad_format, g_pi_skipped, g_pi_overruns, g_pi_line_errors
  *   VEML7700: g_lux, g_lux_valid, g_lux_seq, g_lux_age_ms, g_lux_reason,
  *          g_veml_ok / g_veml_nack / g_veml_timeout / g_veml_bus_error, g_veml_raw,
  *          g_veml_conf, g_veml_present, g_i2c_sda_idle / g_i2c_scl_idle
@@ -29,6 +33,8 @@
 #include "hcsr04.h"
 #include "dht22.h"
 #include "veml7700.h"
+#include "pi_uart.h"
+#include "vision_logic.h"
 #include "rear_logic.h"
 
 /* Wiring tests (set back to 0 for the distance demo):
@@ -57,12 +63,27 @@
 static rear_state_t g_rear;
 static env_state_t  g_env;
 static lux_state_t  g_lux_state;
+static vision_state_t g_vision;
 
 volatile uint32_t g_distance_mm;
 volatile uint32_t g_status;
 volatile uint32_t g_reason;
 volatile uint32_t g_sequence;
 volatile uint32_t g_age_ms;
+
+volatile uint32_t g_occ_count;
+volatile uint32_t g_occ_presence;
+volatile uint32_t g_occ_valid;
+volatile uint32_t g_occ_seq;
+volatile uint32_t g_occ_age_ms;
+volatile uint32_t g_occ_reason;
+volatile uint32_t g_pi_link_up;
+volatile uint32_t g_pi_frames_ok;
+volatile uint32_t g_pi_bad_crc;
+volatile uint32_t g_pi_bad_format;
+volatile uint32_t g_pi_skipped;
+volatile uint32_t g_pi_overruns;
+volatile uint32_t g_pi_line_errors;
 
 volatile uint32_t g_lux;
 volatile uint32_t g_lux_valid;
@@ -147,6 +168,8 @@ int main(void)
     dht22_init();
     lux_init(&g_lux_state);
     (void)veml7700_init();                  /* g_veml_present shows whether it answered */
+    vision_init(&g_vision);
+    pi_uart_init();
 
 #if HCSR04_PIN_TEST == 1
     PTE_PSOR = (1u << 7);                  /* PTE7 (TRIG) = HIGH */
@@ -186,6 +209,9 @@ int main(void)
 #endif
 
     {
+        uint32_t last_perm_ms = 0u;
+        uint16_t perm_seq = 0u;
+        const uint8_t cis_session = 1u;     /* [TBD] changes with every CIS start once a boot counter exists */
         uint32_t last_color = 0u;
         uint32_t last_answer_ms = 0u;
         bool have_answer = false;
@@ -194,6 +220,38 @@ int main(void)
             uint32_t now_ms = timebase_now_ms();    /* also keeps the 16-bit counter tracked */
             uint32_t color;
             bool answered;
+            pi_frame_t frame;
+
+            /* Raspberry Pi: read all received frames first so the FIFO never fills up. */
+            while (pi_uart_poll(&frame)) {
+                if (frame.type == PI_TYPE_VISION) {
+                    vision_on_frame(&g_vision, &frame.vision, now_ms);
+                }
+            }
+            vision_check(&g_vision, now_ms);
+            g_occ_count = (uint32_t)g_vision.count.value;
+            g_occ_presence = (uint32_t)g_vision.presence.value;
+            g_occ_valid = g_vision.count.valid && g_vision.presence.valid;
+            g_occ_seq = g_vision.count.sequence;
+            g_occ_age_ms = cis_value_age_ms(&g_vision.count, now_ms);
+            g_occ_reason = (uint32_t)g_vision.count.reason;
+            g_pi_link_up = g_vision.link_up;
+            g_pi_frames_ok = pi_uart_frames_ok();
+            g_pi_bad_crc = pi_uart_bad_crc();
+            g_pi_bad_format = pi_uart_bad_format();
+            g_pi_skipped = pi_uart_skipped_bytes();
+            g_pi_overruns = pi_uart_overruns();
+            g_pi_line_errors = pi_uart_line_errors();
+
+            /* Permission for the Pi: the vehicle power permission is not wired in yet
+             * (it comes from the Domain), so "unknown" is reported. */
+            if (hcsr04_idle() && (uint32_t)(now_ms - last_perm_ms) >= 500u) {
+                uint8_t out[PI_FRAME_MAX];
+                size_t n = pi_build_permission(out, cis_session, perm_seq++,
+                                               PI_PERMISSION_UNKNOWN, 0xFFFFu);
+                last_perm_ms = now_ms;
+                pi_uart_send(out, n);
+            }
 
             if (hcsr04_step(&g_rear, now_ms)) {
                 g_distance_mm = (uint32_t)g_rear.value.value;

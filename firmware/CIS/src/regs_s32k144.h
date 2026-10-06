@@ -36,6 +36,8 @@
 #define PCC_FTM0            REG32(PCC_BASE + 0x0E0u)
 #define PCC_LPI2C0          REG32(PCC_BASE + 0x198u)
 #define PCC_PORTA           REG32(PCC_BASE + 0x124u)
+#define PCC_PORTC           REG32(PCC_BASE + 0x12Cu)
+#define PCC_LPUART1         REG32(PCC_BASE + 0x1ACu)
 #define PCC_PORTD           REG32(PCC_BASE + 0x130u)
 #define PCC_PORTE           REG32(PCC_BASE + 0x134u)
 #define PCC_CGC             (1u << 30)           /* clock gate control */
@@ -43,9 +45,11 @@
 
 /* PORT */
 #define PORTA_BASE          0x40049000u
+#define PORTC_BASE          0x4004B000u
 #define PORTD_BASE          0x4004C000u
 #define PORTE_BASE          0x4004D000u
 #define PORTA_PCR(n)        REG32(PORTA_BASE + 4u * (n))
+#define PORTC_PCR(n)        REG32(PORTC_BASE + 4u * (n))
 #define PORTD_PCR(n)        REG32(PORTD_BASE + 4u * (n))
 #define PORTE_PCR(n)        REG32(PORTE_BASE + 4u * (n))
 #define PCR_MUX(n)          ((uint32_t)(n) << 8)
@@ -112,5 +116,26 @@
 #define LPI2C_CMD_RXD       (1u << 8)    /* receive (DATA[7:0] + 1) bytes */
 #define LPI2C_CMD_STOP      (2u << 8)
 #define LPI2C_CMD_START     (4u << 8)    /* (repeated) START + transmit address in DATA */
+
+/* LPUART1 (OpenSDA virtual COM port: PTC6 = RX, PTC7 = TX). Offsets from the Reference Manual. */
+#define LPUART1_BASE        0x4006B000u
+#define LPUART1_BAUD        REG32(LPUART1_BASE + 0x10u)
+#define LPUART1_STAT        REG32(LPUART1_BASE + 0x14u)
+#define LPUART1_CTRL        REG32(LPUART1_BASE + 0x18u)
+#define LPUART1_DATA        REG32(LPUART1_BASE + 0x1Cu)
+#define LPUART1_FIFO        REG32(LPUART1_BASE + 0x28u)
+
+#define LPUART_STAT_PF      (1u << 16)   /* parity error */
+#define LPUART_STAT_FE      (1u << 17)   /* framing error */
+#define LPUART_STAT_NF      (1u << 18)   /* noise flag */
+#define LPUART_STAT_OR      (1u << 19)   /* receiver overrun */
+#define LPUART_STAT_RDRF    (1u << 21)   /* receive data register full */
+#define LPUART_STAT_TDRE    (1u << 23)   /* transmit data register empty */
+#define LPUART_STAT_ERRORS  (LPUART_STAT_PF | LPUART_STAT_FE | LPUART_STAT_NF | LPUART_STAT_OR)
+#define LPUART_CTRL_RE      (1u << 18)
+#define LPUART_CTRL_TE      (1u << 19)
+#define LPUART_FIFO_RXFE    (1u << 3)    /* receive FIFO enable (4 words) */
+#define LPUART_FIFO_RXFLUSH (1u << 14)
+#define LPUART_FIFO_TXFLUSH (1u << 15)
 
 #endif /* REGS_S32K144_H */
