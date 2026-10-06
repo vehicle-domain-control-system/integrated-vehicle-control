@@ -20,9 +20,15 @@
 #include "hcsr04.h"
 #include "rear_logic.h"
 
-/* Set to 1 to find out where PTE7 (TRIG) is: PTE7 is held HIGH (about 5 V) and
- * the green LED is on. Measure with a multimeter between a header pin and GND.
- * Set back to 0 for the distance demo. */
+/* Wiring tests (set back to 0 for the distance demo):
+ *   1 = PTE7 (TRIG) is held HIGH (about 5 V), green LED on. Measure with a
+ *       multimeter between the TRIG wire at the sensor and GND.
+ *   2 = ECHO test without the FTM capture: a trigger pulse is sent every 80 ms
+ *       and PTE8 (ECHO) is polled as a plain input.
+ *         red   = no ECHO pulse seen yet (ECHO does not arrive)
+ *         green = at least one ECHO pulse was seen (ECHO wiring and sensor OK)
+ *       Debugger: g_echo_pulses (count), g_echo_max_us (longest pulse, us),
+ *       g_echo_last_us (last pulse). Distance in cm = us / 58. */
 #ifndef HCSR04_PIN_TEST
 #define HCSR04_PIN_TEST 0
 #endif
@@ -44,6 +50,11 @@ volatile uint32_t g_status;
 volatile uint32_t g_reason;
 volatile uint32_t g_sequence;
 volatile uint32_t g_age_ms;
+
+/* HCSR04_PIN_TEST == 2 */
+volatile uint32_t g_echo_pulses;
+volatile uint32_t g_echo_max_us;
+volatile uint32_t g_echo_last_us;
 
 static void WDOG_disable(void)
 {
@@ -103,10 +114,41 @@ int main(void)
     rear_init(&g_rear);
     hcsr04_init();
 
-#if HCSR04_PIN_TEST
+#if HCSR04_PIN_TEST == 1
     PTE_PSOR = (1u << 7);                  /* PTE7 (TRIG) = HIGH */
     led_show(1u << LED_GREEN_PIN);
     for (;;) { }
+#elif HCSR04_PIN_TEST == 2
+    {
+        uint32_t last_trig_ms = 0u;
+        uint16_t t_rise = 0u;
+        uint32_t level_prev = 0u;
+
+        led_show(1u << LED_RED_PIN);
+        for (;;) {
+            uint32_t now_ms = timebase_now_ms();
+            uint32_t level = (PTE_PDIR >> 8) & 1u;       /* ECHO = PTE8 */
+
+            if ((uint32_t)(now_ms - last_trig_ms) >= 80u) {
+                uint16_t t0 = timebase_cnt();
+                last_trig_ms = now_ms;
+                PTE_PSOR = (1u << 7);                     /* TRIG pulse, 12 us */
+                while ((uint16_t)(timebase_cnt() - t0) < 12u) { }
+                PTE_PCOR = (1u << 7);
+            }
+            if (level && !level_prev) {
+                t_rise = timebase_cnt();
+            } else if (!level && level_prev) {
+                g_echo_last_us = (uint16_t)(timebase_cnt() - t_rise);
+                g_echo_pulses++;
+                if (g_echo_last_us > g_echo_max_us) {
+                    g_echo_max_us = g_echo_last_us;
+                }
+                led_show(1u << LED_GREEN_PIN);            /* latched: an echo was seen */
+            }
+            level_prev = level;
+        }
+    }
 #endif
 
     {
