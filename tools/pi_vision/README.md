@@ -32,7 +32,17 @@ sudo usermod -aG dialout $USER        # 시리얼 포트 사용 권한 (적용�
 rpicam-hello --list-cameras           # 구버전 OS: libcamera-hello --list-cameras
 ```
 
-더 정확한 검출기(YOLO)를 쓰려면 (Pi 4/5 권장, 처음 한 번 인터넷 필요):
+### Raspberry Pi 4 기준 권장 사항
+
+- **64비트 Raspberry Pi OS(Bookworm)**를 쓴다. YOLO(ultralytics)가 쓰는 라이브러리가 64비트 환경에서만 설치된다.
+- 전원은 **5V 3A** 어댑터를 쓴다. CIS 보드(OpenSDA)도 Pi의 USB에서 전원을 받고, 검출 중에는 CPU 부하가 커서 전원이 약하면 느려지거나 재부팅한다.
+- Pi 4 CPU로 YOLO를 돌리면 **초당 몇 장** 수준이라 속도가 중요하다. CIS는 **1초 넘은 판정을 쓰지 않으므로**
+  (`STALE`) 판정이 초당 2번 아래로 떨어지면 값이 계속 무효로 깜빡인다. 그래서:
+  - 로그의 `detect=…ms`로 실제 속도를 확인한다. **600 ms를 넘으면 스크립트가 경고**한다.
+  - 느리면 `--imgsz 256`처럼 입력을 줄이거나, 아래 NCNN 변환을 쓰거나, `--detector hog`로 낮춘다.
+  - 기본값(`--fps 3`, 사진 3장 중앙값, 2장 모이면 결과)은 느린 검출기에 맞춘 값이다.
+
+더 정확한 검출기(YOLO)를 쓰려면 (처음 한 번 인터넷 필요, 설치에 시간이 오래 걸린다):
 
 ```bash
 python3 -m venv --system-site-packages ~/visionenv     # apt로 설치한 picamera2를 함께 쓰기 위해
@@ -40,11 +50,18 @@ source ~/visionenv/bin/activate
 pip install ultralytics
 ```
 
+Pi 4에서 속도를 더 내려면 NCNN 형식으로 변환해 쓴다 (ultralytics가 제공하는 방식이며, 얼마나 빨라지는지는 실측이 필요하다):
+
+```bash
+yolo export model=yolov8n.pt format=ncnn imgsz=320     # yolov8n_ncnn_model 폴더가 생긴다
+python3 vision_sender.py --port auto --model yolov8n_ncnn_model --imgsz 320
+```
+
 검출기 비교:
 
 | 검출기 | 장점 | 단점 |
 |---|---|---|
-| `yolo` (ultralytics, 기본 우선) | 앉은 사람·일부만 보이는 사람도 잘 잡음 | 설치가 무겁고 느림 (Pi 4: 수 fps) |
+| `yolo` (ultralytics, 기본 우선) | 앉은 사람·일부만 보이는 사람도 잘 잡음 | 설치가 무겁고 Pi 4에서는 느림 |
 | `hog` (OpenCV 내장) | 설치 없음, 가벼움 | 서 있는 전신 위주라 차량 실내에서는 많이 놓침 |
 
 ## 연결
@@ -66,10 +83,11 @@ python3 vision_sender.py --dry-run --simulate 0,2             # 시리얼 포트
 ```
 
 시뮬레이션 값: `0`~`5` 사람 수, `6` 이상 5명 초과(범위 밖), `u` 모름, `n` 준비 안 됨, `x` 카메라 고장.
-한 값을 `--sim-period` 초(기본 3) 동안 유지하고 다음 값으로 넘어간다.
+한 값을 `--sim-period` 초(기본 3) 동안 유지하고 다음 값으로 넘어간다. 실제와 같이 0.3초마다 새 판정(`SEQ` 증가)을 내서 CIS가 값을 오래된 것으로 보지 않는다.
 
-주요 옵션: `--fps`(초당 판정 횟수, 기본 5), `--window`(중앙값에 쓰는 사진 수, 기본 5),
-`--min-samples`(결과를 내기 전에 모으는 사진 수, 기본 3), `--width/--height`(기본 640x480),
+주요 옵션: `--fps`(초당 판정 횟수, 기본 3), `--window`(중앙값에 쓰는 사진 수, 기본 3),
+`--min-samples`(결과를 내기 전에 모으는 사진 수, 기본 2), `--width/--height`(기본 640x480),
+`--model`/`--imgsz`/`--conf`(YOLO 가중치·입력 크기·신뢰도),
 `--source`(`picamera`, USB 카메라 번호 `0`, 또는 동영상 파일 — PC에서 검출기를 시험할 때).
 
 ## 동작 규칙
@@ -108,5 +126,5 @@ CIS 쪽 디버거 변수: `g_occ_count`, `g_occ_presence`(0 없음, 1 있음, 25
 | 시뮬레이션 `u` / `n` / `x` | `g_occ_valid`=0, 사유 6 / 1 / 4 (사람 없음으로 바뀌지 않음) |
 | 스크립트 중지 | 0.3 s 뒤 `g_pi_link_up`=0, `g_occ_valid`=0 |
 | 스크립트 재시작 | 새 판정부터 다시 유효, 이전 값 재사용 없음 |
-| 카메라로 사람 1~3명 | 판정이 바뀌는 데 1초 이내 |
+| 카메라로 사람 1~3명 | 판정이 바뀌는 데 1~2초 이내, 로그 `detect=`가 600 ms 아래 |
 | 오래 실행 | `g_pi_bad_crc`, `g_pi_overruns`가 거의 늘지 않음 |

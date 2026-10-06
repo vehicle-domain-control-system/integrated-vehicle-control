@@ -22,6 +22,7 @@ import time
 import pi_protocol as pp
 
 SEND_PERIOD_S = 0.1
+SLOW_DETECTION_MS = 600.0        # above this the judgements cannot stay fresh for the CIS
 LOG_PERIOD_S = 2.0
 
 
@@ -68,6 +69,8 @@ class DetectionWorker(threading.Thread):
         self._window = collections.deque(maxlen=window)
         self._min_samples = min_samples
         self.stop_event = threading.Event()
+        self.detect_ms = 0.0                  # time of the last detection, for the log
+        self._slow_warned = False
 
     def _fault(self, fault: int) -> None:
         self._window.clear()
@@ -99,7 +102,15 @@ class DetectionWorker(threading.Thread):
                 continue
 
             try:
+                t_detect = time.monotonic()
                 n = self._detector.count(frame)
+                self.detect_ms = (time.monotonic() - t_detect) * 1000.0
+                if self.detect_ms > SLOW_DETECTION_MS and not self._slow_warned:
+                    self._slow_warned = True
+                    print(f"[detector] {self.detect_ms:.0f} ms per picture is slow: the CIS does not use a "
+                          f"judgement older than 1 s, so the result would keep turning invalid. "
+                          f"Use a smaller --imgsz, --detector hog, or an NCNN model (see README).",
+                          file=sys.stderr)
             except Exception as exc:                       # detector problem
                 print(f"[detector] {exc}", file=sys.stderr)
                 self._fault(pp.FAULT_DETECTOR)
@@ -131,7 +142,13 @@ class DetectionWorker(threading.Thread):
 
 class SimulationWorker(threading.Thread):
     """Tokens: 0..5 people, 6+ more than the CIS can count, u unknown (no data),
-    n not ready, x camera fault."""
+    n not ready, x camera fault.
+
+    A value is kept for `period_s`. Like the real detector, a new judgement
+    (new SEQ) is made every JUDGE_PERIOD_S, otherwise the CIS would treat the
+    result as too old after 1 s."""
+
+    JUDGE_PERIOD_S = 0.3
 
     def __init__(self, tokens, judgement: Judgement, period_s: float) -> None:
         super().__init__(daemon=True)
@@ -140,24 +157,29 @@ class SimulationWorker(threading.Thread):
         self._period = period_s
         self.stop_event = threading.Event()
 
+    def _judge(self, tok: str) -> None:
+        if tok == "u":
+            self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_NO_DATA, pp.FAULT_NONE)
+        elif tok == "n":
+            self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_NOT_READY, pp.FAULT_NONE)
+        elif tok == "x":
+            self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_VISION_FAULT, pp.FAULT_CAMERA)
+        else:
+            n = int(tok)
+            if n > pp.MAX_COUNT:
+                self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_OUT_OF_RANGE, pp.FAULT_NONE)
+            else:
+                self._judgement.update(n, pp.REASON_NONE, pp.FAULT_NONE)
+
     def run(self) -> None:
         i = 0
         while not self.stop_event.is_set():
             tok = self._tokens[i % len(self._tokens)]
             i += 1
-            if tok == "u":
-                self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_NO_DATA, pp.FAULT_NONE)
-            elif tok == "n":
-                self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_NOT_READY, pp.FAULT_NONE)
-            elif tok == "x":
-                self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_VISION_FAULT, pp.FAULT_CAMERA)
-            else:
-                n = int(tok)
-                if n > pp.MAX_COUNT:
-                    self._judgement.update(pp.COUNT_UNKNOWN, pp.REASON_OUT_OF_RANGE, pp.FAULT_NONE)
-                else:
-                    self._judgement.update(n, pp.REASON_NONE, pp.FAULT_NONE)
-            self.stop_event.wait(self._period)
+            t_end = time.monotonic() + self._period
+            while not self.stop_event.is_set() and time.monotonic() < t_end:
+                self._judge(tok)
+                self.stop_event.wait(min(self.JUDGE_PERIOD_S, max(0.0, t_end - time.monotonic())))
 
 
 # --------------------------------------------------------------------------
@@ -190,11 +212,15 @@ def main() -> int:
     ap.add_argument("--sim-period", type=float, default=3.0, help="seconds per simulated result")
     ap.add_argument("--source", default="picamera", help="'picamera' (default), a camera index (0) or a video file")
     ap.add_argument("--detector", choices=("auto", "yolo", "hog"), default="auto")
+    ap.add_argument("--model", default="yolov8n.pt",
+                    help="YOLO weights (a .pt file, or an exported folder such as yolov8n_ncnn_model)")
+    ap.add_argument("--imgsz", type=int, default=320, help="YOLO input size: smaller = faster (default 320)")
+    ap.add_argument("--conf", type=float, default=0.4, help="YOLO confidence threshold")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
-    ap.add_argument("--fps", type=float, default=5.0, help="judgements per second")
-    ap.add_argument("--window", type=int, default=5, help="pictures used for the median")
-    ap.add_argument("--min-samples", type=int, default=3, help="pictures needed before a count is reported")
+    ap.add_argument("--fps", type=float, default=3.0, help="judgements per second (the CIS needs at least 2)")
+    ap.add_argument("--window", type=int, default=3, help="pictures used for the median")
+    ap.add_argument("--min-samples", type=int, default=2, help="pictures needed before a count is reported")
     args = ap.parse_args()
 
     judgement = Judgement()
@@ -202,7 +228,7 @@ def main() -> int:
         worker = SimulationWorker(args.simulate.split(","), judgement, args.sim_period)
     else:
         import person_counter as pc
-        detector = pc.make_detector(args.detector)
+        detector = pc.make_detector(args.detector, args.model, args.imgsz, args.conf)
         print(f"detector: {detector.name}")
         if args.source == "picamera":
             def make_source():
@@ -224,7 +250,7 @@ def main() -> int:
     parser = pp.FrameParser()
     sent = 0
     last_perm = None
-    last_seq_printed = None
+    last_printed = None
     perm_seq = None
 
     worker.start()
@@ -242,8 +268,8 @@ def main() -> int:
                 next_send += SEND_PERIOD_S
                 if next_send < now:                          # fell behind: do not burst
                     next_send = now + SEND_PERIOD_S
-                if args.dry_run and seq != last_seq_printed:
-                    last_seq_printed = seq
+                if args.dry_run and (count, quality, fault) != last_printed:
+                    last_printed = (count, quality, fault)
                     print(f"judgement #{seq}: count={count} quality={quality} fault={fault}")
 
             if ser is not None:
@@ -260,8 +286,10 @@ def main() -> int:
             if now >= next_log:
                 next_log += LOG_PERIOD_S
                 seq, count, quality, fault, age_ms = judgement.snapshot()
+                det = getattr(worker, "detect_ms", 0.0)
                 print(f"seq={seq} count={count} quality={quality} fault={fault} age={age_ms}ms "
-                      f"sent={sent} cis_frames={parser.frames_ok} crc_err={parser.bad_crc}"
+                      + (f"detect={det:.0f}ms " if det else "")
+                      + f"sent={sent} cis_frames={parser.frames_ok} crc_err={parser.bad_crc}"
                       + (f" cis_seq={perm_seq}" if perm_seq is not None else ""))
             time.sleep(0.005)
     except KeyboardInterrupt:

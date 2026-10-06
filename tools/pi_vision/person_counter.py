@@ -134,13 +134,13 @@ class YoloDetector:
         return len(results[0].boxes)
 
 
-def make_detector(kind: str):
+def make_detector(kind: str, model: str = "yolov8n.pt", imgsz: int = 320, conf: float = 0.4):
     """kind: 'yolo', 'hog' or 'auto' (yolo if it is installed, otherwise hog)."""
     if kind == "hog":
         return HogDetector()
     if kind == "yolo":
-        return YoloDetector()
+        return YoloDetector(model, conf, imgsz)
     try:
-        return YoloDetector()
+        return YoloDetector(model, conf, imgsz)
     except ImportError:
         return HogDetector()
