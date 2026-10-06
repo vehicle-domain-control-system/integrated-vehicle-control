@@ -5,7 +5,8 @@
  *   red    = object close   (valid distance, <= NEAR_MM)
  *   green  = object far     (valid distance, > NEAR_MM)
  *   blue   = outside the recognizable range (nothing within range, or too close)
- *   blue blinking = no usable measurement (no echo / sensor fault / recovering)
+ *   blue blinking = no usable measurement for more than LED_HOLD_MS
+ *                   (no echo / sensor fault / recovering)
  *   red + blue (magenta) = oscillator did not start (clock problem)
  *
  * Wiring: HC-SR04 VCC -> 5 V, GND -> GND, TRIG -> PTE7, ECHO -> PTE8.
@@ -27,6 +28,7 @@
 #define LED_MASK        ((1u << LED_BLUE_PIN) | (1u << LED_RED_PIN) | (1u << LED_GREEN_PIN))
 
 #define BLINK_HALF_MS   250u
+#define LED_HOLD_MS     400u     /* keep the last good colour this long after a missed measurement */
 
 static rear_state_t g_rear;
 
@@ -60,8 +62,10 @@ static void led_show(uint32_t on_mask)
     PTD_PCOR = on_mask;
 }
 
-static uint32_t led_color_for(const rear_state_t *s, uint32_t now_ms)
+/* Colour of an answered measurement; 0 means "no usable measurement". */
+static uint32_t answered_color(const rear_state_t *s, bool *answered)
 {
+    *answered = true;
     switch (s->status) {
     case CIS_PROX_VALID_DISTANCE:
         return ((uint32_t)s->value.value <= NEAR_MM) ? (1u << LED_RED_PIN) : (1u << LED_GREEN_PIN);
@@ -71,10 +75,12 @@ static uint32_t led_color_for(const rear_state_t *s, uint32_t now_ms)
         if (s->value.reason == CIS_REASON_OUT_OF_RANGE) {
             return 1u << LED_BLUE_PIN;                      /* too close */
         }
-        /* fall through: no usable measurement */
+        break;
     default:
-        return ((now_ms / BLINK_HALF_MS) & 1u) ? (1u << LED_BLUE_PIN) : 0u;
+        break;
     }
+    *answered = false;
+    return 0u;
 }
 
 int main(void)
@@ -90,17 +96,35 @@ int main(void)
     rear_init(&g_rear);
     hcsr04_init();
 
-    for (;;) {
-        uint32_t now_ms = timebase_now_ms();    /* also keeps the 16-bit counter tracked */
+    {
+        uint32_t last_color = 0u;
+        uint32_t last_answer_ms = 0u;
+        bool have_answer = false;
 
-        if (hcsr04_step(&g_rear, now_ms)) {
-            g_distance_mm = (uint32_t)g_rear.value.value;
-            g_status = (uint32_t)g_rear.status;
-            g_reason = (uint32_t)g_rear.value.reason;
-            g_sequence = g_rear.value.sequence;
+        for (;;) {
+            uint32_t now_ms = timebase_now_ms();    /* also keeps the 16-bit counter tracked */
+            uint32_t color;
+            bool answered;
+
+            if (hcsr04_step(&g_rear, now_ms)) {
+                g_distance_mm = (uint32_t)g_rear.value.value;
+                g_status = (uint32_t)g_rear.status;
+                g_reason = (uint32_t)g_rear.value.reason;
+                g_sequence = g_rear.value.sequence;
+            }
+            g_age_ms = cis_value_age_ms(&g_rear.value, now_ms);
+
+            color = answered_color(&g_rear, &answered);
+            if (answered) {
+                last_color = color;
+                last_answer_ms = now_ms;
+                have_answer = true;
+            } else if (have_answer && (uint32_t)(now_ms - last_answer_ms) < LED_HOLD_MS) {
+                color = last_color;                 /* short gap: keep the last colour */
+            } else {
+                color = ((now_ms / BLINK_HALF_MS) & 1u) ? (1u << LED_BLUE_PIN) : 0u;
+            }
+            led_show(color);
         }
-        g_age_ms = cis_value_age_ms(&g_rear.value, now_ms);
-
-        led_show(led_color_for(&g_rear, now_ms));
     }
 }
