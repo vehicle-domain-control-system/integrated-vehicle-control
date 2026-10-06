@@ -8,15 +8,17 @@
  *  - after repeated failures the function goes to FAULT; it comes back only
  *    through RECOVERING and a new valid measurement
  *
- * Thresholds are candidates and are to be fixed after bench measurement.
+ * The valid range is the sensor's physical range. A narrower operating range
+ * (candidate 10..100 cm, CIS-SYS-FUN-027) is still to be fixed after bench
+ * measurement; change the two limits above when it is.
  */
 #ifndef REAR_LOGIC_H
 #define REAR_LOGIC_H
 
 #include "cis_value.h"
 
-#define REAR_MIN_VALID_MM       100u     /* 10 cm (candidate) */
-#define REAR_MAX_VALID_MM       1000u    /* 100 cm (candidate) */
+#define REAR_MIN_VALID_MM       20u      /* 2 cm   HC-SR04 physical range (CIS-SYS-FUN-026) */
+#define REAR_MAX_VALID_MM       5000u    /* 500 cm HC-SR04 physical range (CIS-SYS-FUN-026) */
 #define REAR_NO_OBJECT_US       36000u   /* HC-SR04 echo with nothing in front is ~38 ms */
 #define REAR_FAIL_LIMIT         3u       /* consecutive failures -> FAULT (candidate) */
 #define REAR_NO_VALUE           65535u   /* value field when there is no distance */

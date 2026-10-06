@@ -4,7 +4,7 @@
  * RGB LED:
  *   red    = object close   (valid distance, <= NEAR_MM)
  *   green  = object far     (valid distance, > NEAR_MM)
- *   blue   = outside the recognizable range (nothing within range, or too close)
+ *   blue   = outside the sensor range of 2..500 cm (nothing within range, or too close)
  *   blue blinking = no usable measurement for more than LED_HOLD_MS
  *                   (no echo / sensor fault / recovering)
  *   red + blue (magenta) = oscillator did not start (clock problem)
