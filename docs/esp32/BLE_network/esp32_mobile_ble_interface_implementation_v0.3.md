@@ -1,6 +1,7 @@
-# ESP32 ↔ MOBILE BLE Interface Specification v0.2
+# ESP32 ↔ MOBILE BLE Interface Specification v0.3
 
-> **Status:** Implementation Draft  
+> **Status:** Implementation Draft — review reflected, hardware validation pending  
+> **Revision:** v0.3 / 2026-10-09  
 > **Scope:** MOBILE App ↔ ESP32 BLE/GATT 구현 계약  
 > **Based on:** `network_sw_architecture.md`, `network_design_draft_v0.1.md`  
 > **Target:** ESP32 + ESP-IDF v5.5.5 / MOBILE App  
@@ -15,7 +16,7 @@
 
 ## 0. 규칙 출처 표기
 
-본 문서의 규칙은 세 종류로 구분한다.
+본 문서의 규칙은 세 종류로 구분한다. `[BASE]`는 첨부된 최신 네트워크 초안의 승계이며, 팀 최종 승인이나 실기 검증 완료를 뜻하지 않는다.
 
 - **[BASE]**: 기존 `network_sw_architecture.md`, `network_design_draft_v0.1.md`에서 직접 승계한 규칙
 - **[BLE-DECISION]**: 기존 문서가 ESP32/MOBILE 담당 상세로 남긴 부분에 대해 본 문서에서 정한 구현 규칙
@@ -33,6 +34,24 @@
 
 `MESSAGE_TYPE`, 기존 M_* Payload 의미 또는 기존 코드값을 변경해야 할 경우
 먼저 Network contract의 변경 여부를 확인한다.
+
+## 0.1 v0.3 변경 사항
+
+| 항목 | 반영 내용 | 관련 절 |
+|---|---|---|
+| 경고 Type 8 | `WARNING_TYPE=8`, 이탈 후 열린 도어 추가. `MESSAGE_TYPE=0x08`을 추가하는 것이 아님 | §7.11, §15, §19 |
+| 조회/주기 | 경고 8종, 경고 조회 ITEM_COUNT=8, 전체 조회 최대 ITEM_COUNT=31 | §16, §36, §38 |
+| Pairing/Bonding | 최초 페어링 후 키 영구 보관, 재연결 시 기존 bond로 암호화 재수립 | §4.4, §10, §40, §45~47 |
+| 보안/차량 문맥 분리 | Bond, 등록, Session, 초기 Query를 각각 확인 | §10~11, §45~47 |
+| 저 MTU 정합성 | 21 B Gateway Status는 MTU 23에서 Notify 불가. 전체 READ로 대체 | §8.4 |
+| 검증 | Type 8 파싱·읽음·조회, 재부팅 후 bond 재사용, 키 불일치 시험 추가 | §52 |
+
+기존 GATT UUID, BLE_PROTOCOL_VERSION=1, M_* MESSAGE_TYPE 및 payload byte 배치는 유지한다.
+단, 경고 enum 확장과 필수 보안 절차 때문에 v0.2 구현체와 자동 호환된다고 가정하지 않는다.
+App과 ESP32를 함께 갱신한다. 아래 §53의 미결 항목은 구현 전에 해당 담당자와 확정한다.
+
+기준 파일은 이번에 제공된 `network_sw_architecture (1).md`와
+`network_design_draft_v0.1 (1).md`이며, 원 문서 제목/논리 파일명은 기존 표기를 유지한다.
 
 ---
 
@@ -241,7 +260,9 @@ Vehicle Gateway Service
 
 **[BLE-DECISION]**
 
-App 연결 후 반드시 다음 Notify를 활성화한다.
+App 연결 후 §45의 보안 준비를 완료한 다음 다음 Notify 구독을 확인한다.
+Bond에 CCCD 상태가 남아 있어도 이번 연결의 App 수신 콜백과 구독 상태를 재확인한다.
+MTU 23의 Gateway Status 처리 예외는 §8.4를 따른다.
 
 ```text
 Gateway Status CCCD = Notify Enabled
@@ -249,6 +270,33 @@ Vehicle Data  CCCD = Notify Enabled
 ```
 
 `App Command`를 전송하기 전에 최소 `Vehicle Data` Notify 구독이 완료되어야 한다.
+
+---
+
+## 4.4 GATT 보안 접근 조건
+
+**[BLE-DECISION — 본딩 리뷰 반영]**
+
+`SECURE_LINK_READY`는 ESP32 내부 상태로, 다음 조건을 모두 만족할 때만 참이다.
+
+- 현재 peer가 저장된 bond의 identity와 일치하고 해당 키로 연결 암호화가 성공함
+- 신규 peer인 경우 승인된 등록 과정에서 최초 pairing 및 bond 저장이 완료됨
+- bond 저장 실패 또는 peer/key 불일치가 없음
+
+이 이름은 새로운 GATT/UART 필드가 아니다. App은 OS BLE 보안 절차 및 보호된 GATT 접근 결과로 확인한다.
+
+| 대상 | 접근 규칙 |
+|---|---|
+| Advertising / Service Discovery | 보안 준비 전 가능. 이름/UUID는 차량 제어 권한 증거가 아님 |
+| Gateway Status READ / Notify | SECURE_LINK_READY 후 허용 |
+| Vehicle Data Notify 및 두 CCCD의 쓰기 | SECURE_LINK_READY 후 허용 |
+| App State WRITE | SECURE_LINK_READY 후 허용 |
+| App Command WRITE | SECURE_LINK_READY 후 허용. 등록/Domain/Session 조건은 추가로 검사 |
+
+특성의 READ/WRITE/NOTIFY property와 보안 permission은 별도 설정이다.
+ESP32는 읽기/쓰기 permission뿐 아니라 Notify 송신 직전에도 보안 상태를 검사한다.
+미암호화 연결에서 Query만 예외 허용하거나 차량 데이터를 송신하지 않는다.
+`SESSION_READY=0`에서 가능한 문맥 조회도 보안·등록·Domain link 조건은 만족해야 한다.
 
 ---
 
@@ -511,6 +559,14 @@ FAILED
 | 5 | CIS 고장 |
 | 6 | WINDOW 고장 |
 | 7 | VSS 고장 |
+| 8 | 이탈 후 열린 도어 |
+
+**[BASE]** Type 8은 `M_WARNING(0x21)` payload B20의 값 `8`이다.
+`M_WARNING_ACK(0x12)`의 BLE payload B0에도 `8`을 사용한다.
+새 MESSAGE_TYPE, 새 Characteristic 또는 새 payload 길이를 추가하지 않는다.
+
+Type 8의 고정 Severity 값은 최신 Network 문서에서도 미정이다 (`TBD-WARN-08`).
+App은 Domain이 보내는 유효한 SEVERITY 값을 그대로 표시하며 임의로 CAUTION/EMERGENCY를 고정하지 않는다.
 
 Severity:
 
@@ -623,7 +679,24 @@ DOMAIN_BOOT_ID
 DOMAIN_STATE
 ```
 
-App은 연결 직후 READ도 수행한다.
+App은 연결 직후 보안 준비를 완료한 다음 READ도 수행한다.
+Bond 상태를 REGISTRATION_STATE나 SESSION_READY 필드로 대신 표현하지 않는다.
+
+---
+
+## 8.4 낮은 MTU에서의 Gateway Status
+
+**[BLE-DECISION — 기존 길이와 MTU 23 지원의 정합성 보완]**
+
+Gateway Status는 21 B 고정 값이며 §5의 M_* fragmentation header를 붙이지 않는다.
+
+- MTU ≥ 24: 21 B 전체 READ 및 Notify를 사용한다.
+- MTU = 23: Notify 최대값은 20 B이므로 잘라 보내거나 21 B Notify를 시도하지 않는다.
+  전체 21 B READ로 대체하고 App이 연결 중 200 ms 간격으로 순차 READ한다.
+  일반 ATT Read Response의 값 한도는 MTU−1이므로 MTU 23에서 21 B를 읽을 수 있다.
+- READ가 실패하면 이전 Ready 값을 믿고 새 요청을 보내지 않는다.
+- App Command/Vehicle Data는 낮은 MTU에서도 기존 §5 fragmentation을 사용한다.
+- MTU 변경 시 Notify/READ 경로를 전환하며, 모든 READ는 한 시점의 일관된 snapshot을 반환한다.
 
 ---
 
@@ -719,6 +792,16 @@ M_CONTEXT의 App 정보 품질을 유효한 ACTIVE로 유지하지 않는다.
 
 따라서 본 Interface는 등록 wire protocol을 새로 만들지 않는다.
 
+**[BLE-DECISION]** 본딩은 BLE 키 저장이며 차량 등록 승인과 구분한다.
+ESP32는 승인된 peer의 bond identity와 `DEVICE_CONTEXT_ID`를 연결한다.
+이미 provision된 ID를 임의로 접속한 모든 휴대전화에 부여하지 않는다.
+변할 수 있는 광고 주소, 장치명 또는 APP_INSTANCE_ID를 등록 identity로 사용하지 않는다.
+등록 승인 UI·저장 구조·실제 매핑 방법은 TBD-REG-01이다.
+테스트에서는 담당자가 승인한 단말 1개의 매핑을 사전 설정할 수 있다.
+
+Bond가 존재해도 등록 매핑이 없거나 철회되었으면 차량 제어는 허용하지 않는다.
+Bond 삭제/단말 교체는 기존 매핑을 무효화하며, 재등록 시 과거 요청 문맥을 재사용하지 않는다.
+
 구현 전제:
 
 ```text
@@ -774,7 +857,8 @@ Domain BOOT_ID 동일
 APP_INSTANCE_ID 동일
 ```
 
-이면 기존 `SESSION_ID`를 유지할 수 있다.
+에 더해 같은 승인된 bonded peer이고 기존 키로 암호화가 재수립되었으면
+기존 `SESSION_ID`를 유지할 수 있다. Bond가 유지된다는 사실만으로 Session을 유지하지 않는다.
 
 단, 연결 상실 중 남은 BLE Fragment / App Command pending은 폐기하고,
 재연결 직후 새 요청 허용 전 현재 문맥을 다시 확인한다.
@@ -951,6 +1035,8 @@ M_QUERY_END.ITEM_COUNT
 | 1~4 | OCCURRENCE_ID | u32 |
 | 5~8 | WARNING_DOMAIN_BOOT | u32 |
 
+BLE payload B0의 WARNING_TYPE은 1~8이다. Type 8에도 동일한 9 B ACK를 사용한다.
+
 ## 15.2 의미
 
 **[BASE]**
@@ -994,7 +1080,7 @@ NOTIFY
 | Type | Message | Payload B | 송신 조건 |
 |---:|---|---:|---|
 | `0x20` | M_RESULT | 44 | Result 단계/확인 상태 변경, Query |
-| `0x21` | M_WARNING | 40 | 변경, 7종 각 1000ms 보완, Query |
+| `0x21` | M_WARNING | 40 | 변경, 8종 각 1000ms 보완, Query |
 | `0x22` | M_AVAILABILITY | 62 | 1000ms, 변경 |
 | `0x23` | M_DIGITAL_STATUS | 30 | 1000ms, 변경 |
 | `0x24` | M_DIGITAL_RESULT | 35 | 자동 Unlock Result 변경, Query |
@@ -1020,7 +1106,7 @@ NOTIFY
 
 **[BASE]**
 
-모든 `0x20~0x40` App 대상 메시지의 Payload는 필요한 경우
+§16.2에 나열된 모든 App 대상 메시지의 Payload는 반드시
 다음 20 B 하향 문맥으로 시작한다.
 
 | Payload Byte | Field | Type | 규칙 |
@@ -1086,6 +1172,43 @@ Payload Length = 40 B
 
 `WARNING_STATE=CLEAR`이어도 Quality가 `NO_DATA/INVALID/STALE`이면
 정상 상태로 단정하지 않는다.
+
+---
+
+## 19.1 Type 8 — 이탈 후 열린 도어
+
+**[BASE — Network §5.3, §8.1, §10.2]**
+
+| 항목 | 처리 |
+|---|---|
+| 발생 | Domain이 유효한 사용자 이탈 및 도어 OPEN을 확인했을 때 판단 |
+| 해제 | 사용자 복귀 또는 도어 CLOSED를 Domain이 확인하여 CLEAR 전달 |
+| 연결 상실 | BLE/App 연결 상실을 사용자 이탈로 해석하지 않음 |
+| App 역할 | Domain의 WARNING_STATE, SEVERITY, Quality, READ_STATE 표시 |
+| ESP32 역할 | 경고 의미와 원 식별을 보존하여 중계. 자체 ACTIVE/CLEAR 생성 금지 |
+| 읽음 | WARNING_TYPE=8인 M_WARNING_ACK 사용. 읽음은 위험 해제/도어 닫힘/음향 정지 아님 |
+
+경고 캐시는 `(DOMAIN_BOOT_ID, WARNING_TYPE)`별로 관리하고,
+읽음 대상은 `(DOMAIN_BOOT_ID, WARNING_TYPE, OCCURRENCE_ID)` 전체로 식별한다.
+같은 발생 번호의 1초 보완 전송은 새 발생이나 UNREAD 초기화로 처리하지 않는다.
+새 발생이면 새 OCCURRENCE_ID와 Domain의 UNREAD 상태를 반영한다.
+Type 8도 3초 동안 정상 완성 갱신이 없으면 확인 불가로 표시한다.
+Type 1의 갱신이 Type 8의 수신 타이머를 초기화하지 않도록 한다.
+
+### Type 8 ACK byte 예시
+
+시험 값: WARNING_TYPE=8, OCCURRENCE_ID=37, WARNING_DOMAIN_BOOT=7.
+
+```text
+BLE semantic payload (9 B):
+08 25 00 00 00 07 00 00 00
+
+BLE Header (단일 fragment, transfer=1):
+01 12 01 00 09 00 00 01
+```
+
+수신 M_WARNING에서는 payload B20=`08`을 확인한다. B25의 SEVERITY는
+실제 Domain 값을 사용하고, 위 ACK 예시는 Severity 정책을 정하지 않는다.
 
 ---
 
@@ -1546,8 +1669,23 @@ QUERY_ID 일치
 |---:|---|
 | 0 현재 상태 | ECU 상태 11종 + M_USER_SETTINGS + M_AVAILABILITY + M_DIGITAL_STATUS + M_QUERY_END |
 | 1 요청 결과 | 지정 M_RESULT 또는 최근 최대 8건, 필요 시 마지막 M_DIGITAL_RESULT + M_QUERY_END |
-| 2 경고 | 현재 7종 M_WARNING + M_QUERY_END |
-| 3 전체 | 상태 14종 + 최근 결과 최대 8건 + 현재 경고 7종 + 마지막 자동 Unlock 결과 최대 1건 + M_QUERY_END |
+| 2 경고 | 현재 8종 M_WARNING + M_QUERY_END |
+| 3 전체 | 상태 14종 + 최근 결과 최대 8건 + 현재 경고 8종 + 마지막 자동 Unlock 결과 최대 1건 + M_QUERY_END |
+
+WINDOW 포함 전체 설계 기준으로 다음 개수를 사용한다.
+
+| 조회 범위 | 응답 메시지 수(종료 제외) | M_QUERY_END 포함 메시지 수 |
+|---|---:|---:|
+| 현재 상태 | 14 | 15 |
+| 경고 | 8 (`WARNING_TYPE=1..8` 각 1개) | 9 |
+| 전체 | 최대 31 (=14+8+8+1) | 최대 32 |
+
+ITEM_COUNT는 BLE fragment 개수가 아니라 재조립된 semantic message 개수다.
+전체 조회는 최근 결과/자동 결과 유무에 따라 실제 ITEM_COUNT가 달라지므로 항상 31을 요구하지 않는다.
+완료/부분 확인 불가 응답에서는 count뿐 아니라 요청 범위별 필수 목록도 대조한다.
+특히 경고 응답 8개가 와도 같은 Type만 중복되고 Type 8이 누락되었으면 완료가 아니다.
+QUERY_STATUS=3은 문맥 거부이며 수신 개수가 일치해도 동기화 성공/Ready로 처리하지 않는다.
+QUERY_STATUS=2는 정상 형식 응답 수신과 값의 확인 불가를 구분하여 표시한다.
 
 WINDOW가 현재 구현 보류여도 기존 계약의 Type/조회 구조를 임의로 재정의하지 않는다.
 실제 미구현 구성의 WINDOW 응답/표시 세부는 팀 확인 대상이다.
@@ -1631,6 +1769,9 @@ App은 각 메시지의 마지막 **정상 형식 완성 메시지** 수신 시�
 ```
 
 Domain이 제공한 `VALUE_QUALITY`, `VALIDITY`, `SOURCE_AGE` 의미를 App에서 임의로 정상화하지 않는다.
+차량 내부 제어용 150/300 ms 등의 원본 사용 한도를 App에 다시 적용하지 않는다.
+Domain 품질과 App의 수신 중단은 서로 다른 판단이다. 같은 SOURCE_SEQUENCE의 반복 수신은 새 관측이 아니다.
+경고 수신 감시는 WARNING_TYPE=1~8 각각 독립적이다. WINDOW 미구현을 정상 CLEAR로 위조하지 않는다.
 
 ---
 
@@ -1678,6 +1819,9 @@ BT_CONNECTION_STATE = DISCONNECTED
 ```
 
 재연결 시 기존 미완료 요청을 자동 재전송하지 않는다.
+Disconnect 시 `SESSION_READY=0`, `SECURE_LINK_READY=false`로 바꾸고 보안/Query를 다시 확인한다.
+정상 disconnect는 저장된 bond를 삭제하는 사유가 아니다.
+같은 peer의 bond가 유효하면 재페어링 없이 저장 키로 암호화 후 복구한다 (§45).
 
 ## 40.2 Domain restart
 
@@ -1729,6 +1873,11 @@ ESP32 BLE layer가 해당 write를 수용함
 만 의미한다.
 
 차량 Result가 아니다.
+
+보안 permission 실패는 BLE stack의 표준 ATT 보안 오류로 처리한다.
+암호화 미완료에는 Insufficient Encryption(0x0F), 필요한 인증 조건 미충족에는
+Insufficient Authentication(0x05), 접근 권한 거부에는 Insufficient Authorization(0x08)을
+해당 stack 조건에 맞게 사용한다. App은 이 오류를 차량 REJECTED/FAILED로 변환하지 않는다.
 
 ## 41.1 Custom ATT Application Error
 
@@ -1826,6 +1975,10 @@ BLE 연결 성공:
 BT_CONNECTION_STATE = CONNECTED
 ```
 
+이 값은 물리 연결 상태이며 Bond/등록/암호화 성공을 대신하지 않는다.
+미승인 peer를 기존 등록 단말의 CONNECTED/유효 근접 근거로 연결하지 않는다.
+보안 준비 전 App 정보와 proximity를 유효한 제어 근거로 제공하지 않는다.
+
 BLE disconnect:
 
 ```text
@@ -1870,34 +2023,76 @@ PROXIMITY_VALIDITY
 
 ---
 
-# 45. Security Profile
+# 45. Security Profile — Pairing / Bonding
 
-## 45.1 Integration Profile
+## 45.1 이번 개정에서 적용할 동작
 
-**[BLE-DECISION]**
+**[BLE-DECISION — App 담당자 리뷰 반영]**
 
-본 v0.2는 **Bench / Integration 구현 계약**을 우선한다.
+| 항목 | 규칙 |
+|---|---|
+| 최초 연결 | 승인된 신규 단말과 BLE pairing을 수행하고 bonding으로 키를 저장 |
+| 재연결 | 양측 bond가 유효하면 저장 키로 link encryption을 다시 수립. 매번 신규 pairing을 요구하지 않음 |
+| 키 저장 | 휴대전화 OS의 BLE 보안 저장소 및 ESP32 BLE stack의 비휘발성 bond 저장소 |
+| App payload | LTK/IRK 등의 키를 App Command, App State 또는 UART로 보내지 않음 |
+| 접근 | §4.4의 SECURE_LINK_READY 이전에는 차량용 GATT 접근 및 Notify 차단 |
+| 단말 수 | 현재 승인된 App 단말 1개. 신규 peer로 기존 bond를 자동 덮어쓰지 않음 |
+| 문맥 | Bond의 수명과 SESSION_ID의 수명은 별개 |
 
-현재 프로토콜 기능 검증 단계에서는 BLE Application Layer 인증 방식을 정의하지 않는다.
+“한 번 페어링”은 양측의 저장 키가 유지되고 유효한 동안을 뜻한다.
+휴대전화의 기기 지우기, ESP32 NVS 초기화, 키 손실/불일치, 단말 교체 또는 명시적 등록 해제 시
+재페어링이 필요할 수 있다. 단순 App 재시작이나 정상 연결 해제만으로 bond를 지우지 않는다.
+Bond 보유만으로 현재 연결의 암호화 완료나 차량 제어 권한을 판정하지 않는다.
 
-## 45.2 Production
+## 45.2 최초 Pairing
 
-**[TBD-SEC-01]**
+1. 담당자가 승인한 등록 절차로 신규 peer 등록을 허용한다 (TBD-REG-01).
+2. App이 Service를 찾고 OS BLE 보안 절차를 시작한다. ESP32도 필요한 보안을 요청할 수 있다.
+3. pairing 성공, 연결 암호화 및 양측 bond 저장을 확인한다.
+4. ESP32에서 승인된 peer identity와 DEVICE_CONTEXT_ID 매핑을 확인한다.
+5. 보호된 GATT 접근, Notify 구독 확인, App State, Gateway Status, 초기 Query 순서로 진행한다.
 
-차량 제어 Production 사용 전 다음을 별도 확정해야 한다.
+사용자가 취소하거나 pairing/저장이 실패하면 제어 UI를 활성화하지 않는다.
+Pairing 재시도 횟수나 자동 UI 방식은 플랫폼에 맞추되 무한 반복/무단 기존 키 삭제는 하지 않는다.
 
-- Pairing
-- Bonding
-- BLE Link Encryption
-- Device registration
-- App authentication
-- Key provisioning
-- Bond 삭제 / 재등록
-- Session authorization
-- replay 대응
-- lost phone 대응
+## 45.3 재연결 / 키 불일치
 
-이 항목이 확정되기 전 본 문서를 Production 보안 승인으로 간주하지 않는다.
+1. 기존 peer를 연결하고 저장 bond로 암호화를 재수립한다.
+2. 등록 및 현재 peer 매핑을 확인한다.
+3. Notify 수신 경로와 CCCD를 확인하고 App State를 보낸다.
+4. Gateway Status 및 현재 Session을 확인하고 상태/경고와 필요한 과거 결과를 Query한다.
+5. 초기 조회가 완료되고 기능별 가용성이 허용될 때 새 제어를 활성화한다.
+
+한쪽 키가 삭제되어 암호화가 실패하면 정상 Ready로 진행하지 않는다.
+App에 재등록 필요를 표시하고, 승인된 복구 절차에서 양측 bond/등록 매핑을 정리한 뒤
+최초 pairing으로 돌아간다. 실패를 이유로 알 수 없는 peer를 자동 등록하지 않는다.
+기존 요청은 재페어링이나 재연결 후 자동 실행하지 않는다.
+
+## 45.4 ESP32 / App 구현 책임
+
+- ESP32: bonding 활성화와 별개로 **재부팅 후 bond 영구 보관**을 설정하고 실기 확인한다.
+  NimBLE 사용 시 `CONFIG_BT_NIMBLE_NVS_PERSIST` 및 보안/저장 초기화 설정을 프로젝트에서 확인한다.
+  예제의 기본 설정이 영구 저장을 보장한다고 가정하지 않는다.
+- ESP32: 암호화 변경/키 저장 실패/disconnect 시 내부 보안 상태와 송신 권한을 갱신한다.
+- App: pairing UI와 키 관리는 OS BLE 기능을 사용한다. 앱 자체 파일에 원시 BLE 키를 복제하지 않는다.
+- 양측: 저장 키를 로그·디버그 payload에 노출하지 않는다. 재부팅/휴대전화 Bluetooth 재시작 후 재사용을 시험한다.
+
+기술 참고: [Espressif ESP32 Kconfig](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/kconfig.html),
+[공식 NimBLE bleprph 예제](https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/nimble/bleprph).
+위 링크는 갱신되는 공식 자료이며 실제 설정명/동작은 사용하는 ESP-IDF v5.5.5 프로젝트에서 확인한다.
+
+## 45.5 아직 결정하지 않은 보안 세부
+
+**[TBD-SEC-01]** Pairing/Bonding 적용 및 재연결 암호화는 이번 문서에 반영했다.
+다음은 리뷰만으로 확정할 수 없으므로 최종 보안 설정/검증 전에 별도 결정한다.
+
+- Pairing association 방식: Just Works / Passkey / Numeric Comparison / OOB 및 하드웨어 I/O 지원
+- LE Secure Connections 강제 여부, MITM 요구 수준과 충족 방법
+- 최초 단말 등록 승인 수단, bond 삭제/휴대전화 분실/교체 절차
+- Production 저장소 보호 및 App 수준 추가 인증 필요 여부
+
+본딩 자체를 차량 등록 승인이나 모든 공격에 대한 인증 보장으로 해석하지 않는다.
+위 선택이 미정인 상태를 Production 보안 검증 완료로 표시하지 않는다.
 
 ---
 
@@ -1913,7 +2108,10 @@ CONNECTED
     │ Service Discovery
     ▼
 DISCOVERED
-    │ CCCD enable
+    │ 최초 Pairing + Bond 저장 또는 기존 Bond 암호화
+    ▼
+SECURE_LINK_READY
+    │ CCCD / 수신 경로 확인
     ▼
 SUBSCRIBED
     │ App State write
@@ -1929,9 +2127,10 @@ QUERY_SYNC
 READY
 ```
 
-READY 조건 권장:
+READY 조건 (모두 필요):
 
 ```text
+SECURE_LINK_READY == true
 REGISTRATION_STATE == REGISTERED
 DOMAIN_LINK_STATE == UP
 SESSION_READY == READY
@@ -1946,7 +2145,11 @@ Initial Query complete
 ```text
 BLE Connect
     ↓
-BT_CONNECTION_STATE = CONNECTED
+BT_CONNECTION_STATE = CONNECTED (물리 연결만 표시)
+    ↓
+Pairing/Bond 확인 + 현재 Link 암호화
+    ↓
+승인된 peer / 등록 매핑 확인
     ↓
 App State / APP_INSTANCE_ID 수신
     ↓
@@ -1963,6 +2166,8 @@ App Command:
 
 ```text
 Write Fragment
+    ↓
+SECURE_LINK_READY / 접근 권한 확인
     ↓
 Header validation
     ↓
@@ -2307,6 +2512,36 @@ App의 Query 100 수신 메시지 개수가 N과 일치해야 완료다.
 
 ---
 
+## 52.8 Type 8 / 경고 조회
+
+- [ ] M_WARNING MESSAGE_TYPE=0x21, payload B20=8, 길이 40 B 파싱
+- [ ] 유효한 이탈 + 도어 OPEN → Domain ACTIVE → App 표시
+- [ ] 사용자 복귀 또는 도어 CLOSED → Domain CLEAR
+- [ ] BLE 연결 상실만으로 Type 8 생성하지 않음
+- [ ] Type 8 ACK 9 B, 원 발생/Domain 식별 일치 시 READ 반영, CLEAR로 바꾸지 않음
+- [ ] 반복 보완 송신은 새 발생 알림/UNREAD 초기화로 처리하지 않음
+- [ ] 경고 조회 Type 1~8 각 1개 + 종료, ITEM_COUNT=8
+- [ ] 중복 경고로 개수만 8이 되고 Type 8이 빠진 경우 미완료
+- [ ] 전체 최대 31개 응답 + 종료 및 실제 결과 수에 따른 ITEM_COUNT
+- [ ] Type 8만 3초 미수신 → 해당 경고만 확인 불가
+- [ ] CLEAR + NO_DATA/INVALID/STALE을 정상 안전 상태로 표시하지 않음
+
+## 52.9 Pairing / Bonding
+
+- [ ] 승인된 최초 단말 pairing 및 양측 bond 저장 성공
+- [ ] 정상 disconnect/reconnect 시 사용자 재페어링 없이 암호화 재수립
+- [ ] ESP32 전원 재인가 후 bond 유지, 새 Session 확보
+- [ ] 휴대전화 Bluetooth 재시작 후 저장 bond 재사용
+- [ ] App 재시작 시 bond 유지와 APP_INSTANCE_ID/Session 변경을 구분
+- [ ] 미암호화 연결의 READ/WRITE/CCCD/Notify 접근 차단
+- [ ] Bond만 있고 등록 매핑 없는 peer의 차량 제어 차단
+- [ ] pairing 취소/키 저장 실패 시 Ready 차단
+- [ ] 한쪽 bond 삭제/키 불일치 → 승인된 재등록, 자동 key 삭제/peer 교체 없음
+- [ ] 등록 해제 후 old pending/request를 재실행하지 않음
+- [ ] MTU 23에서 Gateway Status 전체 21 B READ, 잘린 Notify 없음
+
+---
+
 # 53. Open Items / Blocking Decisions
 
 ## TBD-REG-01 Registration
@@ -2334,14 +2569,14 @@ loss handling
 
 ## TBD-SEC-01 Security
 
-결정 필요:
+§45에 따라 Pairing + Bonding + 재연결 암호화를 적용한다.
+남은 결정은 pairing association 방식, Secure Connections/MITM 수준,
+등록 승인/키 삭제·복구 UI, Production 저장소 보호 및 추가 인증이다.
 
-```text
-Pairing / Bonding
-Encryption
-App authentication
-Key lifecycle
-```
+## TBD-WARN-08 Type 8 Severity
+
+Type 8의 Severity 수치와 기능 판단 세부는 Domain/기능 담당자가 확정한다.
+App/ESP32는 전송된 Severity와 품질을 보존하며 고정 수치를 임의 지정하지 않는다.
 
 ## TBD-WINDOW-01
 
@@ -2353,6 +2588,20 @@ App은 parser/type 예약을 유지하되
 ---
 
 # 54. Source Traceability
+
+| 이번 개정 근거 | 반영 절 |
+|---|---|
+| 최신 Network §5.3 경고 코드 8 | §7.11, §15, §19 |
+| 최신 Network §6.1 M_WARNING 40 B / 8종 주기 | §16, §19 |
+| 최신 Network §6.3 조회 범위·ITEM_COUNT | §35~36 |
+| 최신 Network §8.1 경고별 1초 보완/3초 미수신 | §19.1, §38 |
+| 최신 Network §10.2 이탈 후 열린 도어 발생/해제 | §19.1 |
+| Architecture §7 책임 경계, §10 복구 원칙 | §1, §40, §42~47 |
+| App 리뷰: 최초 페어링 및 bonding 키 저장 | §4.4, §10, §45~47 |
+
+첨부 Network 문서의 UART Type/고정 길이와 BLE 문서의 byte 표를 대조했다.
+문서 정합성 검토이며 펌웨어 빌드, 보드/휴대전화 보안 연결 및 실기 성능 시험은 수행하지 않았다.
+
 
 본 문서가 승계한 핵심 Network contract:
 
@@ -2392,7 +2641,7 @@ App은 parser/type 예약을 유지하되
 
 ---
 
-# 55. v0.2 구현 결론
+# 55. v0.3 구현 결론
 
 이 인터페이스의 핵심 경계는 다음과 같다.
 
