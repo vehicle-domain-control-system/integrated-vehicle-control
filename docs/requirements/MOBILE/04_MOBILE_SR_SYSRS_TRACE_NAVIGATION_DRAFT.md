@@ -80,7 +80,6 @@
 | TR-SR-021 | `FUNCTIONAL` | 안전 경고 및 중요 상태 변화는 일반 상태 정보와 구분되어 제공되어야 한다 | [ALT-002](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-alt-002) · [SEM-005](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-sem-005) | `COVERED` |
 | TR-SR-022 | `FUNCTIONAL` | 확인하지 않은 중요 경고가 있는 경우 해당 상태를 확인할 수 있어야 한다 | [ALT-003](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-alt-003) · [ALT-007](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-alt-007) | `COVERED` |
 | TR-SR-023 | `FUNCTIONAL` | 사용자 이탈 상태에서 도어가 열린 채 유지되는 경우 해당 상태가 제공되어야 한다 | [INT-011](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-int-011) · [ALT-001](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-alt-001) | `COVERED` |
-| TR-SR-024 | `FUNCTIONAL` | 엔진룸에 동물이 들어온 경우 권한이 있는 사용자에게 즉시 제공되어야 한다 | [INT-013](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-int-013) · [PERF-004](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-perf-004) · [ALT-006](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-alt-006) | `COVERED` |
 | TR-SR-025 | `FUNCTIONAL` | 확인한 이후에도 상태가 유효한 동안에는 표시가 유지되어야 한다 | [ALT-004](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-alt-004) · [ALT-005](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-alt-005) · [SAF-005](./02_MOBILE_SYSRS_FUNCTIONAL_BASELINE_DRAFT.md#mb-sys-saf-005) | `COVERED` |
 
 ### 6. 인증 및 통신 안전
