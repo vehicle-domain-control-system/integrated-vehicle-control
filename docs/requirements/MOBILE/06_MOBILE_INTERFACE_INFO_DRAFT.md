@@ -75,8 +75,8 @@ Desc  : 사용자 설정. 실제 반영 여부는 차량 결정
 ```text
 Name  : 조명 밝기 / 색상
 Type  : uint8 / uint8 × 3
-Range : 0 ~ 100 각각
-Unit  : %
+Range : 밝기 0 ~ 100, 색상 R/G/B 각 0 ~ 255
+Unit  : 밝기 % / 색상 원시값
 Desc  : 색상은 NORMAL 알림에만 적용됨을 UI 에서 안내
 ```
 

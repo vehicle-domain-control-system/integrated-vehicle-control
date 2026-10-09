@@ -137,11 +137,12 @@ Desc  : 각 채널 켜짐 비율 = 색상 비율 × 전체 밝기 / 100.
 
 ```text
 Name  : 조명 색상 (R / G / B)
-Type  : uint8 × 3 (예상)
-Range : 각 0 ~ 100
-Unit  : %
-Desc  : 알림별 기본 — NORMAL 100/100/100 · GOODBYE 0/70/70
-        · WARNING 100/70/0 · FAULT 100/0/0. 사용자 지정은 NORMAL 만
+Type  : uint8 × 3
+Range : 각 0 ~ 255
+Unit  : 원시값 (BCM 이 출력 비율 %로 환산)
+Desc  : 사용자 지정 색상은 NORMAL 만 적용.
+        알림별 고정 색상(출력 비율 %) — NORMAL 100/100/100 · GOODBYE 0/70/70
+        · WARNING 100/70/0 · FAULT 100/0/0
 ```
 
 ### Data 4 (내부 측정 — 상태로 가공되어 제공)
