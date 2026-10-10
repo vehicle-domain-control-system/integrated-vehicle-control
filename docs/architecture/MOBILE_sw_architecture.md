@@ -143,7 +143,7 @@ sequenceDiagram
   A->>E: App State 쓰기 (ACTIVE, APP_INSTANCE_ID)
   A->>E: Gateway Status 읽기 → 등록·도메인 링크·문맥 확인
   A->>E: M_QUERY 전체 (범위 3)
-  E-->>A: 상태 14종 + 결과 + 경고 8종 + M_QUERY_END
+  E-->>A: 상태 12종 + 결과 + 경고 8종 + M_QUERY_END
   E-->>A: Gateway Status SESSION_READY = 1
   Note over A: READY (= 화면의 AUTHENTICATED)
 ```
@@ -230,7 +230,7 @@ M_QUERY_END만 받았다고 완결로 보지 않는다. 다음을 모두 만족�
 | QUERY_ID | 진행 중인 조회와 같음 (한 번에 하나) |
 | 개수 | 받은 메시지 수 = ITEM_COUNT |
 | STATUS | 0 완료 · 1 요청 없음 · 2 일부 확인 불가 (3 문맥 거부는 미완결) |
-| 필수 목록 | 현재 상태 14종, 경고 Type 1~8 각 1건 — 개수가 맞아도 중복으로 하나 빠지면 미완결 (요청 결과 범위는 목록 없음) |
+| 필수 목록 | 현재 상태 12종(파워 윈도우 미적용으로 WINDOW 2종 제외 — 수신되면 개수에만 포함), 경고 Type 1~8 각 1건 — 개수가 맞아도 중복으로 하나 빠지면 미완결 (요청 결과 범위는 목록 없음) |
 
 STATUS 2는 형식은 정상이고 일부 값만 확인 불가라는 뜻이다. 해당 값은 메시지의 품질(INVALID·NO_DATA)로 표시된다. 조회 대기 한도는 3000 ms이다.
 
@@ -308,7 +308,7 @@ ESP32 없이 화면·3D·요청 흐름을 시연한다. 가상 ESP32가 ESP32와
 | D11 | 경고 종류 | 8종 (Type 8 하차 후 도어 열림 포함) |
 | D12 | 쓰기 실패 | GATT·ATT 오류는 차량 결과가 아님 — SENT로 등록하지 않고 사유 표시 |
 | D13 | AUTH_FAILED | 본딩 실패 · ATT 0x86 · NOT_REGISTERED. 재시도로 우회 금지 |
-| D15 | WINDOW | 상태·고장 표시만 (제어 요청 없음) |
+| D15 | WINDOW | 파워 윈도우 미적용. 창문 상태·고장 화면 표시 없음, 조회 필수 목록에서 제외. 경고 Type 3·6은 경고 계약(8종)에 따라 유지 |
 | D16 | 배경 | 링크 유지 + App State INACTIVE. 자동 재연결은 foreground에서만 |
 | D17 | 최근 결과 | 5건 |
 | D18·D21 | UI | 자동차 앱형 — 히어로 3D, 원형 빠른 제어, 하단 탭. 진단은 별도 탭. 장식 아이콘 금지 |
