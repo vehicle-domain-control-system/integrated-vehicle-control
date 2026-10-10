@@ -7,6 +7,10 @@
 <a id="store"></a>
 One-shot은 동일 발생의 Started/final/replay 이력을, Stateful은 마지막 유효 판단·현재 품질·Hold와 사용 가능한 경고를 보존한다. 같은 RequestRecord로 합치지 않는다. 아래 상태는 STORE만 변경하며 Session/Attempt나 PCM 상태를 포함하지 않는다.
 
+**타입 읽기:** `Category`는 역할이며 [선언 종류](00_DATA_OVERVIEW.md#pseudo-conventions)와 별개다. 아래 구성원 안내의 구조체 값과 `const T *` 읽기 참조를 구분한다. 값 필드 안의 내부 참조도 [보호 수명](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect)을 따르며, 참조 표기만으로 원본 owner나 임시 주소의 수명이 바뀌지 않는다.
+
+**논리 Header 안내(R6):** 이 문서의 선언 경계는 `H-STORE`다. [선언 경계 후보](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates)와 [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)은 논리 소유권·가시성을 안내한다. 실제 `.h` 파일명·타입 구현 여부는 확인되지 않았고 C 기본형·메모리 표현·ABI는 미정이다.
+
 <a id="vssstoreadmission"></a>
 ## VssStoreAdmission — scalar enum
 **Category: Result**
@@ -29,7 +33,7 @@ One-shot은 동일 발생의 Started/final/replay 이력을, Stateful은 마지�
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** STORE 수용 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STORE`.
 
 ```c
 typedef enum
@@ -65,7 +69,7 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** STORE 이력 내부 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STORE` · Private 원본.
 
 ```c
 typedef enum
@@ -82,6 +86,8 @@ typedef enum
 <a id="vssoccurrencerecord"></a>
 ## VssOccurrenceRecord
 **Category: Context**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 accepted 발생의 원본 identity·age·최초 시작·전체 최종·참조/replay 추적을 보존한다. 이 record는 수용 뒤 Session보다 오래 유지될 수 있다.
 
@@ -110,7 +116,7 @@ accepted 전에 identity/Pending/최종 통지까지 추적 자원을 함께 확
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** STORE occurrence 내부 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STORE` · Private 원본.
 
 ### Pseudo-C
 
@@ -127,6 +133,13 @@ typedef struct
     VssRevisionType revision;
 } VssOccurrenceRecord;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `occurrence` → [VssOccurrenceKeyType](#vssoccurrencekeytype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
+- enum: `signal` → [VssInputSignal](10_INPUT_DATA.md#vssinputsignal); `state` → [VssOccurrenceState](#vssoccurrencestate); `tracking` → [VssTrackingDisposition](#vsstrackingdisposition).
+- 구조체 값: `originalMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta).
+- 구조체 읽기 참조 (`const T *`): `firstStartFact`, `finalFact` → [VssPlaybackFact](40_PLAYBACK_DATA.md#vssplaybackfact).
 
 [잠정] 첫 실제 시작 age < 2초이며 정확히 2초는 불가다. USE_LIMIT은 별도 원문 조건으로 남기고 min/AND 정책을 만들지 않는다. Started Session의 정상 후속 cue/반복에 첫 시작 기한을 다시 적용하지 않는다.
 
@@ -149,7 +162,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** STORE 이력 내부 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STORE` · Private 원본.
 
 ```c
 typedef enum
@@ -162,6 +175,8 @@ typedef enum
 <a id="vssstatefulstate"></a>
 ## VssStatefulState
 **Category: State**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 마지막 유효 판단과 현재 품질을 분리하고 최초 Hold 기산을 유지한다. candidate는 이 근거에서 STORE가 노출하는 파생 관측이며 두 번째 state 원본을 만들지 않는다.
 
@@ -190,7 +205,7 @@ STORE만 마지막 유효 판단·품질/Hold를 변경한다. valid CLEAR는 �
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** STORE Stateful 내부 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STORE` · Private 원본.
 
 ### Pseudo-C
 
@@ -208,6 +223,13 @@ typedef struct
 } VssStatefulState;
 ```
 
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `stateKey` → [VssStatefulKeyType](#vssstatefulkeytype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
+- enum: `signal` → [VssInputSignal](10_INPUT_DATA.md#vssinputsignal); `lastValidValue` → [VssInputValue](10_INPUT_DATA.md#vssinputvalue); `quality` → [VssInputQuality](10_INPUT_DATA.md#vssinputquality).
+- 구조체 읽기 참조 (`const T *`): `lastValidMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta); `firstLossAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
+- pseudo-scalar 읽기 참조 (`const T *`): `holdAnchor` → [SemanticTimePoint](00_DATA_OVERVIEW.md#pseudo-conventions).
+
 
 
 ### Hold 근거의 INLINE 판정
@@ -217,6 +239,8 @@ typedef struct
 <a id="vssreargatestate"></a>
 ## VssRearGateState
 **Category: State**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 Rear Activation은 위험 판단과 별도 현재 상태다. 재활성화만으로 옛 위험/Hold를 부활시키지 않기 위해 현재 activation에 적용할 수 있는 위험 근거를 구별한다.
 
@@ -242,7 +266,7 @@ STORE만 변경한다. DISABLED는 후보/Hold 제거 및 riskApplicable 차단�
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** STORE Rear 상태 내부 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STORE` · Private 원본.
 
 ### Pseudo-C
 
@@ -256,6 +280,13 @@ typedef struct
     VssRevisionType revision;
 } VssRearGateState;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- enum: `activation` → [VssInputValue](10_INPUT_DATA.md#vssinputvalue).
+- 구조체 값: `activationMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta).
+- 의미 alias: `riskState` → [VssStatefulKeyType](#vssstatefulkeytype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
+- pseudo-scalar: `riskApplicable` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 
 
@@ -279,7 +310,7 @@ PLAYBACK 통지 의무를 끝낼 수 있는지 보여주는 scalar다. 신규 �
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** STORE 재생 사실 적용 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STORE`.
 
 ```c
 typedef enum
@@ -310,7 +341,7 @@ typedef enum
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** STORE 기한 반환 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STORE`.
 
 ```c
 typedef enum
@@ -328,15 +359,15 @@ typedef enum
 
 | 표기 | Producer / 의미 owner | 목적 / validity |
 | --- | --- | --- |
-| `VssOccurrenceKeyType` | 원래 의미 identity → INPUT 검증/STORE 보호 | 동일 One-shot 발생. 재전달마다 생성 금지; 생성/재부팅/회수 규칙 TBD |
-| `VssStatefulKeyType` | STORE 의미 대상 연결 | 현재 경고·PRODUCT/TEST 문맥. occurrence identity와 교환 금지 |
+| <a id="vssoccurrencekeytype"></a>`VssOccurrenceKeyType` | 원래 의미 identity → INPUT 검증/STORE 보호 | 동일 One-shot 발생. 재전달마다 생성 금지; 생성/재부팅/회수 규칙 TBD |
+| <a id="vssstatefulkeytype"></a>`VssStatefulKeyType` | STORE 의미 대상 연결 | 현재 경고·PRODUCT/TEST 문맥. occurrence identity와 교환 금지 |
 
 ```c
 typedef SemanticIdentity VssOccurrenceKeyType;
 typedef SemanticIdentity VssStatefulKeyType;
 ```
 
-Owner header 후보는 해당 Data의 의미 owner 그룹을 따른다. R6에서 기존 Header 재사용/소유를 확인한다. 별도 공통 God Header를 만들지 않는다.
+두 alias의 R6 논리 선언 경계는 `H-STORE`다. [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)의 선언 hosting과 위 producer·의미 owner를 구별한다. 실제 C typedef·Header 구현은 미정이다.
 
 ## 공통 TBD / 후속 범위
 

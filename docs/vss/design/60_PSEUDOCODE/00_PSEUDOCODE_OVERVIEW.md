@@ -1,6 +1,6 @@
 # Pseudocode Overview — R5 typed 실행 흐름
 
-> 2026-10-08 · R4 독립 PASS 기준 · R5 문서 자체 검수 결과는 결과 Summary에서 확인한다. 독립 PASS 전 R6 진입 금지.
+> 2026-10-08 · **R5 작성 당시 이력** · R4 독립 PASS 기준 · R5 문서 자체 검수 결과는 결과 Summary에서 확인한다. 당시 독립 승인 이전의 R6 진입은 금지했다. 현재 R5-C1은 독립 PASS이며 최신 Stage/게이트는 README를 따른다.
 
 R4의 51개 문서에서 18 Core의 실행 경로를 아래 여섯 Flow로 재작성했다. R2 계약·R3 실제 타입/필드·R4 공통 규칙 및 Module 예외를 그대로 따른다. 세부 상태 전이는 해당 writer의 Core 내부에만 둔다. 과거 의미 참고본은 수정하지 않았다.
 
@@ -60,4 +60,4 @@ R2 상세→R3의 관련 Function→이 표의 Core 위치→R4 규칙 및 Modul
 
 [기존 81 의미 참고본 — 불변](reference/81_VSS_PSEUDOCODE.md) · [Function 계약](../30_FUNCTIONS/00_FUNCTION_OVERVIEW.md) · [R3 전수 판정](../40_DATA/00_DATA_OVERVIEW.md#type-decisions) · [다섯 R4 Contract](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md) · [Module local](../20_MODULES/00_MODULE_OVERVIEW.md) · [Header 미확정](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md) · [Implementation TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md) · [현재 게이트](../../../00_README_CURRENT_PACKAGE.md).
 
-R5 자체 검수는 독립 PASS가 아니다. R5 결과 ZIP을 일반 채팅에 전달한 뒤 중단한다. R5 독립 PASS 전 R6/R7/B2-R·실제 C 구현을 진행하지 않는다. 보존 문서의 과거 R0~R4 작업 단계 표기는 이력이며 현재 Stage/게이트는 README가 기준이다.
+R5 작성 당시 자체 검수는 독립 PASS가 아니었고, 결과 ZIP을 일반 채팅에 전달한 뒤 중단했다. 당시 R5의 독립 승인 이전에는 R6/R7/B2-R·실제 C 구현을 진행하지 않도록 제한했다. 현재 R5-C1은 독립 PASS다. 보존 문서의 과거 R0~R4 작업 단계 표기는 이력이며 현재 Stage/게이트는 README가 기준이다.

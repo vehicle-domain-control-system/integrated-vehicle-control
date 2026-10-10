@@ -7,9 +7,18 @@
 <a id="asset"></a>
 [ASSET](../20_MODULES/25_ASSET_MODULE.md)은 read-only Internal PFlash의 제한된 MP3 bytes와 자료 참조 수명을 소유한다. CPU decode·입력 소비 위치·PCM 내용/사용권은 [AUDIO STREAM](../20_MODULES/24_AUDIO_STREAM_MODULE.md)이 소유한다. MP3를 SGTL5000에 직접 전송하거나 별도 Storage/Decoder Module을 만들지 않는다.
 
+
+**타입 읽기:** 이 문서의 선언은 구조체 11개·enum 7개·의미 alias 6개다. `Category`는 자료의 역할이며 선언 종류와 별개다. 구조체 값, enum 값, 의미 alias, `Semantic...` pseudo-scalar, `const T *` 구조체 읽기 참조를 아래 안내에서 구분한다. `CompressedBytesRef`와 `PcmSamplesRef`는 **중립 참조 표기**이며 구조체·enum·확정 C 포인터 타입으로 선언된 것이 아니다. [공통 표기 규칙](00_DATA_OVERVIEW.md#pseudo-conventions)을 따른다.
+
+**참조와 수명:** `const T *`는 읽기 방향을 표현하며 소유권 이전·자료 수명 보장·임시 인자 주소의 장기 저장 허가가 아니다. 구조체 안의 참조 자료도 각 consumer의 실제 사용 기간 동안 보호한다. '없음'은 기존 Field 정의에서 허용한 경우에만 적용한다. [인자와 참조 자료의 보호](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect) · [R6 호출·포인터 수명](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#lifetime).
+
+**논리 Header 안내(R6):** 아래 `H-ASSET`/`H-STREAM`은 [선언 경계 후보](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates)와 [타입 대응표](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)의 label이다. 자료의 의미 writer와 선언 위치는 구별한다. 외부 타입의 논리 선언은 Session/Attempt alias가 `H-PB`, Plan/위치 alias가 `H-POLICY`, Input Meta가 `H-INPUT`, TX 출력 근거/scope가 `H-TX`, Recovery/진단·복구 근거가 `H-HEALTH`에 속한다. 해당 R3 선언의 실제 C Header 구현 여부는 확인되지 않았으며 파일명·기본형·ABI·RTD/DMA 결합은 미정이다.
+
 <a id="vssassetdescriptor"></a>
 ## VssAssetDescriptor
 **Category: Descriptor**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 해당 image/build의 음원 식별·압축 길이/metadata를 설명한다. lookup/read 성공은 전체 MP3 decode 성공이 아니다.
 
@@ -34,7 +43,7 @@
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** ASSET Descriptor 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-ASSET`.
 
 ### Pseudo-C
 
@@ -48,11 +57,18 @@ typedef struct
 } VssAssetDescriptor;
 ```
 
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `asset` → [VssAssetKeyType](#vssassetkeytype); `image` → [VssImageKeyType](#vssimagekeytype); `metadata` → [VssAssetMetadataType](#vssassetmetadatatype).
+- pseudo-scalar: `compressedLength` → [SemanticByteCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+
 
 
 <a id="vssassetreadrequest"></a>
 ## VssAssetReadRequest
 **Category: Request**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 압축 자료의 제한된 범위를 요구한다. 참조 종료 요청은 이 Request의 offset/length에 억지로 넣지 않는다.
 
@@ -78,7 +94,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** ASSET 제한 읽기 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-ASSET`.
 
 ### Pseudo-C
 
@@ -93,11 +109,18 @@ typedef struct
 } VssAssetReadRequest;
 ```
 
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `asset` → [VssAssetKeyType](#vssassetkeytype); `image` → [VssImageKeyType](#vssimagekeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- pseudo-scalar: `offset`, `requestedBytes` → [SemanticByteCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+
 
 
 <a id="vssassetspan"></a>
 ## VssAssetSpan
 **Category: Descriptor**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 읽기 성공의 확인 범위와 압축 byte 참조를 표현한다. 자료 자체의 보호 기간은 실제 소비 주체가 더 이상 읽지 않을 때까지다.
 
@@ -125,7 +148,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** ASSET 자료 참조 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-ASSET`.
 
 ### Pseudo-C
 
@@ -141,6 +164,12 @@ typedef struct
     CompressedBytesRef bytes;
 } VssAssetSpan;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `span` → [VssAssetSpanKeyType](#vssassetspankeytype); `asset` → [VssAssetKeyType](#vssassetkeytype); `image` → [VssImageKeyType](#vssimagekeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- pseudo-scalar: `offset`, `validBytes` → [SemanticByteCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 중립 참조: `bytes` → [CompressedBytesRef](00_DATA_OVERVIEW.md#pseudo-conventions) — 읽기 전용 압축 bytes의 표기. 실제 C 포인터형·배치는 미정이며 ASSET의 위 Lifetime을 따른다.
 
 
 
@@ -166,7 +195,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** ASSET 읽기 결과 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-ASSET`.
 
 ```c
 typedef enum
@@ -191,6 +220,8 @@ typedef enum
 <a id="vssaudiopreparation"></a>
 ## VssAudioPreparation
 **Category: Command**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 원래 전체 계획/시도·음원·첫 시작 기한을 AUDIO STREAM 의미 준비에 전달한다. PCM 주소/물리 전송 설정은 상위 Command에 없다.
 
@@ -217,7 +248,7 @@ PLAYBACK이 제출 전에 안정된 불변 문맥을 보호한다. AUDIO STREAM�
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** PLAYBACK→AUDIO STREAM 준비 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM`.
 
 ### Pseudo-C
 
@@ -232,6 +263,11 @@ typedef struct
     const VssInputMeta * firstStartMeta;
 } VssAudioPreparation;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `session` → [VssSessionKeyType](40_PLAYBACK_DATA.md#vsssessionkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype); `position` → [VssPlanPositionType](30_SELECTION_DATA.md#vssplanpositiontype); `asset` → [VssAssetKeyType](#vssassetkeytype).
+- 구조체 읽기 참조 (`const T *`): `plan` → [VssPlanDescriptor](30_SELECTION_DATA.md#vssplandescriptor); `firstStartMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta).
 
 
 
@@ -254,7 +290,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** PLAYBACK 제어 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STREAM`.
 
 ```c
 typedef enum
@@ -267,6 +303,8 @@ typedef enum
 <a id="vssplaybackcontrolcommand"></a>
 ## VssPlaybackControlCommand
 **Category: Command**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 start/stop에 공통인 원래 시도·Session·동작 의미만 전달한다. 대상/구성 Fault의 복구는 Session이 없어도 존재하므로 이 Command의 optional 필드로 넣지 않는다.
 
@@ -284,13 +322,13 @@ start/stop에 공통인 원래 시도·Session·동작 의미만 전달한다. �
 
 ### Lifetime / Mutability / 폐기
 
-제출 뒤 불변이며 반복 STOP은 원래 identity/차단을 유지한다. Start의 최신 조건은 별도 작은 읽기 근거로 확인한다. 복구 요구는 70_DIAGNOSTIC_DATA의 VssRecoveryPermission을 읽기 전용으로 전달하고 이전 자원 안전 조건을 별도로 확인한다.
+제출 뒤 불변이며 반복 STOP은 원래 identity/차단을 유지한다. Start의 최신 조건은 별도 작은 읽기 근거로 확인한다. 복구 요구는 별도 구조체 [VssRecoveryPermission](70_DIAGNOSTIC_DATA.md#vssrecoverypermission)을 읽기 전용으로 전달하고 [현재 허용·이전 자원 안전 조건](../50_CONTRACTS/40_FAULT_RECOVERY.md#current-target)을 별도로 확인한다.
 
 **관련 Function:** [Playback_RequestTransition](../30_FUNCTIONS/30_POLICY_PLAYBACK_FUNCTIONS.md#playback-requesttransition) · [Playback_Advance](../30_FUNCTIONS/30_POLICY_PLAYBACK_FUNCTIONS.md#playback-advance) · [AudioStream_RequestControl](../30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-requestcontrol)
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** PLAYBACK 제어 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM`.
 
 ### Pseudo-C
 
@@ -302,6 +340,11 @@ typedef struct
     VssAudioControlAction action;
 } VssPlaybackControlCommand;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `session` → [VssSessionKeyType](40_PLAYBACK_DATA.md#vsssessionkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- enum: `action` → [VssAudioControlAction](#vssaudiocontrolaction).
 
 
 
@@ -328,7 +371,7 @@ AUDIO STREAM 내부 provider의 지속되는 lifecycle이다. Core Function을 p
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM 내부 provider 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STREAM` · Private 원본/내부 타입.
 
 ```c
 typedef enum
@@ -345,6 +388,8 @@ typedef enum
 <a id="vssprovidercontext"></a>
 ## VssProviderContext
 **Category: Context**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 원래 시도의 압축 자료 소비·decode 진행과 미래 생산/제출 권한을 관리한다. 디코더 scratch/내부 temporary를 개별 Data Model로 승격하지 않는다.
 
@@ -374,7 +419,7 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM 내부 provider 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM` · Private 원본/내부 타입.
 
 ### Pseudo-C
 
@@ -392,6 +437,13 @@ typedef struct
     SemanticBool endOfSource;
 } VssProviderContext;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `session` → [VssSessionKeyType](40_PLAYBACK_DATA.md#vsssessionkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype); `asset` → [VssAssetKeyType](#vssassetkeytype); `format` → [VssPcmFormatType](#vsspcmformattype).
+- 구조체 읽기 참조 (`const T *`): `sourceSpan` → [VssAssetSpan](#vssassetspan) — span 구조체를 읽는 참조이며 그 안의 `bytes` 중립 참조와 구별한다.
+- enum: `phase` → [VssProviderPhase](#vssproviderphase).
+- pseudo-scalar: `sourcePosition` → [SemanticByteCount](00_DATA_OVERVIEW.md#pseudo-conventions); `productionAllowed`, `endOfSource` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 
 
@@ -421,7 +473,7 @@ prepare 요청의 단계와 start/stop 수용을 구별한다. actual·안전 �
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO STREAM 수용/준비 결과 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STREAM`.
 
 ```c
 typedef enum
@@ -441,6 +493,8 @@ typedef enum
 <a id="vssaudiorequestresult"></a>
 ## VssAudioRequestResult
 **Category: Result**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 같은 준비/제어 요구의 수용/진행 단계만 묶는다. 실제 출력·PCM 반환·복구 결과와 다른 typed 결과로 전달한다.
 
@@ -464,7 +518,7 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO STREAM 준비 결과 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM`.
 
 ### Pseudo-C
 
@@ -476,6 +530,11 @@ typedef struct
     VssAudioRequestStage stage;
 } VssAudioRequestResult;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `session` → [VssSessionKeyType](40_PLAYBACK_DATA.md#vsssessionkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- enum: `stage` → [VssAudioRequestStage](#vssaudiorequeststage).
 
 
 
@@ -500,7 +559,7 @@ typedef struct
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM 출력 Evidence 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STREAM`.
 
 ```c
 typedef enum
@@ -515,6 +574,8 @@ typedef enum
 <a id="vssaudiooutputevidence"></a>
 ## VssAudioOutputEvidence
 **Category: Evidence**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 DRIVER의 실제 범위 근거에 AUDIO STREAM의 미래 PCM 차단을 결합한다. 전체 Session 최종/retirement는 PLAYBACK이 판단하며 준비 결과와 합치지 않는다.
 
@@ -542,7 +603,7 @@ producer가 범위 근거를 확보한 뒤 불변으로 내보내고 PLAYBACK �
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM 출력 Evidence 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM`.
 
 ### Pseudo-C
 
@@ -559,11 +620,20 @@ typedef struct
 } VssAudioOutputEvidence;
 ```
 
-NO_START_CONFIRMED: 충분한 과거 무출력 + 모든 해당 옛 하위 미래 출력 불가 + 이 scope의 미래 PCM 차단을 요구한다. OUTPUT_TERMINATION_CONFIRMED: 해당 출력/장치 잔류 종료 + 미래 출력 불가 + PCM 차단을 요구한다. 현재 idle·timeout·abort 수락·mute만으로 이 kind를 생성하지 않는다.
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `session` → [VssSessionKeyType](40_PLAYBACK_DATA.md#vsssessionkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- enum: `kind` → [VssAudioOutputKind](#vssaudiooutputkind); `scope` → [VssOutputScope](60_AUDIO_TX_DATA.md#vssoutputscope).
+- 구조체 읽기 참조 (`const T *`): `transportFacts` → [VssTxOutputEvidence](60_AUDIO_TX_DATA.md#vsstxoutputevidence) — AUDIO TX의 불변 사실 목록. 아래 count는 범위이며 원사실의 보호 수명을 대신하지 않는다.
+- pseudo-scalar: `transportFactCount` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions); `futurePcmBlocked` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
+
+[출력 확정의 충분조건](../50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#confirmed-outcomes): NO_START_CONFIRMED는 충분한 과거 무출력 + 모든 해당 옛 하위 미래 출력 불가 + 이 scope의 미래 PCM 차단을 요구한다. OUTPUT_TERMINATION_CONFIRMED: 해당 출력/장치 잔류 종료 + 미래 출력 불가 + PCM 차단을 요구한다. 현재 idle·timeout·abort 수락·mute만으로 이 kind를 생성하지 않는다.
 
 <a id="vssbackendcleanupobservation"></a>
 ## VssBackendCleanupObservation
 **Category: Snapshot**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 물리 출력 종료와 provider/read·PCM 자원 안전 종료를 별도로 관측한다. 옛 불변 callback 기록은 자원이 안전 종료돼도 더 오래 유지할 수 있다.
 
@@ -589,7 +659,7 @@ NO_START_CONFIRMED: 충분한 과거 무출력 + 모든 해당 옛 하위 미래
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM 정리 관측 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM`.
 
 ### Pseudo-C
 
@@ -603,6 +673,11 @@ typedef struct
     SemanticBool lateIdentityProtected;
 } VssBackendCleanupObservation;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- pseudo-scalar: `providerReferencesEnded`, `pcmAccessEnded`, `lowerOutputBlocked`, `lateIdentityProtected` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 
 
@@ -628,7 +703,7 @@ typedef struct
 
 **관련 Contract:** [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM PCM 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STREAM`.
 
 ```c
 typedef enum
@@ -641,6 +716,8 @@ typedef enum
 <a id="vsspcmcyclekey"></a>
 ## VssPcmCycleKey
 **Category: Descriptor**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 같은 A/B가 재사용될 때 옛 결과로 새 회차를 해제하지 않기 위한 불변 귀속이다. Buffer ID 하나만으로 안전 반환을 판정하지 않는다.
 
@@ -664,7 +741,7 @@ CPU 생산 회차를 준비할 때 생성하고 handoff/원래 등록/사실에 
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM PCM 귀속 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM`.
 
 ### Pseudo-C
 
@@ -676,6 +753,11 @@ typedef struct
     VssPcmCycleType cycle;
 } VssPcmCycleKey;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype); `cycle` → [VssPcmCycleType](#vsspcmcycletype).
+- enum: `buffer` → [VssPcmBufferId](#vsspcmbufferid).
 
 
 
@@ -701,7 +783,7 @@ AUDIO STREAM의 CPU 쓰기/인계 사용권 상태다. AUDIO TX의 장치 접근
 
 **관련 Contract:** [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO STREAM PCM 내부 상태 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STREAM` · Private 원본/내부 타입.
 
 ```c
 typedef enum
@@ -717,6 +799,8 @@ typedef enum
 <a id="vsspcmbufferstate"></a>
 ## VssPcmBufferState
 **Category: State**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 정확히 A/B 두 instance의 내용·유효 구간·CPU 권한을 관리한다. decoder scratch/압축 입력 span은 이 두 전송 Buffer에 포함하지 않는다.
 
@@ -749,7 +833,7 @@ AUDIO STREAM은 STOP 뒤 `productionAllowed=false`를 유지한다. 정리 목�
 
 **관련 Contract:** [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO STREAM PCM 내부 상태 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM` · Private 원본/내부 타입.
 
 ### Pseudo-C
 
@@ -765,7 +849,15 @@ typedef struct
 } VssPcmBufferState;
 ```
 
-네 경계는 [Buffer §5](../50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#four-boundaries)를 따른다. 이 State는 PCM usage만 소유하며 provider/전체 출력/HAL 기록의 원본을 대신 변경하지 않는다.
+**구성원 타입 → 정의 위치**
+
+- 구조체 값: `key` → [VssPcmCycleKey](#vsspcmcyclekey).
+- 중립 참조: `samples` → [PcmSamplesRef](00_DATA_OVERVIEW.md#pseudo-conventions) — PCM 내용의 표기. 실제 포인터형·메모리 배치·DMA 안전성의 확정이 아니다.
+- pseudo-scalar: `firstValidFrame`, `validFrameCount` → [SemanticFrameCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 의미 alias: `format` → [VssPcmFormatType](#vsspcmformattype).
+- enum: `usage` → [VssPcmUsage](#vsspcmusage).
+
+PCM 소비 근거는 [VssPcmConsumptionEvidence](60_AUDIO_TX_DATA.md#vsspcmconsumptionevidence), 안전 반환 근거는 [VssPcmReturnEvidence](60_AUDIO_TX_DATA.md#vsspcmreturnevidence)에서 구분한다. 네 경계는 [Buffer §5](../50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#four-boundaries)를 따른다. 이 State는 PCM usage만 소유하며 provider/전체 출력/HAL 기록의 원본을 대신 변경하지 않는다.
 
 ## VssAudioBackendResult — SPLIT typed 결과군
 
@@ -773,21 +865,23 @@ typedef struct
 
 결과 없는 진행은 VssTimeEvidence와 owner의 기존 문맥으로 표현한다. 결과가 여러 개면 각각 보호된 typed 사실로 남기고 소비자가 반영할 때까지 유지한다. 알림 합침/저장 한계는 사실 삭제가 아니라 관측 손실 근거로 드러내야 한다. 전달 방식·자료 복사/참조·저장 예산은 후속 Binding에서 확인한다.
 
-`VssAudioControlIntent`는 VssPlaybackControlCommand와 HEALTH가 만든 VssRecoveryPermission으로 나뉜다. 복구 요구자는 FLOW이고 실제 수행자는 Backend다. 수행/검증 결과를 준비/actual에 섞지 않는다. 두 typed 경로의 독립 국소 PASS는 [Data Overview](00_DATA_OVERVIEW.md#r2-local-review) 및 [함수 연결](../30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-requestcontrol)을 따른다. 논리 Core/기존 pseudo prototype은 유지하고 C 표현은 R6 TBD다.
+`VssAudioControlIntent`는 구조체 [VssPlaybackControlCommand](#vssplaybackcontrolcommand)와 HEALTH가 만든 별도 구조체 [VssRecoveryPermission](70_DIAGNOSTIC_DATA.md#vssrecoverypermission)으로 나뉜다. 복구 요구자는 FLOW이고 실제 수행자는 Backend다. 수행/검증 결과를 준비/actual에 섞지 않는다. 두 typed 경로의 독립 국소 PASS는 [Data Overview](00_DATA_OVERVIEW.md#r2-local-review) 및 [함수 연결](../30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-requestcontrol)을 따른다. 논리 Core/기존 pseudo prototype은 유지한다. [R6 typed 경로](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#typed-stream)는 논리 후보이며 실제 C 표현·ABI는 미정이다.
 
 <a id="scalar-aliases"></a>
 ## 보조 scalar / 불투명 의미 표기
 
+**타입 종류:** 의미 alias 6개 — 아래 `typedef Semantic...` 선언. `#scalar-aliases` 링크는 이 여섯 별칭의 표와 바로 뒤 선언 묶음을 가리킨다. 기저 `SemanticIdentity`/`SemanticDescriptor`/`SemanticFormat`의 [pseudo-scalar 규칙](00_DATA_OVERVIEW.md#pseudo-conventions)과 실제 C 기본형은 구별한다.
+
 아래는 경계 identity·정책 값의 의미 alias다. 각각 독립 struct/새 ID 생성 API를 만드는 목록이 아니다. 모든 값의 폭/encoding·확정 Header는 미정이다. 실제 producer의 원래 문맥에서 보호하고 전달 뒤 불변으로 사용한다. 회수/무효화는 해당 주 Data의 lifetime을 따른다.
 
-| 표기 | Producer / 의미 owner | 목적 / validity |
-| --- | --- | --- |
-| `VssAssetKeyType` | 기존 Asset table/의미 정책 | 압축 음원 ID. 물리 주소 아님 |
-| `VssImageKeyType` | 현재 image/build 근거 | Asset descriptor/읽기의 실제 이미지 문맥. 과거 bring-up과 구별 |
-| `VssAssetMetadataType` | ASSET의 확인된 image metadata | 확인한 MP3 정보. format/bitrate/library는 현 source 확인 전 TBD |
-| `VssAssetSpanKeyType` | ASSET | 제공 자료의 실제 소비 참조 연결. Session 종료와 다른 lifespan |
-| `VssPcmFormatType` | AUDIO STREAM의 decoder/format 확인 | 확인된 PCM 의미 format. sample rate/channel/폭을 정하지 않음 |
-| `VssPcmCycleType` | AUDIO STREAM | A/B 재사용 회차. 폭/증분/wrap/보존 규칙 미정 |
+| 표기 | Producer / 의미 owner | 목적 / validity | 논리 Header(R6) |
+| --- | --- | --- | --- |
+| <a id="vssassetkeytype"></a>`VssAssetKeyType` | 기존 Asset table/의미 정책 | 압축 음원 ID. 물리 주소 아님 | `H-ASSET` |
+| <a id="vssimagekeytype"></a>`VssImageKeyType` | 현재 image/build 근거 | Asset descriptor/읽기의 실제 이미지 문맥. 과거 bring-up과 구별 | `H-ASSET` |
+| <a id="vssassetmetadatatype"></a>`VssAssetMetadataType` | ASSET의 확인된 image metadata | 확인한 MP3 정보. format/bitrate/library는 현 source 확인 전 TBD | `H-ASSET` |
+| <a id="vssassetspankeytype"></a>`VssAssetSpanKeyType` | ASSET | 제공 자료의 실제 소비 참조 연결. Session 종료와 다른 lifespan | `H-ASSET` |
+| <a id="vsspcmformattype"></a>`VssPcmFormatType` | AUDIO STREAM의 decoder/format 확인 | 확인된 PCM 의미 format. sample rate/channel/폭을 정하지 않음 | `H-STREAM` |
+| <a id="vsspcmcycletype"></a>`VssPcmCycleType` | AUDIO STREAM | A/B 재사용 회차. 폭/증분/wrap/보존 규칙 미정 | `H-STREAM` |
 
 ```c
 typedef SemanticIdentity VssAssetKeyType;
@@ -798,7 +892,7 @@ typedef SemanticFormat VssPcmFormatType;
 typedef SemanticIdentity VssPcmCycleType;
 ```
 
-Owner header 후보는 해당 Data의 의미 owner 그룹을 따른다. R6에서 기존 Header 재사용/소유를 확인한다. 별도 공통 God Header를 만들지 않는다.
+위 여섯 별칭의 논리 선언 소유권은 [R6 타입 대응표](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)를 따른다. 선언 hosting은 의미 writer를 이전하지 않으며 실제 C typedef·Header 구현은 미확인이다. 별도 공통 God Header를 만들지 않는다.
 
 ## 공통 TBD / 후속 범위
 

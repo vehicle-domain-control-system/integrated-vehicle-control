@@ -7,6 +7,10 @@
 <a id="playback"></a>
 Occurrence는 STORE의 발생 이력, Session은 PLAYBACK의 전체 정책 실행, Attempt는 새 실제 출력 시도의 인과 문맥이다. Session은 cue 무음·반복 대기를 포함하며 cue당 Attempt 수/실제 표현은 이번에 고정하지 않는다. Context를 하나로 합치거나 active 포인터를 callback의 원래 귀속 대신 쓰지 않는다.
 
+**타입 읽기:** `Category`는 역할이며 [선언 종류](00_DATA_OVERVIEW.md#pseudo-conventions)와 별개다. 아래 안내는 구조체 값, enum, 의미 alias, pseudo-scalar와 `const T *` 읽기 참조를 구분한다. key alias 참조의 대상은 해당 식별 의미이며 Context 구조체 참조와 구별한다. 값 필드 안의 내부 참조와 근거·미반영 fact의 보호는 각 절의 Lifetime 및 [소유·수명 계약](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect)을 따른다.
+
+**논리 Header 안내(R6):** `H-PB`의 Session/Attempt는 Private 원본이고 Fact/Observation은 불변 전달·파생 읽기 경계다. [선언 경계 후보](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates) · [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)을 따른다. 실제 `.h` 파일명·타입 구현 여부는 확인되지 않았고 C 기본형·메모리 표현·ABI는 미정이다.
+
 <a id="vssplaybackphase"></a>
 ## VssPlaybackPhase — scalar enum
 **Category: State**
@@ -31,7 +35,7 @@ PLAYBACK의 전체 실행/종료 상태다. 실제 출력의 지식과 후속 �
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** PLAYBACK 내부 상태 후보 — R6에서 확정.
+**논리 Header(R6):** `H-PB`.
 
 ```c
 typedef enum
@@ -68,7 +72,7 @@ typedef enum
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** PLAYBACK 결과 지식 후보 — R6에서 확정.
+**논리 Header(R6):** `H-PB`.
 
 ```c
 typedef enum
@@ -84,6 +88,8 @@ typedef enum
 <a id="vsssessioncontext"></a>
 ## VssSessionContext
 **Category: Context**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 단일 출력 owner와 채택된 전체 정책·후속 start/cue/반복 권한을 보유한다. 상태 원본은 PLAYBACK 하나다.
 
@@ -116,7 +122,7 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** PLAYBACK Session 내부 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-PB` · Private 원본.
 
 ### Pseudo-C
 
@@ -138,11 +144,21 @@ typedef struct
 } VssSessionContext;
 ```
 
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `session` → [VssSessionKeyType](#vsssessionkeytype); `candidate` → [VssCandidateKeyType](30_SELECTION_DATA.md#vsscandidatekeytype); `position` → [VssPlanPositionType](30_SELECTION_DATA.md#vssplanpositiontype); `currentAttempt` → [VssAttemptKeyType](#vssattemptkeytype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
+- enum: `mode` → [VssPlaybackMode](30_SELECTION_DATA.md#vssplaybackmode); `phase` → [VssPlaybackPhase](#vssplaybackphase).
+- 구조체 읽기 참조 (`const T *`): `plan` → [VssPlanDescriptor](30_SELECTION_DATA.md#vssplandescriptor).
+- pseudo-scalar: `startAllowed`, `cueAllowed`, `repeatAllowed` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 구조체 값: `firstStartMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta).
+
 
 
 <a id="vssattemptcontext"></a>
 ## VssAttemptContext
 **Category: Context**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 특정 실제 출력 시도의 준비·수락/장치 활성화·actual·종료 지식과 보호된 STORE 통지 의무를 추적한다. 새 Attempt identity는 실제 새 출력 시도마다 갱신한다.
 
@@ -174,7 +190,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** PLAYBACK Attempt 내부 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-PB` · Private 원본.
 
 ### Pseudo-C
 
@@ -194,6 +210,13 @@ typedef struct
     SemanticBool retired;
 } VssAttemptContext;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `attempt` → [VssAttemptKeyType](#vssattemptkeytype); `session` → [VssSessionKeyType](#vsssessionkeytype); `position` → [VssPlanPositionType](30_SELECTION_DATA.md#vssplanpositiontype).
+- enum: `preparation`, `startRequest` → [VssAudioRequestStage](50_AUDIO_STREAM_DATA.md#vssaudiorequeststage); `startKnowledge` → [VssStartKnowledge](#vssstartknowledge).
+- 구조체 읽기 참조 (`const T *`): `startEvidence`, `endEvidence` → [VssAudioOutputEvidence](50_AUDIO_STREAM_DATA.md#vssaudiooutputevidence); `unappliedFacts` → [VssPlaybackFact](#vssplaybackfact).
+- pseudo-scalar: `unappliedFactCount` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions); `retired` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 최종 전 같은 Attempt의 적법한 늦은 actual은 Started/보고 사실만 적용하고 STOPPING/ABORTING을 유지한다. uncertain 최종 뒤 또는 retired 뒤 결과는 Pending/Started/Completed와 새 Session을 부활시키지 않는다.
 
@@ -219,7 +242,7 @@ STORE 발생 이력에 적용하는 PLAYBACK의 정규화된 사실이다. 물�
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** PLAYBACK→STORE 사실 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-PB`.
 
 ```c
 typedef enum
@@ -235,6 +258,8 @@ typedef enum
 <a id="vssplaybackfact"></a>
 ## VssPlaybackFact
 **Category: Event**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 PLAYBACK이 충분한 근거로 판정한 원래 occurrence의 최초 시작/전체 최종 사실이다. STORE는 이를 중복에 안전하게 반영하며 raw 결과를 직접 판정하지 않는다.
 
@@ -262,7 +287,7 @@ PLAYBACK이 충분한 근거로 판정한 원래 occurrence의 최초 시작/전
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** PLAYBACK 사실 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-PB`.
 
 ### Pseudo-C
 
@@ -279,11 +304,19 @@ typedef struct
 } VssPlaybackFact;
 ```
 
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `fact` → [VssFactKeyType](#vssfactkeytype); `occurrence` → [VssOccurrenceKeyType](20_STORE_DATA.md#vssoccurrencekeytype); `session` → [VssSessionKeyType](#vsssessionkeytype); `attempt` → [VssAttemptKeyType](#vssattemptkeytype); `basisRevision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
+- enum: `kind` → [VssPlaybackFactKind](#vssplaybackfactkind).
+- 구조체 값: `occurredAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
+
 
 
 <a id="vssplaybackobservation"></a>
 ## VssPlaybackObservation
 **Category: Snapshot**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 VssPlaybackObservations와 VssPlaybackProgress의 공통 읽기 의미를 합친다. 기한 만료/보고에 필요한 최소 현재 출력 관측이며 SessionContext의 두 번째 writer가 아니다.
 
@@ -311,7 +344,7 @@ VssPlaybackObservations와 VssPlaybackProgress의 공통 읽기 의미를 합친
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** PLAYBACK 읽기 관측 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-PB`.
 
 ### Pseudo-C
 
@@ -327,6 +360,13 @@ typedef struct
     VssOwnerStamp stamp;
 } VssPlaybackObservation;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias 읽기 참조 (`const T *`): `session` → [VssSessionKeyType](#vsssessionkeytype); `attempt` → [VssAttemptKeyType](#vssattemptkeytype); `candidate` → [VssCandidateKeyType](30_SELECTION_DATA.md#vsscandidatekeytype).
+- enum: `phase` → [VssPlaybackPhase](#vssplaybackphase); `startKnowledge` → [VssStartKnowledge](#vssstartknowledge).
+- pseudo-scalar: `notificationPending` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 구조체 값: `stamp` → [VssOwnerStamp](30_SELECTION_DATA.md#vssownerstamp).
 
 
 
@@ -351,7 +391,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** 각 callee의 수용 반환 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-PB`.
 
 ```c
 typedef enum
@@ -376,9 +416,9 @@ typedef enum
 
 | 표기 | Producer / 의미 owner | 목적 / validity |
 | --- | --- | --- |
-| `VssSessionKeyType` | PLAYBACK | 전체 계획 실행. occurrence와 다르고 cue 무음/반복 대기 포함 |
-| `VssAttemptKeyType` | PLAYBACK | 새 실제 출력 시도별 갱신. 다음 시도로 옛 사실 재귀속 금지 |
-| `VssFactKeyType` | PLAYBACK | 정규화 fact의 중복 적용 key. 실제 생성 방식 미정 |
+| <a id="vsssessionkeytype"></a>`VssSessionKeyType` | PLAYBACK | 전체 계획 실행. occurrence와 다르고 cue 무음/반복 대기 포함 |
+| <a id="vssattemptkeytype"></a>`VssAttemptKeyType` | PLAYBACK | 새 실제 출력 시도별 갱신. 다음 시도로 옛 사실 재귀속 금지 |
+| <a id="vssfactkeytype"></a>`VssFactKeyType` | PLAYBACK | 정규화 fact의 중복 적용 key. 실제 생성 방식 미정 |
 
 ```c
 typedef SemanticIdentity VssSessionKeyType;
@@ -386,7 +426,7 @@ typedef SemanticIdentity VssAttemptKeyType;
 typedef SemanticIdentity VssFactKeyType;
 ```
 
-Owner header 후보는 해당 Data의 의미 owner 그룹을 따른다. R6에서 기존 Header 재사용/소유를 확인한다. 별도 공통 God Header를 만들지 않는다.
+세 key는 모두 `SemanticIdentity`의 의미 alias이며 구조체가 아니다. R6 논리 선언 경계는 `H-PB`이며 [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)을 따른다. occurrence/session/attempt/fact의 구분과 위 validity를 보존하고 실제 C typedef·Header 구현은 미정으로 둔다.
 
 ## 공통 TBD / 후속 범위
 

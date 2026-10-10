@@ -7,13 +7,27 @@
 <a id="selection"></a>
 선택은 POLICY, 실행은 PLAYBACK 책임이다. FLOW는 원본을 변경하지 않고 각 owner가 반영한 읽기 관측을 연결한다. `VssSelectionView`와 `VssExecutionConditions`는 아래 작은 관측의 읽기 전용 인자 묶음이며 **그 이름의 struct는 만들지 않는다**.
 
-VssSelectionView: STORE의 VssCandidateObservation들 + PLAYBACK의 VssPlaybackObservation + HEALTH의 현재 대상 제한 + ASSET의 확인 범위/가용 근거 + VssReadBasis. 각 자료는 owner가 생성한다.
+VssSelectionView: STORE의 VssCandidateObservation들 + PLAYBACK의 [VssPlaybackObservation](40_PLAYBACK_DATA.md#vssplaybackobservation) + HEALTH의 현재 대상 제한 + ASSET의 확인 범위/가용 근거 + VssReadBasis. 각 자료는 owner가 생성한다.
 
 VssExecutionConditions: 이번 후보의 현재 적용 가능 관측 + 해당 HEALTH 제한/복구 허용 + 비교 가능한 시간/읽기 근거. PLAYBACK의 현재 owner·후속 권한, AUDIO STREAM의 PCM/준비 자원은 각 callee가 자기 원본에서 확인한다. 이 묶음은 새 실행 허가나 여러 owner 상태의 복제 원본이 아니다.
+
+**타입 읽기:** `Category`는 역할이며 [선언 종류](00_DATA_OVERVIEW.md#pseudo-conventions)와 별개다. `const T *`는 `T`의 읽기 참조다. `stamps`/`stampCount`, `cues`/`cueCount`는 각각 typed 목록의 참조와 범위를 표현하며, Count가 원본 소유권이나 보호 수명을 정하지 않는다. 평가 borrow와 채택 후 보호는 각 절의 Lifetime 및 [소유·수명 계약](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect)을 따른다.
+
+**논리 Header 안내(R6):** 문서 위치와 선언 owner는 별개다. [선언 경계 후보](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates) · [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)을 아래와 같이 읽는다.
+
+| 논리 Header | 이 문서의 자료 역할 | 원본과 읽기·계획의 경계 |
+| --- | --- | --- |
+| [H-READ](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates) | owner stamp·임시 read basis·읽기 유효성 | 원본 writer는 각 owner, 수집·연결은 FLOW |
+| [H-STORE](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates) | 후보 관측·후보 유효성 | STORE 기록에서 파생한 읽기이며 POLICY 판단과 구별 |
+| [H-POLICY](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates) | cue·plan·선택 판단·정책 분류 | 불변 정책 계획이며 실행 문맥은 PLAYBACK |
+
+이 label은 실제 `.h` 파일이 아니다. 해당 타입의 C Header 구현은 확인하지 않았고 C 기본형·목록 storage·메모리 표현·ABI는 미정이다.
 
 <a id="vssownerstamp"></a>
 ## VssOwnerStamp
 **Category: Snapshot**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 owner가 어디까지 실제 반영했는지의 읽기 표지다. FLOW가 결과를 몰래 적용하는 getter나 전체 상태 복사를 만들지 않도록 한다.
 
@@ -37,7 +51,7 @@ owner가 어디까지 실제 반영했는지의 읽기 표지다. FLOW가 결과
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** 각 owner의 읽기 관측 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-READ`.
 
 ### Pseudo-C
 
@@ -49,6 +63,10 @@ typedef struct
     VssFactWatermarkType appliedThrough;
 } VssOwnerStamp;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `owner` → [VssOwnerKeyType](#vssownerkeytype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype); `appliedThrough` → [VssFactWatermarkType](#vssfactwatermarktype).
 
 
 
@@ -72,7 +90,7 @@ typedef struct
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** FLOW 읽기 관측 후보 — R6에서 확정.
+**논리 Header(R6):** `H-READ`.
 
 ```c
 typedef enum
@@ -86,6 +104,8 @@ typedef enum
 <a id="vssreadbasis"></a>
 ## VssReadBasis
 **Category: Snapshot**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 함께 판단 가능한 관측의 적용 근거만 묶는다. STORE·PLAYBACK·HEALTH의 authoritative state를 포함하지 않는다.
 
@@ -110,7 +130,7 @@ typedef enum
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** FLOW 읽기 관측 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-READ`.
 
 ### Pseudo-C
 
@@ -123,6 +143,13 @@ typedef struct
     VssReadValidity validity;
 } VssReadBasis;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 구조체 읽기 참조 (`const T *`): `stamps` → [VssOwnerStamp](#vssownerstamp).
+- pseudo-scalar: `stampCount` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 구조체 값: `time` → [VssTimeEvidence](10_INPUT_DATA.md#vsstimeevidence).
+- enum: `validity` → [VssReadValidity](#vssreadvalidity).
 
 
 
@@ -148,7 +175,7 @@ STORE 후보의 현재 적용 가능 의미다. 출력 Fault·처리 성공 enum
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** STORE 후보 관측 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-STORE`.
 
 ```c
 typedef enum
@@ -164,6 +191,8 @@ typedef enum
 <a id="vsscandidateobservation"></a>
 ## VssCandidateObservation
 **Category: Snapshot**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 POLICY/PLAYBACK이 필요한 후보 의미·원본 기한·identity만 보는 STORE projection이다. One-shot ledger와 StatefulState를 통합 저장하지 않는다.
 
@@ -191,7 +220,7 @@ STATEFUL과 ONE_SHOT의 공유 부분만 읽기 projection으로 표현한다. �
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** STORE 후보 읽기 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STORE`.
 
 ### Pseudo-C
 
@@ -207,6 +236,13 @@ typedef struct
     VssRevisionType revision;
 } VssCandidateObservation;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `key` → [VssCandidateKeyType](#vsscandidatekeytype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
+- enum: `mode` → [VssPlaybackMode](#vssplaybackmode); `signal` → [VssInputSignal](10_INPUT_DATA.md#vssinputsignal); `validity` → [VssCandidateValidity](#vsscandidatevalidity).
+- 구조체 읽기 참조 (`const T *`): `originalMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta).
+- 의미 alias 읽기 참조 (`const T *`): `useLimit` → [VssUseLimitType](#vssuselimittype).
 
 
 
@@ -229,7 +265,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** POLICY 의미 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-POLICY`.
 
 ```c
 typedef enum
@@ -242,6 +278,8 @@ typedef enum
 <a id="vsscuedescriptor"></a>
 ## VssCueDescriptor
 **Category: Descriptor**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 전체 계획의 음원/무음 의미를 표현한다. cue 수와 Attempt 수를 1:1로 고정하지 않고 PCM/decoder/장치 설정을 넣지 않는다.
 
@@ -264,7 +302,7 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** POLICY 계획 Descriptor 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-POLICY`.
 
 ### Pseudo-C
 
@@ -276,11 +314,18 @@ typedef struct
 } VssCueDescriptor;
 ```
 
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `asset` → [VssAssetKeyType](50_AUDIO_STREAM_DATA.md#vssassetkeytype).
+- pseudo-scalar: `gapAfter` → [SemanticDuration](00_DATA_OVERVIEW.md#pseudo-conventions).
+
 
 
 <a id="vssplandescriptor"></a>
 ## VssPlanDescriptor
 **Category: Descriptor**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 전체 정책의 의미 계획이다. 실행 중 cue 위치·반복 진행은 PLAYBACK이 별도로 소유한다.
 
@@ -306,7 +351,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** POLICY 계획 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-POLICY`.
 
 ### Pseudo-C
 
@@ -320,6 +365,13 @@ typedef struct
     VssRepeatRuleType repeatRule;
 } VssPlanDescriptor;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `planKey` → [VssPlanKeyType](#vssplankeytype); `repeatRule` → [VssRepeatRuleType](#vssrepeatruletype).
+- enum: `signal` → [VssInputSignal](10_INPUT_DATA.md#vssinputsignal).
+- 구조체 읽기 참조 (`const T *`): `cues` → [VssCueDescriptor](#vsscuedescriptor).
+- pseudo-scalar: `cueCount` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 
 
@@ -345,7 +397,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** POLICY 판단 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-POLICY`.
 
 ```c
 typedef enum
@@ -361,6 +413,8 @@ typedef enum
 <a id="vssselectiondecision"></a>
 ## VssSelectionDecision
 **Category: Result**
+
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C 선언.
 
 정책 판단과 후보·전체 계획의 관계를 함께 반환한다. 같은 평가·producer·lifetime이므로 작은 묶음이 적절하다.
 
@@ -385,7 +439,7 @@ POLICY 생성 뒤 불변이다. candidate/plan이 없는 WAIT/RECOLLECT로 prepa
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** POLICY 판단 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-POLICY`.
 
 ### Pseudo-C
 
@@ -398,6 +452,11 @@ typedef struct
     const VssReadBasis * basis;
 } VssSelectionDecision;
 ```
+
+**구성원 타입 → 정의 위치**
+
+- enum: `action` → [VssSelectionAction](#vssselectionaction).
+- 구조체 읽기 참조 (`const T *`): `candidate` → [VssCandidateObservation](#vsscandidateobservation); `plan` → [VssPlanDescriptor](#vssplandescriptor); `basis` → [VssReadBasis](#vssreadbasis).
 
 
 
@@ -414,13 +473,13 @@ typedef struct
 
 | 표기 | Producer / 의미 owner | 목적 / validity |
 | --- | --- | --- |
-| `VssOwnerKeyType` | 해당 근거 producer | 기존 FLOW/Module/Layer Boundary의 책임 식별. 새 계층 아님 |
-| `VssFactWatermarkType` | 각 사실 적용 owner | 필수 인과 사실의 반영 완료 범위. 저장/물리 counter 방식 미정 |
-| `VssCandidateKeyType` | STORE | mode와 함께 원래 occurrence 또는 Stateful key에 연결. identity 인코딩/별도 wrapper 강제하지 않음 |
-| `VssUseLimitType` | 기존 중앙/요구사항 정책 | 원문 USE_LIMIT 조건. first-start age와 새 min/AND 정책을 만들지 않음 |
-| `VssPlanKeyType` | POLICY | 불변 전체 정책/패턴 문맥. 단순 평가마다 새 plan identity를 만들지 않음 |
-| `VssRepeatRuleType` | POLICY | 기존 패턴 반복 규칙. 횟수/무음/조건의 [잠정/TBD] 유지 |
-| `VssPlanPositionType` | PLAYBACK | 해당 plan의 의미 cue/반복 진행 위치. 표현·cue당 Attempt 수 미정 |
+| <a id="vssownerkeytype"></a>`VssOwnerKeyType` | 해당 근거 producer | 기존 FLOW/Module/Layer Boundary의 책임 식별. 새 계층 아님 |
+| <a id="vssfactwatermarktype"></a>`VssFactWatermarkType` | 각 사실 적용 owner | 필수 인과 사실의 반영 완료 범위. 저장/물리 counter 방식 미정 |
+| <a id="vsscandidatekeytype"></a>`VssCandidateKeyType` | STORE | mode와 함께 원래 occurrence 또는 Stateful key에 연결. identity 인코딩/별도 wrapper 강제하지 않음 |
+| <a id="vssuselimittype"></a>`VssUseLimitType` | 기존 중앙/요구사항 정책 | 원문 USE_LIMIT 조건. first-start age와 새 min/AND 정책을 만들지 않음 |
+| <a id="vssplankeytype"></a>`VssPlanKeyType` | POLICY | 불변 전체 정책/패턴 문맥. 단순 평가마다 새 plan identity를 만들지 않음 |
+| <a id="vssrepeatruletype"></a>`VssRepeatRuleType` | POLICY | 기존 패턴 반복 규칙. 횟수/무음/조건의 [잠정/TBD] 유지 |
+| <a id="vssplanpositiontype"></a>`VssPlanPositionType` | PLAYBACK | 해당 plan의 의미 cue/반복 진행 위치. 표현·cue당 Attempt 수 미정 |
 
 ```c
 typedef SemanticOwner VssOwnerKeyType;
@@ -432,7 +491,7 @@ typedef SemanticPolicyCondition VssRepeatRuleType;
 typedef SemanticPosition VssPlanPositionType;
 ```
 
-Owner header 후보는 해당 Data의 의미 owner 그룹을 따른다. R6에서 기존 Header 재사용/소유를 확인한다. 별도 공통 God Header를 만들지 않는다.
+R6의 [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)에서 `VssOwnerKeyType`/`VssFactWatermarkType`는 `H-READ`, `VssCandidateKeyType`는 `H-STORE`, `VssUseLimitType`/`VssPlanKeyType`/`VssRepeatRuleType`/`VssPlanPositionType`는 `H-POLICY`의 논리 선언 경계다. 선언 hosting은 위 producer·writer의 이전이 아니며 실제 C typedef·Header 구현은 미정이다.
 
 ## 공통 TBD / 후속 범위
 

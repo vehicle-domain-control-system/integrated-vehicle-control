@@ -1,6 +1,6 @@
 # VSS Design Overview
 
-> R7 — 통합 검수 완료 · 2026-10-08 · 최신 승인 기준 R6 독립 PASS · R7 독립 검수 대기 · 구조/책임·Binding 미정 유지
+> 2026-10-10 현재 승인: R7 독립 PASS(2026-10-08), S7 표시 정상화, S8-T1~T4-B2·T5-A~D2 독립 PASS · T5-E-C1 독립 PASS로 HOLD 해제 · T5-F 최종 통합 검수 PASS · S8 문서 품질 기준선 동결 · 구조/책임·Binding 미정 유지
 
 Dedicated VSS ECU(S32K344)는 Domain 의미 입력을 검증·저장한다. POLICY가 중앙 정책으로 재생 대상과 계획을 선택하고 PLAYBACK이 단일 출력 Session을 진행한다. FLOW는 이 선택 판단과 실행 흐름을 연결한다. 현재 설계 의미를 계층별로 읽도록 배치한다.
 
@@ -92,4 +92,4 @@ flowchart TB
 
 R0 구조를 유지하며 R1 Layer/Module 책임·owner·입출력·lifecycle·local contract 정규화를 완료했다. R2에서 필요한 Core Function과 의미 계약을 상세화했으며 provisional type은 실제 C 타입/구조체 확정이 아니다. 기존 의사코드는 의미 참고본이며 C 직전 typed 의사코드는 R5에서 작성하고 R5-C1에서 국소 보완했다.
 
-R1.1의 기준 v1.1과 한국어 표현 Guard를 유지한다. R2 Core 18개, R3-C1 Data·두 경계의 독립 국소 PASS, R4 공통 Contract 5개, R5-C1 typed Flow 및 R6 Header 후보의 승인 의미를 인수했다. **R6 독립 PASS를 최신 승인 기준으로 R7 내부 E2E 검수를 완료**했으며 [R7 결과](../../../../R7_RESULT_SUMMARY.md)에 전수 대응·자체 수용 판정·미정을 기록한다. 다음은 일반 채팅 R7 독립 검수다. 최신 팀 인터페이스는 EXTERNAL-IF-TBD이며 B2-R·GATE-C·실제 C 구현·Build·Flash·보드/성능 검증은 수행하지 않았다.
+R1.1의 기준 v1.1과 한국어 표현 Guard를 유지한다. R2 Core 18개, R3-C1 Data·두 경계의 독립 국소 PASS, R4 공통 Contract 5개, R5-C1 typed Flow 및 R6 Header 후보의 승인 의미를 인수했다. **R7 작성 당시 R6 독립 PASS를 기준으로 R7 내부 E2E 검수를 완료**했으며 [R7 결과](../../../../R7_RESULT_SUMMARY.md)에 전수 대응·자체 수용 판정·미정을 기록했다. 당시 결과는 일반 채팅 독립 검수로 인계했고 현재 R7은 독립 PASS다. S7 표시 정상화와 S8-T1~T4-B2·T5-A~D2 독립 PASS를 인수했다. T5-E-C1 독립 PASS로 기존 HOLD가 해제됐으며 T5-F 최종 통합 검수 PASS 후 S8 문서 품질 기준선을 동결했다. 최신 팀 인터페이스는 EXTERNAL-IF-TBD이며 B2-R·GATE-C·실제 C 구현·Build·Flash·보드/성능 검증은 수행하지 않았다.

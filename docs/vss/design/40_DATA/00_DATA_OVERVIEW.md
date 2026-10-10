@@ -2,7 +2,7 @@
 
 > 2026-10-07 · R2 Core 18개와 provisional 의미 표지 32개를 출발점으로 Data/Command 상세화
 
-> 2026-10-08 R4 · R3-C1 세 보완 및 두 함수 논리 경계 독립 PASS 기준. 공통 반복 설명을 R4 계약으로 연결하고 판정/필드/owner/pseudo-C는 보존. 일반 채팅 R4 독립 검수 대기.
+> 2026-10-08 R4 **작성 당시 이력** · R3-C1 세 보완 및 두 함수 논리 경계 독립 PASS 기준. 공통 반복 설명을 R4 계약으로 연결하고 판정/필드/owner/pseudo-C는 보존. 당시에는 일반 채팅의 독립 검수 결과를 기다렸다. 현재 R4는 독립 PASS이며 최신 Stage/게이트는 README를 따른다.
 
 기준은 Architecture Baseline / Execution Plan **v1.1**이다. 기존 5개 Layer·10개 Module·HAL/BSP/Runtime Layer Boundary 구조와 Core Function 계약은 보존한다. 이번은 논리 필드·pseudo-C이며 실제 Header/ABI·폭/packing·vendor Binding·C 구현 완료가 아니다.
 
@@ -114,11 +114,21 @@ R2 문서의 32개 이름은 당시 불투명 의미 표지다. 아래가 R3의 
 <a id="pseudo-conventions"></a>
 ## Pseudo-C 표기와 미정 범위
 
+**타입 종류는 선언에서 읽는다.** `Category: Evidence/Request/State/...`는 자료의 용도이며 구조체·enum·의미 alias 등의 종류와 별개다. 이름의 `Type` 접미어만으로 enum이라고 판단하지 않는다. 아래 선언은 모두 설계용 pseudo-C다.
+
+| 선언 종류 / 표기 | 읽는 방법과 예 |
+| --- | --- |
+| 구조체 (`struct`) | 필드를 묶는 타입. [VssInputMeta](10_INPUT_DATA.md#vssinputmeta)와 [VssTimeEvidence](10_INPUT_DATA.md#vsstimeevidence)의 `typedef struct` 선언을 확인한다. |
+| enum | 명시한 값 집합. [VssContinuity](10_INPUT_DATA.md#vsscontinuity)는 enum이며 숫자·크기는 미정이다. |
+| 의미 alias | `typedef Semantic... Vss...Type` 형태의 의미 별칭. [보조 scalar alias](10_INPUT_DATA.md#scalar-aliases)에서 별칭과 기저 표기의 관계를 확인한다. |
+| pseudo-scalar | `SemanticTimePoint`처럼 의미를 표현하는 기저값. 아래 규칙에서 의미를 설명하며 실제 C 기본형·폭·encoding은 미정이다. |
+| 포인터 / 참조 표기 | `const T *`는 참조 대상의 타입 종류와 별도로 읽는다. 읽기·부재·보호 기간은 아래 규칙과 [소유·수명 계약](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect)을 따른다. |
+
 사람이 읽는 Field 표가 의미의 기준이고 뒤의 enum/typedef/struct는 그 표현이다. `SemanticIdentity/Order/Revision/Position`은 **폭/encoding이 미정인 의미 scalar**, `SemanticTimePoint/Duration`는 시간/기간 scalar, `SemanticCount/ByteCount/FrameCount`는 서로 단위가 다른 개수, `SemanticBool`은 의미 참/거짓 표기다. `SemanticOrigin/Owner/Descriptor/PolicyCondition/Format/Boundary/Stage/Cause/Action/ContractValue`도 제한된 기존 의미의 불투명 scalar다. 실제 typedef 기반 C primitive/숫자 enum/bit layout을 지정하는 표기가 아니다.
 
 `PcmSamplesRef`, `CompressedBytesRef`, `RawFactValue`는 중립 PCM·압축 bytes 참조/해석 전 사실의 표기이며 실제 주소/포인터형·vendor type은 미정이다. `const T *`는 읽기 borrow 또는 독립 보호된 불변 자료 참조다. 단순 임시 인자 주소의 장기 저장을 허용하지 않는다. 필드에 '없음'이 허용된 경우만 logical null 의미를 쓰며 실제 C optional/복사/참조 표현은 후속에서 정한다. pointer+Count 목록은 typed 논리 자료의 범위를 보이는 표기이고 Queue/array 용량/할당 방식의 구현 선택이 아니다.
 
-Data 상세의 owner header 후보는 **논리 의미 소유 그룹**이다. 실제 Header filename·public/internal·include 방향·기존 Header 재사용/신규 Header 필요 여부는 R6에서 확정한다. alias 이름 하나당 Header/struct/ID 생성 API를 만들지 않는다.
+Data 상세의 owner header 후보는 **논리 의미 소유 그룹**이다. R6의 [선언 경계 후보](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates)와 [타입 소유권 대응표](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)에서 `H-INPUT`/`H-TIME` 같은 label과 논리 가시성·include 방향을 확인한다. 이 label은 실제 `.h` 파일명이나 파일 실존·구현 완료를 뜻하지 않는다. 실제 Header filename·기존 Header 재사용/신규 Header 필요 여부·C ABI는 미정이다. alias 이름 하나당 Header/struct/ID 생성 API를 만들지 않는다.
 
 모든 상세에서 미정으로 유지한 항목: 실제 field width/enum 숫자·alignment/packing/ABI·메모리 배치·용량, 실제 `.c/.h`/RTD·DMA·TCD, Task/Queue/Mutex, callback/자료 복사·참조 보존 수단, 물리 actual/no-output/전체 종료 충분조건, decoder/PCM format·image/Asset table, exact cause/Recovery Action·timeout/retry·Hold/패턴/초기 Availability·전체 status reduction. [기존 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md)는 보존했다.
 
@@ -126,4 +136,4 @@ Data 상세의 owner header 후보는 **논리 의미 소유 그룹**이다. 실
 
 Occurrence/Session/Attempt·single writer, winner ≠ prepared ≠ start accepted ≠ actual start, OUTPUT_START_CONFIRMED / NO_START_CONFIRMED / OUTPUT_TERMINATION_CONFIRMED, late/uncertain/QUARANTINED, 정확히 PCM A/B, source consumed ≠ safe return ≠ output termination ≠ retirement, 기존 Fault 5종·복구 수행 후 별도 검증·현재 대상 해제, WINDOW [구현 보류 — 설계 유지]를 유지한다. 원본 first-start age < 2초는 [잠정]이며 정확히 2초 불가, USE_LIMIT 별도 조건·Hold 기산/재실행 방어는 바꾸지 않았다.
 
-R3 Data 상세/선언을 기준으로 R4에서 [공통 Contract](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md)와 필요한 local 링크만 정리했다. [참고 의사코드](../60_PSEUDOCODE/00_PSEUDOCODE_OVERVIEW.md)·R6 skeleton·Binding은 원문 그대로다. R4 자체 검수 뒤 중단하고 독립 PASS 전 R5 진행은 금지한다. R5/R6/R7/B2-R·C 구현은 수행하지 않았다.
+다음은 R4 작성 당시 범위·게이트 이력이다. R3 Data 상세/선언을 기준으로 R4에서 [공통 Contract](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md)와 필요한 local 링크만 정리했다. [참고 의사코드](../60_PSEUDOCODE/00_PSEUDOCODE_OVERVIEW.md)·R6 skeleton·Binding은 원문 그대로다. R4 자체 검수 뒤 중단했고 당시 독립 승인 이전에는 R5 진행을 금지했다. 당시 R5/R6/R7/B2-R·C 구현은 수행하지 않았다. 현재 R4는 독립 PASS이며 최신 Stage/게이트는 README를 따른다.

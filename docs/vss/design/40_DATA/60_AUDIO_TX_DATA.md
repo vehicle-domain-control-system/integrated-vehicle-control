@@ -7,6 +7,12 @@
 <a id="tx"></a>
 AUDIO TX는 실제 하위 요청 전의 operation·PCM 접근 보호와 후속 사실을 소유한다. HAL Boundary는 요청 전에 저장한 불변 귀속과 raw 포착을 소유한다. HAL/RUNTIME을 독립 Module로 만들지 않는다. 물리 SAI/eDMA/codec 관측의 충분조건·abort postcondition은 B2-R/보드 검증 TBD다.
 
+**타입 읽기:** 아래 선언은 구조체 14개, enum 8개, 의미 alias 5개다. `Category`는 자료의 역할이며 선언 종류와 다르다. 각 구조체의 짧은 안내는 구성원 타입과 실제 정의 위치만 연결한다. 필드의 의미·생성 주체·유효 조건은 기존 Field 정의와 Lifetime / Contract 설명을 따른다.
+
+`const T *`는 T의 선언 종류와 별도로 읽는 포인터 참조다. 읽기 참조는 원본 owner·writer를 이전하지 않으며, 필요한 원자료는 실제 소비·후속 참조 종료까지 보호한다. 인자 주소의 수명과 참조 자료의 수명은 [소유·수명 계약](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect)을 따른다. 부재가 허용되는 조건은 각 필드 정의에서 확인한다. `PcmSamplesRef`는 중립 PCM 참조이고 `RawFactValue`·`Semantic...`은 pseudo-scalar 표기다. 실제 C 기본형·포인터형·폭·ABI는 [pseudo-C 규칙](00_DATA_OVERVIEW.md#pseudo-conventions)에 따라 미정이다.
+
+**논리 Header와 실제 구현:** 아래 `H-*`는 [R6 타입 소유권 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)의 label이다. [선언 경계 후보·확인 범위](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates)에서 `H-TX`는 제공된 `AudioDmaTransport.h` 재사용 우선 후보지만 현재 R3 typed 선언은 없다. `H-CONTROL`의 `AudioCodec.h` / `AudioClock.h`는 include·호출 근거만 있고 Header 본문은 미제공이다. `H-HAL`은 transport/BSP 내부의 논리 경계이며 개별 등록·raw 경계는 미구현이다. 논리 계약과 실제 Header 구현을 구분하며 새 Header 파일·ABI·RTD/DMA 동작을 확정하지 않는다.
+
 <a id="vssoutputscope"></a>
 ## VssOutputScope — scalar enum
 **Category: Descriptor**
@@ -26,7 +32,7 @@ AUDIO TX는 실제 하위 요청 전의 operation·PCM 접근 보호와 후속 �
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO TX 출력 범위 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-TX`.
 
 ```c
 typedef enum
@@ -39,6 +45,8 @@ typedef enum
 <a id="vsspcmhandoffcommand"></a>
 ## VssPcmHandoffCommand
 **Category: Command**
+
+**선언 종류:** 구조체 (`struct`).
 
 안정된 유효 PCM 구간을 해당 Buffer/회차로 인계한다. 출력 start/stop 제어와 필드·자료 보호 수명이 달라 분리한다.
 
@@ -67,9 +75,18 @@ AUDIO STREAM이 DRIVER 호출 전 HANDOFF_PENDING과 불변 Command를 보호한
 
 **관련 Contract:** [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO STREAM→AUDIO TX PCM 인계 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-STREAM`.
+
+TX 소비용 중립 인계 선언은 [H-TX 재사용 우선 후보](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#include-direction)다. 실제 선언 파일은 미정이다.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 구조체 값: `key` → [VssPcmCycleKey](50_AUDIO_STREAM_DATA.md#vsspcmcyclekey).
+- 중립 참조: `samples` → [PcmSamplesRef](00_DATA_OVERVIEW.md#pseudo-conventions).
+- pseudo-scalar: `firstValidFrame`, `validFrameCount` → [SemanticFrameCount](00_DATA_OVERVIEW.md#pseudo-conventions); `lastForSegment` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 의미 alias: `format` → [VssPcmFormatType](50_AUDIO_STREAM_DATA.md#vsspcmformattype).
 
 ```c
 typedef struct
@@ -106,7 +123,7 @@ typedef struct
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO TX 제어 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-TX`.
 
 ```c
 typedef enum
@@ -120,7 +137,9 @@ typedef enum
 ## VssTxControlCommand
 **Category: Command**
 
-PCM 주소 없이 동일 Attempt의 start/stop 범위를 전달한다. 원래 첫 실제 시작 조건은 필요한 start에만 전달하고 Started 정상 후속 cue에 재적용하지 않는다.
+**선언 종류:** 구조체 (`struct`).
+
+PCM 주소 없이 동일 Attempt의 start/stop 범위를 전달한다. 원래 첫 실제 시작 조건은 필요한 start에만 전달하고 Started 정상 후속 cue에 재적용하지 않는다. `scope` enum 자체는 SEGMENT identity가 아니며, [원 Attempt·구간·operation의 STOP 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#stop-scope)을 함께 확인한다.
 
 **Owner:** AUDIO STREAM 제어 의미  
 **Producer:** AudioStream_RequestControl 또는 AudioStream_Advance 내부 진행  
@@ -143,9 +162,15 @@ PCM 주소 없이 동일 Attempt의 start/stop 범위를 전달한다. 원래 �
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** AUDIO TX 제어 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-TX`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- enum: `action` → [VssTxControlAction](#vsstxcontrolaction); `scope` → [VssOutputScope](#vssoutputscope).
+- 구조체 읽기 참조 (`const T *`): `firstStartMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta).
 
 ```c
 typedef struct
@@ -181,7 +206,7 @@ typedef struct
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO TX 수용 결과 후보 — R6에서 확정.
+**논리 Header(R6):** `H-TX`.
 
 ```c
 typedef enum
@@ -197,6 +222,8 @@ typedef enum
 <a id="vsstxoperation"></a>
 ## VssTxOperation
 **Category: Context**
+
+**선언 종류:** 구조체 (`struct`).
 
 개별 음향의 하위 전송/제어 요구에 대한 소프트웨어 귀속·장치 미래 접근/출력 보호를 유지한다. 이 operation의 수명이 vendor의 지속 스트림 등록 수명과 1:1이라고 가정하지 않는다. 여러 owner의 상태를 넣는 종합 Context가 아니다.
 
@@ -225,9 +252,16 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO TX operation 내부 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-TX`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `operation` → [VssOperationKeyType](#vssoperationkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- enum: `scope` → [VssOutputScope](#vssoutputscope); `requestState` → [VssTxRequestState](#vsstxrequeststate).
+- 구조체 읽기 참조 (`const T *`): `handoff` → [VssPcmHandoffCommand](#vsspcmhandoffcommand); `activationAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
+- pseudo-scalar: `deviceAccessPossible`, `futureOutputPossible` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 ```c
 typedef struct
@@ -248,6 +282,8 @@ typedef struct
 <a id="vsstxrequestresult"></a>
 ## VssTxRequestResult
 **Category: Result**
+
+**선언 종류:** 구조체 (`struct`).
 
 동기 요구의 수용/부분 효력만 반환한다. 여러 후속 실제 사실을 하나의 Progress 슬롯으로 덮지 않는다.
 
@@ -271,9 +307,14 @@ typedef struct
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** AUDIO TX 수용 결과 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-TX`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `operation` → [VssOperationKeyType](#vssoperationkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- enum: `state` → [VssTxRequestState](#vsstxrequeststate).
 
 ```c
 typedef struct
@@ -306,7 +347,7 @@ typedef struct
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** HAL/전송 관측 근거 후보 — R6에서 확정.
+**논리 Header(R6):** `H-TX`.
 
 ```c
 typedef enum
@@ -320,6 +361,8 @@ typedef enum
 <a id="vssobservationcoverage"></a>
 ## VssObservationCoverage
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 실제 output/no-output/접근 차단을 판단할 관측 경계·기간과 source/build 문맥을 보존한다. 현재 idle이 과거 무출력 증거로 바뀌지 않게 한다.
 
@@ -344,9 +387,15 @@ typedef enum
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** HAL/전송 관측 근거 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-TX`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `boundary` → [VssObservationBoundaryType](#vssobservationboundarytype); `binding` → [VssBindingKeyType](#vssbindingkeytype).
+- 구조체 값: `interval` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
+- enum: `validity` → [VssCoverageValidity](#vsscoveragevalidity).
 
 ```c
 typedef struct
@@ -382,7 +431,7 @@ typedef struct
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO TX 출력 Evidence 후보 — R6에서 확정.
+**논리 Header(R6):** `H-TX`.
 
 ```c
 typedef enum
@@ -398,6 +447,8 @@ typedef enum
 <a id="vsstxoutputevidence"></a>
 ## VssTxOutputEvidence
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 원래 장치 범위의 새 출력·과거 무출력·미래 차단/종료 근거다. raw complete나 buffer 소비를 actual/end로 자동 변환하지 않는다.
 
@@ -424,9 +475,15 @@ typedef enum
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** AUDIO TX 출력 Evidence 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-TX`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `operation` → [VssOperationKeyType](#vssoperationkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype).
+- enum: `kind` → [VssTxOutputFactKind](#vsstxoutputfactkind); `scope` → [VssOutputScope](#vssoutputscope).
+- 구조체 값: `occurredAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime); `coverage` → [VssObservationCoverage](#vssobservationcoverage).
 
 ```c
 typedef struct
@@ -445,6 +502,8 @@ typedef struct
 <a id="vsspcmconsumptionevidence"></a>
 ## VssPcmConsumptionEvidence
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 해당 PCM 구간의 source 소비 사실이다. CPU safe return이나 speaker 출력 종료가 아니므로 별도 record다.
 
@@ -470,9 +529,15 @@ typedef struct
 
 **관련 Contract:** [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO TX PCM 소비 Evidence 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-TX`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `operation` → [VssOperationKeyType](#vssoperationkeytype).
+- 구조체 값: `key` → [VssPcmCycleKey](50_AUDIO_STREAM_DATA.md#vsspcmcyclekey); `occurredAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
+- pseudo-scalar: `firstFrame`, `frameCount` → [SemanticFrameCount](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 ```c
 typedef struct
@@ -490,6 +555,8 @@ typedef struct
 <a id="vsspcmreturnevidence"></a>
 ## VssPcmReturnEvidence
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 옛 작업/PCM 사용 회차의 참조 종료·내용 재접근 금지 또는 명확한 무접근 거부를 입증한다. 같은 A/B 물리 주소의 차기 DMA 사용까지 영구히 금지한다는 뜻은 아니다. 소비 IRQ/abort 반환과 다른 안전 근거다.
 
@@ -516,9 +583,15 @@ C1-03의 옛 내용 재접근 금지와 차기 방문 전 현재 쓰기 조건�
 
 **관련 Contract:** [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** AUDIO TX PCM 반환 Evidence 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-TX`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `operation` → [VssOperationKeyType](#vssoperationkeytype).
+- 구조체 값: `key` → [VssPcmCycleKey](50_AUDIO_STREAM_DATA.md#vsspcmcyclekey); `basis` → [VssObservationCoverage](#vssobservationcoverage).
+- pseudo-scalar: `noFutureAccess` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
 
 ```c
 typedef struct
@@ -541,6 +614,8 @@ VssTxProgress는 VssTxRequestResult, VssTxOutputEvidence, VssPcmConsumptionEvide
 <a id="vsshaltxregistration"></a>
 ## VssHalTxRegistration
 **Category: Context**
+
+**선언 종류:** 구조체 (`struct`).
 
 개별 AUDIO TX 요구의 operation/Attempt·PCM 회차를 사전에 보호하는 불변 **소프트웨어 귀속**이다. vendor의 지속 스트림 등록 전체를 이 record 하나로 표현하는 타입이 아니다. callback 처리 시 현재 Attempt/Buffer를 읽어 원래 identity를 재생산하지 않도록 한다.
 
@@ -572,9 +647,14 @@ vendor 지속 등록과 개별 software 귀속의 공통 조건은 [Buffer C1-02
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [PCM·전송](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#buffer)
 
-**Provisional owner header 후보:** HAL Boundary TX 귀속 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HAL`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `registration` → [VssRegistrationKeyType](#vssregistrationkeytype); `operation` → [VssOperationKeyType](#vssoperationkeytype); `attempt` → [VssAttemptKeyType](40_PLAYBACK_DATA.md#vssattemptkeytype); `binding` → [VssBindingKeyType](#vssbindingkeytype).
+- 구조체 읽기 참조 (`const T *`): `pcm` → [VssPcmHandoffCommand](#vsspcmhandoffcommand).
 
 ```c
 typedef struct
@@ -592,6 +672,8 @@ typedef struct
 <a id="vsshaldeviceregistration"></a>
 ## VssHalDeviceRegistration
 **Category: Context**
+
+**선언 종류:** 구조체 (`struct`).
 
 장치 제어의 원래 장치/구성/operation을 보호한다. PCM 귀속과 필드/참조 대상이 달라 HAL 등록을 union-of-everything으로 만들지 않는다.
 
@@ -617,9 +699,14 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** HAL Boundary 장치 귀속 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HAL`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `registration` → [VssRegistrationKeyType](#vssregistrationkeytype); `operation` → [VssOperationKeyType](#vssoperationkeytype); `configuration` → [VssConfigurationKeyType](#vssconfigurationkeytype); `binding` → [VssBindingKeyType](#vssbindingkeytype).
+- enum: `device` → [VssDeviceKind](#vssdevicekind).
 
 ```c
 typedef struct
@@ -637,6 +724,8 @@ typedef struct
 <a id="vssrawobservation"></a>
 ## VssRawObservation
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 원래 등록에 연결된 해석 전 장치 사실·시각/관측 범위·손실이다. Session 결과/CPU 사용권을 HAL이 판정하지 않는다.
 
@@ -658,15 +747,23 @@ typedef struct
 
 ISR은 짧게 포착·보호하고 기존 후속 처리를 알린다. 사실은 소비/보호 추적 완료까지, 등록은 별도 참조 종료까지 유지한다. 알림 합침/overflow가 사실 조용한 삭제를 뜻하면 안 된다. raw storage 부족이면 손실을 남겨 상위가 성공/미시작/종료를 확정하지 못하게 한다. 실제 저장 수단은 미정이다.
 
+`registration`의 `const VssRegistrationKeyType *`는 [의미 alias](#vssregistrationkeytype) 값의 읽기 참조다. 구조체 전체를 가리키는 표기가 아니다. 원귀속 확인 불가 시 없음이며, key와 원 등록 기록은 위의 별도 참조 종료 조건을 따른다.
+
 raw 사실이 지속 스트림 등록만 식별한 경우에는 그 사실을 그대로 보존한다. 개별 음향으로의 적용은 [사전 소프트웨어 귀속과의 검증](#vsshaltxregistration)이 추가로 필요하며 HAL이 최신 Session/Attempt를 붙이지 않는다. 실제 대응 방법은 B2-R TBD다.
 
 **관련 Function:** [AudioHAL_Callback](../30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiohal-callback) · [AudioTx_Advance](../30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiotx-advance) · [AudioControl_Service](../30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiocontrol-service)
 
 **관련 Contract:** [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** HAL raw 사실 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HAL`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias 읽기 참조 (`const T *`): `registration` → [VssRegistrationKeyType](#vssregistrationkeytype).
+- pseudo-scalar: `rawFact` → [RawFactValue](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 구조체 값: `occurredAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime); `capturedAt` → [VssTimeEvidence](10_INPUT_DATA.md#vsstimeevidence); `coverage` → [VssObservationCoverage](#vssobservationcoverage).
 
 ```c
 typedef struct
@@ -704,7 +801,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** AUDIO CONTROL 구성 인터페이스 후보 — R6에서 확정.
+**논리 Header(R6):** `H-CONTROL`.
 
 ```c
 typedef enum
@@ -735,7 +832,7 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** AUDIO CONTROL 제어 후보 — R6에서 확정.
+**논리 Header(R6):** `H-CONTROL`.
 
 ```c
 typedef enum
@@ -749,6 +846,8 @@ typedef enum
 <a id="vssdevicecontrolintent"></a>
 ## VssDeviceControlIntent
 **Category: Command**
+
+**선언 종류:** 구조체 (`struct`).
 
 동일 장치/구성의 준비·무효화/허용 복구 요구다. 진행만 필요한 호출은 새 Intent 없이 기존 control 문맥과 시간으로 처리한다.
 
@@ -774,9 +873,15 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** AUDIO CONTROL 제어 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-CONTROL`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `operation` → [VssOperationKeyType](#vssoperationkeytype); `configuration` → [VssConfigurationKeyType](#vssconfigurationkeytype).
+- enum: `device` → [VssDeviceKind](#vssdevicekind); `action` → [VssDeviceAction](#vssdeviceaction).
+- 구조체 읽기 참조 (`const T *`): `recoveryPermission` → [VssRecoveryPermission](70_DIAGNOSTIC_DATA.md#vssrecoverypermission).
 
 ```c
 typedef struct
@@ -813,7 +918,7 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** AUDIO CONTROL readiness 후보 — R6에서 확정.
+**논리 Header(R6):** `H-CONTROL`.
 
 ```c
 typedef enum
@@ -829,6 +934,8 @@ typedef enum
 <a id="vssdevicereadinessstate"></a>
 ## VssDeviceReadinessState
 **Category: State**
+
+**선언 종류:** 구조체 (`struct`).
 
 장치마다 독립인 현재 구성 준비 원본이다. 여러 장치 원본을 한 전체 READY boolean으로 덮지 않는다.
 
@@ -853,9 +960,14 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** AUDIO CONTROL 내부 readiness 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-CONTROL`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- enum: `device` → [VssDeviceKind](#vssdevicekind); `state` → [VssDeviceReadyState](#vssdevicereadystate).
+- 의미 alias: `configuration` → [VssConfigurationKeyType](#vssconfigurationkeytype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
 
 ```c
 typedef struct
@@ -872,6 +984,8 @@ typedef struct
 <a id="vssdevicecontrolresult"></a>
 ## VssDeviceControlResult
 **Category: Result**
+
+**선언 종류:** 구조체 (`struct`).
 
 원래 제어 요구의 수용/진행/확인·실패를 반환한다. 실제 복구 수행·별도 효과 검증은 따로 전달한다.
 
@@ -896,9 +1010,14 @@ typedef struct
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** AUDIO CONTROL 제어 결과 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-CONTROL`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias: `operation` → [VssOperationKeyType](#vssoperationkeytype); `configuration` → [VssConfigurationKeyType](#vssconfigurationkeytype).
+- enum: `device` → [VssDeviceKind](#vssdevicekind); `state` → [VssDeviceReadyState](#vssdevicereadystate).
 
 ```c
 typedef struct
@@ -921,15 +1040,15 @@ VssHalRegistration은 VssHalTxRegistration과 VssHalDeviceRegistration으로 나
 <a id="scalar-aliases"></a>
 ## 보조 scalar / 불투명 의미 표기
 
-아래는 경계 identity·정책 값의 의미 alias다. 각각 독립 struct/새 ID 생성 API를 만드는 목록이 아니다. 모든 값의 폭/encoding·확정 Header는 미정이다. 실제 producer의 원래 문맥에서 보호하고 전달 뒤 불변으로 사용한다. 회수/무효화는 해당 주 Data의 lifetime을 따른다.
+**선언 종류:** 아래 5개는 `typedef Semantic... Vss...Type` 형태의 의미 alias다. 기저 `SemanticIdentity` / `SemanticBoundary`는 [pseudo-scalar](00_DATA_OVERVIEW.md#pseudo-conventions)이며 구조체·enum과 구별한다. 각각 독립 struct/새 ID 생성 API를 만드는 목록이 아니다. 모든 값의 폭/encoding·확정 Header는 미정이다. 실제 producer의 원래 문맥에서 보호하고 전달 뒤 불변으로 사용한다. 회수/무효화는 해당 주 Data의 lifetime을 따른다.
 
-| 표기 | Producer / 의미 owner | 목적 / validity |
-| --- | --- | --- |
-| `VssOperationKeyType` | 해당 실제 요청 owner | 인과 하위 TX/device/복구 동작 key. owner 문맥과 함께 해석; 생성/alias 방지 방식 미정 |
-| `VssObservationBoundaryType` | 실제 관측 주체 | 관측한 물리/장치 범위. 충분조건은 Binding/보드 TBD |
-| `VssBindingKeyType` | HAL/BSP 현재 근거 | 원래 요청의 source/build/장치 구성 상관. actual symbol mapping 아님 |
-| `VssRegistrationKeyType` | HAL Boundary | 실제 등록/raw 참조 또는 사전 소프트웨어 귀속을 연결하는 의미 key. 둘의 1:1 동일성/구체 대응은 강제하지 않으며 현재 operation 대체 금지 |
-| `VssConfigurationKeyType` | 해당 구성 owner/실제 근거 | 원래 장치/오류/검증 구성 문맥. 실제 구성/변경 표현 미정 |
+| 표기 | Producer / 의미 owner | 목적 / validity | 논리 Header(R6) |
+| --- | --- | --- | --- |
+| <a id="vssoperationkeytype"></a>`VssOperationKeyType` | 해당 실제 요청 owner | 인과 하위 TX/device/복구 동작 key. owner 문맥과 함께 해석; 생성/alias 방지 방식 미정 | `H-TX` |
+| <a id="vssobservationboundarytype"></a>`VssObservationBoundaryType` | 실제 관측 주체 | 관측한 물리/장치 범위. 충분조건은 Binding/보드 TBD | `H-HAL` |
+| <a id="vssbindingkeytype"></a>`VssBindingKeyType` | HAL/BSP 현재 근거 | 원래 요청의 source/build/장치 구성 상관. actual symbol mapping 아님 | `H-HAL` |
+| <a id="vssregistrationkeytype"></a>`VssRegistrationKeyType` | HAL Boundary | 실제 등록/raw 참조 또는 사전 소프트웨어 귀속을 연결하는 의미 key. 둘의 1:1 동일성/구체 대응은 강제하지 않으며 현재 operation 대체 금지 | `H-HAL` |
+| <a id="vssconfigurationkeytype"></a>`VssConfigurationKeyType` | 해당 구성 owner/실제 근거 | 원래 장치/오류/검증 구성 문맥. 실제 구성/변경 표현 미정 | `H-CONTROL` |
 
 ```c
 typedef SemanticIdentity VssOperationKeyType;
@@ -939,7 +1058,7 @@ typedef SemanticIdentity VssRegistrationKeyType;
 typedef SemanticIdentity VssConfigurationKeyType;
 ```
 
-Owner header 후보는 해당 Data의 의미 owner 그룹을 따른다. R6에서 기존 Header 재사용/소유를 확인한다. 별도 공통 God Header를 만들지 않는다.
+위 label은 R6의 중립 leaf 선언 소유권이다. key의 생성·의미 책임은 표의 실제 producer에 남으며 선언 label 하나로 이전되지 않는다. [R6 타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)의 확인 범위와 미정을 따르고 별도 공통 God Header를 만들지 않는다.
 
 ## 공통 TBD / 후속 범위
 

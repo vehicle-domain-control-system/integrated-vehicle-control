@@ -1,10 +1,10 @@
 # Document Map
 
-> R7 현재 문서 탐색점. 최신 승인 기준은 R6 독립 PASS다. current 57개 경로와 기존 구조·owner·Function 계약·Data 필드·R4 Contract·R5-C1 의미를 유지한다.
+> 현재 문서 탐색점 · 2026-10-10. 최신 승인 기준은 R7 독립 PASS, S7 표시 정상화, S8-T1~T4-B2·T5-A~D2 독립 PASS다. T5-E-C1 독립 PASS로 HOLD 해제, T5-F 최종 통합 검수 PASS 및 S8 문서 품질 기준선 동결. current 57개 경로와 기존 구조·owner·Function 계약·Data 필드·R4 Contract·R5-C1 의미를 유지한다.
 
 읽는 순서: Overview → Layer → Module → Function → Data → Contract → Pseudocode → C Interface → Binding.
 
-상위 문서는 요약·관계·링크, 하위 문서는 기존 상세의 위치다. Function은 R2 상세 계약·provisional prototype까지 작성했다. Data는 R3 논리 필드·수명·pseudo-C를 작성했다. 공통 Contract는 R4 독립 PASS 기준으로 보존했고 Pseudocode는 R5-C1 typed Flow의 의미를 따른다. R6는 Header 선언 owner·가시성·typed 후보 원형·자료 수명·include 방향을 정리했고 독립 PASS를 받았다. R7은 이 사이의 내부 E2E 정합성을 검수했다. 실제 Header/ABI·물리 Binding과 최신 외부 인터페이스 대조는 미확정이다. [R7 자체 검수 결과](../../../../R7_RESULT_SUMMARY.md) 뒤 일반 채팅 독립 검수를 기다리며 독립 PASS 전 B2-R로 진입하지 않는다.
+상위 문서는 요약·관계·링크, 하위 문서는 기존 상세의 위치다. Function은 R2 상세 계약·provisional prototype까지 작성했다. Data는 R3 논리 필드·수명·pseudo-C를 작성했다. 공통 Contract는 R4 독립 PASS 기준으로 보존했고 Pseudocode는 R5-C1 typed Flow의 의미를 따른다. R6는 Header 선언 owner·가시성·typed 후보 원형·자료 수명·include 방향을 정리했고 독립 PASS를 받았다. R7은 이 사이의 내부 E2E 정합성을 검수했다. 실제 Header/ABI·물리 Binding과 최신 외부 인터페이스 대조는 미확정이다. [R7 자체 검수 결과](../../../../R7_RESULT_SUMMARY.md)는 당시 이력이며, 현재 R7·S8-T1~T4-B2·T5-A~D2는 독립 PASS다. S7 표시 정상화도 유지한다. T5-E-C1 독립 PASS로 HOLD가 해제됐으며 T5-F 최종 통합 검수 PASS에 따라 S8 문서 품질 기준선을 동결했다. IF-GATE·B2-R는 미완료이며 실제 구현은 수행하지 않았다.
 
 ## 00_OVERVIEW — 전체 구조·탐색·기존 Trace
 
@@ -131,4 +131,4 @@ R1에서는 5개 Layer와 실제 Module 10개를 표준 구성으로 정규화�
 
 R1.1의 거버넌스 동기화·표현 Guard를 유지한다. R2는 기존 13개 후보+내부 1개를 재판정해 Core 18개 상세 계약을 작성하고 Module Function 목록/링크를 맞췄다. Data/Contract/Pseudocode/C Interface/Binding은 변경하지 않았다.
 
-R3는 [32개 전수 판정](../40_DATA/00_DATA_OVERVIEW.md#type-decisions)과 [18개 Core 대응](../40_DATA/00_DATA_OVERVIEW.md#function-data-map)을 제공한다. Function/Module/Layer 본문과 Contract/Pseudocode/C Interface/Binding·Trace를 보존한 당시 이력은 해당 문서에 유지한다. [R2 국소 검토 이력/독립 PASS](../40_DATA/00_DATA_OVERVIEW.md#r2-local-review)를 연결한다. R4는 공통 계약, R5-C1은 최초 actual 세 갈래 판정·STOP 원 scope/다중 범위 정리, R6는 Header 후보를 작성하고 독립 PASS를 받았다. [R6 결과·자체 검수 이력](../../../../R6_RESULT_SUMMARY.md)은 불변 참고다. [R7 결과·자체 검수](../../../../R7_RESULT_SUMMARY.md)에 49 Trace·18 Core·8 시나리오·국소 보완을 기록했으며 일반 채팅 R7 독립 검수를 기다린다. B2-R·GATE-C·실제 구현/Build/보드 검증은 진행하지 않았다.
+R3는 [32개 전수 판정](../40_DATA/00_DATA_OVERVIEW.md#type-decisions)과 [18개 Core 대응](../40_DATA/00_DATA_OVERVIEW.md#function-data-map)을 제공한다. Function/Module/Layer 본문과 Contract/Pseudocode/C Interface/Binding·Trace를 보존한 당시 이력은 해당 문서에 유지한다. [R2 국소 검토 이력/독립 PASS](../40_DATA/00_DATA_OVERVIEW.md#r2-local-review)를 연결한다. R4는 공통 계약, R5-C1은 최초 actual 세 갈래 판정·STOP 원 scope/다중 범위 정리, R6는 Header 후보를 작성하고 독립 PASS를 받았다. [R6 결과·자체 검수 이력](../../../../R6_RESULT_SUMMARY.md)은 불변 참고다. [R7 결과·자체 검수](../../../../R7_RESULT_SUMMARY.md)에 49 Trace·18 Core·8 시나리오·국소 보완을 기록했으며 R7 작성 당시 일반 채팅 독립 검수로 인계했다. 현재 R7은 독립 PASS이며 T5 상태는 위 안내를 따른다. B2-R·GATE-C·실제 구현/Build/보드 검증은 진행하지 않았다.

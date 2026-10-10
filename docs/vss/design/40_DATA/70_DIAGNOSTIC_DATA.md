@@ -7,6 +7,12 @@
 <a id="health"></a>
 HEALTH의 진단 책임은 현재/최근 Fault·대상 제한·복구 허용/해제를 소유한다. Backend가 실제 수행하고 별도 효과 검증을 제공한다. HEALTH의 보고 책임은 반영 완료된 읽기 관측에서 외부 VSS_STATUS만 파생한다. Fault 원본과 Snapshot은 다른 수명/쓰기 계약이다.
 
+**타입 읽기:** 이 문서의 선언은 구조체 6개, enum 7개, 의미 alias 8개다. `Category`는 자료의 역할이며 선언 종류와 별개다. 각 구조체의 안내는 구성원 타입과 실제 정의 위치만 연결한다. 필드의 의미·생성 주체·유효 조건은 기존 Field 정의와 Lifetime / Contract를 따른다.
+
+`const T *`는 T의 읽기 참조이고 T는 구조체·enum·의미 alias 중 하나일 수 있다. `SemanticBool`·`SemanticCount`와 alias의 `Semantic...` 기저는 [pseudo-scalar 표기](00_DATA_OVERVIEW.md#pseudo-conventions)다. 참조 형식만으로 원본 소유권이나 보호 기간을 정하지 않으며, 실제 C 기본형·폭·ABI·복사/참조 수단은 미정이다.
+
+**논리 Header와 실제 구현:** 이 문서의 21개 선언은 [R6 타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)의 `H-HEALTH`에 연결된다. `VssFaultState`는 Private 원본 / Internal const 관측이고 나머지 다섯 구조체는 Public typed 경계다. enum·alias의 가시성은 R6의 필요한 선언 경계를 따른다. `H-HEALTH`는 [논리 선언 label](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates)이며 해당 C Header의 실존·구현은 확인되지 않았다. 선언 위치의 소유권은 진단 발견 주체·Backend 수행/검증 주체의 책임을 이전하지 않는다.
+
 <a id="vssfaultkind"></a>
 ## VssFaultKind — scalar enum
 **Category: State**
@@ -29,7 +35,7 @@ HEALTH의 진단 책임은 현재/최근 Fault·대상 제한·복구 허용/해
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** HEALTH 진단 의미 후보 — R6에서 확정.
+**논리 Header(R6):** `H-HEALTH`.
 
 ```c
 typedef enum
@@ -45,6 +51,8 @@ typedef enum
 <a id="vssdiagnosticevidence"></a>
 ## VssDiagnosticEvidence
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 오류를 처음 발견한 주체·단계·원인·대상/구성·원래 사실 시각을 보존한다. Fault 판정 전에도 전달 가능한 근거이며 실행 owner를 바꾸지 않는다.
 
@@ -72,9 +80,16 @@ typedef enum
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** 각 발견 owner의 진단 Evidence 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HEALTH`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias 값: `producer` → [VssOwnerKeyType](30_SELECTION_DATA.md#vssownerkeytype); `stage` → [VssDiagnosticStageType](#vssdiagnosticstagetype); `cause` → [VssCauseType](#vsscausetype).
+- 의미 alias 값: `target` → [VssTargetKeyType](#vsstargetkeytype); `configuration` → [VssConfigurationKeyType](60_AUDIO_TX_DATA.md#vssconfigurationkeytype).
+- 의미 alias 읽기 포인터 (`const T *`): `operation` → [VssOperationKeyType](60_AUDIO_TX_DATA.md#vssoperationkeytype).
+- 구조체 값: `occurredAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
 
 ```c
 typedef struct
@@ -88,6 +103,8 @@ typedef struct
     VssFactTime occurredAt;
 } VssDiagnosticEvidence;
 ```
+
+`operation`은 구조체가 아닌 의미 alias 값의 읽기 포인터다. 실제 하위 작업 근거가 없는 진단에서는 부재가 허용되며, 부재의 C 표현과 참조 보호는 기존 Field 정의·Lifetime 및 [소유·수명 계약](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect)을 따른다.
 
 
 
@@ -110,7 +127,7 @@ typedef struct
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** HEALTH 내부 Fault 후보 — R6에서 확정.
+**논리 Header(R6):** `H-HEALTH`.
 
 ```c
 typedef enum
@@ -123,6 +140,8 @@ typedef enum
 <a id="vssfaultstate"></a>
 ## VssFaultState
 **Category: State**
+
+**선언 종류:** 구조체 (`struct`).
 
 현재 대상의 Fault instance와 제한·원래 진단을 보존한다. 새 현재 Fault가 옛 복구 성공으로 지워지지 않게 한다.
 
@@ -151,9 +170,18 @@ HEALTH만 current/recent·제한을 변경한다. 해제는 같은 현재 대상
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** HEALTH 내부 Fault 상태 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HEALTH`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias 값: `instance` → [VssFaultInstanceKeyType](#vssfaultinstancekeytype).
+- enum 값: `kind` → [VssFaultKind](#vssfaultkind).
+- 의미 alias 값: `target` → [VssTargetKeyType](#vsstargetkeytype); `configuration` → [VssConfigurationKeyType](60_AUDIO_TX_DATA.md#vssconfigurationkeytype).
+- enum 값: `recordState` → [VssFaultRecordState](#vssfaultrecordstate).
+- 구조체 읽기 참조 (`const T *`): `diagnosis` → [VssDiagnosticEvidence](#vssdiagnosticevidence).
+- 의미 alias 값: `restriction` → [VssRestrictionType](#vssrestrictiontype); `revision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
 
 ```c
 typedef struct
@@ -169,11 +197,15 @@ typedef struct
 } VssFaultState;
 ```
 
+`diagnosis`는 원래 진단 구조체의 읽기 참조다. HEALTH가 현재/최근 Fault 원본을 변경해도 참조한 진단의 producer·발견 사실을 바꾸지 않는다. 진단 자료의 보호·폐기는 위 Lifetime을 따른다.
+
 
 
 <a id="vssrecoverypermission"></a>
 ## VssRecoveryPermission
 **Category: Command**
+
+**선언 종류:** 구조체 (`struct`).
 
 HEALTH가 현재 대상/범위에 허용한 제한된 복구 의미다. FLOW가 이전 출력 retirement·자원 안전 종료를 확인해 Backend에 이 허용을 연결한다. 허용이 실제 수행은 아니다.
 
@@ -200,9 +232,14 @@ HEALTH가 현재 대상/범위에 허용한 제한된 복구 의미다. FLOW가 
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** HEALTH 복구 허용 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HEALTH`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias 값: `permission` → [VssRecoveryKeyType](#vssrecoverykeytype); `faultInstance` → [VssFaultInstanceKeyType](#vssfaultinstancekeytype); `faultRevision` → [VssRevisionType](10_INPUT_DATA.md#vssrevisiontype).
+- 의미 alias 값: `target` → [VssTargetKeyType](#vsstargetkeytype); `configuration` → [VssConfigurationKeyType](60_AUDIO_TX_DATA.md#vssconfigurationkeytype); `action` → [VssRecoveryActionType](#vssrecoveryactiontype).
 
 ```c
 typedef struct
@@ -238,7 +275,7 @@ typedef struct
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** Backend 복구 Evidence 후보 — R6에서 확정.
+**논리 Header(R6):** `H-HEALTH`.
 
 ```c
 typedef enum
@@ -252,6 +289,8 @@ typedef enum
 <a id="vssrecoveryperformedevidence"></a>
 ## VssRecoveryPerformedEvidence
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 허용된 실제 복구 동작을 수행했는지의 사실이다. re-init API 성공만으로 정상/clear를 선언하지 않는다.
 
@@ -278,9 +317,16 @@ typedef enum
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async)
 
-**Provisional owner header 후보:** Backend 수행 Evidence 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HEALTH`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias 값: `permission` → [VssRecoveryKeyType](#vssrecoverykeytype); `target` → [VssTargetKeyType](#vsstargetkeytype); `configuration` → [VssConfigurationKeyType](60_AUDIO_TX_DATA.md#vssconfigurationkeytype).
+- 의미 alias 값: `operation` → [VssOperationKeyType](60_AUDIO_TX_DATA.md#vssoperationkeytype).
+- enum 값: `effect` → [VssRecoveryEffect](#vssrecoveryeffect).
+- 구조체 값: `occurredAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
 
 ```c
 typedef struct
@@ -299,6 +345,8 @@ typedef struct
 <a id="vssrecoveryverificationevidence"></a>
 ## VssRecoveryVerificationEvidence
 **Category: Evidence**
+
+**선언 종류:** 구조체 (`struct`).
 
 실제 수행 뒤 효과를 별도로 검증한 근거다. 수행 결과와 producer 시점/충분조건이 달라 분리한다.
 
@@ -325,9 +373,16 @@ typedef struct
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault) · [비동기 근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** Backend 검증 Evidence 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HEALTH`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- 의미 alias 값: `permission` → [VssRecoveryKeyType](#vssrecoverykeytype); `performedOperation` → [VssOperationKeyType](60_AUDIO_TX_DATA.md#vssoperationkeytype); `target` → [VssTargetKeyType](#vsstargetkeytype).
+- 의미 alias 값: `configuration` → [VssConfigurationKeyType](60_AUDIO_TX_DATA.md#vssconfigurationkeytype).
+- enum 값: `effect` → [VssRecoveryEffect](#vssrecoveryeffect).
+- 구조체 값: `verifiedAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
 
 ```c
 typedef struct
@@ -363,7 +418,7 @@ typedef struct
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** HEALTH 평가 반환 후보 — R6에서 확정.
+**논리 Header(R6):** `H-HEALTH`.
 
 ```c
 typedef enum
@@ -404,7 +459,7 @@ typedef enum
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** HEALTH 보고 생성 결과 후보 — R6에서 확정.
+**논리 Header(R6):** `H-HEALTH`.
 
 ```c
 typedef enum
@@ -435,7 +490,7 @@ typedef enum
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** HEALTH 보고 의미 후보 — R6에서 확정.
+**논리 Header(R6):** `H-HEALTH`.
 
 ```c
 typedef enum
@@ -466,7 +521,7 @@ typedef enum
 
 **관련 Contract:** [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault)
 
-**Provisional owner header 후보:** HEALTH 보고 의미 후보 — R6에서 확정.
+**논리 Header(R6):** `H-HEALTH`.
 
 ```c
 typedef enum
@@ -479,6 +534,8 @@ typedef enum
 <a id="vssstatussnapshot"></a>
 ## VssStatusSnapshot
 **Category: Snapshot**
+
+**선언 종류:** 구조체 (`struct`).
 
 현재 원본의 반영 완료·일관된 관측에서 파생한 VSS_STATUS다. Fault/ledger/Session의 두 번째 authoritative state가 아니다.
 
@@ -508,9 +565,21 @@ VssStatusBuildResult=CREATED일 때만 생성하고 전달 뒤 불변이다. 포
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [고장·복구](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#fault) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** HEALTH 보고 Snapshot 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header(R6):** `H-HEALTH`.
 
 ### Pseudo-C
+
+**구성원 타입 → 정의 위치**
+
+- enum 값: `state` → [VssReportedPlaybackState](#vssreportedplaybackstate).
+- 의미 alias 값: `availability` → [VssAvailabilityValueType](#vssavailabilityvaluetype).
+- enum 값: `serviceLevel` → [VssServiceLevel](#vssservicelevel).
+- pseudo-scalar 값: `accepting` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions).
+- enum 값 목록 읽기 포인터 (`const T *`): `currentFaults` → [VssFaultKind](#vssfaultkind).
+- pseudo-scalar 값: `currentFaultCount` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+- enum 값 목록 읽기 포인터 (`const T *`): `recentFaults` → [VssFaultKind](#vssfaultkind).
+- pseudo-scalar 값: `recentFaultCount` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+- 구조체 값: `basis` → [VssReadBasis](30_SELECTION_DATA.md#vssreadbasis).
 
 ```c
 typedef struct
@@ -527,23 +596,25 @@ typedef struct
 } VssStatusSnapshot;
 ```
 
+두 `const VssFaultKind *`의 원소는 enum 값이다. `currentFaultCount`·`recentFaultCount`는 각각 해당 목록의 유효 범위를 정한다. 목록 storage와 `basis` 내부 표지의 보호 기간은 위 Lifetime을 따르며, count는 배열 용량·C 정수 폭·통신 저장 방식을 확정하지 않는다.
+
 accepting=false여도 기존 duplicate·유효 CLEAR·품질/기한의 안전 경로는 계속된다. Audio Fault와 입력 수용 가능성은 별개다. WINDOW [구현 보류 — 설계 유지] 자체는 Fault/DEGRADED 근거가 아니다. QUARANTINED는 기존 FAULT/UNAVAILABLE 연결을 유지한다. 전체 보고 조합/초기 Availability를 새 정책으로 확정하지 않는다.
 
 <a id="scalar-aliases"></a>
 ## 보조 scalar / 불투명 의미 표기
 
-아래는 경계 identity·정책 값의 의미 alias다. 각각 독립 struct/새 ID 생성 API를 만드는 목록이 아니다. 모든 값의 폭/encoding·확정 Header는 미정이다. 실제 producer의 원래 문맥에서 보호하고 전달 뒤 불변으로 사용한다. 회수/무효화는 해당 주 Data의 lifetime을 따른다.
+**선언 종류:** 아래 8개는 의미 alias다. 표의 기저는 이 절의 `typedef`에서 읽은 [pseudo-scalar](00_DATA_OVERVIEW.md#pseudo-conventions)이며 enum 값 집합이나 구조체가 아니다. 각각 독립 struct/새 ID 생성 API를 만드는 목록이 아니다. 모든 값의 폭/encoding·확정 Header는 미정이다. 실제 producer의 원래 문맥에서 보호하고 전달 뒤 불변으로 사용한다. 회수/무효화는 해당 주 Data의 lifetime을 따른다.
 
-| 표기 | Producer / 의미 owner | 목적 / validity |
-| --- | --- | --- |
-| `VssDiagnosticStageType` | 원래 발견 producer | 기존 실제 발견 단계. debug counter/새 Fault enum 아님 |
-| `VssCauseType` | 원래 발견 producer | 확인한 원인. exact cause 매핑/새 taxonomy 확정 아님 |
-| `VssTargetKeyType` | 원래 대상 관측/HEALTH 연결 | 오류/제한/복구의 실제 의미 대상. 불투명 scalar key이며 void payload/union 객체 아님 |
-| `VssFaultInstanceKeyType` | HEALTH | 현재/최근 해당 Fault 발생. 옛 복구로 새 발생 해제 방지 |
-| `VssRestrictionType` | HEALTH 기존 정책 | 현재 대상의 출력/지원 제한 의미. 전체 reduction 확정 아님 |
-| `VssRecoveryKeyType` | HEALTH | 같은 허용·수행/검증 관계. 실제 숫자/token encoding 미정 |
-| `VssRecoveryActionType` | HEALTH 기존 정책 | 허용한 기존 대상 Action/범위. exact cause 매핑·retry/fallback TBD |
-| `VssAvailabilityValueType` | HEALTH 보고 파생 | 기존 외부 Availability 값의 의미. UNAVAILABLE 연결은 유지; 초기/전체 조합 정책 TBD |
+| 표기 | Producer / 의미 owner | 목적 / validity | pseudo-scalar 기저 |
+| --- | --- | --- | --- |
+| <a id="vssdiagnosticstagetype"></a>`VssDiagnosticStageType` | 원래 발견 producer | 기존 실제 발견 단계. debug counter/새 Fault enum 아님 | [SemanticStage](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vsscausetype"></a>`VssCauseType` | 원래 발견 producer | 확인한 원인. exact cause 매핑/새 taxonomy 확정 아님 | [SemanticCause](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vsstargetkeytype"></a>`VssTargetKeyType` | 원래 대상 관측/HEALTH 연결 | 오류/제한/복구의 실제 의미 대상. 불투명 scalar key이며 void payload/union 객체 아님 | [SemanticIdentity](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vssfaultinstancekeytype"></a>`VssFaultInstanceKeyType` | HEALTH | 현재/최근 해당 Fault 발생. 옛 복구로 새 발생 해제 방지 | [SemanticIdentity](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vssrestrictiontype"></a>`VssRestrictionType` | HEALTH 기존 정책 | 현재 대상의 출력/지원 제한 의미. 전체 reduction 확정 아님 | [SemanticPolicyCondition](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vssrecoverykeytype"></a>`VssRecoveryKeyType` | HEALTH | 같은 허용·수행/검증 관계. 실제 숫자/token encoding 미정 | [SemanticIdentity](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vssrecoveryactiontype"></a>`VssRecoveryActionType` | HEALTH 기존 정책 | 허용한 기존 대상 Action/범위. exact cause 매핑·retry/fallback TBD | [SemanticAction](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vssavailabilityvaluetype"></a>`VssAvailabilityValueType` | HEALTH 보고 파생 | 기존 외부 Availability 값의 의미. UNAVAILABLE 연결은 유지; 초기/전체 조합 정책 TBD | [SemanticContractValue](00_DATA_OVERVIEW.md#pseudo-conventions) |
 
 ```c
 typedef SemanticStage VssDiagnosticStageType;
@@ -556,7 +627,7 @@ typedef SemanticAction VssRecoveryActionType;
 typedef SemanticContractValue VssAvailabilityValueType;
 ```
 
-Owner header 후보는 해당 Data의 의미 owner 그룹을 따른다. R6에서 기존 Header 재사용/소유를 확인한다. 별도 공통 God Header를 만들지 않는다.
+8개 alias의 논리 선언 위치는 [R6의 `H-HEALTH` 중립 leaf 경계](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)다. 정의 링크는 이 작은 선언군의 기존 `#scalar-aliases`를 사용한다. 실제 C typedef·Header 구현은 미정이며 표의 producer·의미 owner를 선언 label 하나로 바꾸지 않는다. 별도 공통 God Header를 만들지 않는다.
 
 ## 공통 TBD / 후속 범위
 

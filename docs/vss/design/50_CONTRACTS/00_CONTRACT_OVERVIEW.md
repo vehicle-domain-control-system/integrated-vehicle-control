@@ -1,6 +1,6 @@
 # Contract Overview — R4 Cross Contract
 
-> 2026-10-08 · R3-C1 및 잔여 함수 독립 국소 PASS 기준 · 일반 채팅 R4 독립 검수 대기
+> 2026-10-08 · **R4 작성 당시 이력** · R3-C1 및 잔여 함수 독립 국소 PASS 기준 · 당시 일반 채팅의 독립 검수 결과 대기. 현재 R4는 독립 PASS이며 최신 Stage/게이트는 README를 따른다.
 
 여러 owner에 반복된 공통 불변조건은 아래 다섯 계약에서 읽는다. Module의 책임·실패/예외, Function의 owner/Caller/Callee, Data의 필드·writer·수명은 각 local 문서에서 읽는다. 계약 링크는 상태 owner를 옮기거나 실제 C/RTD Binding을 확정하지 않는다. 기존 다섯 탐색 anchor는 유지했다.
 
@@ -49,6 +49,6 @@ R4의 논리 계약은 물리 안전성의 실측 PASS가 아니다. [기존 Bin
 
 ## 범위와 게이트
 
-실제로 반복된 규칙만 통합했으며 local 판정·상태 적용·독립 예외는 해당 원문에 남겼다. Source→Contract·파일별 변경 전후·해시/링크 검사·미해결 TBD는 결과 ZIP의 `R4_RESULT_SUMMARY.md`에 기록한다. 논리 Core 18개·5 Layer/10 Module·32 provisional 판정·기존 Data 선언/필드/owner는 유지한다. R5/R6/R7/B2-R·실제 C 구현·보드 테스트를 수행하지 않는다. R4 자체 검수 뒤 중단하고 일반 채팅 독립 PASS 전에는 R5로 진행하지 않는다.
+실제로 반복된 규칙만 통합했으며 local 판정·상태 적용·독립 예외는 해당 원문에 남겼다. Source→Contract·파일별 변경 전후·해시/링크 검사·미해결 TBD는 결과 ZIP의 `R4_RESULT_SUMMARY.md`에 기록한다. 논리 Core 18개·5 Layer/10 Module·32 provisional 판정·기존 Data 선언/필드/owner는 유지한다. R4 작성 당시에는 R5/R6/R7/B2-R·실제 C 구현·보드 테스트를 수행하지 않았으며, 자체 검수 뒤 중단하고 독립 승인 이전의 R5 진행을 금지했다. 현재 R4는 독립 PASS이며 최신 Stage/게이트는 README를 따른다.
 
 [Document Map](../00_OVERVIEW/01_DOCUMENT_MAP.md) · [기존 의사코드 참고](../60_PSEUDOCODE/00_PSEUDOCODE_OVERVIEW.md) · [C Interface 미확정](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md)

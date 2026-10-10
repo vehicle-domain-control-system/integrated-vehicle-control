@@ -106,6 +106,8 @@ typedef enum
 ## VssTimeEvidence
 **Category: Evidence**
 
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C에 논리 선언이 있다.
+
 현재 비교에 사용할 시간 문맥과 정확도·연속성을 전달한다. 처리 현재 시각은 원본 발생/출력 사실 시각을 대체하지 못한다.
 
 **Owner:** Runtime Boundary  
@@ -130,7 +132,7 @@ typedef enum
 
 **관련 Contract:** [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing)
 
-**Provisional owner header 후보:** Runtime 시간 근거 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header 소유권(R6):** [H-TIME](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates) · [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map). 실제 `.h` 파일명·C ABI는 미정이며, 해당 선언의 C Header 구현은 확인하지 않았다.
 
 ### Pseudo-C
 
@@ -144,6 +146,16 @@ typedef struct
     VssContinuity continuity;
 } VssTimeEvidence;
 ```
+
+**필드 타입과 정의 위치**
+
+| Field | 선언 Type | 종류 / 별칭 관계 | 정의 위치 |
+| --- | --- | --- | --- |
+| `domain` | `VssTimeDomainType` | 의미 alias → `SemanticIdentity` | [alias 선언](#vsstimedomaintype) |
+| `epoch` | `VssEpochType` | 의미 alias → `SemanticIdentity` | [alias 선언](#vssepochtype) |
+| `earliestNow` | `SemanticTimePoint` | 시간 pseudo-scalar | [표기 규칙](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| `latestNow` | `SemanticTimePoint` | 시간 pseudo-scalar | [표기 규칙](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| `continuity` | `VssContinuity` | enum | [enum 선언](#vsscontinuity) |
 
 
 
@@ -266,6 +278,8 @@ typedef enum
 ## VssInputMeta
 **Category: Evidence**
 
+**타입 종류:** 구조체 (`struct`) — 이 절의 Pseudo-C에 논리 선언이 있다.
+
 값과 함께 검증·보존해야 할 원래 출처·순서·시간 근거다. Network Meta 전달 방식과 identity 생성 규칙은 Binding에서 확인한다.
 
 **Owner:** INPUT의 검증된 의미 Meta. 수신 원본 생성 책임은 기존 Node Communication/TEST다.  
@@ -294,7 +308,7 @@ typedef enum
 
 **관련 Contract:** [시간·최신성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership)
 
-**Provisional owner header 후보:** INPUT Meta 인터페이스 후보 — R6에서 확정. 실제 파일명·신규 Header 필요 여부는 정하지 않는다.
+**논리 Header 소유권(R6):** [H-INPUT](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates) · [타입 대응](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map). 실제 `.h` 파일명·C ABI는 미정이며, 해당 선언의 C Header 구현은 확인하지 않았다.
 
 ### Pseudo-C
 
@@ -312,6 +326,22 @@ typedef struct
     VssContinuity continuity;
 } VssInputMeta;
 ```
+
+**필드 타입과 정의 위치**
+
+| Field | 선언 Type | 종류 / 별칭 관계 | 정의 위치 |
+| --- | --- | --- | --- |
+| `origin` | `VssOriginType` | 의미 alias → `SemanticOrigin` | [alias 선언](#vssorigintype) |
+| `source` | `VssSourceKeyType` | 의미 alias → `SemanticIdentity` | [alias 선언](#vsssourcekeytype) |
+| `generation` | `VssGenerationType` | 의미 alias → `SemanticOrder` | [alias 선언](#vssgenerationtype) |
+| `ordering` | `VssOrderingType` | 의미 alias → `SemanticOrder` | [alias 선언](#vssorderingtype) |
+| `timeDomain` | `VssTimeDomainType` | 의미 alias → `SemanticIdentity` | [alias 선언](#vsstimedomaintype) |
+| `timeEpoch` | `VssEpochType` | 의미 alias → `SemanticIdentity` | [alias 선언](#vssepochtype) |
+| `originalAt` | `SemanticTimePoint` | 시간 pseudo-scalar | [표기 규칙](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| `validUntil` | `const SemanticTimePoint *` | 시간 pseudo-scalar의 읽기 참조 | [표기 규칙](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| `continuity` | `VssContinuity` | enum | [enum 선언](#vsscontinuity) |
+
+`validUntil`는 정의된 기한이 없는 입력에서 '없음'을 허용한다. `const ... *`는 읽기 참조를 표현하며, 호출이 끝난 임시 주소의 장기 저장을 허용하지 않는다. 후속 처리에 필요한 값·내부 참조는 [기존 소유·수명 계약](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect)에 따라 보호한다. 실제 C optional/복사/참조 표현과 nullable ABI는 미정이다.
 
 
 
@@ -654,13 +684,13 @@ typedef struct
 
 | 표기 | Producer / 의미 owner | 목적 / validity |
 | --- | --- | --- |
-| `VssTimeDomainType` | Runtime/원본 producer | PRODUCT/TEST와 비교 시간 문맥. 문맥 간 임의 감산 금지 |
-| `VssEpochType` | Runtime/원본 producer | wrap/reset·연속성의 비교 범위. 실제 포착 규칙 TBD |
-| `VssOriginType` | 기존 입력 경계 → INPUT | PRODUCT/TEST 격리. 실제 Network 표현은 미정 |
-| `VssSourceKeyType` | 기존 의미 source → INPUT 검증 | 원래 출처 identity. source authority 검증 후만 적용 |
-| `VssGenerationType` | 기존 source → INPUT 검증 | 원본 세대. 재부팅/연속성 변경 규칙 TBD |
-| `VssOrderingType` | 기존 source → INPUT 검증 | 원본 순서. 도착 순서 아님 |
-| `VssRevisionType` | 각 authoritative owner | 자신의 반영 완료 변경 표지. 타 owner를 대신해 생성하지 않음 |
+| <a id="vsstimedomaintype"></a>`VssTimeDomainType` | Runtime/원본 producer | PRODUCT/TEST와 비교 시간 문맥. 문맥 간 임의 감산 금지 |
+| <a id="vssepochtype"></a>`VssEpochType` | Runtime/원본 producer | wrap/reset·연속성의 비교 범위. 실제 포착 규칙 TBD |
+| <a id="vssorigintype"></a>`VssOriginType` | 기존 입력 경계 → INPUT | PRODUCT/TEST 격리. 실제 Network 표현은 미정 |
+| <a id="vsssourcekeytype"></a>`VssSourceKeyType` | 기존 의미 source → INPUT 검증 | 원래 출처 identity. source authority 검증 후만 적용 |
+| <a id="vssgenerationtype"></a>`VssGenerationType` | 기존 source → INPUT 검증 | 원본 세대. 재부팅/연속성 변경 규칙 TBD |
+| <a id="vssorderingtype"></a>`VssOrderingType` | 기존 source → INPUT 검증 | 원본 순서. 도착 순서 아님 |
+| <a id="vssrevisiontype"></a>`VssRevisionType` | 각 authoritative owner | 자신의 반영 완료 변경 표지. 타 owner를 대신해 생성하지 않음 |
 
 ```c
 typedef SemanticIdentity VssTimeDomainType;
