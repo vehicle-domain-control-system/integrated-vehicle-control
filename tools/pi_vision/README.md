@@ -1,8 +1,8 @@
 # Pi Vision — 라즈베리파이 카메라 사람 수 인식 → CIS 전송
 
 Raspberry Pi Camera Module 3로 사람 수(0~5)를 세어 OpenSDA USB 시리얼(UART)로 CIS(S32K144)에 보낸다.
-이 링크는 **CIS 모듈 내부 통신**이다. 프레임 형식은 `pi_protocol.py` 맨 위 설명과
-`firmware/CIS/src/pi_protocol.h`에 있으며, 두 구현은 서로 같은 형식을 쓴다.
+프레임 형식은 **UART-C v1**이다 (`docs/network/interface/03_COMMUNICATION/30_UART_C.md`, PR #68 · PROPOSED).
+`pi_protocol.py`와 `firmware/CIS/src/pi_protocol.h`가 같은 형식을 구현하며, 서로 맞는지는 교차 검증했다.
 
 > 영상은 메모리에서만 처리하고 파일로 저장하거나 외부로 보내지 않는다 (CIS-SYS-FUN-024).
 > 보내는 것은 사람 수와 품질 정보뿐이다.
@@ -90,16 +90,26 @@ python3 vision_sender.py --dry-run --simulate 0,2             # 시리얼 포트
 `--model`/`--imgsz`/`--conf`(YOLO 가중치·입력 크기·신뢰도),
 `--source`(`picamera`, USB 카메라 번호 `0`, 또는 동영상 파일 — PC에서 검출기를 시험할 때).
 
+## 보내는 프레임 (UART-C v1)
+
+| 메시지 | 타입 | 방향 | 주기 | 내용 |
+|---|---|---|---|---|
+| `P_VISION_RESULT` | 0x60 | Pi → CIS | 100 ms | 부팅 번호, 판정 번호, 판정 후 경과(AGE), **존재 여부와 인원수 각각의 값·유효성·사유**, 기능 상태, 고장 코드 |
+| `P_VISION_STATUS` | 0x61 | Pi → CIS | 1000 ms (상태가 바뀌면 즉시) | 기능 상태, 현재/최근 고장, 영향받는 값(존재/인원수) |
+| `P_PERMISSION` | 0x62 | CIS → Pi | 500 ms | 차량 전원 허용 (CIS가 Domain 값을 중계. 현재는 `UNKNOWN`) |
+
 ## 동작 규칙
 
 - **판정과 전송은 분리**된다. 사람 수는 초당 몇 번 판정하고, 프레임은 100 ms마다 보낸다.
-  판정 사이의 프레임은 같은 판정(`SEQ` 그대로)을 반복하며 `AGE`만 커진다.
+  판정 사이의 프레임은 같은 판정(`VISION_SEQUENCE` 그대로)을 반복하며 `AGE`만 커진다.
   CIS는 이것으로 새 판정과 반복을 구별한다.
+- **`PI_BOOT_ID`**: 프로그램이 시작할 때 정하는 0이 아닌 무작위 32비트 수. 다시 시작하면 바뀌어서 CIS가 이전 판정을 버린다.
 - 사진 몇 장의 **중앙값**을 쓴다. 한 장의 오검출이나 미검출이 결과를 바꾸지 않는다.
-- 사진이 모이기 전에는 `NOT_READY`로 보내고 **"사람 없음(0)"으로 보내지 않는다**.
-- 6명 이상이면 `OUT_OF_RANGE`(0~5명만 지원). 카메라 오류는 `FAULT=카메라`, 검출기 오류는 `FAULT=검출기`.
-- 프로그램을 다시 시작하면 `SESSION`이 바뀌어 CIS가 이전 판정을 버린다.
-- CIS가 500 ms마다 보내는 전원 허용 상태(`PERMISSION`)를 받아 값이 바뀔 때 출력한다.
+- **존재 여부와 인원수는 각각 유효성을 가진다.** 6명 이상이면 "사람 있음(유효)", 인원수는 범위 밖(`OUT_OF_RANGE`)으로 보낸다.
+- 사진이 모이기 전에는 `NOT_READY`(기능 상태 0)로 보내고 **"사람 없음(0)"으로 보내지 않는다**.
+  판정 불가는 `NO_DATA`, 카메라 오류는 `FAULT`(기능 상태 3, 고장 코드 2), 검출기 오류는 고장 코드 3이다.
+- 정상 판정은 기능 상태 `ACTIVE`(2)로 보낸다. CIS는 `ACTIVE`가 아니면 값을 쓰지 않는다.
+- CIS가 보내는 전원 허용(`P_PERMISSION`)을 받아 값이 바뀔 때 출력한다.
   (차량 전원 허용은 아직 CIS에 연결되지 않아 `UNKNOWN`으로 온다.)
 
 ## PC에서 Pi 역할 대신 시험하기
@@ -113,18 +123,20 @@ python3 vision_sender.py --port COM5 --simulate 0,1,2,3,4,5,6,u,x       # Window
 python3 vision_sender.py --port /dev/cu.usbmodemXXXX --simulate 0,2     # macOS
 ```
 
-CIS 쪽 디버거 변수: `g_occ_count`, `g_occ_presence`(0 없음, 1 있음, 255 모름), `g_occ_valid`,
-`g_occ_seq`, `g_occ_age_ms`, `g_occ_reason`, `g_pi_link_up`, `g_pi_frames_ok`, `g_pi_bad_crc`,
+CIS 쪽 디버거 변수: `g_occ_count`, `g_occ_presence`(0 없음, 1 있음, 255 모름),
+`g_occ_count_valid`, `g_occ_presence_valid`, `g_occ_count_reason`, `g_occ_presence_reason`,
+`g_occ_seq`(Pi의 판정 번호), `g_occ_age_ms`, `g_pi_boot_id`, `g_pi_link_up`, `g_pi_vision_state`,
+`g_pi_frames_ok`, `g_pi_bad_crc`, `g_pi_bad_format`, `g_pi_assembly_timeouts`,
 `g_pi_overruns`(받다가 놓친 바이트 수).
 
 ## 시험 항목 (보드 연결 후)
 
 | 시험 | 기대 |
 |---|---|
-| 시뮬레이션 `0,1,2,3,4,5` | `g_occ_count`가 따라가고 `g_occ_valid`=1, 0명일 때 `g_occ_presence`=0 |
-| 시뮬레이션 `6` | `g_occ_valid`=0, `g_occ_reason`=2(범위 밖) |
-| 시뮬레이션 `u` / `n` / `x` | `g_occ_valid`=0, 사유 6 / 1 / 4 (사람 없음으로 바뀌지 않음) |
-| 스크립트 중지 | 0.3 s 뒤 `g_pi_link_up`=0, `g_occ_valid`=0 |
-| 스크립트 재시작 | 새 판정부터 다시 유효, 이전 값 재사용 없음 |
+| 시뮬레이션 `0,1,2,3,4,5` | `g_occ_count`가 따라가고 둘 다 `valid`=1, 0명일 때 `g_occ_presence`=0 |
+| 시뮬레이션 `6` | `g_occ_presence_valid`=1(있음), `g_occ_count_valid`=0, 인원수 사유 2(범위 밖) |
+| 시뮬레이션 `u` / `n` / `x` | 둘 다 `valid`=0, 사유 6 / 1 / 4 (사람 없음으로 바뀌지 않음) |
+| 스크립트 중지 | 0.3 s 뒤 `g_pi_link_up`=0, 둘 다 `valid`=0, 사유 7(통신) |
+| 스크립트 재시작 | `g_pi_boot_id` 변경, 새 판정부터 다시 유효, 이전 값 재사용 없음 |
 | 카메라로 사람 1~3명 | 판정이 바뀌는 데 1~2초 이내, 로그 `detect=`가 600 ms 아래 |
 | 오래 실행 | `g_pi_bad_crc`, `g_pi_overruns`가 거의 늘지 않음 |
