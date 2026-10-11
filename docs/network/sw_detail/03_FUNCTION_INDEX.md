@@ -229,3 +229,18 @@ U0 전체 인벤토리 244행은 문서143 + 실제 Header 메타27 + 실제 Hea
 [기존 Domain_Interface_v0.5.h](../../Domain/architecture/2_Domain_interface/Domain_Interface_v0.5.h)의 API41은 문서의 C2 target72와 다른 snapshot이다. [기존 Gateway_Interface.h](../../esp32/3_Gateway_Interface/Gateway_Interface.h)의 API13도 누락된 DECLARED_HEADERS 원본과 버전/원형 동일성을 확정하지 않는다. 나머지25개 실제 Header는 owner 구현 참고 파일 메타이며 새 함수 대상이 아니다. 첨부 I1 Header API17은 과거 Host 후보의 선언 참고로, 현재 Git 함수 링크 또는 새 실행 성공으로 표시하지 않는다.
 
 원 계약·함수명·인자는 변경하지 않았다. `DECLARED_SOURCE`는 기존 문서의 선언 지위이며 현재 헤더 복구·Firmware 연결을 뜻하지 않는다. 팀 Wire·mm/cm·enum·Permission 원 Producer/150 ms `SOURCE_LIMIT_NOT_AGREED`·SDK/HW/time은 [팀 OPEN](../interface/06_OPEN_FOR_TEAM.md)을 따른다.
+
+<a id="u2-active-detail"></a>
+## U2 ACTIVE 상세 후보 — 7개
+
+기존 144개 FN-ID·원형·출처 행은 보존한다. 아래 7개만 동작·의사코드 후보를 작성했으며 나머지 137개는 상세 PLANNED_ONLY다. G1 지도 PASS와 G2 상세 독립 PENDING을 구분한다.
+
+| FN-ID | Behavior | Pseudocode | Flow |
+|---|---|---|---|
+| `FN-CIS-CisNet_PublishRear` | [동작](layers/02_APPLICATION_PORT/CIS/10_BEHAVIOR.md#fn-cis-cisnet_publishrear) | [의사코드](layers/02_APPLICATION_PORT/CIS/20_PSEUDOCODE.md#fn-cis-cisnet_publishrear) | [CIS_REAR](flows/10_CIS_REAR_FLOW.md) |
+| `FN-DOMAIN-DomainIf_RxCisRear` | [동작](layers/02_APPLICATION_PORT/DOMAIN/10_BEHAVIOR.md#fn-domain-domainif_rxcisrear) | [의사코드](layers/02_APPLICATION_PORT/DOMAIN/20_PSEUDOCODE.md#fn-domain-domainif_rxcisrear) | [CIS_REAR](flows/10_CIS_REAR_FLOW.md) |
+| `FN-DOMAIN-DomainIf_TxCisPowerPermission` | [동작](layers/02_APPLICATION_PORT/DOMAIN/10_BEHAVIOR.md#fn-domain-domainif_txcispowerpermission) | [의사코드](layers/02_APPLICATION_PORT/DOMAIN/20_PSEUDOCODE.md#fn-domain-domainif_txcispowerpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
+| `FN-DOMAIN-DomainNet_PublishPermission` | [동작](layers/01_NODE_COMMUNICATION/DOMAIN_PRIVATE/10_BEHAVIOR.md#fn-domain-domainnet_publishpermission) | [의사코드](layers/01_NODE_COMMUNICATION/DOMAIN_PRIVATE/20_PSEUDOCODE.md#fn-domain-domainnet_publishpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
+| `FN-CIS-CisApp_OnDomainPermission` | [동작](layers/02_APPLICATION_PORT/CIS/10_BEHAVIOR.md#fn-cis-cisapp_ondomainpermission) | [의사코드](layers/02_APPLICATION_PORT/CIS/20_PSEUDOCODE.md#fn-cis-cisapp_ondomainpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
+| `FN-BCM-BcmNetPriv_OnDomainPermission` | [동작](layers/02_APPLICATION_PORT/BCM/10_BEHAVIOR.md#fn-bcm-bcmnetpriv_ondomainpermission) | [의사코드](layers/02_APPLICATION_PORT/BCM/20_PSEUDOCODE.md#fn-bcm-bcmnetpriv_ondomainpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
+| `FN-VSS-VssNetPriv_OnDomainPermission` | [동작](layers/02_APPLICATION_PORT/VSS/10_BEHAVIOR.md#fn-vss-vssnetpriv_ondomainpermission) | [의사코드](layers/02_APPLICATION_PORT/VSS/20_PSEUDOCODE.md#fn-vss-vssnetpriv_ondomainpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
