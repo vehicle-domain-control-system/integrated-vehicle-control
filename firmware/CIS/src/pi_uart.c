@@ -29,8 +29,9 @@ void pi_uart_init(void)
     s_line_errors = 0;
 }
 
-bool pi_uart_poll(pi_frame_t *frame)
+bool pi_uart_poll(pi_frame_t *frame, uint32_t now_ms)
 {
+    pi_parser_expire(&s_parser, now_ms);              /* drop a frame that is too late */
     for (;;) {
         uint32_t stat;
 
@@ -50,7 +51,7 @@ bool pi_uart_poll(pi_frame_t *frame)
         if (!(stat & LPUART_STAT_RDRF)) {
             return false;                           /* nothing more received */
         }
-        pi_parser_push(&s_parser, (uint8_t)(LPUART1_DATA & 0xFFu));
+        pi_parser_push(&s_parser, (uint8_t)(LPUART1_DATA & 0xFFu), now_ms);
     }
 }
 
@@ -67,6 +68,7 @@ void pi_uart_send(const uint8_t *data, size_t len)
 uint32_t pi_uart_frames_ok(void)      { return s_parser.frames_ok; }
 uint32_t pi_uart_bad_crc(void)        { return s_parser.bad_crc; }
 uint32_t pi_uart_bad_format(void)     { return s_parser.bad_format; }
+uint32_t pi_uart_assembly_timeouts(void) { return s_parser.assembly_timeouts; }
 uint32_t pi_uart_skipped_bytes(void)  { return s_parser.skipped_bytes; }
 uint32_t pi_uart_overruns(void)       { return s_overruns; }
 uint32_t pi_uart_line_errors(void)    { return s_line_errors; }

@@ -18,9 +18,11 @@
  *   DHT22: g_temp_c01 (0.01 degC), g_hum_c01 (0.01 %RH), g_env_*_valid, g_env_*_seq,
  *          g_env_*_age_ms, g_env_*_reason, g_dht_ok / g_dht_no_response /
  *          g_dht_timeout / g_dht_checksum (read results), g_dht_raw[5]
- *   Pi camera: g_occ_count, g_occ_presence (0 absent, 1 present, 255 unknown), g_occ_valid,
- *          g_occ_seq, g_occ_age_ms, g_occ_reason, g_pi_link_up, g_pi_frames_ok, g_pi_bad_crc,
- *          g_pi_bad_format, g_pi_skipped, g_pi_overruns, g_pi_line_errors
+ *   Pi camera: g_occ_count, g_occ_presence (0 absent, 1 present, 255 unknown),
+ *          g_occ_count_valid, g_occ_presence_valid, g_occ_count_reason, g_occ_presence_reason,
+ *          g_occ_seq (Pi VISION_SEQUENCE), g_occ_age_ms, g_pi_boot_id, g_pi_link_up,
+ *          g_pi_vision_state, g_pi_frames_ok, g_pi_bad_crc, g_pi_bad_format,
+ *          g_pi_assembly_timeouts, g_pi_skipped, g_pi_overruns, g_pi_line_errors
  *   VEML7700: g_lux, g_lux_valid, g_lux_seq, g_lux_age_ms, g_lux_reason,
  *          g_veml_ok / g_veml_nack / g_veml_timeout / g_veml_bus_error, g_veml_raw,
  *          g_veml_conf, g_veml_present, g_i2c_sda_idle / g_i2c_scl_idle
@@ -50,7 +52,9 @@
 #define HCSR04_PIN_TEST 0
 #endif
 
-#define NEAR_MM         500u     /* red at or below 50 cm, green above (adjustable) */
+#define NEAR_MM         500u
+
+#define CIS_BOOT_ID     1u       /* [TBD] must change with every CIS start; 0 is reserved */     /* red at or below 50 cm, green above (adjustable) */
 
 #define LED_BLUE_PIN    0u       /* PTD0,  active low */
 #define LED_RED_PIN     15u      /* PTD15, active low */
@@ -73,11 +77,16 @@ volatile uint32_t g_age_ms;
 
 volatile uint32_t g_occ_count;
 volatile uint32_t g_occ_presence;
-volatile uint32_t g_occ_valid;
+volatile uint32_t g_occ_count_valid;
+volatile uint32_t g_occ_presence_valid;
+volatile uint32_t g_occ_count_reason;
+volatile uint32_t g_occ_presence_reason;
 volatile uint32_t g_occ_seq;
 volatile uint32_t g_occ_age_ms;
-volatile uint32_t g_occ_reason;
+volatile uint32_t g_pi_boot_id;
 volatile uint32_t g_pi_link_up;
+volatile uint32_t g_pi_vision_state;
+volatile uint32_t g_pi_assembly_timeouts;
 volatile uint32_t g_pi_frames_ok;
 volatile uint32_t g_pi_bad_crc;
 volatile uint32_t g_pi_bad_format;
@@ -210,8 +219,7 @@ int main(void)
 
     {
         uint32_t last_perm_ms = 0u;
-        uint16_t perm_seq = 0u;
-        const uint8_t cis_session = 1u;     /* [TBD] changes with every CIS start once a boot counter exists */
+        uint16_t link_seq = 0u;             /* UART-C LINK_SEQUENCE of the frames sent to the Pi */
         uint32_t last_color = 0u;
         uint32_t last_answer_ms = 0u;
         bool have_answer = false;
@@ -223,19 +231,26 @@ int main(void)
             pi_frame_t frame;
 
             /* Raspberry Pi: read all received frames first so the FIFO never fills up. */
-            while (pi_uart_poll(&frame)) {
-                if (frame.type == PI_TYPE_VISION) {
-                    vision_on_frame(&g_vision, &frame.vision, now_ms);
+            while (pi_uart_poll(&frame, now_ms)) {
+                if (frame.type == PI_TYPE_VISION_RESULT) {
+                    (void)vision_on_result(&g_vision, &frame.result, now_ms);
+                } else if (frame.type == PI_TYPE_VISION_STATUS) {
+                    vision_on_status(&g_vision, &frame.status, now_ms);
                 }
             }
             vision_check(&g_vision, now_ms);
             g_occ_count = (uint32_t)g_vision.count.value;
             g_occ_presence = (uint32_t)g_vision.presence.value;
-            g_occ_valid = g_vision.count.valid && g_vision.presence.valid;
+            g_occ_count_valid = g_vision.count.valid;
+            g_occ_presence_valid = g_vision.presence.valid;
+            g_occ_count_reason = (uint32_t)g_vision.count.reason;
+            g_occ_presence_reason = (uint32_t)g_vision.presence.reason;
             g_occ_seq = g_vision.count.sequence;
             g_occ_age_ms = cis_value_age_ms(&g_vision.count, now_ms);
-            g_occ_reason = (uint32_t)g_vision.count.reason;
+            g_pi_boot_id = g_vision.pi_boot_id;
             g_pi_link_up = g_vision.link_up;
+            g_pi_vision_state = g_vision.pi_vision_status;
+            g_pi_assembly_timeouts = pi_uart_assembly_timeouts();
             g_pi_frames_ok = pi_uart_frames_ok();
             g_pi_bad_crc = pi_uart_bad_crc();
             g_pi_bad_format = pi_uart_bad_format();
@@ -243,12 +258,20 @@ int main(void)
             g_pi_overruns = pi_uart_overruns();
             g_pi_line_errors = pi_uart_line_errors();
 
-            /* Permission for the Pi: the vehicle power permission is not wired in yet
-             * (it comes from the Domain), so "unknown" is reported. */
+            /* Permission for the Pi (P_PERMISSION, every 500 ms). The vehicle power permission
+             * comes from the Domain and is not wired in yet, so it is reported as unknown. */
             if (hcsr04_idle() && (uint32_t)(now_ms - last_perm_ms) >= 500u) {
+                static const pi_permission_t perm = {
+                    CIS_BOOT_ID,                        /* cis_boot_id [TBD: boot counter, O-006] */
+                    1u,                                 /* update_sequence: no evaluation change yet */
+                    PI_PERMISSION_UNKNOWN,
+                    PI_QUALITY_NO_DATA,
+                    (uint8_t)CIS_REASON_NO_DATA,
+                    1500u,                              /* use_limit_ms (proposal) */
+                    0xFFFFu                             /* source_age_ms: unknown */
+                };
                 uint8_t out[PI_FRAME_MAX];
-                size_t n = pi_build_permission(out, cis_session, perm_seq++,
-                                               PI_PERMISSION_UNKNOWN, 0xFFFFu);
+                size_t n = pi_build_permission(out, link_seq++, &perm);
                 last_perm_ms = now_ms;
                 pi_uart_send(out, n);
             }

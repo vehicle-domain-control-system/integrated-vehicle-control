@@ -1,35 +1,19 @@
 /*
- * Frame format of the UART link between the Raspberry Pi (camera) and the CIS.
- * This link is internal to the CIS module.
+ * UART-C v1: frames between the Raspberry Pi (camera) and the CIS.
+ * Defined in docs/network/interface/03_COMMUNICATION/30_UART_C.md (pull request #68,
+ * status PROPOSED). All multi-byte numbers are little-endian.
  *
- *   byte 0    0xA5                       start of frame (2 bytes)
- *   byte 1    0x5A
- *   byte 2    TYPE                       0x01 VISION (Pi -> CIS), 0x02 PERMISSION (CIS -> Pi)
- *   byte 3    LEN                        payload length (fixed for each TYPE)
- *   byte 4..  payload
- *   last 2    CRC16 (low byte first)     CRC-16/CCITT-FALSE over TYPE, LEN and payload
+ *   byte 0..1  SYNC            0xA5 0x5A
+ *   byte 2     VERSION         1
+ *   byte 3     MESSAGE_TYPE    0x60 P_VISION_RESULT (Pi -> CIS), 0x61 P_VISION_STATUS (Pi -> CIS),
+ *                              0x62 P_PERMISSION (CIS -> Pi)
+ *   byte 4..5  PAYLOAD_LENGTH  u16, exact for each type (19, 16, 15)
+ *   byte 6..7  LINK_SEQUENCE   u16, +1 for every frame sent in one direction (not a new-observation proof)
+ *   byte 8..   PAYLOAD
+ *   last 2     CRC16           CRC-16/CCITT-FALSE over VERSION .. end of payload (SYNC excluded)
  *
- * All multi-byte numbers are little-endian. 115200 baud, 8N1, no flow control.
- *
- * VISION payload (8 bytes), sent by the Pi every 100 ms:
- *   0     SESSION   random number chosen when the Pi program starts; a different
- *                   value means the Pi restarted
- *   1..2  SEQ       +1 for every NEW camera judgement; repeated frames of the same
- *                   judgement keep the number
- *   3..4  AGE_MS    time since that judgement was made (saturates at 65535)
- *   5     COUNT     number of people 0..5, 255 = unknown
- *   6     QUALITY   0 = result is usable, otherwise a QUALITY_REASON code
- *                   (1 NOT_READY, 2 OUT_OF_RANGE, 3 SENSOR_FAULT, 4 VISION_FAULT, 6 NO_DATA)
- *   7     FAULT     0 none, 1 initialization, 2 camera, 3 detector, 4 data error
- *
- * PERMISSION payload (6 bytes), sent by the CIS every 500 ms:
- *   0     SESSION   changes when the CIS restarts
- *   1..2  SEQ       +1 for every frame sent
- *   3     PERMISSION  0 = denied, 1 = allowed, 255 = unknown
- *   4..5  SOURCE_AGE  age of the permission information in ms (65535 = unknown)
- *
- * The presence of occupants is not sent: the CIS derives it from COUNT, so the two
- * values always belong to the same judgement and can never contradict each other.
+ * A frame has to be complete within PI_ASSEMBLY_TIMEOUT_MS of its first byte; a damaged or
+ * late frame is dropped and the search for the next SYNC continues after its first byte.
  */
 #ifndef PI_PROTOCOL_H
 #define PI_PROTOCOL_H
@@ -40,56 +24,115 @@
 
 #define PI_SOF0                 0xA5u
 #define PI_SOF1                 0x5Au
+#define PI_VERSION              1u
 
-#define PI_TYPE_VISION          0x01u
-#define PI_TYPE_PERMISSION      0x02u
+#define PI_TYPE_VISION_RESULT   0x60u
+#define PI_TYPE_VISION_STATUS   0x61u
+#define PI_TYPE_PERMISSION      0x62u
 
-#define PI_VISION_PAYLOAD_LEN       8u
-#define PI_PERMISSION_PAYLOAD_LEN   6u
-#define PI_FRAME_OVERHEAD           6u      /* SOF(2) + TYPE + LEN + CRC(2) */
-#define PI_FRAME_MAX                (PI_FRAME_OVERHEAD + PI_VISION_PAYLOAD_LEN)
+#define PI_VISION_RESULT_LEN    19u
+#define PI_VISION_STATUS_LEN    16u
+#define PI_PERMISSION_LEN       15u
 
-#define PI_COUNT_UNKNOWN        255u
+#define PI_FRAME_OVERHEAD       10u     /* SYNC(2) VERSION TYPE LEN(2) LINK_SEQ(2) CRC(2) */
+#define PI_FRAME_MAX            (PI_FRAME_OVERHEAD + PI_VISION_RESULT_LEN)
+#define PI_ASSEMBLY_TIMEOUT_MS  50u
+
+/* Code values used inside the payloads */
+#define PI_TRI_ABSENT           0u      /* OCCUPANT_PRESENCE: none */
+#define PI_TRI_PRESENT          1u      /* OCCUPANT_PRESENCE: present */
+#define PI_TRI_UNKNOWN          255u    /* presence / count: not known */
+#define PI_INVALID              0u      /* validity flags */
+#define PI_VALID                1u
+
 #define PI_PERMISSION_DENIED    0u
 #define PI_PERMISSION_ALLOWED   1u
 #define PI_PERMISSION_UNKNOWN   255u
 
-typedef struct {
-    uint8_t  session;
-    uint16_t seq;
-    uint16_t age_ms;
-    uint8_t  count;
-    uint8_t  quality;
-    uint8_t  fault;
-} pi_vision_t;
+/* NetValueQuality (P_PERMISSION) */
+#define PI_QUALITY_OK           0u
+#define PI_QUALITY_STALE        1u
+#define PI_QUALITY_INVALID      2u
+#define PI_QUALITY_NO_DATA      3u
+
+/* Vision fault codes */
+#define PI_FAULT_NONE           0u
+#define PI_FAULT_INIT           1u
+#define PI_FAULT_CAMERA         2u
+#define PI_FAULT_DETECTOR       3u
+#define PI_FAULT_DATA           4u
+
+/* AFFECTED_FUNCTION bits */
+#define PI_AFFECTS_PRESENCE     0x01u
+#define PI_AFFECTS_COUNT        0x02u
+
+typedef struct {                        /* P_VISION_RESULT, Pi -> CIS */
+    uint32_t pi_boot_id;                /* Pi start number, 0 is reserved */
+    uint32_t vision_sequence;           /* +1 for every NEW camera judgement */
+    uint16_t vision_age_ms;             /* age of the judgement when it was sent */
+    uint8_t  presence;                  /* 0 none, 1 present, 255 unknown */
+    uint8_t  presence_validity;         /* 0 INVALID, 1 VALID */
+    uint8_t  presence_reason;           /* original quality reason from the Pi */
+    uint8_t  count;                     /* 0..5, 255 unknown */
+    uint8_t  count_validity;
+    uint8_t  count_reason;
+    uint8_t  vision_status;             /* function state: 0 NOT_READY 1 READY 2 ACTIVE 3 FAULT 4 RECOVERING */
+    uint16_t fault_code;                /* PI_FAULT_* */
+} pi_vision_result_t;
+
+typedef struct {                        /* P_VISION_STATUS, Pi -> CIS */
+    uint32_t pi_boot_id;
+    uint32_t status_sequence;           /* +1 for every new function state evaluation */
+    uint8_t  vision_status;
+    uint16_t active_fault;
+    uint16_t last_fault;
+    uint16_t status_age_ms;
+    uint8_t  affected_function;         /* PI_AFFECTS_* bits */
+} pi_vision_status_t;
+
+typedef struct {                        /* P_PERMISSION, CIS -> Pi */
+    uint32_t cis_boot_id;               /* CIS start number, 0 is reserved */
+    uint32_t update_sequence;           /* changes when the permission evaluation changes */
+    uint8_t  permission;                /* PI_PERMISSION_* */
+    uint8_t  value_quality;             /* PI_QUALITY_* */
+    uint8_t  quality_reason;
+    uint16_t use_limit_ms;              /* 1500 (proposal) */
+    uint16_t source_age_ms;             /* age of the Domain permission, 65535 = unknown */
+} pi_permission_t;
 
 typedef struct {
-    uint8_t  type;
-    pi_vision_t vision;         /* valid when type == PI_TYPE_VISION */
+    uint8_t  type;                      /* PI_TYPE_VISION_RESULT or PI_TYPE_VISION_STATUS */
+    uint16_t link_seq;
+    pi_vision_result_t result;          /* valid for PI_TYPE_VISION_RESULT */
+    pi_vision_status_t status;          /* valid for PI_TYPE_VISION_STATUS */
 } pi_frame_t;
 
 typedef struct {
     uint8_t  buf[PI_FRAME_MAX];
     uint8_t  n;
+    uint32_t t_start_ms;                /* time the oldest byte in buf arrived */
     uint32_t frames_ok;
     uint32_t bad_crc;
-    uint32_t bad_format;        /* unknown TYPE or wrong LEN */
-    uint32_t skipped_bytes;     /* bytes dropped while looking for a frame start */
+    uint32_t bad_format;                /* wrong VERSION, unknown or wrong-direction TYPE, wrong length */
+    uint32_t assembly_timeouts;
+    uint32_t skipped_bytes;             /* bytes dropped while looking for a frame start */
 } pi_parser_t;
 
 void pi_parser_init(pi_parser_t *p);
 
 /* Adds one received byte. Call pi_parser_step() afterwards. */
-void pi_parser_push(pi_parser_t *p, uint8_t byte);
+void pi_parser_push(pi_parser_t *p, uint8_t byte, uint32_t now_ms);
 
-/* Looks for a complete valid frame in the bytes collected so far.
- * Returns true and fills `out` when one was found; call again until it returns
- * false. A damaged frame is skipped without changing any state elsewhere. */
+/* Drops a frame that is not complete 50 ms after its first byte. Call regularly. */
+void pi_parser_expire(pi_parser_t *p, uint32_t now_ms);
+
+/* Looks for a complete valid frame in the bytes collected so far. Returns true and fills
+ * `out` when one was found; call again until it returns false. */
 bool pi_parser_step(pi_parser_t *p, pi_frame_t *out);
 
-/* Builders. Return the number of bytes written (buffer must hold PI_FRAME_MAX). */
-size_t pi_build_vision(uint8_t *out, const pi_vision_t *v);
-size_t pi_build_permission(uint8_t *out, uint8_t session, uint16_t seq,
-                           uint8_t permission, uint16_t source_age_ms);
+/* Builders. Return the number of bytes written (the buffer must hold PI_FRAME_MAX). */
+size_t pi_build_vision_result(uint8_t *out, uint16_t link_seq, const pi_vision_result_t *v);
+size_t pi_build_vision_status(uint8_t *out, uint16_t link_seq, const pi_vision_status_t *s);
+size_t pi_build_permission(uint8_t *out, uint16_t link_seq, const pi_permission_t *p);
 
 #endif /* PI_PROTOCOL_H */
