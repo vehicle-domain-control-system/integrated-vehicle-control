@@ -137,3 +137,4 @@ venv/
 # required by other team members to import and reproduce a project.
 # Do not ignore them until the team explicitly decides otherwise.
 # ============================================================
+/.vss_work/
