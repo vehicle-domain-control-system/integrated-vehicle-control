@@ -1,0 +1,39 @@
+# Flow 출처 색인
+
+[↑ Network 시작](00_START_HERE.md) · [Layer](01_LAYER_MAP.md) · [Node](02_NODE_MAP.md) · [Function](03_FUNCTION_INDEX.md)
+
+두 Flow의 현재 지위는 **`INDEX_ONLY / BEHAVIOR_NOT_DESIGNED`**다. 화살표는 기존 문서의 논리 책임·출처를 찾는 순서이며 Codec·Port·변환 알고리즘 또는 실제 ECU 교환 성공을 뜻하지 않는다. Source 기준은 `c60dcf65de52b7fb28e0464d616ba00d350890bb`다.
+
+<a id="flow-cis-rear"></a>
+## CIS_REAR — CIS 관측에서 DOMAIN 소비 경계까지
+
+**CIS 센서 Owner → `CisNet_PublishRear` → 공유 CAN `CIS_REAR` → `DomainIf_RxCisRear` → DOMAIN 기능 Owner.**
+
+| 찾을 지점 | 원 Source / 새 탐색 입구 |
+|---|---|
+| 원 typed 관측·제출 | [NetCisRear](../interface/02_NODES/CIS/10_DATA.md#type-netcisrear), [CisNet_PublishRear](../interface/02_NODES/CIS/20_API.md#api-cisnet_publishrear), [CIS Module](layers/02_APPLICATION_PORT/CIS/00_MODULE_MAP.md#functions) |
+| CAN 계약 후보 | [CIS_REAR](../interface/03_COMMUNICATION/10_CAN_FD.md#message-cis-rear) |
+| DOMAIN typed 인계 | [DomainIf_RxCisRear](../interface/02_NODES/DOMAIN/20_API.md#api-domainif_rxcisrear), [DOMAIN Module](layers/02_APPLICATION_PORT/DOMAIN/00_MODULE_MAP.md#functions) |
+| 기존 내부 투영·provenance | [수신 투영](../interface/02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#rx-projection), [원 CAN와 C2 Snapshot 연결](../interface/02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-origin-join) |
+
+`OPEN-UNIT`, `OPEN-ENUM`, `OPEN-WIRE`, `OPEN-C2-SOURCE`와 원 provenance 합의(O24)를 유지한다. CIS mm/raw와 DOMAIN cm의 변환 주체·미표현 enum을 이 색인에서 결정하지 않는다. 원 BOOT/UPDATE/AGE·품질과 링크 TX_SEQUENCE는 다른 근거다.
+
+<a id="flow-domain-permission"></a>
+## DOMAIN_PERMISSION — 원 허용 근거와 네 수신 경계
+
+**DOMAIN 기능 Owner의 기존 허용·Alive 근거 → 기존 Network 내부 제출 후보 → 공유 CAN `DOMAIN_PERMISSION` → CIS/BCM/VSS 및 보류 WINDOW 경계.**
+
+| 찾을 지점 | 원 Source / 새 탐색 입구 |
+|---|---|
+| 기존 C2 입력 출처 | [DomainIf_TxCisPowerPermission](../interface/02_NODES/DOMAIN/20_API.md#api-domainif_txcispowerpermission), [DomainIf_TxWindowOperationPermission](../interface/02_NODES/DOMAIN/20_API.md#api-domainif_txwindowoperationpermission), [DomainIf_TxWindowDomainAlive](../interface/02_NODES/DOMAIN/20_API.md#api-domainif_txwindowdomainalive) |
+| 원 Source에 이미 있는 내부 후보 | [DomainNet_PublishPermission](../interface/02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnet_publishpermission), [DOMAIN private Module](layers/01_NODE_COMMUNICATION/DOMAIN_PRIVATE/00_MODULE_MAP.md#functions) |
+| typed 의미·합성 미정 | [NetDomainPermission](../interface/04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission), [원 합성 출처](../interface/04_COMMON/10_DATA_AND_ID_RULES.md#section-permission-synthesis), [CAN DOMAIN_PERMISSION](../interface/03_COMMUNICATION/10_CAN_FD.md#message-domain-permission) |
+| CIS 기능 입력 | [CisApp_OnDomainPermission](../interface/02_NODES/CIS/20_API.md#api-cisapp_ondomainpermission) |
+| BCM/VSS Network-private 감시 | [BcmNetPriv_OnDomainPermission](../interface/02_NODES/BCM/20_API.md#api-bcmnetpriv_ondomainpermission), [VssNetPriv_OnDomainPermission](../interface/02_NODES/VSS/20_API.md#api-vssnetpriv_ondomainpermission) |
+| WINDOW 보류 입력 | [WindowApp_OnDomainPermission](../interface/02_NODES/WINDOW/20_API.md#api-windowapp_ondomainpermission) — **DEFERRED** |
+
+`DomainNet_PublishPermission`은 기존 문서에 있던 `PROPOSED_DESIGN / BINDING_OPEN` 내부 경계다. 이번에 새 공개 API를 만들거나 Application에 C2 TX와 이 함수를 중복 호출하도록 요구한 것이 아니다.
+
+`OPEN-PERM`의 실제 Producer·필수 입력·품질/coherence 및 원본 **150 ms `SOURCE_LIMIT_NOT_AGREED`**를 유지한다. `ALLOW`를 합성·승인하거나 전달/반복으로 SOURCE_AGE를 다시 시작하지 않는다. BCM/VSS private 감시와 WINDOW 보류 상태를 기능 사용 허용으로 확대하지 않는다.
+
+두 Flow의 자세한 `10_BEHAVIOR.md`·`20_PSEUDOCODE.md`는 향후 U2/G2의 별도 문서이며 현재 파일·본문이 없다. [팀 미합의](../interface/06_OPEN_FOR_TEAM.md) 및 G1 독립 판정 이후의 허용 범위를 따른다.
