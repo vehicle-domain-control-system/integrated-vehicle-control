@@ -22,15 +22,15 @@ accepted 전에 최종까지의 추적 자원을 확보합니다. 동일 occurre
 
 [INPUT 검증](../INPUT/00_MODULE_OVERVIEW.md) · [PLAYBACK Session/Attempt](../PLAYBACK/00_MODULE_OVERVIEW.md)
 
-## 담당 Core의 예정 문서쌍
+## 담당 Core의 문서쌍
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-03 | `Store_ApplyInput` — 동기 신규 수용·현재 후보/품질 적용 | `02_SERVICE/STORE/functions/Store_ApplyInput.md` | `02_SERVICE/STORE/pseudocode/Store_ApplyInput.md` | PLANNED_NOT_WRITTEN |
+| CORE-03 | `Store_ApplyInput` — 동기 신규 수용·현재 후보/품질 적용 | [상세 설명](functions/Store_ApplyInput.md) | [한국어 의사코드](pseudocode/Store_ApplyInput.md) | SELF_CHECKED / GD2_PENDING |
 | CORE-04 | `Store_ApplyPlaybackFact` — 동기 원귀속 사실의 멱등 이력 반영 | `02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md` | `02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md` | PLANNED_NOT_WRITTEN |
 | CORE-05 | `Store_AdvanceDeadlines` — 최신 출력 사실 재확인 후 age/Hold 진행 | `02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md` | `02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md` | PLANNED_NOT_WRITTEN |
 
-경로는 `docs/vss/sw_detail/` 기준입니다. 설명·의사코드 본문은 아직 없으므로 위 경로는 클릭 링크가 아닙니다. 실제 동작은 아래 동결 Function 원문에서 읽고, 새 함수쌍은 각 단계 검수 뒤 작성합니다.
+CORE-03은 D2 시범 작성 문서로 진입할 수 있습니다. CORE-04/05의 경로는 `docs/vss/sw_detail/` 기준 미작성 비링크입니다. 작성 문서와 아래 동결 Function 원문을 함께 읽으며, 다른 함수쌍은 각 단계의 별도 지시·검수를 따릅니다.
 
 ## 후속 진행 후보와 미정
 

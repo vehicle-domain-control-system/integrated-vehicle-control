@@ -20,15 +20,15 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 
 대표 경로는 INPUT → STORE 관측 → **FLOW를 통한 POLICY 판단/PLAYBACK 요구** → AUDIO STREAM → ASSET·DRIVER → HAL입니다. 보고는 HEALTH → FLOW → INPUT의 통신 연결 책임 → 기존 Node Communication이며, CAN 송신·Domain 수용은 별도 책임입니다.
 
-## 18 Core의 예정 문서쌍
+## 18 Core의 문서쌍
 
-아래 경로는 `docs/vss/sw_detail/` 기준입니다. **설명과 의사코드 모두 미작성**이므로 비링크로 표시합니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따릅니다.
+아래 경로는 `docs/vss/sw_detail/` 기준입니다. CORE-03/14의 설명·의사코드만 D2 시범으로 작성했으며 `SELF_CHECKED / GD2_PENDING`입니다. 나머지 16 Core는 미작성 비링크를 유지합니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따릅니다.
 
 | Core | 함수 | 논리 Owner / Layer | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|---|
 | CORE-01 | `Flow_Process` | FLOW / 01_APP | `01_APP/FLOW/functions/Flow_Process.md` | `01_APP/FLOW/pseudocode/Flow_Process.md` | PLANNED_NOT_WRITTEN |
 | CORE-02 | `Input_Process` | INPUT / 02_SERVICE | `02_SERVICE/INPUT/functions/Input_Process.md` | `02_SERVICE/INPUT/pseudocode/Input_Process.md` | PLANNED_NOT_WRITTEN |
-| CORE-03 | `Store_ApplyInput` | STORE / 02_SERVICE | `02_SERVICE/STORE/functions/Store_ApplyInput.md` | `02_SERVICE/STORE/pseudocode/Store_ApplyInput.md` | PLANNED_NOT_WRITTEN |
+| CORE-03 | `Store_ApplyInput` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyInput.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyInput.md) | SELF_CHECKED / GD2_PENDING |
 | CORE-04 | `Store_ApplyPlaybackFact` | STORE / 02_SERVICE | `02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md` | `02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md` | PLANNED_NOT_WRITTEN |
 | CORE-05 | `Store_AdvanceDeadlines` | STORE / 02_SERVICE | `02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md` | `02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md` | PLANNED_NOT_WRITTEN |
 | CORE-06 | `Select_Choose` | POLICY / 02_SERVICE | `02_SERVICE/POLICY/functions/Select_Choose.md` | `02_SERVICE/POLICY/pseudocode/Select_Choose.md` | PLANNED_NOT_WRITTEN |
@@ -39,7 +39,7 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 | CORE-11 | `AudioStream_RequestControl` | AUDIO_STREAM / 02_SERVICE | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_RequestControl.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_RequestControl.md` | PLANNED_NOT_WRITTEN |
 | CORE-12 | `AudioStream_Advance` | AUDIO_STREAM / 02_SERVICE | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_Advance.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Advance.md` | PLANNED_NOT_WRITTEN |
 | CORE-13 | `AudioTx_Request` | AUDIO_TX / 03_DRIVER | `03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md` | `03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Request.md` | PLANNED_NOT_WRITTEN |
-| CORE-14 | `AudioTx_Advance` | AUDIO_TX / 03_DRIVER | `03_DRIVER/AUDIO_TX/functions/AudioTx_Advance.md` | `03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md` | PLANNED_NOT_WRITTEN |
+| CORE-14 | `AudioTx_Advance` | AUDIO_TX / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_TX/functions/AudioTx_Advance.md) | [한국어 의사코드](03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md) | SELF_CHECKED / GD2_PENDING |
 | CORE-15 | `AudioControl_Service` | AUDIO_CONTROL / 03_DRIVER | `03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md` | `03_DRIVER/AUDIO_CONTROL/pseudocode/AudioControl_Service.md` | PLANNED_NOT_WRITTEN |
 | CORE-16 | `AudioHAL_Callback` | AUDIOHAL_BOUNDARY / 04_HAL_BSP | `04_HAL_BSP/AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md` | `04_HAL_BSP/AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md` | PLANNED_NOT_WRITTEN |
 | CORE-17 | `Health_Evaluate` | HEALTH / 02_SERVICE | `02_SERVICE/HEALTH/functions/Health_Evaluate.md` | `02_SERVICE/HEALTH/pseudocode/Health_Evaluate.md` | PLANNED_NOT_WRITTEN |

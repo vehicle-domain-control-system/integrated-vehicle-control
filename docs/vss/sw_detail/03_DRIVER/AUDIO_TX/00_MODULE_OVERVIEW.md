@@ -22,14 +22,14 @@ AUDIO_TX는 operation·Attempt/PCM 회차·유효 구간의 장치 retain/arm·d
 
 [HAL callback의 원등록 경계](../../04_HAL_BSP/00_LAYER_OVERVIEW.md) · [AUDIO_STREAM의 PCM usage](../../02_SERVICE/AUDIO_STREAM/00_MODULE_OVERVIEW.md)
 
-## 담당 Core의 예정 문서쌍
+## 담당 Core의 문서쌍
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
 | CORE-13 | `AudioTx_Request` — 동기 원등록·PCM 보호·요청 / 효과 후속 | `03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md` | `03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Request.md` | PLANNED_NOT_WRITTEN |
-| CORE-14 | `AudioTx_Advance` — 비동기 raw의 원귀속 적용·반환/출력 근거 | `03_DRIVER/AUDIO_TX/functions/AudioTx_Advance.md` | `03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md` | PLANNED_NOT_WRITTEN |
+| CORE-14 | `AudioTx_Advance` — 비동기 raw의 원귀속 적용·반환/출력 근거 | [상세 설명](functions/AudioTx_Advance.md) | [한국어 의사코드](pseudocode/AudioTx_Advance.md) | SELF_CHECKED / GD2_PENDING |
 
-경로는 `docs/vss/sw_detail/` 기준입니다. 설명·의사코드 본문은 아직 없으므로 위 경로는 클릭 링크가 아닙니다. 실제 동작은 아래 동결 Function 원문에서 읽고, 새 함수쌍은 각 단계 검수 뒤 작성합니다.
+CORE-14는 D2 시범 작성 문서로 진입할 수 있습니다. CORE-13의 경로는 `docs/vss/sw_detail/` 기준 미작성 비링크입니다. 작성 문서와 아래 동결 Function 원문을 함께 읽으며, 다른 함수쌍은 각 단계의 별도 지시·검수를 따릅니다.
 
 ## 후속 진행 후보와 미정
 
