@@ -14,3 +14,12 @@
 현재는 `SOURCE_ONLY / IMPLEMENTATION_NOT_PRESENT`이며 U1에서 새 Queue·Buffer 구조·함수·Module 껍데기를 생성하지 않는다. 상위 [Message Service](../03_MESSAGE_SERVICE/00_LAYER_OVERVIEW.md) 및 [Protocol/Codec](../04_PROTOCOL_CODEC/00_LAYER_OVERVIEW.md), 하위 [Driver](../06_DRIVER_PORT/00_LAYER_OVERVIEW.md)의 책임을 유지한다.
 
 실제 callback lifetime·capacity·recovery는 후속 상세 Gate의 확인 대상이다. 수치 자원이나 성공 보장을 이 지도에서 고정하지 않는다.
+
+
+## U4D CAN common detailed design navigation
+
+2026-10-12 사용자 직접지시에 따른 문서 상세설계 후보. G3 독립/로컬인수 PASS 유지; 기준 `9e0b1e5d97d32971bb0863e144dd2ef515f2ccf4`. U4D_PROPOSED_PRIVATE / DESIGN_ONLY, G4D 독립검수 PENDING, U4C NOT_STARTED, target PENDING_USER_PUSH.
+
+[CAN 16개 private 후보 함수](../../05_CAN_COMMON_FUNCTION_INDEX.md) · [CAN TX/RX Flow와 22개 후속시험 설계](../../flows/30_CAN_COMMON_TX_RX_FLOW.md). 기존본문·144FN·U2계약은보존한다.
+
+[CAN Module Map](10_CAN_TRANSPORT/00_MODULE_MAP.md) · [Behavior](10_CAN_TRANSPORT/10_BEHAVIOR.md) · [Pseudocode](10_CAN_TRANSPORT/20_PSEUDOCODE.md)

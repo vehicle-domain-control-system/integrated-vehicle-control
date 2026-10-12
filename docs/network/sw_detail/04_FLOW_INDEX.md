@@ -41,3 +41,10 @@
 `OPEN-PERM`의 실제 Producer·필수 입력·품질/coherence 및 원본 **150 ms `SOURCE_LIMIT_NOT_AGREED`**를 유지한다. `ALLOW`를 합성·승인하거나 전달/반복으로 SOURCE_AGE를 다시 시작하지 않는다. BCM/VSS private 감시와 WINDOW 보류 상태를 기능 사용 허용으로 확대하지 않는다.
 
 함수별 `10_BEHAVIOR.md`·`20_PSEUDOCODE.md`는 [U2 ACTIVE 7개](03_FUNCTION_INDEX.md#u2-active-detail)만 작성했다. [최소 CAN LinkPort 의미](layers/06_DRIVER_PORT/10_CAN_LINKPORT_SEMANTICS.md)와 [팀 미합의](../interface/06_OPEN_FOR_TEAM.md)를 함께 읽는다. 모든 상세는 G2 독립 검토 전 후보이며 실제 통신 실행 결과가 아니다.
+
+
+## U4D CAN common detailed design navigation
+
+2026-10-12 사용자 직접지시에 따른 문서 상세설계 후보. G3 독립/로컬인수 PASS 유지; 기준 `9e0b1e5d97d32971bb0863e144dd2ef515f2ccf4`. U4D_PROPOSED_PRIVATE / DESIGN_ONLY, G4D 독립검수 PENDING, U4C NOT_STARTED, target PENDING_USER_PUSH.
+
+[CAN 16개 private 후보 함수](05_CAN_COMMON_FUNCTION_INDEX.md) · [CAN TX/RX Flow와 22개 후속시험 설계](flows/30_CAN_COMMON_TX_RX_FLOW.md). 기존본문·144FN·U2계약은보존한다.

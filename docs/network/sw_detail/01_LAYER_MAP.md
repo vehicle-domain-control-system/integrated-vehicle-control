@@ -24,3 +24,10 @@ Timebase, 얇은 RTOS/OS adapter, bounded diagnostics는 [기존 전체 구조](
 FreeRTOS와 superloop의 타깃 차이 및 [미확정 자원·바인딩](../network_sw_architecture.md#11-현재-확정하지-않는-항목)은 유지한다. 실제 SDK·핀·Driver/HAL 결합은 U10의 별도 근거·Gate 대상이다.
 
 현재 지도는 `U1 / DOCUMENT_MAP_DRAFT`, 상세 Behavior·Pseudocode는 `PLANNED_ONLY`, G1은 `PENDING_INDEPENDENT_REVIEW`다.
+
+
+## U4D CAN common detailed design navigation
+
+2026-10-12 사용자 직접지시에 따른 문서 상세설계 후보. G3 독립/로컬인수 PASS 유지; 기준 `9e0b1e5d97d32971bb0863e144dd2ef515f2ccf4`. U4D_PROPOSED_PRIVATE / DESIGN_ONLY, G4D 독립검수 PENDING, U4C NOT_STARTED, target PENDING_USER_PUSH.
+
+[CAN 16개 private 후보 함수](05_CAN_COMMON_FUNCTION_INDEX.md) · [CAN TX/RX Flow와 22개 후속시험 설계](flows/30_CAN_COMMON_TX_RX_FLOW.md). 기존본문·144FN·U2계약은보존한다.

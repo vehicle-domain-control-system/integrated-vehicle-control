@@ -43,3 +43,10 @@ S32K144/344 측 Network가 개발 범위이며 ESP32 Gateway 내부·Pi Applicat
 U2 ACTIVE 7개 함수의 `10_BEHAVIOR.md`와 `20_PSEUDOCODE.md`를 5개 Module에 분리 작성했다. [활성 함수별 왕복 링크](03_FUNCTION_INDEX.md#u2-active-detail)에서 찾는다. 나머지 137개 선언은 상세 `PLANNED_ONLY / BEHAVIOR_NOT_DESIGNED`이며, 구현·Header·Wire 채택을 승인한 것이 아니다. 후속 U3/U4D는 G2 독립 판정과 별도 사용자 허용 범위에 따른다.
 
 `NET_SUBMIT_OK`는 로컬 안정 인계만 의미한다. Wire 채택·mm↔cm·enum/raw·Permission 원 Producer와 **150 ms `SOURCE_LIMIT_NOT_AGREED`**·SDK/HW/시간 능력은 OPEN이다. [원본 부재 C2 Header 3개](03_FUNCTION_INDEX.md#missing-source)는 `MISSING_SOURCE / OPEN-C2-SOURCE`로 유지한다. 추가로 발견한 `Gateway_Types.h` 선언 Snapshot 부재는 [별도 OPEN](02_NODE_MAP.md#missing-source)인 `KNOWN_PREEXISTING / OPEN-GW-TYPES-SOURCE`이며 기존 세 경로와 구분한다. 새 Host/Firmware/Board 시험 결과가 이 지도에 추가된 것은 아니다.
+
+
+## U4D CAN common detailed design navigation
+
+2026-10-12 사용자 직접지시에 따른 문서 상세설계 후보. G3 독립/로컬인수 PASS 유지; 기준 `9e0b1e5d97d32971bb0863e144dd2ef515f2ccf4`. U4D_PROPOSED_PRIVATE / DESIGN_ONLY, G4D 독립검수 PENDING, U4C NOT_STARTED, target PENDING_USER_PUSH.
+
+[CAN 16개 private 후보 함수](05_CAN_COMMON_FUNCTION_INDEX.md) · [CAN TX/RX Flow와 22개 후속시험 설계](flows/30_CAN_COMMON_TX_RX_FLOW.md). 기존본문·144FN·U2계약은보존한다.

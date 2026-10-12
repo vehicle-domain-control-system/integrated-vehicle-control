@@ -244,3 +244,10 @@ U0 전체 인벤토리 244행은 문서143 + 실제 Header 메타27 + 실제 Hea
 | `FN-CIS-CisApp_OnDomainPermission` | [동작](layers/02_APPLICATION_PORT/CIS/10_BEHAVIOR.md#fn-cis-cisapp_ondomainpermission) | [의사코드](layers/02_APPLICATION_PORT/CIS/20_PSEUDOCODE.md#fn-cis-cisapp_ondomainpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
 | `FN-BCM-BcmNetPriv_OnDomainPermission` | [동작](layers/02_APPLICATION_PORT/BCM/10_BEHAVIOR.md#fn-bcm-bcmnetpriv_ondomainpermission) | [의사코드](layers/02_APPLICATION_PORT/BCM/20_PSEUDOCODE.md#fn-bcm-bcmnetpriv_ondomainpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
 | `FN-VSS-VssNetPriv_OnDomainPermission` | [동작](layers/02_APPLICATION_PORT/VSS/10_BEHAVIOR.md#fn-vss-vssnetpriv_ondomainpermission) | [의사코드](layers/02_APPLICATION_PORT/VSS/20_PSEUDOCODE.md#fn-vss-vssnetpriv_ondomainpermission) | [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md) |
+
+
+## U4D CAN common detailed design navigation
+
+2026-10-12 사용자 직접지시에 따른 문서 상세설계 후보. G3 독립/로컬인수 PASS 유지; 기준 `9e0b1e5d97d32971bb0863e144dd2ef515f2ccf4`. U4D_PROPOSED_PRIVATE / DESIGN_ONLY, G4D 독립검수 PENDING, U4C NOT_STARTED, target PENDING_USER_PUSH.
+
+[CAN 16개 private 후보 함수](05_CAN_COMMON_FUNCTION_INDEX.md) · [CAN TX/RX Flow와 22개 후속시험 설계](flows/30_CAN_COMMON_TX_RX_FLOW.md). 기존본문·144FN·U2계약은보존한다.
