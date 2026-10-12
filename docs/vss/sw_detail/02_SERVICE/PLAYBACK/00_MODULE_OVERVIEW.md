@@ -22,14 +22,14 @@ PLAYBACK은 Session/Attempt·출력 owner·전체 계획 진행·종료 의도·
 
 [STORE 발생 이력](../STORE/00_MODULE_OVERVIEW.md) · [AUDIO_STREAM Backend](../AUDIO_STREAM/00_MODULE_OVERVIEW.md)
 
-## 담당 Core의 예정 문서쌍
+## 담당 Core의 문서쌍
 
-| Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
+| Core | 함수 / 역할 | 상세 설명 | 한국어 의사코드 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-07 | `Playback_RequestTransition` — 동기 의도 수용·후속 권한 변경 / 하위 비동기 | `02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md` | `02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md` | PLANNED_NOT_WRITTEN |
-| CORE-08 | `Playback_Advance` — 귀속 결과·기한·late·전체 정리의 후속 반영 | `02_SERVICE/PLAYBACK/functions/Playback_Advance.md` | `02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md` | PLANNED_NOT_WRITTEN |
+| CORE-07 | `Playback_RequestTransition` — 동기 의도 수용·후속 권한 변경 / 하위 비동기 | [상세 설명](functions/Playback_RequestTransition.md) | [한국어 의사코드](pseudocode/Playback_RequestTransition.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
+| CORE-08 | `Playback_Advance` — 귀속 결과·기한·late·전체 정리의 후속 반영 | [상세 설명](functions/Playback_Advance.md) | [한국어 의사코드](pseudocode/Playback_Advance.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
 
-경로는 `docs/vss/sw_detail/` 기준입니다. 설명·의사코드 본문은 아직 없으므로 위 경로는 클릭 링크가 아닙니다. 실제 동작은 아래 동결 Function 원문에서 읽고, 새 함수쌍은 각 단계 검수 뒤 작성합니다.
+위 링크에서 R6 논리 계약 기반 상세 설명과 한국어 C 형태 의사코드를 왕복합니다. 신규 함수쌍은 SELF_CHECKED / D3_2_REVIEW_PENDING이며 기술 의미는 아래 동결 원문을 따릅니다.
 
 ## 후속 진행 후보와 미정
 

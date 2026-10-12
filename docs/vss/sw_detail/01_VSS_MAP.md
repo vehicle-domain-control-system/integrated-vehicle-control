@@ -22,7 +22,7 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 
 ## 18 Core의 문서쌍
 
-아래 경로는 `docs/vss/sw_detail/` 기준입니다. D2 CORE-03/14는 GD2 독립 PASS 인수 완료이며 승인 본문은 그대로입니다. D3-1 CORE-01/02/04/05는 `SELF_CHECKED / D3_1_REVIEW_PENDING`으로 작성했습니다. 총 6쌍만 실링크이며 나머지 12 Core는 미작성 비링크를 유지합니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따릅니다. D3-1 부분 독립 검수와 D3 전체 최종 GD3는 별도입니다.
+아래 경로는 `docs/vss/sw_detail/` 기준입니다. D2 CORE-03/14는 GD2 독립 PASS 인수 완료이며 승인 본문은 그대로입니다. D3-1 CORE-01/02/04/05는 `SELF_CHECKED / D3_1_REVIEW_PENDING`으로 작성했습니다. D3-2 CORE-06/07/08을 `SELF_CHECKED / D3_2_REVIEW_PENDING`으로 연결하여 총 9쌍이 실링크이고 나머지 9 Core는 미작성 비링크입니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따릅니다. D3-1 부분 독립 검수와 D3 전체 최종 GD3는 별도입니다.
 
 | Core | 함수 | 논리 Owner / Layer | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|---|
@@ -31,9 +31,9 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 | CORE-03 | `Store_ApplyInput` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyInput.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyInput.md) | GD2 INDEPENDENT_PASS / COMPLETED |
 | CORE-04 | `Store_ApplyPlaybackFact` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
 | CORE-05 | `Store_AdvanceDeadlines` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
-| CORE-06 | `Select_Choose` | POLICY / 02_SERVICE | `02_SERVICE/POLICY/functions/Select_Choose.md` | `02_SERVICE/POLICY/pseudocode/Select_Choose.md` | PLANNED_NOT_WRITTEN |
-| CORE-07 | `Playback_RequestTransition` | PLAYBACK / 02_SERVICE | `02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md` | `02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md` | PLANNED_NOT_WRITTEN |
-| CORE-08 | `Playback_Advance` | PLAYBACK / 02_SERVICE | `02_SERVICE/PLAYBACK/functions/Playback_Advance.md` | `02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md` | PLANNED_NOT_WRITTEN |
+| CORE-06 | `Select_Choose` | POLICY / 02_SERVICE | [상세 설명](02_SERVICE/POLICY/functions/Select_Choose.md) | [한국어 의사코드](02_SERVICE/POLICY/pseudocode/Select_Choose.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
+| CORE-07 | `Playback_RequestTransition` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
+| CORE-08 | `Playback_Advance` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_Advance.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
 | CORE-09 | `Asset_Read` | ASSET / 02_SERVICE | `02_SERVICE/ASSET/functions/Asset_Read.md` | `02_SERVICE/ASSET/pseudocode/Asset_Read.md` | PLANNED_NOT_WRITTEN |
 | CORE-10 | `AudioStream_Prepare` | AUDIO_STREAM / 02_SERVICE | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_Prepare.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Prepare.md` | PLANNED_NOT_WRITTEN |
 | CORE-11 | `AudioStream_RequestControl` | AUDIO_STREAM / 02_SERVICE | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_RequestControl.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_RequestControl.md` | PLANNED_NOT_WRITTEN |

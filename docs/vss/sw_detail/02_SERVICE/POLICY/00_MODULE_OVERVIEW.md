@@ -22,13 +22,13 @@ winner는 준비·수락·actual start가 아닙니다. 실행 제한이나 old 
 
 [FLOW 조율](../../01_APP/FLOW/00_MODULE_OVERVIEW.md) · [PLAYBACK 실행](../PLAYBACK/00_MODULE_OVERVIEW.md)
 
-## 담당 Core의 예정 문서쌍
+## 담당 Core의 문서쌍
 
-| Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
+| Core | 함수 / 역할 | 상세 설명 | 한국어 의사코드 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-06 | `Select_Choose` — 동기 읽기 전용 선택·계획 반환 | `02_SERVICE/POLICY/functions/Select_Choose.md` | `02_SERVICE/POLICY/pseudocode/Select_Choose.md` | PLANNED_NOT_WRITTEN |
+| CORE-06 | `Select_Choose` — 동기 읽기 전용 선택·계획 반환 | [상세 설명](functions/Select_Choose.md) | [한국어 의사코드](pseudocode/Select_Choose.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
 
-경로는 `docs/vss/sw_detail/` 기준입니다. 설명·의사코드 본문은 아직 없으므로 위 경로는 클릭 링크가 아닙니다. 실제 동작은 아래 동결 Function 원문에서 읽고, 새 함수쌍은 각 단계 검수 뒤 작성합니다.
+위 링크에서 R6 논리 계약 기반 상세 설명과 한국어 C 형태 의사코드를 왕복합니다. 신규 함수쌍은 SELF_CHECKED / D3_2_REVIEW_PENDING이며 기술 의미는 아래 동결 원문을 따릅니다.
 
 ## 후속 진행 후보와 미정
 
