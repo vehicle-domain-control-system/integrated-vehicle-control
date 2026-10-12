@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 검수 대기. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · GD1 독립 PASS 인수 · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 제품/TEST의 값·Meta·출처·세대·순서·품질·원본 시간을 검증해 현재 적용 가능한 VSS 의미로 STORE에 전달합니다. HEALTH가 만든 보고는 기존 Node Communication 경계에 연결합니다.
 
@@ -22,17 +22,17 @@ received·valid·STORE accepted는 다릅니다. 신규 수용이 거부돼도 �
 
 [STORE의 수용 책임](../STORE/00_MODULE_OVERVIEW.md) · [HEALTH의 보고 책임](../HEALTH/00_MODULE_OVERVIEW.md)
 
-## 담당 Core의 예정 문서쌍
+## 담당 Core의 문서쌍
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-02 | `Input_Process` — 동기 검증·문맥 적용·STORE 전달 | `02_SERVICE/INPUT/functions/Input_Process.md` | `02_SERVICE/INPUT/pseudocode/Input_Process.md` | PLANNED_NOT_WRITTEN |
+| CORE-02 | `Input_Process` — 동기 검증·문맥 적용·STORE 전달 | [상세 설명](functions/Input_Process.md) | [한국어 의사코드](pseudocode/Input_Process.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
 
-경로는 `docs/vss/sw_detail/` 기준입니다. 설명·의사코드 본문은 아직 없으므로 위 경로는 클릭 링크가 아닙니다. 실제 동작은 아래 동결 Function 원문에서 읽고, 새 함수쌍은 각 단계 검수 뒤 작성합니다.
+CORE-02 두 본문은 D3-1 자체검토 완료·부분 독립 검수 대기입니다. D2 승인 CORE-03 연결과 R6 진단 OUT/원 문맥 보호를 아래 동결 원문과 함께 읽습니다. D3-2 착수는 별도입니다.
 
 ## 후속 진행 후보와 미정
 
-의미 검증·중복/순서·품질 상실 전달은 독립 SW/Host 후보입니다. 실제 Network DTO·Header·시간 변환은 PROPOSED_IF/BINDING_TBD입니다. WINDOW/Anti-Pinch 제품 source/ECU 연결은 [구현 보류 — 설계 유지]; PRODUCT와 격리된 TEST 의미 경로는 유지합니다. 함수쌍은 D3 예정입니다.
+의미 검증·중복/순서·품질 상실 전달은 [작성한 함수 설명](functions/Input_Process.md#feasibility)의 독립 SW/Host 후보입니다. 실제 Network DTO·Header·시간 변환은 PROPOSED_IF/BINDING_TBD입니다. WINDOW/Anti-Pinch 제품 source/ECU 연결은 [구현 보류 — 설계 유지]; PRODUCT와 격리된 TEST 의미 경로는 유지합니다.
 
 위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q↔Core 관계는 P1B_C1 독립 검수 전 최종 차단 지도로 채택하지 않습니다.
 
