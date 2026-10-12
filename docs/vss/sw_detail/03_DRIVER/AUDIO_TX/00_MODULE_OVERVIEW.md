@@ -26,14 +26,14 @@ AUDIO_TX는 operation·Attempt/PCM 회차·유효 구간의 장치 retain/arm·d
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-13 | `AudioTx_Request` — 동기 원등록·PCM 보호·요청 / 효과 후속 | `03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md` | `03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Request.md` | PLANNED_NOT_WRITTEN |
+| CORE-13 | `AudioTx_Request` — 동기 원등록·PCM 보호·요청 / 효과 후속 | [상세 설명](functions/AudioTx_Request.md) | [한국어 의사코드](pseudocode/AudioTx_Request.md) | D5-1 SELF_CHECKED / 독립 부분 검수 대기 |
 | CORE-14 | `AudioTx_Advance` — 비동기 raw의 원귀속 적용·반환/출력 근거 | [상세 설명](functions/AudioTx_Advance.md) | [한국어 의사코드](pseudocode/AudioTx_Advance.md) | SELF_CHECKED / GD2_PENDING |
 
-CORE-14는 D2 시범 작성 문서로 진입할 수 있습니다. CORE-13의 경로는 `docs/vss/sw_detail/` 기준 미작성 비링크입니다. 작성 문서와 아래 동결 Function 원문을 함께 읽으며, 다른 함수쌍은 각 단계의 별도 지시·검수를 따릅니다.
+CORE-13 설명·의사코드와 기존 CORE-14 승인 문서로 진입할 수 있습니다. AUDIO_STREAM이 호출하는 AudioTx_Request는 즉시 요청·반환·진단 3 OUT, AudioTx_Advance는 원래 raw의 후속 5 OUT를 담당합니다. 작성 문서와 아래 동결 Function 원문을 함께 읽으며, CORE-14 행의 작성 당시 표시는 보존합니다. 다른 함수쌍은 각 단계의 별도 지시·검수를 따릅니다.
 
 ## 후속 진행 후보와 미정
 
-원 key/회차·late·partial·coverage 부족/손실 판정은 독립 SW/Host 후보입니다. 실제 지속 DMA와 개별 operation 상관, 잔류 FIFO/frame·차기 방문/WCET·메모리 조건은 HW_UNVERIFIED/BINDING_TBD입니다. 과거 Transport는 dated 참고 후보입니다. AudioTx_Advance는 D2 시범, AudioTx_Request와 연결은 D5 예정입니다.
+원 key/회차·late·partial·coverage 부족/손실 판정은 독립 SW/Host 후보입니다. 실제 지속 DMA와 개별 operation 상관, 잔류 FIFO/frame·차기 방문/WCET·메모리 조건은 HW_UNVERIFIED/BINDING_TBD입니다. 과거 Transport는 dated 참고 후보입니다. AudioTx_Advance 승인 본문은 보존하고 AudioTx_Request는 D5-1 SELF_CHECKED / 독립 부분 검수 대기입니다.
 
 위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q↔Core 관계는 P1B_C1 독립 검수 전 최종 차단 지도로 채택하지 않습니다.
 
