@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 검수 대기. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · D4-1 CORE-09 SELF_CHECKED / GD4_1_PENDING. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 read-only Firmware image의 저장 MP3를 확인하고 consumer에 bounded compressed bytes를 공급합니다. lookup·metadata·범위/overflow와 읽기 근거를 다루며 CPU decode는 AUDIO_STREAM에 둡니다.
 
@@ -26,13 +26,13 @@ lookup/read 성공은 아직 읽지 않은 MP3의 decode 성공을 뜻하지 않
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-09 | `Asset_Read` — 동기 범위 읽기 / consumer 참조 지속 | `02_SERVICE/ASSET/functions/Asset_Read.md` | `02_SERVICE/ASSET/pseudocode/Asset_Read.md` | PLANNED_NOT_WRITTEN |
+| CORE-09 | `Asset_Read` — 동기 범위 읽기 / consumer 참조 지속 | [상세 설명](functions/Asset_Read.md) | [한국어 의사코드](pseudocode/Asset_Read.md) | SELF_CHECKED / GD4_1_PENDING |
 
-경로는 `docs/vss/sw_detail/` 기준입니다. 설명·의사코드 본문은 아직 없으므로 위 경로는 클릭 링크가 아닙니다. 실제 동작은 아래 동결 Function 원문에서 읽고, 새 함수쌍은 각 단계 검수 뒤 작성합니다.
+CORE-09의 설명·의사코드는 위 링크로 왕복합니다. 원형·자료·참조 수명의 기술 정본은 아래 동결 원문이며 이번 작성은 자체검수·부분 독립 검수 대기입니다.
 
 ## 후속 진행 후보와 미정
 
-bounded read·오류/부분 읽기·참조 유지의 독립 Host 후보를 보존합니다. 기존 dated AudioAsset 읽기 경계는 재사용 후보이며 제품 table/image·빠진 자산·Flash budget·direct Flash/staging 채택은 미확정입니다. 새 Storage Driver·AssetManager를 만들지 않습니다. 함수쌍은 D4 예정입니다.
+bounded read·오류/부분 읽기·참조 유지의 독립 Host 후보를 보존합니다. 기존 dated AudioAsset 읽기 경계는 재사용 후보이며 제품 table/image·빠진 자산·Flash budget·direct Flash/staging 채택은 미확정입니다. 새 Storage Driver·AssetManager를 만들지 않습니다. CORE-09 문서쌍은 D4-1 자체검수·독립 검수 대기입니다.
 
 위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q↔Core 관계는 P1B_C1 독립 검수 전 최종 차단 지도로 채택하지 않습니다.
 
