@@ -2,7 +2,7 @@
 
 [상위 VSS 지도](../01_VSS_MAP.md) · [처음 읽기](../00_START_HERE.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 검수 대기. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · VSD-D1 탐색 문서 · GD1 독립 PASS 인수. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 SERVICE는 차량 의미·상태·전체 재생 정책과 MP3/PCM 준비를 장치 구현에서 분리합니다. 각 Module이 자기 원본을 쓰고, FLOW가 공개 경계의 반환·관측을 연결합니다. vendor handle·RTD 설정과 물리 통신 framing은 각 하위/외부 책임입니다.
 
@@ -24,8 +24,12 @@ INPUT → STORE, PLAYBACK → AUDIO_STREAM/STORE, AUDIO_STREAM → ASSET/AUDIO_T
 
 수용·선택·준비·요청 수락과 실제 출력은 다른 경계입니다. STORE 이력, PLAYBACK Session, STREAM의 PCM usage와 TX 장치 보호도 별도 원본입니다. 정의된 중복·품질·bounded read·late/Unknown·보고 판단은 후속 SW/Host 후보로 유지하며, 외부 ABI·물리 출력의 증거는 미정입니다.
 
+## 연결해서 읽기
+
+[D3 의미 흐름](../01_VSS_MAP.md#d3-semantic-flow)에서 INPUT은 검증 문맥, STORE는 발생·품질·기한, POLICY는 읽기 판단, PLAYBACK은 Session/Attempt·원 actual·통지 의무를 각각 씁니다. [원 fact 적용](STORE/functions/Store_ApplyPlaybackFact.md)·최신 PB 관측은 만료보다 먼저이고, D4 STREAM·D6 HEALTH는 [동결 R5/R6 경계](../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#core-map)만 연결하며 해당 함수 상세는 아직 미작성입니다.
+
 ## 지금 읽을 원문과 다음 위치
 
 [R1 SERVICE](../../design/10_LAYERS/20_SERVICE_LAYER.md) · [R3 자료와 writer](../../design/40_DATA/00_DATA_OVERVIEW.md) · [R4 공통 계약](../../design/50_CONTRACTS/00_CONTRACT_OVERVIEW.md)
 
-D2의 STORE 시범, D3 의미 경로, D4 ASSET/STREAM, D6 HEALTH 순으로 함수쌍을 작성합니다. 각 Module의 표에 정확한 예정 경로와 미작성 상태가 있습니다. WINDOW 제품 보류와 TEST 격리는 INPUT 페이지에서 확인합니다.
+D2 STORE 시범과 D3-1/2 의미 경로의 함수쌍은 승인 인수 완료이며, D4 ASSET/STREAM·D6 HEALTH 상세는 아직 미작성입니다. 각 Module의 표에 정확한 예정 경로와 미작성 상태가 있습니다. WINDOW 제품 보류와 TEST 격리는 INPUT 페이지에서 확인합니다.

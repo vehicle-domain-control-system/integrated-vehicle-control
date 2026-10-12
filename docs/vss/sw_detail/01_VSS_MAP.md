@@ -2,7 +2,7 @@
 
 [처음 읽기](00_START_HERE.md)
 
-> GUIDE · GD1/GD2 독립 PASS 인수 · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · GD1/GD2 독립 PASS 인수 · D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합니다. FLOW가 owner의 반영 완료 관측을 연결하면 POLICY가 읽기 전용으로 선택하고 PLAYBACK이 단일 전체 Session을 진행합니다. AUDIO STREAM은 저장 MP3를 PCM으로 준비하고 DRIVER/HAL의 귀속된 근거를 결합합니다. HEALTH는 현재 제한·복구 판단과 파생 보고를 담당합니다.
 
@@ -20,20 +20,32 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 
 대표 경로는 INPUT → STORE 관측 → **FLOW를 통한 POLICY 판단/PLAYBACK 요구** → AUDIO STREAM → ASSET·DRIVER → HAL입니다. 보고는 HEALTH → FLOW → INPUT의 통신 연결 책임 → 기존 Node Communication이며, CAN 송신·Domain 수용은 별도 책임입니다.
 
+<a id="d3-semantic-flow"></a>
+## D3 의미 경로 — 입력·원 사실·선택·재생
+
+| 진행·경계 | 확인할 함수 문서쌍 | 필요한 판단·보호 |
+|---|---|---|
+| FLOW → INPUT | [Flow_Process](01_APP/FLOW/functions/Flow_Process.md) / [의사코드](01_APP/FLOW/pseudocode/Flow_Process.md) → [Input_Process](02_SERVICE/INPUT/functions/Input_Process.md) / [의사코드](02_SERVICE/INPUT/pseudocode/Input_Process.md) | RX 없는 기회도 NULL 품질 점검; FLOW는 다른 owner 원본을 쓰지 않음 |
+| INPUT → STORE | [Store_ApplyInput](02_SERVICE/STORE/functions/Store_ApplyInput.md) / [의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyInput.md) | INPUT 문맥 적용과 STORE 수용은 별개; 원 발생·age·최초 품질상실 보호 |
+| STREAM 원 사실 → PLAYBACK → STORE 사실 → STORE 기한 | [Playback_Advance](02_SERVICE/PLAYBACK/functions/Playback_Advance.md) / [의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md) → [Store_ApplyPlaybackFact](02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md) / [의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) → [Store_AdvanceDeadlines](02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md) / [의사코드](02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) | 원 fact 적용·최신 singular PB 관측이 expiry보다 먼저; NOT_APPLIED·OUT 부족은 보호·후속, void는 성공 아님 |
+| FLOW → POLICY 판단 → FLOW → PLAYBACK 의도 | [Select_Choose](02_SERVICE/POLICY/functions/Select_Choose.md) / [의사코드](02_SERVICE/POLICY/pseudocode/Select_Choose.md) → [Playback_RequestTransition](02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md) / [의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md) | coherent basis 후 판단, PB는 효력 직전 재확인; CHOOSE ≠ ADOPTED ≠ prepared ≠ actual |
+| PLAYBACK → STREAM 준비·STOP·후속 | [R6 typed 경계](../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-audiostream-requestcontrol) · [R4 충분조건](../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#confirmed-outcomes) · [R5 STOP/late](../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#playback-stop-late) | D4 하위 상세 미작성; 요청≠전체 안전 종료, 모든 원 scope·미래 출력/PCM·상위 권한·자원·late 보호 필요; uncertain/retired 결과는 old 정리만 |
+| HEALTH → FLOW → INPUT 보고 연결 | [R5 조율·별도 보고 basis](../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#flow-process) · [R6 Status 경계](../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-buildstatus) | 보고 basis는 새로 수집; HEALTH가 보호한 CREATED만 연결, D6/D7 상세·CAN 송신/Domain 수용은 별도 |
+
 ## 18 Core의 문서쌍
 
-아래 경로는 `docs/vss/sw_detail/` 기준입니다. D2 CORE-03/14는 GD2 독립 PASS 인수 완료이며 승인 본문은 그대로입니다. D3-1 CORE-01/02/04/05는 `SELF_CHECKED / D3_1_REVIEW_PENDING`으로 작성했습니다. D3-2 CORE-06/07/08을 `SELF_CHECKED / D3_2_REVIEW_PENDING`으로 연결하여 총 9쌍이 실링크이고 나머지 9 Core는 미작성 비링크입니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따릅니다. D3-1 부분 독립 검수와 D3 전체 최종 GD3는 별도입니다.
+아래 경로는 `docs/vss/sw_detail/` 기준입니다. D2 CORE-03/14는 GD2 독립 PASS, D3-1 CORE-01/02/04/05와 D3-2 CORE-06/07/08은 각각 부분 독립 PASS 인수 완료입니다. 총 9쌍은 실링크이고 나머지 9 Core는 미작성 비링크입니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따르며 기존 승인 본문은 보존합니다. D3 전체 GD3는 NOT_RUN / FINAL_PASS_NOT_GRANTED입니다.
 
 | Core | 함수 | 논리 Owner / Layer | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|---|
-| CORE-01 | `Flow_Process` | FLOW / 01_APP | [상세 설명](01_APP/FLOW/functions/Flow_Process.md) | [한국어 의사코드](01_APP/FLOW/pseudocode/Flow_Process.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
-| CORE-02 | `Input_Process` | INPUT / 02_SERVICE | [상세 설명](02_SERVICE/INPUT/functions/Input_Process.md) | [한국어 의사코드](02_SERVICE/INPUT/pseudocode/Input_Process.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
+| CORE-01 | `Flow_Process` | FLOW / 01_APP | [상세 설명](01_APP/FLOW/functions/Flow_Process.md) | [한국어 의사코드](01_APP/FLOW/pseudocode/Flow_Process.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| CORE-02 | `Input_Process` | INPUT / 02_SERVICE | [상세 설명](02_SERVICE/INPUT/functions/Input_Process.md) | [한국어 의사코드](02_SERVICE/INPUT/pseudocode/Input_Process.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
 | CORE-03 | `Store_ApplyInput` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyInput.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyInput.md) | GD2 INDEPENDENT_PASS / COMPLETED |
-| CORE-04 | `Store_ApplyPlaybackFact` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
-| CORE-05 | `Store_AdvanceDeadlines` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
-| CORE-06 | `Select_Choose` | POLICY / 02_SERVICE | [상세 설명](02_SERVICE/POLICY/functions/Select_Choose.md) | [한국어 의사코드](02_SERVICE/POLICY/pseudocode/Select_Choose.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
-| CORE-07 | `Playback_RequestTransition` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
-| CORE-08 | `Playback_Advance` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_Advance.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md) | SELF_CHECKED / D3_2_REVIEW_PENDING |
+| CORE-04 | `Store_ApplyPlaybackFact` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| CORE-05 | `Store_AdvanceDeadlines` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| CORE-06 | `Select_Choose` | POLICY / 02_SERVICE | [상세 설명](02_SERVICE/POLICY/functions/Select_Choose.md) | [한국어 의사코드](02_SERVICE/POLICY/pseudocode/Select_Choose.md) | D3-2 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| CORE-07 | `Playback_RequestTransition` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md) | D3-2 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| CORE-08 | `Playback_Advance` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_Advance.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md) | D3-2 PARTIAL_INDEPENDENT_PASS / COMPLETED |
 | CORE-09 | `Asset_Read` | ASSET / 02_SERVICE | `02_SERVICE/ASSET/functions/Asset_Read.md` | `02_SERVICE/ASSET/pseudocode/Asset_Read.md` | PLANNED_NOT_WRITTEN |
 | CORE-10 | `AudioStream_Prepare` | AUDIO_STREAM / 02_SERVICE | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_Prepare.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Prepare.md` | PLANNED_NOT_WRITTEN |
 | CORE-11 | `AudioStream_RequestControl` | AUDIO_STREAM / 02_SERVICE | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_RequestControl.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_RequestControl.md` | PLANNED_NOT_WRITTEN |

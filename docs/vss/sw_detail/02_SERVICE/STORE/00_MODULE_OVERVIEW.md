@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · GD1/GD2 독립 PASS 인수 · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · GD1/GD2 독립 PASS 인수 · D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 수용한 One-shot occurrence의 이력·replay 방어와 현재 Stateful 후보를 구분해 보존합니다. 검증 입력과 원래 발생에 귀속된 재생 사실을 적용하고 품질·Hold·Rear 결합과 기한을 관리합니다.
 
@@ -22,15 +22,19 @@ accepted 전에 최종까지의 추적 자원을 확보합니다. 동일 occurre
 
 [INPUT 검증](../INPUT/00_MODULE_OVERVIEW.md) · [PLAYBACK Session/Attempt](../PLAYBACK/00_MODULE_OVERVIEW.md)
 
+## 연결해서 읽기
+
+[D3 의미 흐름](../../01_VSS_MAP.md#d3-semantic-flow)에서 입력 수용·원 fact 멱등 적용·기한은 아래 세 Core의 별도 책임입니다. [Playback_Advance](../PLAYBACK/functions/Playback_Advance.md#pairing)의 통지가 미적용이면 해당 fact 보호·재적용이 먼저이고, [Store_AdvanceDeadlines](functions/Store_AdvanceDeadlines.md#ownership)는 notificationPending/관측 부족을 age만으로 Expired로 바꾸지 않습니다.
+
 ## 담당 Core의 문서쌍
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
 | CORE-03 | `Store_ApplyInput` — 동기 신규 수용·현재 후보/품질 적용 | [상세 설명](functions/Store_ApplyInput.md) | [한국어 의사코드](pseudocode/Store_ApplyInput.md) | GD2 INDEPENDENT_PASS / COMPLETED |
-| CORE-04 | `Store_ApplyPlaybackFact` — 동기 원귀속 사실의 멱등 이력 반영 | [상세 설명](functions/Store_ApplyPlaybackFact.md) | [한국어 의사코드](pseudocode/Store_ApplyPlaybackFact.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
-| CORE-05 | `Store_AdvanceDeadlines` — 최신 출력 사실 재확인 후 age/Hold 진행 | [상세 설명](functions/Store_AdvanceDeadlines.md) | [한국어 의사코드](pseudocode/Store_AdvanceDeadlines.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
+| CORE-04 | `Store_ApplyPlaybackFact` — 동기 원귀속 사실의 멱등 이력 반영 | [상세 설명](functions/Store_ApplyPlaybackFact.md) | [한국어 의사코드](pseudocode/Store_ApplyPlaybackFact.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| CORE-05 | `Store_AdvanceDeadlines` — 최신 출력 사실 재확인 후 age/Hold 진행 | [상세 설명](functions/Store_AdvanceDeadlines.md) | [한국어 의사코드](pseudocode/Store_AdvanceDeadlines.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
 
-CORE-03은 GD2 승인 본문 그대로이며 CORE-04/05는 D3-1 자체검토 완료·부분 독립 검수 대기입니다. 세 문서쌍과 아래 동결 Function 원문을 함께 읽으며 D3-2/3의 다른 함수쌍은 별도 지시·검수를 따릅니다.
+CORE-03은 GD2 승인 본문 그대로이며 CORE-04/05는 D3-1 부분 독립 PASS 인수 완료입니다. 세 문서쌍과 아래 동결 Function 원문을 함께 읽으며 전체 GD3는 아직 미완료입니다.
 
 ## 후속 진행 후보와 미정
 

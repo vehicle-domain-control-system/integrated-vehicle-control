@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · GD1 독립 PASS 인수 · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · GD1 독립 PASS 인수 · D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 제품/TEST의 값·Meta·출처·세대·순서·품질·원본 시간을 검증해 현재 적용 가능한 VSS 의미로 STORE에 전달합니다. HEALTH가 만든 보고는 기존 Node Communication 경계에 연결합니다.
 
@@ -22,13 +22,17 @@ received·valid·STORE accepted는 다릅니다. 신규 수용이 거부돼도 �
 
 [STORE의 수용 책임](../STORE/00_MODULE_OVERVIEW.md) · [HEALTH의 보고 책임](../HEALTH/00_MODULE_OVERVIEW.md)
 
+## 연결해서 읽기
+
+[D3 의미 흐름](../../01_VSS_MAP.md#d3-semantic-flow)의 [Input_Process](functions/Input_Process.md#quality)는 NULL에서도 품질을 점검하고, 검증한 event/state/quality 중 하나만 [Store_ApplyInput](../STORE/functions/Store_ApplyInput.md#contract)에 전달합니다. contextApplied와 storeAdmission은 별개이므로 STORE 거부가 INPUT 문맥을 rollback하지 않습니다.
+
 ## 담당 Core의 문서쌍
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-02 | `Input_Process` — 동기 검증·문맥 적용·STORE 전달 | [상세 설명](functions/Input_Process.md) | [한국어 의사코드](pseudocode/Input_Process.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
+| CORE-02 | `Input_Process` — 동기 검증·문맥 적용·STORE 전달 | [상세 설명](functions/Input_Process.md) | [한국어 의사코드](pseudocode/Input_Process.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
 
-CORE-02 두 본문은 D3-1 자체검토 완료·부분 독립 검수 대기입니다. D2 승인 CORE-03 연결과 R6 진단 OUT/원 문맥 보호를 아래 동결 원문과 함께 읽습니다. D3-2 착수는 별도입니다.
+CORE-02 두 본문은 D3-1 부분 독립 PASS 인수 완료입니다. D2 승인 CORE-03 연결과 R6 진단 OUT/원 문맥 보호를 아래 동결 원문과 함께 읽으며 전체 GD3는 아직 미완료입니다.
 
 ## 후속 진행 후보와 미정
 

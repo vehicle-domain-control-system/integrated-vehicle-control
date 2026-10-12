@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · GD1 독립 PASS 인수 · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · GD1 독립 PASS 인수 · D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 각 owner의 처리를 연결해 입력이 없는 동안에도 기한·출력 결과·정리·선택/실행·보고가 진행되게 합니다. 선택은 POLICY, 전체 실행은 PLAYBACK이 맡고 FLOW는 공개 의미 경계와 반영 완료 관측을 조율합니다.
 
@@ -22,13 +22,17 @@ FLOW가 쓰는 것은 조율 단계·재평가 필요성과 임시 일관된 읽
 
 [SERVICE 책임](../../02_SERVICE/00_LAYER_OVERVIEW.md)
 
+## 연결해서 읽기
+
+[D3 의미 흐름](../../01_VSS_MAP.md#d3-semantic-flow)의 [INPUT 처리](../../02_SERVICE/INPUT/functions/Input_Process.md)와 [PLAYBACK 원 사실 적용](../../02_SERVICE/PLAYBACK/functions/Playback_Advance.md) 뒤 최신 관측으로 [STORE 기한](../../02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md)을 진행합니다. 선택용 coherent basis와 HEALTH 보고용 새 basis는 분리하고, 반환 하나로 미인계 사실·진단/후속을 완료 처리하지 않습니다.
+
 ## 담당 Core의 문서쌍
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-01 | `Flow_Process` — 동기 조율·후속 처리 연결 | [상세 설명](functions/Flow_Process.md) | [한국어 의사코드](pseudocode/Flow_Process.md) | SELF_CHECKED / D3_1_REVIEW_PENDING |
+| CORE-01 | `Flow_Process` — 동기 조율·후속 처리 연결 | [상세 설명](functions/Flow_Process.md) | [한국어 의사코드](pseudocode/Flow_Process.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
 
-CORE-01 두 본문은 D3-1 자체검토 완료·부분 독립 검수 대기입니다. 아래 동결 원문과 함께 읽으며 D3-2/3·최종 GD3를 완료한 것으로 보지 않습니다.
+CORE-01 두 본문은 D3-1 부분 독립 PASS 인수 완료입니다. 아래 동결 원문과 함께 읽으며 전체 GD3는 아직 미완료입니다.
 
 ## 후속 진행 후보와 미정
 
