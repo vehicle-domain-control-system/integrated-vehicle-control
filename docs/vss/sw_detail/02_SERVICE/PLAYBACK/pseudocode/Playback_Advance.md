@@ -294,11 +294,20 @@ void Playback_Advance(
         모든_미발행_start_cue_repeat_권한을_차단;
         원STOP과_각_related_Attempt_segment의_후속정리를_유지;
     }
+    /* scope별 조건은 B2에서 원 identity/operation/scope·시각·coverage를
+       확인·보호한 충분 근거만 소비한다. 각 scope는 NO_START 또는 TERMINATION으로
+       충족할 수 있으나 다른 scope의 근거로 대체하지 않는다. 미처리/부족/손실이나
+       현재 idle/STOP ack/zero-fill/IRQ만으로 아래 조건을 true로 만들지 않는다. */
     if (해당_원Session이_아직_retire되지_않았고 &&
         모든_관련_원Attempt_scope를_빠짐없이_검토했고 &&
-        전체_실제_잔류출력종료_또는_충분한_과거NO_START_및_옛미래출력차단 &&
-        모든_관련scope_미래PCM차단 && PB_전체후속권한차단 &&
-        provider_read_PCM_새owner자원_실제안전조건과_late귀속보호_충분) {
+        모든_관련_원Attempt_scope_각각에서 (
+            (해당_scope의_과거_실제무출력_전체범위_충분입증 &&
+             해당_scope의_모든_옛작업_미래출력불가_충분입증) ||
+            (해당_scope의_실제_잔류출력종료_충분입증 &&
+             해당_scope의_모든_옛작업_미래출력불가_충분입증)
+        ) &&
+        모든_관련scope_미래PCM제출차단 && PB_전체_start_cue_repeat_차단 &&
+        provider_read_PCM_새owner자원_실제안전조건_충분 && late_원귀속보호_충분) {
         if (원_uncertain_final_이미있음) {
             uncertain_최종_replay금지_유지; /* 정상 Completed/NO_START 부활 없음. */
         } else if (충분한_전체NO_START이고_과거실제시작없음_입증) {

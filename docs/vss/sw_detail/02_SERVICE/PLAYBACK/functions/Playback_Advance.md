@@ -91,7 +91,11 @@ actual/종료 사실을 요청 acceptance보다 우선 보존합니다. 원 귀�
 <a id="termination"></a>
 ## 전체 종료·uncertain final·retirement
 
-PB 전체 start/cue/repeat 차단, 모든 관련 원 Attempt/segment의 실제/잔류 출력 종료 또는 충분한 과거 NO_START·미래 출력/PCM 차단, provider/read/PCM·새 owner 자원의 실제 안전 조건, late 원귀속 보호를 **각각** 확인합니다. 한 scope/cleanup/STOP 수락을 다른 구간/전체 Session으로 확대하지 않습니다.
+모든 관련 원 Attempt/segment scope **각각**에서 `(필요한 과거 전체 범위의 실제 무출력 충분 입증 AND 해당 옛 작업의 미래 출력 불가 충분 입증)` 또는 `(실제/잔류 출력 종료 충분 입증 AND 해당 옛 작업의 미래 출력 불가 충분 입증)`을 확인합니다. scope A는 TERMINATION, scope B는 NO_START로 충족할 수 있지만, 각 원 scope의 근거를 서로 대신 사용하지 않습니다.
+
+이는 B2에서 원 identity/operation/scope·시각·coverage를 확인·보호한 `NO_START_CONFIRMED` 또는 `OUTPUT_TERMINATION_CONFIRMED`의 충분 근거만 사용합니다. 현재 idle/STOP ack/zero-fill/IRQ 결과를 충분 근거로 승격하지 않으며, 관련 scope 하나라도 미처리·부족·손실이면 전체 final/retirement를 만들지 않고 원 보호·정리를 유지합니다.
+
+위 하위 근거에 **더해**, 각 관련 scope의 미래 PCM 제출 차단, PB 전체 start/cue/repeat 차단, provider/read/PCM·새 owner 자원의 실제 안전 조건, late 원귀속 보호가 **각각 모두** 필요합니다. 한 scope/cleanup/STOP 수락을 다른 구간/전체 Session으로 확대하지 않습니다.
 
 - 충분한 전체 NO_START + 실제 과거 미시작 + uncertain final 없음이면 원 One-shot에 `VSS_FACT_NO_START_REEVALUATE`; Pending/Expiry는 STORE가 원 age로 재판정합니다.
 - 적법 Started된 전체 Session의 정상 plan 끝·전체 종료는 `VSS_FACT_WHOLE_COMPLETED`, 선점/고장/조건 상실 중단·전체 종료는 `VSS_FACT_WHOLE_INTERRUPTED`입니다. One-shot 통지이며 Stateful 상태/품질을 다시 쓰지 않습니다.
