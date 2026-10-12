@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · D4-1 CORE-10 SELF_CHECKED / GD4_1_PENDING. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · D4-1 CORE-10 GD4_1 부분 독립 PASS · D4-2 CORE-11/12 SELF_CHECKED / GD4_2_PENDING · 전체 GD4 NOT_RUN. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 원래 출력 시도의 MP3 준비·CPU decode·PCM 생산과 장치 근거 결합을 담당합니다. ASSET bytes를 provider로 소비하고 TX/CONTROL 결과를 Backend 범위로 PLAYBACK에 반환합니다.
 
@@ -26,15 +26,15 @@ PCM 전송 버퍼는 A/B 두 개입니다. prepared는 출력 허가나 actual�
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-10 | `AudioStream_Prepare` — 준비 수용·Asset/provider·초기 PCM, 후속 준비 | [상세 설명](functions/AudioStream_Prepare.md) | [한국어 의사코드](pseudocode/AudioStream_Prepare.md) | SELF_CHECKED / GD4_1_PENDING |
-| CORE-11 | `AudioStream_RequestControl` — start/stop/허용 복구 수용·미래 생산 차단 | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_RequestControl.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_RequestControl.md` | PLANNED_NOT_WRITTEN |
-| CORE-12 | `AudioStream_Advance` — 하위 사실·PCM 회차·Backend/복구 결과 진행 | `02_SERVICE/AUDIO_STREAM/functions/AudioStream_Advance.md` | `02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Advance.md` | PLANNED_NOT_WRITTEN |
+| CORE-10 | `AudioStream_Prepare` — 준비 수용·Asset/provider·초기 PCM, 후속 준비 | [상세 설명](functions/AudioStream_Prepare.md) | [한국어 의사코드](pseudocode/AudioStream_Prepare.md) | GD4_1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| CORE-11 | `AudioStream_RequestControl` — start/stop/허용 복구 수용·미래 생산 차단 | [상세 설명](functions/AudioStream_RequestControl.md) | [한국어 의사코드](pseudocode/AudioStream_RequestControl.md) | SELF_CHECKED / GD4_2_PENDING |
+| CORE-12 | `AudioStream_Advance` — 하위 사실·PCM 회차·Backend/복구 결과 진행 | [상세 설명](functions/AudioStream_Advance.md) | [한국어 의사코드](pseudocode/AudioStream_Advance.md) | SELF_CHECKED / GD4_2_PENDING |
 
-CORE-10의 설명·의사코드는 위 링크로 왕복합니다. CORE-11/12는 PLANNED_NOT_WRITTEN 비링크이며 D4-2 별도 범위입니다. 동결 원문을 따르며 D4 전체 PASS로 표시하지 않습니다.
+세 Core의 설명·의사코드는 위 링크로 왕복합니다. RequestControl은 START/STOP과 Session 없는 Recovery를 구분하고, Advance는 requests/outputs/cleanup/devices/diagnostics/performed/verified 7군을 독립 전달합니다. STOP은 Session 전체 미래 생산을 하위 요청 전에 차단하며 consumed/안전 반환/실제 출력 종료/PB retirement는 별도입니다. devices의 원 writer는 CONTROL입니다. 동결 원문을 따르며 D4 전체 GD4는 NOT_RUN입니다.
 
 ## 후속 진행 후보와 미정
 
-bounded/no-progress 처리·short tail·빈 B 구분·PCM 회차/late·STOP 후 생산 차단은 독립 SW/Host 후보입니다. format/크기·실제 safe-write·DMA/STOP 효과·제품 source/image는 미정입니다. 과거 Provider/Player는 dated 참고 재사용 후보이며 현재 제품 완성본이 아닙니다. CORE-10 문서쌍은 D4-1 자체검수·독립 검수 대기이며 제어/Advance 두 쌍은 D4-2 예정입니다.
+bounded/no-progress 처리·short tail·빈 B 구분·PCM 회차/late·STOP 후 생산 차단은 독립 SW/Host 후보입니다. format/크기·실제 safe-write·DMA/STOP 효과·제품 source/image는 미정입니다. 과거 Provider/Player는 dated 참고 재사용 후보이며 현재 제품 완성본이 아닙니다. CORE-10은 GD4-1 부분 승인 인수 완료이고 제어/Advance 두 쌍은 D4-2 자체검수 후 독립 검수 대기입니다.
 
 위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q↔Core 관계는 P1B_C1 독립 검수 전 최종 차단 지도로 채택하지 않습니다.
 
