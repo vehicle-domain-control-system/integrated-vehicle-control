@@ -33,7 +33,7 @@ VssInputApplication Input_Process(
     /* I1: INPUT 원본 초기화가 아니다. 진단 공간만 먼저 독립 검증. */
     if (진단군_주소_capacity_전달영역_written_저장공간을_안전_확인했고
         그_뒤_필요한_capacity_값과_출력범위_검증을_완료) {
-        /* 검증된 diagnostics 군의 written만 0으로 초기화. */
+        diagnostics.written = 0; /* 검증된 이 군만 초기화하는 의사 접근. */
     } else {
         /* 무효 written/capacity 메모리 읽기·쓰기·초기화 금지.
            발견 진단은 기존 INPUT owner 미인계 보호·손실 관측/후속.
@@ -65,16 +65,41 @@ VssInputApplication Input_Process(
         /* 변화 없음/시간 부족이면 기존 문맥 보존, NOT_SUBMITTED 유지. */
     } else {
         /* I4: 최신 적용 가능성은 quality 쓰기보다 먼저 검사. */
-        if (입력_및_Meta_저장공간이_부적합 || 값_Meta_결합이_불충분 ||
-            원_source_authority_generation_ordering을_확인할_수_없음 ||
-            과거_또는_순서역전_자료라_최신_문맥에_적용_불가) {
+        if (입력_및_Meta_저장공간이_부적합) {
             result.validation = VSS_VALIDATION_REJECTED;
-            /* 과거 INVALID로 최신 품질/출처 적용 흔적 덮어쓰기 금지. */
+            /* 무효 입력/Meta 내부는 읽지 않고 기존 문맥을 보존. */
             실제_검증실패_원사실만_진단_대상으로_보호;
         } else if (WINDOW_PRODUCT_연동_입력임) {
             result.validation = VSS_VALIDATION_REJECTED;
             /* 구현 보류 — 설계 유지. TEST를 PRODUCT로 재분류하지 않음. */
             보류된_원출처_입력_관측만_유지;
+        } else if (값_Meta_결합이_불충분 ||
+                   원_source_authority_generation_ordering을_확인할_수_없음 ||
+                   과거_또는_순서역전_자료라_정상_최신_문맥에_적용_불가 ||
+                   원_출처_또는_시간_연속성_근거가_부적합) {
+            /* I4-QE: 부적합 정상입력과 독립적인 현재 품질 근거를 구분. */
+            if (현재_보호_context의_대상_PRODUCT_TEST_격리_출처_원시간에_대해
+                적용가능한_최신_INVALID_또는_STALE_상실근거를_별도로_검증) {
+                /* 옛 INVALID/값/Meta로 증명하지 않음. 독립 검증된 근거만 사용. */
+                if (같은_품질상실의_반복이고_품질_검증문맥의_적용변화가_없음) {
+                    /* NO_CHANGE/NOT_SUBMITTED. 최초 상실/Hold 연장 없음. */
+                } else if (독립_최신상실의_basis_최초_lossAt와_필요참조를_보호_완료) {
+                    INPUT_기존_출처_appliedMeta_generation_ordering을_유지하고
+                    그_독립근거의_현재_품질_검증문맥만_반영완료;
+                    result.validation = VSS_VALIDATION_QUALITY_CHANGE;
+                    result.contextApplied = true;
+                    result.storeAdmission = Store_ApplyInput(
+                        NULL, NULL, 독립_검증된_현재_품질변화의_보호_참조);
+                    /* EVENT/STATE/CLEAR·새 occurrence/Meta/age 합성 없음. */
+                } else {
+                    result.validation = VSS_VALIDATION_REJECTED;
+                    품질근거_보호실패를_원문맥에_남김;
+                }
+            } else {
+                result.validation = VSS_VALIDATION_REJECTED;
+                /* 독립 최신 근거 없음: NOT_SUBMITTED·기존 문맥/STORE 불변. */
+                실제_검증실패_원사실만_진단_대상으로_보호;
+            }
         } else {
             /* 격리 TEST도 출처/세대/순서/원시간 보호를 그대로 적용한다. */
             원본_품질_값조합_시간_유효기한과_현재_적용가능성을_검증;
@@ -121,9 +146,17 @@ VssInputApplication Input_Process(
     for (각_보호된_미인계_INPUT_진단_중_이번_기회에_다룰_범위) {
         if (진단군의_선행_검증_전체가_유효 &&
             diagnostics.written < diagnostics.capacity &&
+            해당_인계의_원근거와_범위가_아직_유효 &&
             producer_cause_target_원시점과_필요참조를_출력수명까지_보호_가능) {
-            해당_VssDiagnosticEvidence를_검증된_다음_출력위치에_기록;
-            /* 해당 원사실만 written 증가. 인계/소비 보호 전 원본 해제 금지. */
+            해당_VssDiagnosticEvidence를_검증된_다음_출력위치에_기록_시도;
+            if (해당_기록이_실제로_성공했고_필요참조의_출력수명_보호도_완료) {
+                diagnostics.written = diagnostics.written + 1;
+                /* 성공한 이 건만 유효 OUT 수에 포함. 인계/소비 보호 전 해제 금지. */
+            } else {
+                해당_진단을_INPUT_미인계로_유지하고_후속_관측에_남김;
+                /* 부분기록/참조 보호 실패는 written 증가·유효 출력 공개 없음.
+                   원본 보호도 불가능한 실제 손실은 별도 loss 근거로 보존. */
+            }
         } else {
             해당_진단을_INPUT_미인계로_유지하고_후속_관측에_남김;
             /* 보호 불능에 따른 실제 손실은 loss 근거를 남기며 충분성 차단.
@@ -137,7 +170,7 @@ VssInputApplication Input_Process(
 <a id="postconditions"></a>
 ## 경로별 사후조건
 
-NULL은 QUALITY 또는 미호출, 과거 자료는 최신 문맥 불변, 정상 EVENT/STATE는 INPUT 반영 후 CORE-03 한 lane, 품질 상실은 QUALITY lane이다. 입력 공간 자체가 무효이면 그 내부 값·Meta를 읽지 않는 short-circuit 조건이다. INPUT 보호 실패는 신규 적용만 거부하고 옛 문맥을 보존한다. OUT 유효성 조건은 I1 전체를 뜻하며 무효 군의 count/capacity를 읽지 않는다.
+NULL은 QUALITY 또는 미호출, 과거/부적합 정상 자료는 미적용이다. 독립 검증된 최신 상실 예외만 현재 품질/검증 문맥과 CORE-03 quality lane에 적용하며 옛 값·Meta·출처/순서를 덮지 않는다. 그 근거가 없으면 REJECTED/NOT_SUBMITTED로 기존 문맥을 보존한다. 정상 EVENT/STATE는 INPUT 반영 후 CORE-03 한 lane이다. 입력 공간 자체가 무효이면 내부 값·Meta를 읽지 않는 short-circuit 조건이다. INPUT 보호 실패는 신규 적용만 거부하고 옛 문맥을 보존한다. OUT 유효성 조건은 I1 전체를 뜻하며 무효 군의 count/capacity를 읽지 않는다. written은 검증 후 0, 실제 기록·참조 보호 완료 후에만 증가한다.
 
 result 세 필드는 호출 결과이고 diagnostics.written은 보호된 원 진단 수다. validation과 written 모두 실제 출력 성공을 뜻하지 않는다. 품질 상실·STORE REJECTED·진단 미인계는 각 owner의 상태/후속으로 드러난다. Store_ApplyInput은 [D2 승인 의사코드](../../STORE/pseudocode/Store_ApplyInput.md) 그대로 연결한다.
 

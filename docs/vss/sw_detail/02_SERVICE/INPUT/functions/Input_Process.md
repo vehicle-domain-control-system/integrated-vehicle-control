@@ -40,7 +40,7 @@ FLOW가 호출한다. INPUT만 [VssInputContext](../../../../design/40_DATA/10_I
 <a id="validation"></a>
 ## 정상 값, 과거 자료, PRODUCT와 TEST
 
-1. 입력 저장공간과 값+Meta 결합, 출처 authority·세대/순서의 최신 적용 가능성을 확인한다. 과거 INVALID/늦은 source 자료는 REJECTED이며 최신 품질·출처 적용 흔적을 덮지 않는다. 같은 메시지라는 추정만으로 새 occurrence나 최신성을 만들지 않는다.
+1. 입력 저장공간과 값+Meta 결합, 출처 authority·세대/순서·원 시간의 적용 가능성을 확인한다. 과거/부적합 메시지의 정상 사건·상태 적용은 거부한다. 다만 [R5](../../../../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#input-process)처럼 **현재 문맥에 적용 가능한 최신 품질 상실 근거가 별도로 검증되는 경우에만** 그 근거의 QUALITY_CHANGE 경로를 허용한다. 독립 근거가 없으면 REJECTED/NOT_SUBMITTED로 기존 문맥을 유지한다. 과거 INVALID 자체로 최신 품질·출처를 덮거나 같은 메시지라는 추정으로 새 occurrence·최신성을 만들지 않는다.
 2. WINDOW PRODUCT 연결은 `[구현 보류 — 설계 유지]`로 거부한다. 격리 TEST는 원 TEST 출처/시간 문맥을 보호하여 기존 의미 검증을 계속한다. TEST를 PRODUCT authority로 승격하지 않는다.
 3. 정상 사건/상태의 유효한 조합을 검증한다. One-shot은 Domain이 확정한 원 occurrence를 필요로 한다. 현재 도어 상태 반복이나 목표 이미 도달은 새 LOCK/UNLOCK 사건의 대용이 아니다. Stateful/Rear의 허용 값 조합은 D2 계약을 따른다.
 4. 원본 시각과 연속성·정의된 validUntil을 대조한다. 비교 부족은 정상 fresh로 확정하지 않는다. 먼저 보호 가능한 INPUT 문맥을 반영한 뒤 typed EVENT 또는 STATE lane 하나로 CORE-03을 호출한다.
@@ -49,14 +49,14 @@ FLOW가 호출한다. INPUT만 [VssInputContext](../../../../design/40_DATA/10_I
 <a id="quality"></a>
 ## RX 없는 품질과 상실
 
-NULL이면 새 EVENT/STATE/CLEAR를 만들지 않는다. 기존 보호 문맥을 점검하고 현재 적용 가능한 신뢰 상실이 확인된 경우 `VssQualityChange`만 전달한다. 최신 INVALID 또는 기한에 따른 STALE은 품질-only lane이다. 기존 `VSS_INPUT_VALID/INVALID/STALE/UNASSESSED`를 사용하며 NO_DATA라는 새 enum을 만들지 않는다.
+NULL이면 새 EVENT/STATE/CLEAR를 만들지 않는다. 기존 보호 문맥을 점검하고 현재 적용 가능한 신뢰 상실이 확인된 경우 `VssQualityChange`만 전달한다. 부적합한 정상 입력에도 현재 보호 문맥의 대상·PRODUCT/TEST 격리·출처/원 시간에 대해 독립 검증된 최신 상실 근거가 있으면 그 quality lane만 연결한다. 이 예외는 품질/검증 문맥만 반영하고 과거 메시지의 값·Meta·generation/ordering을 현재 유효 출처나 새 발생으로 채택하지 않는다. 최신 INVALID 또는 기한에 따른 STALE은 품질-only lane이다. 기존 `VSS_INPUT_VALID/INVALID/STALE/UNASSESSED`를 사용하며 NO_DATA라는 새 enum을 만들지 않는다.
 
 처음 상실의 원 basis/lossAt를 보호한다. 반복 상실의 처리 now를 최초 시각으로 바꾸지 않는다. 같은 품질의 반복 점검에 적용 변화가 없으면 NO_CHANGE/NOT_SUBMITTED다. 시간 부족/아직 미평가라면 정상값·정밀 lossAt를 합성하지 않고 부족 근거를 유지한다. Hold 기산·최종 후보 제거는 STORE의 책임이다. 이 함수가 CLEAR를 생성해 STORE의 마지막 유효 경고를 없애지 않는다.
 
 <a id="diagnostics"></a>
 ## OUT 안전성과 참조 보호
 
-진단군 주소·capacity 전달영역·written 저장공간을 안전 확인하고 필요한 capacity 값과 출력범위를 검증한 **이후**에만 그 군의 written=0을 쓴다. 무효 군은 메모리 접근/초기화/기록을 하지 않는다. 유효 capacity=0 또는 가득 찬 군에서도 written을 증가시키지 않는다. 원 발견 사실은 INPUT의 기존 보호 문맥에 미인계로 남기고 FLOW의 후속 관측으로 연결한다. 보호 자체가 불가능한 실제 손실은 해당 범위의 손실 근거를 남기며 충분한 전달로 주장하지 않는다.
+진단군 주소·capacity 전달영역·written 저장공간을 안전 확인하고 필요한 capacity 값과 출력범위를 검증한 **이후**에만 의사 접근 `diagnostics.written = 0`을 수행한다. 유효 범위 내에서 진단 기록과 출력 수명에 필요한 참조 보호가 실제 완료된 건에 한해 **그 다음** `diagnostics.written = diagnostics.written + 1`로 계수한다. 무효 군은 메모리 접근/초기화/기록을 하지 않는다. capacity=0/가득 참·인계 근거 무효·기록 또는 참조 보호 실패는 증가 없이 미인계로 유지한다. 원 발견 사실은 INPUT의 기존 보호 문맥에 남기고 FLOW의 후속 관측으로 연결한다. 보호 자체가 불가능한 실제 손실은 해당 범위의 손실 근거를 남기며 충분한 전달로 주장하지 않는다. 이 표기는 실제 C 필드·포인터 ABI를 확정하지 않는다.
 
 OUT 실패는 진단 완료/통지 ack가 아니다. 독립적으로 안전한 INPUT 검증·STORE 호출은 계속할 수 있다. 단, 필요한 입력/문맥 보호까지 실패하면 해당 신규 적용을 거부한다. Meta의 optional validUntil 및 내부 참조를 후속 수명까지 보호하며 얕은 복사를 장기 보호로 간주하지 않는다. 직렬화와 저장 방식은 [R6/TBD](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#prototype-notation)에 남긴다.
 
