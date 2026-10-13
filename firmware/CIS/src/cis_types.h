@@ -52,7 +52,8 @@ typedef enum {
     CIS_PROX_NO_OBJECT,
     CIS_PROX_UNAVAILABLE,
     CIS_PROX_FAULT,
-    CIS_PROX_RECOVERING
+    CIS_PROX_RECOVERING,
+    CIS_PROX_INACTIVE   /* 5: power permission denied or unknown (PR 81) */
 } cis_proximity_t;
 
 /* FAULT_MASK bits. fault code = bit number + 1, code 0 = no fault. */
