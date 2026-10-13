@@ -34,7 +34,7 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 
 ## 18 Core의 문서쌍
 
-아래 경로는 `docs/vss/sw_detail/` 기준입니다. D2 CORE-03/14는 GD2 독립 PASS, D3-1 CORE-01/02/04/05와 D3-2 CORE-06/07/08은 각각 부분 독립 PASS 인수 완료입니다. 기존 14쌍과 D5-2 CORE-15/16 2쌍, 총 16쌍은 실링크이고 나머지 2 Core는 미작성 비링크입니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따르며 기존 승인 본문은 보존합니다. D3 전체 GD3는 INDEPENDENT_PASS 인수 완료입니다. D4-1은 GD4_1 부분 독립 PASS 인수 완료이며 CORE-09/10 행의 기존 작성 당시 표시는 보존합니다. D4-2 부분 독립 PASS와 D4 전체 GD4 독립 PASS(C1 불필요)는 인수 완료이며 CORE-09~12 행의 작성 당시 표시는 보존합니다. D5-1 CORE-13은 SELF_CHECKED / 독립 부분 검수 대기입니다.
+아래 경로는 `docs/vss/sw_detail/` 기준입니다. D2 CORE-03/14는 GD2 독립 PASS, D3-1 CORE-01/02/04/05와 D3-2 CORE-06/07/08은 각각 부분 독립 PASS 인수 완료입니다. 기존 16쌍과 D6-1 HEALTH CORE-17/18 신규 2쌍, 총 18쌍은 실링크입니다. HEALTH 두 쌍은 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING이며 기존 작성 당시 승인 표시는 보존합니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따르며 기존 승인 본문은 보존합니다. D3 전체 GD3는 INDEPENDENT_PASS 인수 완료입니다. D4-1은 GD4_1 부분 독립 PASS 인수 완료이며 CORE-09/10 행의 기존 작성 당시 표시는 보존합니다. D4-2 부분 독립 PASS와 D4 전체 GD4 독립 PASS(C1 불필요)는 인수 완료이며 CORE-09~12 행의 작성 당시 표시는 보존합니다. D5-1 CORE-13은 SELF_CHECKED / 독립 부분 검수 대기입니다.
 
 | Core | 함수 | 논리 Owner / Layer | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
 |---|---|---|---|---|---|
@@ -54,8 +54,8 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 | CORE-14 | `AudioTx_Advance` | AUDIO_TX / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_TX/functions/AudioTx_Advance.md) | [한국어 의사코드](03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md) | GD2 INDEPENDENT_PASS / COMPLETED |
 | CORE-15 | `AudioControl_Service` | AUDIO_CONTROL / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md) | [한국어 의사코드](03_DRIVER/AUDIO_CONTROL/pseudocode/AudioControl_Service.md) | D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
 | CORE-16 | `AudioHAL_Callback` | AUDIOHAL_BOUNDARY / 04_HAL_BSP | [상세 설명](04_HAL_BSP/AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md) | [한국어 의사코드](04_HAL_BSP/AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md) | D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
-| CORE-17 | `Health_Evaluate` | HEALTH / 02_SERVICE | `02_SERVICE/HEALTH/functions/Health_Evaluate.md` | `02_SERVICE/HEALTH/pseudocode/Health_Evaluate.md` | PLANNED_NOT_WRITTEN |
-| CORE-18 | `Health_BuildStatus` | HEALTH / 02_SERVICE | `02_SERVICE/HEALTH/functions/Health_BuildStatus.md` | `02_SERVICE/HEALTH/pseudocode/Health_BuildStatus.md` | PLANNED_NOT_WRITTEN |
+| CORE-17 | `Health_Evaluate` | HEALTH / 02_SERVICE | [상세 설명](02_SERVICE/HEALTH/functions/Health_Evaluate.md) | [한국어 의사코드](02_SERVICE/HEALTH/pseudocode/Health_Evaluate.md) | D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
+| CORE-18 | `Health_BuildStatus` | HEALTH / 02_SERVICE | [상세 설명](02_SERVICE/HEALTH/functions/Health_BuildStatus.md) | [한국어 의사코드](02_SERVICE/HEALTH/pseudocode/Health_BuildStatus.md) | D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
 
 ## 근거와 미결 범위
 
