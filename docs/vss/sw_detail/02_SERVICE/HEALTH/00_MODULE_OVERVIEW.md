@@ -22,6 +22,24 @@ VSS_STATUS_CREATED는 일관된 관측의 새 보고 생성입니다. VSS_STATUS
 
 [FLOW의 보고 조율](../../01_APP/FLOW/00_MODULE_OVERVIEW.md) · [INPUT의 통신 연결](../INPUT/00_MODULE_OVERVIEW.md)
 
+<a id="startup-fault-recovery-status"></a>
+## Startup에서 Fault·Recovery·Status까지 읽기
+
+아래는 기존 Core를 잇는 읽기 순서입니다. 장치 제어·진단·보고를 하나의 실행 함수로 합치거나 초기화 순서를 새로 정하지 않습니다.
+
+| 흐름 | 판단 주체·정상 경로 | 부족·실패 시 남기는 것 |
+|---|---|---|
+| 초기 처리 기회 → STREAM → CONTROL | [FLOW startup](../../01_APP/FLOW/functions/Flow_Process.md#startup-recovery)이 Session 없이 이미 수용한 장치 제어의 진행을 연결합니다. [CONTROL](../../03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md#devices)이 Codec/Generator/Reference 각각의 현재 configuration readiness를 반영합니다. | UNASSESSED/NO_DATA는 확인된 INITIALIZATION_FAILURE가 아닙니다. 초기 제어 entry·순서와 전체 초기 Availability는 미정이며 반복 INITIAL 알림으로 HW 준비를 재발행하지 않습니다. |
+| 원 실패·품질 관측 → FLOW → HEALTH 평가 | 실제 발견 producer/stage/cause/target/configuration/operation/occurredAt을 보존해 [Health_Evaluate](functions/Health_Evaluate.md#diagnostics)에 전달합니다. 확인된 실패만 기존 Fault 5종의 승인된 분류 근거로 판단합니다. | INVALID/STALE/NO_DATA는 정상 CLEAR·출력 Fault·실제 종료로 변환하지 않습니다. exact cause 매핑이 없으면 원진단과 제한 판단 미결을 보존합니다. 반영된 불명확 최종의 PLAYBACK_STATE_FAILURE + FAULT + UNAVAILABLE은 별도로 유지합니다. |
+| 현재 HEALTH 허용 → FLOW 안전 연결 | [현재 permission](functions/Health_Evaluate.md#permission)의 permission/faultInstance/faultRevision/target/configuration/action을 확인하고 old 전체 retirement·provider/PCM/device 위험 종료·독립 late 귀속 보호를 확인합니다. | old 위험이 남거나 허용이 철회·변경되면 기존 정리와 후속을 유지합니다. Session 없는 복구에 가짜 Session/Attempt를 만들지 않습니다. |
+| STREAM Recovery → Backend/CONTROL 실제 수행 → 별도 효과 검증 | [RequestControl의 Recovery lane](../AUDIO_STREAM/functions/AudioStream_RequestControl.md#recovery)으로 연결하고 [Advance](../AUDIO_STREAM/functions/AudioStream_Advance.md#recovery)가 원 performed와 verified를 각각 전달합니다. 효력 직전 현재 허용·대상·안전 조건을 다시 확인합니다. | 수용/receipt/ACK는 수행 성공이 아니며 performed 성공도 verified 성공이 아닙니다. action 매핑·물리 효과 기준이 미정이면 해당 수행/성공 판정만 보류합니다. |
+| 원 pair → HEALTH 현재 한 대상의 제한 해제 → FLOW 재평가 | [pair 대조](functions/Health_Evaluate.md#pair)에서 현재 instance/revision·permission·target/configuration/action, 실제 operation과 수행 이후 별도 검증의 원 시간·효과 충분성을 확인합니다. HEALTH만 해당 제한을 해제하고 다른 current/recent를 보존합니다. | 한쪽 fact만 있거나 old/다른 대상·operation·시간 인과가 불일치하면 clear하지 않습니다. 복구 뒤 원 age/Hold/replay를 갱신하거나 Started One-shot을 부활시키지 않고 현재 후보를 별도로 재평가합니다. |
+| 새 보고 basis → BuildStatus → FLOW → INPUT → Node Communication | 변경 반영 뒤 보고용 관측을 새로 수집하고 [BuildStatus](functions/Health_BuildStatus.md#coherence)가 read-only로 파생합니다. CREATED의 불변 Snapshot·Fault 의미 목록·basis 참조를 [실제 소비 수명](functions/Health_BuildStatus.md#snapshot)까지 보호합니다. | 부족/혼합·미정 reduction이면 REEVALUATE로 새 Snapshot을 공개하지 않습니다. 논리 Snapshot producer는 HEALTH이나 실제 VSS_STATUS 송신 writer·직렬화/DTO 변환 위치·Domain consumer는 TBD입니다. Getter/CREATED가 송신·Domain 수용 완료를 뜻하지 않습니다. |
+
+정상 idle·cue 무음·반복 대기·선택할 유효 사건이 없는 상태만으로 통신 오류나 출력 Fault를 만들지 않습니다. 적법 actual이 확인된 전체 Session이 retirement 전이면 무음 구간·시작 후 종료 진행도 기존 PLAYING 의미에 포함되며, state 외 필수 보고 근거가 부족하면 전체 보고는 REEVALUATE입니다. [기존 Status 분기](functions/Health_BuildStatus.md#states)를 따릅니다.
+
+[HAL의 원등록·raw·손실과 CONTROL 후속](../../04_HAL_BSP/01_HAL_BSP_BOUNDARIES.md#raw-time-loss) · [공통 시간과 의미 owner](../../05_INFRA/00_LAYER_OVERVIEW.md#startup-recovery-time) · [동결 Startup](../../../design/60_PSEUDOCODE/10_STARTUP_FLOW.md#flow-startup) · [동결 Fault/Recovery](../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#recovery-flow)
+
 ## 담당 Core의 문서쌍
 
 | Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |

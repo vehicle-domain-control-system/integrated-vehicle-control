@@ -35,3 +35,5 @@ DRIVER → HAL → 현 vendor/HW 및 BSP/RUNTIME이 허용 방향입니다. ISR�
 ## HAL/BSP·RTD 연결 근거 읽기
 
 [원등록·PCM 회차·물리 충분조건의 source-basis 연결](01_HAL_BSP_BOUNDARIES.md)에서 기존 Core/R2~R6와 실제 참고 출처를 함께 확인합니다. 현재 제품 source/image·C ABI·DMA/출력 충분성은 미검증이며, 필요한 효과의 Gate와 독립 논리 후보를 구분합니다.
+
+Startup/Recovery의 장치별 readiness와 실제 수행·별도 검증은 [CONTROL·원 대상의 연결](01_HAL_BSP_BOUNDARIES.md#health-connection)을 거쳐 [HEALTH의 전체 읽기 흐름](../02_SERVICE/HEALTH/00_MODULE_OVERVIEW.md#startup-fault-recovery-status)으로 이어집니다. HAL/BSP는 원 관측과 정적 구성 근거를 제공하며 Fault·복구 허용·제한 해제의 writer가 아닙니다. [INFRA](../05_INFRA/00_LAYER_OVERVIEW.md#startup-recovery-time)의 시간·후속 알림도 의미 판단을 대신하지 않습니다.

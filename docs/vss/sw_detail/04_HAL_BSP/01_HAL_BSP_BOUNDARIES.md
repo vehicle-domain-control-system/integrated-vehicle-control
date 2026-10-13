@@ -108,6 +108,13 @@ reset/reconfig/오류는 실제 영향 장치/config의 근거만 무효화한�
 
 performed는 원 실제 수행 operation/effect/occurredAt, verified는 **수행 이후 별도 효과 관측**의 performedOperation/effect/verifiedAt이다. 수용·ACK·초기 config flag로 둘을 동시에 성공 처리하지 않는다. 둘의 전달 시점·OUT count·수명은 독립이며 한쪽만 있어도 그 fact를 보존한다. HEALTH만 현재 허용·instance/revision/target/config와 pair를 대조해 해당 제한을 해제한다. old 성공으로 새 Fault/READY를 정상화하거나 age/Hold/replay를 리셋하지 않는다. [CORE-15 Recovery](../03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md#recovery)·[R5 별도 효과](../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#device-recovery)·[R4 현재 대상](../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target)을 따른다.
 
+<a id="health-connection"></a>
+## Startup·Recovery 관측을 HEALTH에 연결하기
+
+Startup의 미평가/확인 실패는 [장치별 준비](#device-readiness), 원 raw/손실은 [포착과 시간](#raw-time-loss), 실제 복구는 [수행·별도 검증](#recovery)에서 각각 읽습니다. CONTROL/TX가 반영한 원 사실 → STREAM의 독립 typed 인계 → FLOW 조율 → [HEALTH 현재 제한·파생 보고](../02_SERVICE/HEALTH/00_MODULE_OVERVIEW.md#startup-fault-recovery-status) 순서이며 ISR에서 이 Core들을 실행하지 않습니다. 원 producer·대상/구성·operation·발견 단계·원 시간은 이 연결에서도 유지합니다.
+
+미평가 장치·옛 config 성공·단독 performed·STOP/abort ACK/zero-fill/한 DMA half 관측은 현재 초기화 정상·복구 효과·제한 해제의 충분조건이 아닙니다. [INFRA의 비교·연속성 근거](../05_INFRA/00_LAYER_OVERVIEW.md#startup-recovery-time)가 부족하면 해당 시간 판정을 보류하고 원 사실을 보호합니다. BSP의 source/generated·RTD·Pin/clock·linker/cache/image 정적 근거를 실제 출력 관측으로 바꾸지 않으며 현재 결합은 SOURCE_NOT_VERIFIED / BINDING_TBD / HW_UNVERIFIED입니다.
+
 <a id="out-lifetime"></a>
 ## 독립 OUT와 consumer 수명
 
