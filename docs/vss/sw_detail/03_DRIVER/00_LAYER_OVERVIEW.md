@@ -24,3 +24,8 @@ AUDIO_STREAM → DRIVER → [HAL/BSP](../04_HAL_BSP/00_LAYER_OVERVIEW.md) 및 �
 [R1 DRIVER](../../design/10_LAYERS/30_DRIVER_LAYER.md) · [R4 비동기 결과](../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md) · [R4 PCM/Transport](../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md)
 
 D2는 `AudioTx_Advance` 시범, D5는 나머지 TX/CONTROL과 HAL callback 연결입니다. 두 Module의 함수 표에서 예정 설명·의사코드 위치를 확인합니다.
+
+
+## HAL/BSP·RTD 연결 근거 읽기
+
+[원등록·PCM 회차·물리 충분조건의 source-basis 연결](../04_HAL_BSP/01_HAL_BSP_BOUNDARIES.md)에서 기존 Core/R2~R6와 실제 참고 출처를 함께 확인합니다. 현재 제품 source/image·C ABI·DMA/출력 충분성은 미검증이며, 필요한 효과의 Gate와 독립 논리 후보를 구분합니다.

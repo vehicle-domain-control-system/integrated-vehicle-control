@@ -30,3 +30,8 @@ DRIVER → HAL → 현 vendor/HW 및 BSP/RUNTIME이 허용 방향입니다. ISR�
 [R1 HAL/BSP](../../design/10_LAYERS/40_HAL_BSP_LAYER.md) · [등록·ISR·자원 수명](../../design/10_LAYERS/details/40_HAL_BSP_BOUNDARY.md) · [R2 DRIVER/HAL 함수](../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md) · [R4 PCM 회차·지속 스트림](../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md)
 
 실제 보드/build 대응과 raw 사실의 물리 충분조건은 source/generated 및 보드 계측으로 확인해야 합니다. 신규 Task·Queue·wrapper·HAL Module을 선결정하지 않습니다.
+
+
+## HAL/BSP·RTD 연결 근거 읽기
+
+[원등록·PCM 회차·물리 충분조건의 source-basis 연결](01_HAL_BSP_BOUNDARIES.md)에서 기존 Core/R2~R6와 실제 참고 출처를 함께 확인합니다. 현재 제품 source/image·C ABI·DMA/출력 충분성은 미검증이며, 필요한 효과의 Gate와 독립 논리 후보를 구분합니다.
