@@ -22,17 +22,17 @@ reset/reconfig/오류는 영향받는 준비 근거를 무효화합니다. 옛 �
 
 [AUDIO_STREAM의 조율](../../02_SERVICE/AUDIO_STREAM/00_MODULE_OVERVIEW.md) · [HAL/BSP 경계](../../04_HAL_BSP/00_LAYER_OVERVIEW.md)
 
-## 담당 Core의 예정 문서쌍
+## 담당 Core의 문서쌍
 
-| Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
+| Core | 함수 / 역할 | 상세 설명 | 한국어 의사코드 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-15 | `AudioControl_Service` — 현재 구성 준비·제어/무효화의 동기 진행·후속 결과 | `03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md` | `03_DRIVER/AUDIO_CONTROL/pseudocode/AudioControl_Service.md` | PLANNED_NOT_WRITTEN |
+| CORE-15 | `AudioControl_Service` — 현재 구성 준비·제어/무효화의 동기 진행·후속 결과 | [상세 설명](functions/AudioControl_Service.md) | [한국어 의사코드](pseudocode/AudioControl_Service.md) | D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
 
-경로는 `docs/vss/sw_detail/` 기준입니다. 설명·의사코드 본문은 아직 없으므로 위 경로는 클릭 링크가 아닙니다. 실제 동작은 아래 동결 Function 원문에서 읽고, 새 함수쌍은 각 단계 검수 뒤 작성합니다.
+CORE-15 문서쌍은 D5-2 상세설계 대상입니다. 원형과 writer·비동기 계약은 동결 정본을 따르며, 독립 검수와 실제 C/HW 확인은 별도입니다.
 
 ## 후속 진행 후보와 미정
 
-구성 identity·readiness 무효화·옛 결과 격리·수행/검증 구분은 독립 SW/Host 후보입니다. 실제 장치 제어 순서·source/ratio·register·API·효과 검증은 BINDING_TBD/HW_UNVERIFIED입니다. 기존 Codec/Clock 경계를 재사용 후보로 유지하고 새 장치별 wrapper를 선결정하지 않습니다. 함수쌍은 D5 예정입니다.
+구성 identity·readiness 무효화·옛 결과 격리·수행/검증 구분은 독립 SW/Host 후보입니다. 실제 장치 제어 순서·source/ratio·register·API·효과 검증은 BINDING_TBD/HW_UNVERIFIED입니다. 기존 Codec/Clock 경계를 재사용 후보로 유지하고 새 장치별 wrapper를 선결정하지 않습니다. CORE-15 문서쌍의 D5-2 자체검수·독립 검수 상태는 위 행을 따릅니다.
 
 위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q↔Core 관계는 P1B_C1 독립 검수 전 최종 차단 지도로 채택하지 않습니다.
 

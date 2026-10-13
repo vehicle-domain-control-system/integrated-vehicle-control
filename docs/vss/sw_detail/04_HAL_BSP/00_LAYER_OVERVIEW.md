@@ -15,15 +15,15 @@ HAL은 vendor 요청·IRQ의 raw capture 경계이고 BSP는 보드/generated·�
 
 DRIVER → HAL → 현 vendor/HW 및 BSP/RUNTIME이 허용 방향입니다. ISR은 원등록에 연결된 사실을 짧게 보존하며 decode/refill·정책 판단·상위 상태 쓰기를 수행하지 않습니다. 현재 Attempt를 나중에 조회해 옛 callback에 붙이지 않습니다.
 
-## CORE-16의 예정 문서쌍
+## CORE-16의 문서쌍
 
-`AudioHAL_Callback`은 R2 Core이지만 10 Module 밖 **HAL/BSP 내부 AUDIOHAL_BOUNDARY**가 논리 owner입니다. D5에서 아래 함수쌍을 작성하며, D1에는 Boundary 폴더나 빈 개요를 만들지 않습니다.
+`AudioHAL_Callback`은 R2 Core이지만 10 Module 밖 **HAL/BSP 내부 AUDIOHAL_BOUNDARY**가 논리 owner입니다. D5-2에서 아래 두 함수 문서만 작성하며 별도 Boundary 개요나 Module을 추가하지 않습니다.
 
-| Core | 함수 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
+| Core | 함수 | 상세 설명 | 한국어 의사코드 | 작성 상태 |
 |---|---|---|---|---|
-| CORE-16 | `AudioHAL_Callback` | `04_HAL_BSP/AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md` | `04_HAL_BSP/AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md` | PLANNED_NOT_WRITTEN |
+| CORE-16 | `AudioHAL_Callback` | [상세 설명](AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md) | [한국어 의사코드](AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md) | D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
 
-경로는 `docs/vss/sw_detail/` 기준 비링크입니다. callback 기록의 수명은 Session retirement·PCM 반환과 같다고 가정하지 않습니다. 원귀속·late/손실의 독립 논리 후보는 유지하되 실제 callback ABI·지속 DMA와 개별 회차의 상관·출력/STOP 충분성은 `BINDING_TBD / HW_UNVERIFIED`입니다. 과거 bring-up 설치 PASS가 현 제품/보드 PASS를 뜻하지 않습니다.
+위 링크는 HAL/BSP 내부 Boundary의 CORE-16 문서쌍입니다. callback 기록의 수명은 Session retirement·PCM 반환과 같다고 가정하지 않습니다. 원귀속·late/손실의 독립 논리 후보는 유지하되 실제 callback ABI·지속 DMA와 개별 회차의 상관·출력/STOP 충분성은 `BINDING_TBD / HW_UNVERIFIED`입니다. 과거 bring-up 설치 PASS가 현 제품/보드 PASS를 뜻하지 않습니다.
 
 ## 현재 상세 근거
 
