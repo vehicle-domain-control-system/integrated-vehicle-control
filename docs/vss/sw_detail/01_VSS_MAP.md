@@ -6,6 +6,10 @@
 
 VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합니다. FLOW가 owner의 반영 완료 관측을 연결하면 POLICY가 읽기 전용으로 선택하고 PLAYBACK이 단일 전체 Session을 진행합니다. AUDIO STREAM은 저장 MP3를 PCM으로 준비하고 DRIVER/HAL의 귀속된 근거를 결합합니다. HEALTH는 현재 제한·복구 판단과 파생 보고를 담당합니다.
 
+연결 지도: [입력·Status의 Owner/Converter/Consumer와 18 Core CALL/RETURN](02_INTERFACE_MAP.md) · [기존 6 Flow·49 Trace 및 경합·오류](03_SCENARIO_MAP.md).
+
+두 지도는 GD6 및 G1-B-C1 문서·인수 독립 PASS를 입력으로 한 초안이며 Q01~14·R6-01~08·외부 미결15와 P2 HOLD를 유지합니다. 아래 기존 작성 당시의 승인·대기·미착수 표기는 이 탐색 보완에서 소급 수정하지 않습니다.
+
 ## Layer와 Module 바로가기
 
 | Layer | 책임 | 실제 Module 진입점 |
