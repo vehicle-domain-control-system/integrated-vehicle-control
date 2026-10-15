@@ -9,7 +9,7 @@ Interface v2 · r1 · [노드 간 공통 규칙](07_CROSS_NODE_INTERFACE_RULES.m
 <a id="r1-status-scope"></a>
 ## ESP32 선언 원본 불일치
 
-[Gateway 선언](02_NODES/ESP32/11_GATEWAY_TYPES.md#type-gateway-updatebasis-t)의 `Gateway_UpdateBasis_t`에는 `update_sequence`가 있지만 저장소의 두 헤더 버전에는 없다. **H01 / HOLD_BINDING:** 실제 ESP32 공통 헤더와 생산·변환·소비 경로에서 이 필드의 계약을 확인하기 전에는 ABI·구현 연결을 보류한다. 문서의 선언과 저장소 헤더를 자동으로 동일시하지 않는다.
+[Gateway 선언](02_NODES/ESP32/11_GATEWAY_TYPES.md#type-gateway-updatebasis-t)의 `Gateway_UpdateBasis_t`에는 `update_sequence`가 있지만 저장소의 두 헤더 버전에는 없다. **H01 / HOLD_BINDING:** 실제 ESP32 공통 헤더와 생산·변환·소비 경로에서 이 필드의 계약을 확인하기 전에는 ABI·구현 연결을 보류한다. 문서의 선언과 저장소 헤더를 자동으로 동일시하지 않는다. 공통 Header 필드 채택 또는 생산원별 Adapter 독립 순번의 선택·실제 경로/버전과 M_CONTEXT38B 양단 변환, 최초·반복·재기동·wrap 근거를 확인할 때까지 HOLD를 유지한다.
 
 ## Wire version·양단 Codec
 
@@ -61,7 +61,7 @@ Interface v2 · r1 · [노드 간 공통 규칙](07_CROSS_NODE_INTERFACE_RULES.m
 
 `P_PERMISSION.USE_LIMIT`의 1500ms 후보와 조건부 500ms 권장 프로필은 원 Power 사용 기한 500ms와 구분한다. Pi 통신 수신·만료 검사와 카메라 기능 적용은 별도 경계다. [상세](07_CROSS_NODE_INTERFACE_RULES.md#permission)
 
-**원 평가와 UNKNOWN 처리:**원 평가 Sequence는 실제 성공 평가에서만 증가하고 반복 TX로 원 시각을 바꾸지 않는다. 후방 Permission 원 TTL은 500ms이며 구 150ms 후보를 사용하지 않는다. CAN 수신 중단 150ms·거리 원 150ms 후보·UART 수신 중단 1500ms는 별개다. UNKNOWN의 false+비정상 Quality 투영, 평가 실패 즉시 UNKNOWN, DOMAIN 의미 생성→Network 검증·합성은 권장안이며 기능 정책과 연동은 미확정이다. UNKNOWN+OK 무손실 표현이 필요하면 C2의 표현 한계와 최소 계약 변경을 검토해야 한다. 같은 원 성공 Sequence의 품질 하향을 폐기하거나 실패 AGE0을 만들지 않는다. POWER_OPERATION_STATE·필수 입력·공통 AGE/Quality/세대 조건은 미결이다. [투영 조건](07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**원 평가와 UNKNOWN 처리:** 원 평가 Sequence는 성공 평가에서만 증가하고 원 TTL500ms·CAN50/150ms·UART-C500/1500ms는 유지한다. 평가 실패·NO_DATA에서 ALLOW 즉시 철회, 원 성공 Sequence 유지와 내부 stateRevision 증가는 DOMAIN 담당자 구현 완료 보고다. UNKNOWN의 false+비정상 Quality 투영과 Network 전달·합성은 수용/검증 대기이며 UNKNOWN+OK의 무손실 표현 한계는 남아 있다. 같은 Seq 품질 하향 누락·실패 AGE0·구 ALLOW 재등장을 막는 실제 TxPort→Queue→CAN 연결은 **BINDING_NOT_VERIFIED**다. POWER_OPERATION_STATE·필수 입력·공통 AGE/Quality/세대 및 O05 합성은 미결이다. [투영 조건](07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 ## VSS R4/R6→DTO→C2
 
@@ -91,7 +91,7 @@ REQUEST_SEQUENCE↔C2 commandId의 대응, END와 AntiPinch의 전달 분기, Fa
 
 **CONTRACT_OPEN** · 담당: MOBILE + ESP32
 
-UUID·ATT MTU·분할 방식, App 활성 정보의 신뢰 기준, 등록·현재 session 발급·재접속 정책이 미정이다.
+UUID·Properties·ATT MTU·분할 방식은 ESP32/Android 양단의 P4-A 실제 채택 자료 확인 전까지 OPEN이다. 구현 진행과 P4-B 실기기 검증 완료를 동일시하지 않는다. [채택에 필요한 자료](03_COMMUNICATION/40_BLE.md#p4a-adoption)의 동일 버전 근거가 필요하며 App 활성·등록·Session 정책은 해당 기능 담당 범위다.
 
 예제 UUID를 확정 BLE 계약으로 사용하지 않는다. 현재 인증된 session binding이 없으면 요청을 차단한다.
 
@@ -227,9 +227,9 @@ CIS `INACTIVE=5`, 만료/불허 사유, 새 측정 후 재활성, Network Health
 
 실내 조도1000ms는 미확정 후보이고 CIS 로컬1000 코드가 DOMAIN의 수용을 대신하지 않는다. CIS 환경 CAN200ms 보고/600ms 수신 감시와 로컬 온습도5000ms 후보는 소비2500ms와 다른 기준이다. 온습도 원2500ms와 조도 후보를 구분한다.
 
-환경 C2는 기존 구조를 우선 유지한다. CIS BOOT 변경/수신 중단을 기존 `DomainIf_RxCisCabinEnvironment()`로 NO_DATA/STALE 전달하며 DOMAIN Rx→VSM→Getter의 실제 무효화는 실제 연동 검증 전이다. 기존 구조로 해결할 수 없다는 근거가 나오면 최소 계약 변경을 검토한다. [상세](07_CROSS_NODE_INTERFACE_RULES.md#environment)
+환경 C2는 기존 구조를 우선 유지한다. 새 CIS BOOT는 DOMAIN 소유 private 전환 통지 후보로 구분하고, 기존 Rx NO_DATA와의 무효화 분담은 확인 대기다. 수신 중단의 STALE/NO_DATA 선택 및 Rx→VSM→Getter의 실제 저장 완료는 별도 연동 조건이다. 기존 구조로 해결할 수 없다는 근거가 나오면 최소 계약 변경을 검토한다. [상세](07_CROSS_NODE_INTERFACE_RULES.md#environment)
 
-**환경 저장 순서:** 구 BOOT 미실행 데이터·콜백 폐기 및 실행 중 후속 비동기 저장 종료 → 기존 Rx NO_DATA → VSM 무효화 저장 완료 확인 → 새 BOOT 원 Sequence/AGE 전달은 **조건부 권장 프로필 / DOMAIN 저장 경계 미확정**이다. 일반 NO_DATA는 BOOT 신호가 아니며 일반 링크 단절의 STALE/NO_DATA 선택은 별도 미결이다. 무효화 실패·미확인에서는 새 정상 입력을 보류하지만 과거 OK가 이미 지워졌다고 판단하지 않는다. 대기 AGE를 누적해 2500ms 경계를 적용한다. [저장 순서·한계](07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)를 따른다.
+**환경 저장 순서:** 유효한 새 BOOT 판별 → 구 콜백·후속 쓰기 격리 → DOMAIN 소유 private 전환 통지 후보 → VSM/Meta·필요 순서 문맥 무효화 완료 확인 → 새 BOOT 원 Sequence/AGE 전달은 **PROPOSED / CROSS_OWNER_ACCEPTANCE_PENDING**이다. private 통지와 기존 Rx NO_DATA의 분담, 동기/비동기 완료 방식·실패 처리는 미확정이다. 일반 NO_DATA는 BOOT 신호가 아니며 일반 링크 단절의 STALE/NO_DATA 선택은 별도 미결이다. 무효화 실패·미확인에서는 새 정상 입력을 보류하지만 과거 OK가 지워졌다고 판단하지 않는다. 대기 AGE와 온습도2500ms 경계를 유지한다. [저장 순서·한계](07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)를 따른다.
 
 ## 부분 UserSettings 존재 정보
 

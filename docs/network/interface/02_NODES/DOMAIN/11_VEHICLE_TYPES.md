@@ -2,6 +2,26 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+<a id="production-compatibility"></a>
+## Production 참고 타입과 후보의 호환 조건
+
+담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며 아래 전체 C 선언은 **Vehicle Types v0.3 후보**다. Production 참고 경로 `docs/Domain/architecture/1_Vehicle_Types/Vehicle_Types_v0.2.h`와 실제 ECU 빌드 입력의 동일성은 확인 대기다. 다음 차이는 참고 v0.2와 후보 v0.3의 선언 차이이며, 이행 승인이나 실제 ABI 검증 결과가 아니다.
+
+| 대상 | v0.2 참고 → v0.3 후보의 차이 | 연결 전 확인 |
+|---|---|---|
+| `SessionId_t` | uint32_t → uint64_t | Session 절단·확장과 이를 포함한 모든 Request/Context/Result의 배치. 기존 Wire 폭 유지 |
+| `CisCabinEnvironmentState_t.cabinIlluminance` | uint16_t → uint32_t | 조도 표현 범위·절단·정렬. 센서별 독립 품질 유지 |
+| `CisRearState_t` | rearDistanceCm → rearDistanceMm, sourceGeneration 추가 | CAN raw 0.1cm=mm에서 Production cm 소비로의 명시 변환·반올림·경계 처리 확인. Wire 단위 변경 금지 |
+| `CisOccupantState_t` | 단일 quality → presenceQuality/countQuality, sourceGeneration·visionFunctionStatus 추가 | 필드별 부분 무효화·기능 상태·원 세대 보존 |
+| `DoorState_t`, `ClimateState_t` | 필드별 DataQuality와 sourceGeneration 추가 | 실제 생산 세대와 CAN BOOT의 동일성 가정 금지 |
+| `InteriorLightState_t` | bool commandApplied → applyState enum, 필드별 품질·sourceGeneration 추가 | 적용 성공·실패·미확인 의미 및 실제 피드백 구분 |
+| `WindowState_t` | sourceGeneration 추가 | 상위 VehicleState/Getter까지 파급 확인. WINDOW 구현 보류 유지 |
+| `DigitalKeyConnectionState_t`, `DigitalKeyState_t`, `ProximityInput_t` | 각각 appMeta, reason/meta, validity/reason 추가 | App 관측·기능 결과·근접 품질의 독립 의미 보존 |
+| enum·원 출처 타입 | QualityReason/RearMeasurementState/ResultReason 확장; CisFunctionStatus·CommandOrigin·InteriorLightApplyState·SourceEvidence 추가 | C enum을 기존 Wire raw로 직접 복사하지 않음. 미지원 의미의 기존 차단 규칙 유지 |
+| 별칭·include 경계 | SourceGeneration 추가, DeviceContextId/DomainCommandId 정의 위치 이동, include guard·version 매크로 변경 | 헤더 혼용·동명 타입 중복·잘못된 include 방지 |
+
+변경 타입을 포함하는 상위 구조체와 모든 API 인자에도 크기·정렬 차이가 전파된다. 실제 ARM 컴파일러 옵션, sizeof/offset/alignment, enum 표현, 포인터·호출 ABI, Getter/TxPort 복사 및 단위 변환은 **BINDING_NOT_VERIFIED**다. 아래 후보 선언을 Production 선언으로 교체하거나, 아직 없는 세대·품질을 임의 생성하지 않는다. [C2 인자와 포트 차이](12_DOMAIN_TYPES.md#production-c2-compatibility)도 함께 적용한다.
+
 **DECLARED_SOURCE / BINDING_OPEN.** 아래 선언은 Vehicle_Types v0.3 후보이며 ClimateState_t·InteriorLightState_t에 sourceGeneration을 포함한다. 양단 동일 헤더·ABI 연결은 검증 전이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
 
 [노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/36b4f43db03859518dd82664faa2464d13875a75/firmware/DOMAIN/src/interface/Vehicle_Types_v0.3.h)

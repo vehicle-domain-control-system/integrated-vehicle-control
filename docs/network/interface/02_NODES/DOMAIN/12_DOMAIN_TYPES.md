@@ -2,6 +2,32 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+<a id="production-c2-compatibility"></a>
+## Production 참고 C2와 후보의 연결 제한
+
+담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며, 아래 C 선언·공개 API는 **v0.3/v0.6 후보**다. `docs/Domain/architecture/2_Domain_interface/Domain_Interface_v0.5.h`는 참고 파일이며 실제 ECU 빌드 경로·SHA와의 동일성은 미확인이다.
+
+| 선언 경계 | v0.5 참고 헤더 | v0.6 후보 헤더 |
+|---|---|---|
+| 공개 DomainIf 함수 | 41개 | 72개 |
+| QueryGet | 없음 | 18개 |
+| TxPort Callback | 15개 | 26개 |
+| RxObserver Callback | 12개 | 11개 |
+
+이 참고 헤더는 후보와 원형 전체가 일치하지 않는다. 실제 Production의 원형 일치 여부는 담당자가 사용하는 빌드 파일로 재확인해야 하며, 위 차이를 없애기 위해 아래 API를 삭제·추가하거나 구형 포트로 되돌리지 않는다. **후보 수용·실제 연결·ABI 검증은 대기**다.
+
+| 차이 범위 | 호환 검토 대상 |
+|---|---|
+| Query·Health·LocalFailure | 후보의 QueryGet18, passive context 검증, Network Health/LocalFailure 함수·타입의 실제 연결 |
+| BCM Rx·Observer | 구 EcuState/Event/Fault 경계와 후보 Status/CommandResult/ProtectionEvent 경계, confirmation·도어 근거 타입 |
+| Mobile Tx·TxPort | 구 통합 VehicleState 전송과 후보의 상태별 포트, RequestResult/Availability 인자 타입·UserSettings 추가 |
+| CommandContext·DigitalKeyResult | 요청 Device·origin·commandAge, occurrence/resultAge와 SessionId 폭의 파급 |
+| CIS Status·Interface enum | 환경 기능 하나와 센서별 상태의 차이, Pi UART/CAN 상태·Fault·세대 추가, enum 항목·숫자 의미 차이 |
+| VSS·Warning·Window·AntiPinch | 상태·Fault·원 세대·입력별 근거, 원 Command 연결, Warning 종류·읽음·품질·SourceEvidence 차이 |
+| Status·Function ID·헤더 의존성 | UNSUPPORTED와 Environment/COUNT 등의 추가, include guard/version·필수 Vehicle 헤더 변경 |
+
+공통 이름의 함수에도 [Vehicle 타입 차이](11_VEHICLE_TYPES.md#production-compatibility)가 파급된다. 필드·enum 의미를 명시 변환하고, C 구조체 배치나 포트 개수가 같다는 이유로 호환을 승인하지 않는다. 컴파일러별 sizeof/정렬·호출 ABI와 실제 Manager/Observer/TxPort 바인딩은 미검증이며 Wire raw/길이·품질·시간 규칙은 기존 계약을 유지한다.
+
 **DECLARED_SOURCE / BINDING_OPEN.** 아래 선언은 C2 v0.6 후보의 의미 타입이다. 공개 API 72개와 TxPort 26개를 정의한다. 실제 ABI·연결 검증은 남아 있다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
 
 [노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/36b4f43db03859518dd82664faa2464d13875a75/firmware/DOMAIN/src/interface/Domain_Interface_v0.6_C2.h)

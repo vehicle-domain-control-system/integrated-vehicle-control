@@ -2,6 +2,8 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+**연동 상태:** P4-A 호환 구현은 담당자 보고이며 실제 UUID/Properties·MTU·fragmentation의 Network 채택과 P4-B 보드·휴대폰 검증은 대기다. [BLE 채택 자료](../../03_COMMUNICATION/40_BLE.md#p4a-adoption) 확인 전 OPEN을 유지한다. H01은 공통 헤더 필드 또는 생산원별 Adapter 순번의 실제 선택·경로/버전·M_CONTEXT38B 연결 확인 전 HOLD이며, 내부 구현 책임은 ESP32 담당 범위다.
+
 ESP32는 BLE MOBILE과 UART-M Domain 사이의 검증된 논리 Gateway 다. 등록·연결/근접 관측과 현재 peer/session binding을 소유하며 MOBILE App 활성은 신뢰 가능한 원 평가를 받아 검증한다. 차량 기능 명령 허용·실행·위험 판단은 Domain/기능 ECU가 담당한다.
 
 **설계 초안 / BINDING_OPEN.** 기존 Gateway API는 선언이고 상세 Adapter convention은 제안이다. 실제 BLE/SDK/Firmware/Codec/Board 시험은 NOT_EXECUTED다.

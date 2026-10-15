@@ -2,6 +2,8 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+**H01 실제 적용 확인 대기:** 아래 선언의 update_sequence는 채택 헤더에 존재함을 보증하지 않는다. 실제 공통 헤더 경로·버전과 필드 채택, 또는 UART-M Adapter의 세 생산원별 독립 순번 관리 중 선택을 확인해야 한다. 등록·연결 공동 관측, App 활성, 근접을 구분해 M_CONTEXT38B로 변환하고 최초·반복·재기동·wrap을 검증하기 전에는 [H01 HOLD](11_GATEWAY_TYPES.md#r1-updatebasis-binding)를 유지한다. BLE 채택과 내부 코드 변경은 ESP32/Android 담당 범위다.
+
 **DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 Firmware 구현·연결·컴파일 완료를 의미하지 않는다.
 
 [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [내부 Adapter](25_PRIVATE_ROUTING.md) · [메시지 48](../../05_MESSAGE_INDEX.md)

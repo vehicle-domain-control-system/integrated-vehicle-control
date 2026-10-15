@@ -186,7 +186,7 @@ NetSubmitResult DomainNetPriv_SendQueryEnd(const NetMobileQueryEnd *message);
 **포인터·원 ID:** callback이 OK를 반환하기 전에 immutable 값복사/encode와 required failure sink를 확보한다. target Boot가 불명확하거나 source enum을 raw로 표현할 수 없으면 local NOT_AVAILABLE/INVALID_ARGUMENT 등 실패를 반환하며 vehicle outcome을 만들지 않는다. source table26 종은 보존했으나 실제 등록 table/구현 symbol/큐 용량은 NOT_EXECUTED 다.
 
 <a id="delta-permission-routing"></a>
-**의미 생성·전달 책임 권장안 / DOMAIN 연동 조건 확인 필요:** DOMAIN Permission Adapter는 Power/Operation/Alive의 실제 의미·원 판단과 UNKNOWN 투영을 생성한다. Network의 기존 TxPort/composer는 품질 일치·시간·수용 문맥을 검증하고 CAN으로 합성·전달한다. POWER_OPERATION_STATE 생성원·필수 입력·공통 AGE/Quality/세대 조건은 여전히 미결이다. 같은 원 성공 Sequence의 평가 실패 보고도 현재 품질 제한으로 인계하며, Queue에 남은 이전 ALLOW를 무효화 뒤 재전달하지 않는지 검증해야 한다. [원 평가·합성·전송 순번 분리](../../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)를 적용하며 새 TxPort/API를 만들지 않는다.
+**DOMAIN Core 철회 완료 보고 / Network 연결 미검증:** 평가 실패·NO_DATA 시 ALLOW 철회와 원 성공 Sequence 유지·내부 stateRevision 증가는 담당자 구현 완료 보고다. DOMAIN Permission Adapter의 원인별 C2 Quality 투영은 수용 대기이며 Network TxPort/composer는 품질·시간·수용 문맥을 검증해 합성·전달한다. 같은 원 성공 Sequence의 값·품질 저하를 버리지 않고, Queue·재전송·재기동으로 구 ALLOW가 철회 이후 다시 소비되지 않도록 해야 한다. 실제 TxPort 도달·Driver 완료·CIS/Pi 적용은 **BINDING_NOT_VERIFIED**다. POWER_OPERATION_STATE·필수 입력·공통 AGE/Quality/세대 조건은 여전히 미결이며 stateRevision을 공개 필드나 새 성공 평가 번호로 노출하지 않는다. [원 평가·합성·전송 순번 분리](../../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)를 따른다.
 
 <a id="rx-projection"></a>
 ## CAN/UART 수신 → source typed 인계
@@ -214,7 +214,10 @@ NetSubmitResult DomainNetPriv_SendQueryEnd(const NetMobileQueryEnd *message);
 
 
 <a id="delta-environment-routing"></a>
-**환경 저장 순서 권장안 / DOMAIN 기능 정책 미확정:** 유효한 새 CIS BOOT 전환에서 구 BOOT 전달을 막고 미실행 패킷·콜백을 폐기한다. 실행 중 콜백과 DOMAIN 비동기 후속 쓰기까지 완료되거나 더 이상 commit할 수 없어진 뒤 기존 환경 Rx로 NO_DATA를 전달하고, VSM 무효화 저장 완료 확인 후 새 BOOT의 원 관측을 전달한다. 단순 callback 반환이나 Queue 접수는 이 완료 경계를 증명하지 못한다. 기존 owner 직렬 처리를 사용하며 취소를 가정하거나 비차단 호출 경계를 동기 대기 교착으로 바꾸지 않는다.
+
+**PROPOSED / CROSS_OWNER_ACCEPTANCE_PENDING:** 새 CIS BOOT 판별은 Network, private 전환 수용과 VSM/Meta·순서 비교 문맥의 실제 무효화 저장은 DOMAIN 소유다. 구 콜백·후속 쓰기를 격리한 뒤 전환 사실을 통지하고 실제 완료·실패를 확인하는 후보이며, 동기 반환 또는 BOOT 사건에 연결된 비동기 완료 방식은 미확정이다. 기존 Rx NO_DATA와의 분담을 확인하기 전 이중 무효화 commit을 하지 않는다. private 함수 원형·Token 타입은 추가하지 않는다.
+
+**환경 저장 순서 권장안 / DOMAIN 수용 대기:** 유효한 새 CIS BOOT 전환에서 구 BOOT 전달을 막고 미실행 패킷·콜백을 폐기한다. 실행 중 콜백과 DOMAIN 비동기 후속 쓰기가 더 이상 commit할 수 없게 정리된 뒤 private 전환 통지 후보를 적용한다. private 경계가 무효화까지 수행할지 기존 Rx NO_DATA를 병행할지는 미정이다. VSM/Meta와 필요한 순서 문맥의 실제 무효화 완료 후 새 원 관측을 전달한다. Queue 접수·단순 반환은 완료 근거가 아니며 owner 직렬 처리·비차단 호출을 동기 대기 교착으로 바꾸지 않는다.
 
 새 정상 전달 전 무효화 실패·완료 미확인을 분리해 보류하고 과거 VSM OK가 지워졌다고 표시하지 않는다. Core commit 뒤 optional Observer 실패로 재commit하지 않는다. A900→B0은 원값 그대로이며 DOMAIN이 Network 검증 순서를 저장까지 소비해야 한다. NO_DATA만으로 재부팅을 추론하거나 순번을 리셋하지 않는다. 대기 AGE·2500ms 만료, 종료 BOOT 차단, BOOT 재사용/Network 재시작의 한계와 기존 C2로 입증 불가할 때의 최소 변경 대안은 [환경 저장 계약](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)을 따른다. 실제 완료·원자적 association·후속 쓰기 배제 근거는 [Rx 완료 판정](20_API.md#delta-environment-completion)의 확인 대기다.
 

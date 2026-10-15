@@ -252,7 +252,10 @@ VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수�
 
 
 <a id="message-bcm-result"></a>
+
 ## `BCM_RESULT` — `0x140`
+
+**BCM/DOMAIN 확인 대기:** Door·Climate·Interior Light는 각각 원 Command ID·명령 종류·세대에 연결된 새 실제 상태, 품질·Fault 및 원 관측 시각으로 확인 조건을 정해야 한다. 도어 증거를 공조·조명에 일괄 적용하지 않는다. DONE·CAN 수신·Network 접수만으로 CONFIRMED를 만들지 않으며, 현재 Wire로 충분한 근거가 없으면 해당 결과는 UNCONFIRMED로 제한한다. 새 confirmation 필드나 Wire 값은 추가하지 않는다.
 
 **BCM → DOMAIN · 29 B 사용 / 32 B CAN 전송 / DLC 13 · WIRE_PROPOSED.**
 
@@ -329,7 +332,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 **CIS → DOMAIN · 40 B 사용 / 48 B CAN 전송 / DLC 14 · WIRE_PROPOSED.**
 
-**환경 저장 순서 권장안:** 기존 BOOT_ID와 센서별 원 Sequence로 A900→B0을 검증하며 새 전역번호로 이어 붙이지 않는다. 구 BOOT의 대기/실행 중 후속 저장을 정리하고 기존 환경 Rx의 NO_DATA 저장 완료 확인 뒤 새 BOOT 관측을 전달한다. 일반 NO_DATA를 재부팅·Sequence 리셋 신호로 해석하지 않는다. DOMAIN의 실제 저장 순서 수용과 완료 경계는 [확인 대기](../02_NODES/DOMAIN/20_API.md#delta-environment-completion)다. BOOT 재사용/Network 기억 상실은 보장 제외이며 이 순서를 위해 Wire에 Environment Generation을 추가하지 않는다. 아래 ID·길이·필드 바이트는 유지한다.
+**환경 저장 순서 권장안 / private 경계 수용 대기:** 기존 BOOT_ID와 센서별 원 Sequence로 A900→B0을 검증하며 새 전역번호로 이어 붙이지 않는다. 구 BOOT 대기·후속 쓰기 정리 → DOMAIN 소유 private 전환 통지 후보 → 실제 VSM/Meta·필요 순서 문맥 무효화 완료 → 새 원 관측 전달 순서다. private 통지와 기존 Rx NO_DATA의 분담·완료 방식은 [확인 대기](../02_NODES/DOMAIN/20_API.md#delta-environment-completion)다. 일반 NO_DATA는 BOOT/Sequence 리셋 신호가 아니며 BOOT 재사용·Network 기억 상실은 보장 제외다. 아래 ID·길이·필드 바이트와 공개 C2는 유지한다.
 
 의미 타입 `NetCisEnvironment`: [CIS Data](../02_NODES/CIS/10_DATA.md) · [CIS API](../02_NODES/CIS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 

@@ -2,6 +2,8 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+**이 API 목록은 v0.3/v0.6 후보 계약이다.** 담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며 실제 빌드 헤더·포트·ABI는 확인 대기다. v0.5 참고 헤더의 41개 공개 함수·TxPort15·Observer12와 이 문서의 72개·TxPort26·Observer11은 서로 다르므로 [C2 호환 조건](12_DOMAIN_TYPES.md#production-c2-compatibility)을 먼저 적용한다. 여기의 후보 원형을 실제 Production 프로젝트에 그대로 include하거나 혼용하도록 지시하지 않는다.
+
 **DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 Firmware 구현·연결·컴파일 완료를 의미하지 않는다.
 
 [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [내부 Adapter](25_PRIVATE_ROUTING.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
@@ -407,7 +409,9 @@ DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState
 **메시지:** `CIS_ENVIRONMENT` — [송수신 색인](../../05_MESSAGE_INDEX.md). 원 wire 객체를 C2/Gateway App 객체로 raw cast 하지 않고 명시 decode/projection 후 호출한다.
 
 <a id="delta-environment-completion"></a>
-**환경 저장 순서 권장 계약 / DOMAIN 기능 정책·연동 검증 전:** 구 BOOT의 미실행 패킷·콜백을 폐기하고, 실행 중 콜백 및 DOMAIN 후속 비동기 저장이 종료되어 이후 commit할 수 없는 상태를 확인한 뒤 이 Rx로 NO_DATA를 반영한다. VSM의 구 정상값·독립 Meta 무효화 저장 완료를 확인하고 나서 새 BOOT 관측을 원 Sequence·원 생성 기준점 그대로 전달한다. 대기 AGE는 누적하며 온습도2500ms에 도달한 관측을 정상으로 복원하지 않는다. Queue 접수나 callback 반환만으로 저장 완료를 주장하지 않는다.
+**PROPOSED / CROSS_OWNER_ACCEPTANCE_PENDING — 환경 BOOT private 완료 경계:** 유효한 새 CIS BOOT를 Network가 판별하고 구 BOOT 미실행 콜백·후속 비동기 쓰기를 격리한 뒤 DOMAIN 소유 private 경계에 전환 사실을 알리는 후보를 적용한다. private 통지가 무효화 저장까지 담당할지 기존 Rx NO_DATA와 병행할지는 미정이며 이중 commit은 금지한다. VSM 구 정상값·독립 Meta 및 필요한 순서 비교 문맥의 무효화 완료 확인 뒤 새 BOOT의 원 Sequence·생성 시각을 유지한 값을 전달한다. 대기 AGE를 누적하고 온습도2500ms 만료를 연장하지 않는다. 이 Rx는 값 수신 경계이며 일반 NO_DATA는 BOOT 통지가 아니다.
+
+DOMAIN owner 문맥의 실제 저장 완료를 보장하는 동기 반환 또는 원 BOOT 전환 사건과 연결되는 비동기 완료 식별/Callback/상태 확인 중 선택은 미확정이다. private 함수명·인자·Token 타입은 선언하지 않는다. lock/queue/observer 및 구 후속 쓰기 순서가 입증되기 전에는 호출 반환을 완료로 간주하지 않는다. 완료 실패·timeout·재기동·늦은 Callback에서는 새 정상 입력을 보류하고 과거 OK가 이미 지워졌다고 주장하지 않는다.
 
 DOMAIN이 확인해야 할 것은 실제 Rx→Manager/VSM→Getter의 commit 위치, 구 후속 쓰기 배제 및 완료를 판단할 기존 관측 근거다. `DOMAIN_IF_OK`에 새 공개 완료 의미를 임의 부여하지 않으며 TX의 로컬 접수 의미를 환경 저장 완료로 가져오지 않는다. Core commit 후 optional Observer 실패는 직접 저장 실패가 아니고 이미 끝난 commit의 재실행 근거도 아니다. 무효화 실패·완료 미확인에서는 새 정상 입력을 차단하되 과거 OK가 이미 지워졌다고 판정하지 않는다.
 
@@ -642,7 +646,7 @@ DomainIf_Status_t DomainIf_TxCisPowerPermission( const DomainIf_CisPowerPermissi
 <a id="delta-permission-submit"></a>
 ** 추가 계약:**원 평가 Sequence는 실제 성공 평가에서만 증가하고 원 AGE는 그 평가 시각에서 누적한다. 반복 TX나 실패를 성공으로 기록하지 않는다. 정상 평가의 DENY는 false/OK로 제출할 수 있다. DOMAIN Adapter의 [UNKNOWN 투영](12_DOMAIN_TYPES.md#delta-permission-projection)은 권장안이며 Network가 원 의미를 대신 정하지 않는다.
 
-실패 즉시 UNKNOWN은 **권장안 / DOMAIN 기능 정책·연동 검증 전**다. 이 안에서는 성공17 뒤 실패도 마지막 성공17·원 시각을 유지한 품질 하향으로 이 기존 TxPort 경로에 제출한다. Network는 같은 원 성공 Sequence만으로 그 실패 보고를 중복 폐기하지 않는다. 실패 시각을 AGE0으로 만들거나 성공 이력이 없는데 정상 순번·시간을 생성하지 않는다. 합성 UPDATE_SEQUENCE 갱신과 CAN TX_SEQUENCE는 원 성공 평가 번호와 별개다. 무효 전달의 Queue 접수/송신 실패 및 과거 ALLOW 재전달 방지는 실제 연결 검증 대상이며 로컬 OK는 CIS/Pi 수용 완료가 아니다.
+평가 실패·NO_DATA 시 과거 ALLOW를 즉시 철회하는 DOMAIN Core는 **담당자 구현 완료 보고**다. 실패에서 마지막 성공 평가 Sequence·원 시각을 유지하고 내부 stateRevision이 증가한다는 보고와, 이 TxPort 경로의 실제 제출·Network 전달 검증은 구분한다. UNKNOWN의 원인별 Quality 투영은 권장안·수용 대기이며 UNKNOWN+OK의 표현 한계는 남아 있다. 같은 원 성공 Sequence의 품질·값 변화도 인계해야 하고, 실패 AGE0·새 성공 순번을 만들지 않는다. stateRevision, 원 성공 평가 Sequence, 합성 UPDATE_SEQUENCE, CAN TX_SEQUENCE, UART LINK_SEQUENCE는 서로 다른 번호 공간이다. Queue의 이전 ALLOW가 철회 뒤 재등장하지 않는지와 Driver 전송·CIS/Pi 적용은 **BINDING_NOT_VERIFIED**다.
 
 <a id="api-domainif_txwindowcommand"></a>
 ## `DomainIf_TxWindowCommand()`
@@ -854,7 +858,10 @@ DomainIf_Status_t DomainIf_RxBcmStatus( const DomainIf_BcmStatusReport_t *status
 **메시지:** `BCM_STATUS` — [송수신 색인](../../05_MESSAGE_INDEX.md). 원 wire 객체를 C2/Gateway App 객체로 raw cast 하지 않고 명시 decode/projection 후 호출한다.
 
 <a id="api-domainif_rxbcmcommandresult"></a>
+
 ## `DomainIf_RxBcmCommandResult()`
+
+**BCM/DOMAIN 확인 대기:** Door·Climate·Interior Light는 각각 원 Command ID·명령 종류·세대에 연결된 새 실제 상태, 품질·Fault 및 원 관측 시각으로 확인 조건을 정해야 한다. 도어 증거를 공조·조명에 일괄 적용하지 않는다. DONE·CAN 수신·Network 접수만으로 CONFIRMED를 만들지 않으며, 현재 Wire로 충분한 근거가 없으면 해당 결과는 UNCONFIRMED로 제한한다. 새 confirmation 필드나 Wire 값은 추가하지 않는다.
 
 ```c
 DomainIf_Status_t DomainIf_RxBcmCommandResult( const DomainIf_BcmCommandResult_t *result);

@@ -9,6 +9,9 @@ Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES
 바로 찾기: [호출 방향](#section-local-boundary) · [로컬 반환·C2 변환](#section-return-status) · [Gateway 반환 후보](#section-gateway-status) · [포인터 수명](#section-ownership) · [보관·재전송](#section-lifetime-ownership) · [Query 종결](#section-query-boundary) · [Health·수용 뒤 실패](#section-network-health).
 
 <a id="section-local-boundary"></a>
+
+**Status/Fault의 저장·전달 경계:** DOMAIN Core commit 이후 optional Observer 오류는 완료한 저장을 재실행할 근거가 아니다. 단일 원 관측의 raw·Meta·품질 연결에는 기존 원자적 수용 규칙을 유지한다. 서로 다른 Status/Fault 갱신 사이의 원 순서·부분 저장 성공/실패를 어떻게 관측하고 반환할지는 DOMAIN 확인 대기이며, 일부 성공을 전체 성공 또는 전체 rollback으로 추정하지 않는다. 원 식별·품질·AGE와 완료한 범위를 구분해 인계하고 실제 Manager/Observer 연결 검증 전에는 통합 완료로 처리하지 않는다.
+
 ## 어느 함수에 무엇을 전달하는가
 
 공개 `DomainIf_*` 72개, Lifecycle·Rx/Tx 래퍼·Query Getter 18개와 기존 Manager 연결은 DOMAIN이 구현한다. Network는 TxPort Callback 26개·Codec·Queue·Adapter·실제 송수신과 통신 원자료를 제공한다. `DomainIf_SetTxPort()` 함수 자체는 DOMAIN 소유다. 지원하지 않는 Port를 성공으로 처리하지 않는다. 실제 Port·Manager 연결은 별도로 검증해야 한다. [전체 범위](../07_CROSS_NODE_INTERFACE_RULES.md#roles)

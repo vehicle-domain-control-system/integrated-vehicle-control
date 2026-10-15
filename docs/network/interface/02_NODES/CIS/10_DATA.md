@@ -391,10 +391,10 @@ CIS의 참고 코드에는 약 2000ms 측정 주기와 `ENV_STALE_MS=5000ms` 후
 
 실내 조도 1000ms는 기능 정책이 미확정인 후보다. CIS 로컬 `LUX_STALE_MS=1000`은 DOMAIN 사용 기한을 확정하는 근거가 아니다. SysRS의 온습도·실내/외 조도 묶음 기준과 별개로 온습도에는 각 2500ms를 적용하며 조도는 후보로 남는다. CAN 환경 보고 200ms/수신 중단 600ms 후보는 원본 사용 기한과 별개다.
 
-환경 C2는 현재 구조를 우선 유지한다. Network는 CIS BOOT와 센서별 Sequence·AGE를 보존하고, BOOT 변경·수신 중단 시 기존 환경값을 NO_DATA/STALE 등 무효 상태로 `DomainIf_RxCisCabinEnvironment()`에 전달하는 방향이다. 실제 DOMAIN VSM 저장값과 Getter까지 무효화되는지 연동 검증이 필요하다. 기존 C2로 필요한 동작을 표현·연결할 수 없다는 근거가 나오면 최소 계약 변경을 검토한다. 지금 새 필드를 임의로 추가하지 않는다.
+환경 C2는 현재 구조를 우선 유지한다. Network는 CIS BOOT와 센서별 Sequence·AGE를 보존한다. BOOT 전환은 DOMAIN 소유 private 통지 후보로 구분하며, 기존 값 수신 경계인 `DomainIf_RxCisCabinEnvironment()`의 NO_DATA와 무효화 역할을 어떻게 분담할지는 확인 대기다. 일반 링크 단절의 품질 선택과 실제 VSM/Getter 무효화 완료는 별도 연동 조건이다. 기존 C2로 연결할 수 없다는 근거가 나오면 최소 계약 변경을 검토하되 새 공개 필드를 임의로 추가하지 않는다.
 
 <a id="delta-cis-environment"></a>
-**환경 저장 순서 권장안 / DOMAIN 연동 조건 확인 필요:** Network는 구 BOOT 대기 데이터·콜백을 배제하고 실행 중 콜백의 DOMAIN 후속 비동기 쓰기까지 정리한 뒤 NO_DATA 무효화를 전달한다. 실제 VSM 저장 완료 확인 후 새 BOOT 센서 원 Sequence·원 시간 근거를 전달한다. 구900/신0을901로 바꾸지 않으며 일반 NO_DATA로 재부팅을 추론하거나 Sequence를 리셋하지 않는다. DOMAIN이 검증된 순서를 실제 저장까지 수용해야 한다. 무효화 실패·완료 미확인에서는 새 정상 전달을 막되 과거 VSM OK가 이미 지워졌다고 기록하지 않는다. commit 이후 Observer 실패는 중복 저장 사유가 아니다.
+**환경 저장 순서 권장안 / DOMAIN 연동 조건 확인 필요:** Network는 구 BOOT 대기 데이터·콜백·DOMAIN 후속 비동기 쓰기를 격리한 뒤 private 전환 통지 후보를 적용한다. private 통지와 기존 Rx NO_DATA의 분담 및 동기/비동기 완료 방식은 미정이다. 실제 VSM/Meta·필요 순서 문맥 무효화 완료 후 새 BOOT 센서 원 Sequence·시간을 전달한다. 구900/신0을901로 바꾸지 않으며 일반 NO_DATA로 재부팅을 추론하거나 순번을 리셋하지 않는다. 무효화 실패·완료 미확인에서는 새 정상 전달을 막되 과거 VSM OK가 이미 지워졌다고 주장하지 않는다. commit 뒤 Observer 실패는 중복 저장 사유가 아니다.
 
 대기 경과 AGE와 온습도2500ms 만료를 유지한다. 종료 BOOT 차단은 기억 범위 내 조건이며 BOOT 재사용·Network 재시작으로 기억을 잃는 경우까지 보장하지 않는다. 일반 링크 단절 STALE/NO_DATA 선택과 조도1000ms는 미결이다. 실제 C2 저장 경계를 증명할 수 없다면 최소 계약 변경을 검토한다. [전체 환경 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 

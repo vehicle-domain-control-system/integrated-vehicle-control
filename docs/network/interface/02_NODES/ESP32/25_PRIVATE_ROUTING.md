@@ -139,7 +139,7 @@ Gateway_Status_t Gateway_Interface_PublishProximity(
 | `send_app_activity_to_domain` | App 활성 state/독립 quality/sequence/age. source producer·TTL OPEN, 연결만으로 ACTIVE 만들지 않음. |
 | `send_proximity_to_domain` | 근접 state/독립 validity/reason/quality/sequence/age. 근접 담당 모듈의 원 평가를 사용하며 생산자 TTL은 OPEN 이다. |
 
-Transport Adapter는 한 검증된 현재 peer/Device/Session에 속한 세 component를 조립하여 `EspNetPriv_PublishContext()`로 제출한다. 존재하지 않는 component는 정상 값을 합성하지 않고 명시 no-data/unknown 계약을 적용한다. quality UNKNOWN의 raw 매핑이 없으므로 조건 확정 전 해당 필드 encode는 차단하고 WIRE_MAPPING_OPEN로 표시한다. View와 각 update snapshot은 호출이 끝날 때까지 유효해야 하며 local OK 전에 deep copy 또는 동기 encode를 확보한다. 같은 M_CONTEXT 반복은 세 원 평가 순번을 올리지 않고 AGE만 증가시킨다. UART LINK_SEQUENCE는 별도로 frame마다 증가한다.
+H01의 공통 Header 필드 또는 Adapter 독립 순번 선택·실제 경로/버전은 확인 대기다. 최초·반복·재기동·wrap에서 세 생산원의 순번이 서로 오염되지 않는지 검증하기 전 HOLD를 유지한다. Transport Adapter는 한 검증된 현재 peer/Device/Session에 속한 세 component를 조립하여 `EspNetPriv_PublishContext()`로 제출한다. 존재하지 않는 component는 정상 값을 합성하지 않고 명시 no-data/unknown 계약을 적용한다. quality UNKNOWN의 raw 매핑이 없으므로 조건 확정 전 해당 필드 encode는 차단하고 WIRE_MAPPING_OPEN로 표시한다. View와 각 update snapshot은 호출이 끝날 때까지 유효해야 하며 local OK 전에 deep copy 또는 동기 encode를 확보한다. 같은 M_CONTEXT 반복은 세 원 평가 순번을 올리지 않고 AGE만 증가시킨다. UART LINK_SEQUENCE는 별도로 frame마다 증가한다.
 
 ## Alive·Query 종료는 Gateway private
 

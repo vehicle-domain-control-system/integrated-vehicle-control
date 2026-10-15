@@ -2,6 +2,8 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+**BCM/DOMAIN 확인 대기:** Door·Climate·Interior Light는 각각 원 Command ID·명령 종류·세대에 연결된 새 실제 상태, 품질·Fault 및 원 관측 시각으로 확인 조건을 정해야 한다. 도어 증거를 공조·조명에 일괄 적용하지 않는다. DONE·CAN 수신·Network 접수만으로 CONFIRMED를 만들지 않으며, 현재 Wire로 충분한 근거가 없으면 해당 결과는 UNCONFIRMED로 제한한다. 새 confirmation 필드나 Wire 값은 추가하지 않는다.
+
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
 **PROPOSED_DESIGN · BINDING_OPEN.** 아래는 각 노드 안의 로컬 Application/Network 경계다. 제공 DOMAIN C2·ESP32 Gateway 헤더와 달리 해당 노드의 실제 설치/firmware 선언은 확인되지 않았다. 기존 Port가 동일 책임을 충족하면 그 Port에 아래 계약을 매핑하고 공개 wrapper를 중복 설치하지 않는다.

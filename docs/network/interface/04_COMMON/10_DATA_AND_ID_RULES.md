@@ -103,6 +103,9 @@ BCM/VSS는 Network-private Domain 감시가 소비하며 새 App permission call
 
 <a id="delta-permission-sequences"></a>
 ### 원 성공 평가·합성·전송의 번호 공간
+
+실패·NO_DATA에서 ALLOW를 철회하면서 DOMAIN 내부 stateRevision을 증가시키는 동작은 담당자 구현 완료 보고다. 이는 원 성공 평가 Sequence 또는 CAN 합성 UPDATE_SEQUENCE·TX_SEQUENCE·UART LINK_SEQUENCE와 다르며 공개 필드 추가 근거가 아니다. 실패 때 마지막 성공 Sequence·시각을 유지해 AGE를 누적한다. 동일 원 Seq의 품질 변화 전달과 합성 갱신 조건은 실제 Network 연결 검증/계약 확인 대기다.
+
 DOMAIN 원 평가 Sequence는 실제 평가 성공에서만 증가하며 반복 송신으로 변하지 않는다. 마지막 성공 평가 시각에서 원 AGE를 누적한다. 합성 순번 분리는 통신 권장 프로필 방향이지만 갱신 세부조건·공통 AGE/Quality/세대 합성은 양단 미결이다.
 
 | 번호 | 생성 주체·갱신 사건 | 대체할 수 없는 근거 |
@@ -164,12 +167,12 @@ Wire BOOT_ID의 0 예약과 C2 sourceGeneration=0은 다른 규칙이다. 수용
 <a id="section-environment-binding"></a>
 ## 환경값의 독립 메타와 무효화
 
-Network는 CIS BOOT와 온도·습도·조도별 Sequence·AGE·품질을 보존한다. BOOT 변경 또는 수신 중단 시 기존 `DomainIf_RxCisCabinEnvironment()`로 NO_DATA/STALE 등 무효 품질을 전달한다. 기존 VSM 저장값과 독립 Meta·Getter까지의 실제 무효화는 DOMAIN 연동 검증이 필요하다.
+Network는 CIS BOOT와 온도·습도·조도별 Sequence·AGE·품질을 보존한다. 기존 `DomainIf_RxCisCabinEnvironment()`는 값 수신 경계이며 새 BOOT는 DOMAIN 소유 private 전환 통지 후보로 구분한다. private 통지와 Rx NO_DATA의 무효화 분담, 일반 수신 중단의 STALE/NO_DATA 선택 및 VSM·독립 Meta·Getter까지의 실제 저장 완료는 DOMAIN 확인·연동 검증 대기다.
 
 환경 C2 구조는 우선 유지한다. 현재 구조로 필요한 무효화·세대 전이를 표현하거나 연결할 수 없다는 구체적인 근거가 나오면 최소 계약 변경을 검토할 수 있다. 이는 영구 확장 금지가 아니다. Network 원 수신 기록을 임의의 최신 Getter 결과에 붙이지 않고, DOMAIN이 실제 처리한 입력과 같은 관측인지 확인해야 한다.
 
 <a id="delta-environment-order"></a>
-**환경 저장 순서 권장안 / DOMAIN 연동 조건 확인 필요:** 환경 C2에 BOOT/sourceGeneration은 없다. 검증된 BOOT 전환에서 구 대기 패킷·콜백 폐기 및 실행 중 콜백의 후속 비동기 저장 종료 → 기존 Rx NO_DATA → VSM 무효화 저장 완료 확인 → 새 BOOT 원 관측 전달 순서를 실제 저장까지 유지해야 한다. callback 반환·Queue 접수는 완료 증거가 아니다. 무효화 실패·완료 미확인이면 새 정상 전달을 보류하며 과거 정상값이 이미 지워졌다고 주장하지 않는다. Core commit 이후 optional Observer 실패를 직접 저장 실패로 보고 중복 commit하지 않는다.
+**환경 저장 순서 권장안 / DOMAIN private 경계 수용 대기:** 환경 C2에 BOOT/sourceGeneration은 없다. 검증된 BOOT 전환에서 구 콜백·후속 저장을 격리하고 DOMAIN 소유 private 통지 후보로 VSM/독립 Meta·필요 순서 비교 문맥의 무효화를 요청한다. private 통지와 기존 Rx NO_DATA의 분담, 동기 반환 또는 원 BOOT 사건에 연결된 비동기 완료 방식은 미확정이다. 실제 저장 완료 뒤에만 새 원 Sequence·시각을 전달한다. Queue 접수·단순 반환·일반 NO_DATA는 BOOT 전환 또는 완료 증거가 아니며 공개 함수·Generation 필드를 추가하지 않는다.
 
 Network는 `(원 CIS BOOT, 센서, 원 관측 Sequence)`로 A900→B0을 구분하고 원 번호를 재발급·리매핑하지 않는다. DOMAIN도 이를 세대 없는 전역 Sequence 비교로 거절하지 않고 검증 입력 순서를 저장까지 수용해야 한다. 일반 NO_DATA는 데이터 부재이며 재부팅/Sequence 리셋 명령이 아니다. 새 입력 대기 AGE는 누적하고 온습도2500ms 만료를 정상으로 되돌리지 않는다. 종료 BOOT 재반영 차단은 기억 범위에 한정하며 BOOT 재사용·Network 재시작의 기억 상실을 보장하지 않는다. 일반 링크 단절의 STALE/NO_DATA·조도 TTL은 미결이다. [전체 조건과 C2 변경 검토 대안](../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)을 따른다.
 

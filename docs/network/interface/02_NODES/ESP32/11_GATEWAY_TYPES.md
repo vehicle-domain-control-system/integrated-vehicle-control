@@ -6,7 +6,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 
 [노드 Data](10_DATA.md) · [노드 API](20_API.md) · [이 문서의 전체 기준 선언](#타입-바로-찾기)
 
-헤더 출처 확인 보류 헤더 연결: 저장소의 Gateway_Types 헤더에는 `Gateway_UpdateBasis_t.update_sequence`가 없지만 기존 Interface에는 있다. 최신 헤더를 임의로 채택하거나 이 필드를 삭제하지 않고 기존 선언을 유지한다. ESP32 모듈은 사용할 공통 헤더와 UART 변환 경계를 대조해야 한다. 아래 전체 선언은 문서 계약이며 컴파일 헤더를 새로 만든 것이 아니다.
+헤더 출처 확인 보류 헤더 연결: 저장소의 Gateway_Types 헤더에는 `Gateway_UpdateBasis_t.update_sequence`가 없지만 기존 Interface에는 있다. 최신 채택 헤더의 경로·버전은 확인 대기다. 최신 헤더를 임의로 채택하거나 이 필드를 삭제하지 않고 기존 선언을 유지한다. ESP32 모듈은 사용할 공통 헤더와 UART 변환 경계를 대조해야 한다. 아래 전체 선언은 문서 계약이며 컴파일 헤더를 새로 만든 것이 아니다.
 
 ## 타입 바로 찾기
 
@@ -189,7 +189,7 @@ typedef enum
 ## `Gateway_UpdateBasis_t`
 
 <a id="r1-updatebasis-binding"></a>
-**H01 권장안 / PROPOSED_DESIGN:** 문서의 u32 `update_sequence`를 유지하고 실채택 ESP32 공통 Header에 해당 필드를 반영하는 방식을 기본 권고로 한다. 기존 Header를 유지해야 한다면 생산원별 독립 순번을 보존하는 Adapter 대안도 가능하다. 등록·연결 공동 순번, App 활성 순번, 근접 순번을 각각 추적하며 `is_new_update` bool·LINK_SEQUENCE·로컬 시각으로 대신하지 않는다. 실제 적용 Header 버전, 세 생산원→M_CONTEXT Encoder의 변환, Golden Vector byte 일치, 재기동/반복 경계, 전체 빌드·ABI 호환 근거가 확보되기 전에는 **HOLD_BINDING / BINDING_NOT_VERIFIED**다. 이 권장안의 실제 헤더·ABI·구현 연결은 검증 전이다. 공개 C 선언과 UART 필드는 아래 정의를 따른다.
+**H01 권장안 / PROPOSED_DESIGN:** 문서의 u32 `update_sequence`를 유지하고 실채택 ESP32 공통 Header에 해당 필드를 반영하는 방식을 기본 권고로 한다. 기존 Header를 유지해야 한다면 생산원별 독립 순번을 보존하는 Adapter 대안도 가능하다. 등록·연결 공동 순번, App 활성 순번, 근접 순번을 각각 추적하며 `is_new_update` bool·LINK_SEQUENCE·로컬 시각으로 대신하지 않는다. 실제 적용 Header 버전, 세 생산원→M_CONTEXT Encoder의 변환, Golden Vector byte 일치, 최초/반복/재기동/순번 wrap 경계, 전체 빌드·ABI 호환 근거가 확보되기 전에는 **HOLD_BINDING / BINDING_NOT_VERIFIED**다. 이 권장안의 실제 헤더·ABI·구현 연결은 검증 전이다. 공개 C 선언과 UART 필드는 아래 정의를 따른다.
 
 **원 소속:** `Gateway_Types.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 

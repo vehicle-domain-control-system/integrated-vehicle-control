@@ -132,7 +132,7 @@ NetSubmitResult CisNet_PublishEnvironment(
 
 **보관·재시도:** [현재값 보관](#pending-current-value)을 적용하며 원 평가 순번·Age를 보존한다.
 
-환경 원 Sequence는 새 BOOT의0을 구900에 이어901로 바꾸지 않는다. 일반 NO_DATA는 재부팅/순번 리셋 명령이 아니다. DOMAIN 측의 구 쓰기 종료→NO_DATA 저장 확인→새 원 관측 반영은 [환경 저장 순서 권장안](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)이며 이 송신 API의 local OK만으로 VSM 무효화를 입증하지 않는다.
+환경 원 Sequence는 새 BOOT의0을 구900에 이어901로 바꾸지 않는다. 일반 NO_DATA는 재부팅/순번 리셋 명령이 아니다. DOMAIN 측의 구 쓰기 격리 → DOMAIN 소유 private BOOT 통지 후보 → 무효화 저장 완료 확인 → 새 원 관측 전달은 [수용 대기인 저장 순서](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)다. private 통지의 정확한 API·동기/비동기 완료 방식은 미확정이며 CIS 공개 함수나 Wire를 추가하지 않는다. 이 송신 API의 local OK로 DOMAIN VSM 완료를 입증하지 않는다.
 
 **결과 사용:** 습도 실패가 온도/조도 정상 관측을 무효화하는 근거는 아니다. 제안 스케일과 실제 물리 센서 범위는 구분한다.
 

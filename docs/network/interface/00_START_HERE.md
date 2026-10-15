@@ -2,6 +2,8 @@
 
 Interface v2 · r1 · [규격과 연동 조건](07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+**사용 버전 구분:** DOMAIN 담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며, 이 문서의 C2 선언은 v0.3/v0.6 **후보 계약**이다. 실제 빌드의 파일·버전·ABI 및 Network Adapter 연결은 확인 대기다. 두 버전의 타입·포트가 같다고 가정하여 혼용하지 않는다. [Vehicle 타입 호환 조건](02_NODES/DOMAIN/11_VEHICLE_TYPES.md#production-compatibility)과 [C2 선언·포트 차이](02_NODES/DOMAIN/12_DOMAIN_TYPES.md#production-c2-compatibility)를 먼저 확인한다.
+
 [노드 간 공통 규칙](07_CROSS_NODE_INTERFACE_RULES.md)을 적용한다. DOMAIN은 공개 C2·Manager를, Network는 통신·TxPort를 구현한다. 최근 요청 결과는 Device별8건 보관·최신5건 조회, 후방 Permission은 약200ms 재평가·원500ms, 온습도는 각 원2500ms를 적용한다. 공유 Permission 합성·조도·VSM 연동·STALE+generation0은 미확정 조건을 따른다. 메시지48종·수신의무51건을 정의하며 ESP32 내부 구현과 MOBILE 직접 연결은 각 해당 모듈의 범위다.
 
 **기술 Interface 계약.** Application은 의미·판정·실제 동작 결과를 만들고, Network는 전송·검증·중계를 맡는다. 기존 C2/Gateway는 제공된 선언이며 실제 호출·SDK 바인딩은 확인되지 않았다.

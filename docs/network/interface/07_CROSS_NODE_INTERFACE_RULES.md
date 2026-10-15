@@ -21,7 +21,7 @@ DOMAIN·Network·CIS·Pi의 생산·전달·소비 경계와 시간·품질·기
 <a id="roles"></a>
 ## 1. 구현과 데이터 소유권
 
-DOMAIN은 공개 DomainIf_* 72개, Lifecycle, Rx/Tx 래퍼, Query Getter18개와 기존 Manager 연결을 구현한다. Network는 TxPort Callback26개, CAN/UART Codec·Queue·Adapter·프레임 검증·송수신 및 통신 원자료를 담당한다. SetTxPort 공개 함수 자체는 DOMAIN이 구현하고 Network가 실제 Callback을 구성해 등록한다. 미지원 Port는 성공으로 처리하지 않는다.
+이 문서의 v0.6 후보 계약에서 DOMAIN은 공개 DomainIf_* 72개, Lifecycle, Rx/Tx 래퍼, Query Getter18개와 기존 Manager 연결을 구현한다. Network는 TxPort Callback26개, CAN/UART Codec·Queue·Adapter·프레임 검증·송수신 및 통신 원자료를 담당한다. SetTxPort 공개 함수 자체는 DOMAIN이 구현하고 Network가 실제 Callback을 구성해 등록한다. 미지원 Port는 성공으로 처리하지 않는다.
 
 차량 상태·요청·명령·결과의 단일 관리 주체는 DOMAIN이다. Network가 관리하는 원 수신 객체·품질 근거·Queue·통신 Health는 두 번째 차량 상태 Manager가 아니다. Rx는 검증→디코딩→C2 인자 전달→DOMAIN Manager, Tx는 DOMAIN 래퍼→Network TxPort→통신, Query는 Network가 DOMAIN Getter 호출→응답 전송 순서다.
 
@@ -65,12 +65,12 @@ P_PERMISSION.USE_LIMIT는 1500ms 후보이며, 같은 후방 Power 원 판단을
 | 정상 평가에서 확정 DENY | false + OK | 0 + OK | 평가 실패와 구분 |
 | 미관측·판단 근거 없음 | false + NO_DATA | 255 + NO_DATA | 해당 원인이 확인된 경우 |
 | 이전 판단 수명 만료 | false + STALE | 255 + STALE | 과거 ALLOW 사용 불가 |
-| 신뢰할 수 없는 평가 실패 | false + INVALID 권장 | 255 + INVALID 권장 | 실패 즉시 무효화와 매핑의 DOMAIN 수용 필요 |
+| 신뢰할 수 없는 평가 실패 | false + INVALID 권장 | 255 + INVALID 권장 | Core 철회는 완료 보고; 원인별 품질 투영은 수용 대기 |
 | UNKNOWN+OK 원 품질 보존 필수 | 현재 C2로 무손실 표현 불가 | 임의 DENY/OK 치환 금지 | 의미 축약 정책 수용 또는 최소 타입·사유 계약 변경 별도 검토 |
 
 원인별 매핑표는 권장 프로필이다. 원 Quality가 OK였던 UNKNOWN을 비정상 Quality로 투영하면 원 품질이 축약된다. 원 의미·원 품질·원인 근거는 DOMAIN 기능 원 기록에 보존하는 방향을 권장하며 실제 보존 위치는 미확정이다. C2 `quality`와 `meta.quality` 충돌은 확인 불가로 제한하는 기존 CAN 후보를 적용하고 임의 OK 선택을 금지한다. Network가 원 의미를 추측해 투영하거나 신규 사유 필드를 추가하지 않는다.
 
-**실패 즉시 UNKNOWN은 권장안이며 DOMAIN 기능 정책·연동 검증 전이다.** 성공 평가 #17 ALLOW/OK 뒤 200ms에 평가 실패가 나면 원 성공 Sequence #17과 마지막 성공 시각은 그대로이며, 현재 품질을 INVALID/UNKNOWN으로 제한해 전달 요청하는 안이다. 동일 원 성공 Sequence라는 이유로 실패 보고를 중복 폐기하지 않는다. 실패를 새 성공 평가나 AGE0으로 만들지 않으며 성공 이력이 없을 때 정상 source Sequence·AGE를 만들어내지 않는다. 유효하지 않은 시간 근거의 상세 Wire 표현은 기존 NO_DATA·포화 규칙과 대조할 미결로 남긴다.
+**DOMAIN Core의 평가 실패·NO_DATA 시 과거 ALLOW 즉시 철회는 담당자 구현 완료 보고(OWNER_REPORTED_IMPLEMENTED)다.** Network TxPort→Queue→CAN 및 CIS/Pi 수용은 **BINDING_NOT_VERIFIED**이며 원인별 UNKNOWN 품질 투영은 권장안·DOMAIN 확인 대기다. 성공 평가 #17 ALLOW/OK 뒤 200ms에 평가가 실패하면 원 성공 Sequence #17과 마지막 성공 시각은 유지하고 DOMAIN 내부 stateRevision이 증가한다는 보고를 적용한다. stateRevision은 공개 C2/Wire 필드나 새 성공 평가 번호가 아니다. Network는 같은 원 성공 Sequence의 value/Quality 저하를 중복으로 폐기하지 않아야 한다. 실패를 성공 #18이나 AGE0으로 만들지 않으며, 성공 이력이 없을 때 정상 source Sequence·AGE를 생성하지 않는다. 유효하지 않은 시간 근거의 상세 Wire 표현은 기존 NO_DATA·포화 규칙과 대조할 미결로 남긴다.
 
 ‘즉시’는 실패 인지 후 다음 성공 평가나500ms 만료까지 기다리지 않고 무효화·전달을 요청한다는 뜻이다. 원격 CIS/Pi의 동시 수신을 보증하지 않는다. Queue 적체·송신 실패·재시도에서 과거 ALLOW가 무효화 뒤 재전달되지 않는지 확인해야 하며 전송 불능을 성공으로 기록하지 않는다. [순번·원 AGE 분리](04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)와 [경계 입력과 처리 조건](#delta-acceptance-cases)을 따른다.
 
@@ -115,7 +115,7 @@ BOOT0 예약과 C2 sourceGeneration0은 같은 규칙이 아니다. 후보 C2의
 <a id="environment"></a>
 ## 6. 환경 C2와 후방 상태
 
-환경은 온도·습도·조도별 품질·순번·AGE를 독립 보존한다. Network가 CIS BOOT 변경 또는 해당 수신 중단을 감지하면 기존 환경 입력 경계로 NO_DATA/STALE을 전달한다. 실제 함수는 DomainIf_RxCisCabinEnvironment다. 기존 VSM과 독립 Meta 저장·Getter에서 과거 정상값이 실제로 무효화되는지는 DOMAIN 연동 검증이 필요하다.
+환경은 온도·습도·조도별 품질·순번·AGE를 독립 보존한다. 기존 `DomainIf_RxCisCabinEnvironment`는 환경 값 수신 경계다. 새 CIS BOOT는 아래의 DOMAIN 소유 private 전환 통지 후보로 구분하며, 일반 수신 중단의 STALE/NO_DATA 선택과 분리한다. 기존 VSM과 독립 Meta 저장·Getter의 실제 무효화 완료는 DOMAIN 연동 검증이 필요하다.
 
 현재 C2 구조를 우선 사용한다. 필요한 무효화·세대 전이를 표현하거나 연결할 수 없는 경우에만 최소 계약 변경을 검토한다. sourceGeneration 필드 추가는 현재 계약에 포함되지 않는다. 실제 연결 근거가 필요하며 표현 한계에 따른 향후 최소 변경 가능성은 남아 있다.
 
@@ -124,12 +124,12 @@ BOOT0 예약과 C2 sourceGeneration0은 같은 규칙이 아니다. 후보 C2의
 <a id="environment-delta"></a>
 ### 환경 BOOT 전환 저장 순서
 
-**조건부 권장 설계 / DOMAIN 저장 경계 미확정**이다. `CisCabinEnvironmentState_t`에는 공개 sourceGeneration/CIS BOOT_ID가 없다. 기존 구조를 유지하려면 Network의 검증된 입력 순서가 DOMAIN의 실제 VSM 저장까지 유지됨을 확인해야 한다.
+**PROPOSED / CROSS_OWNER_ACCEPTANCE_PENDING — DOMAIN 소유 private BOOT 전환 통지 후보**다. `CisCabinEnvironmentState_t`에는 공개 sourceGeneration/CIS BOOT_ID가 없으므로 일반 NO_DATA로 BOOT 전환을 알릴 수 없다. 공개 C2·Wire를 유지하면서 Network가 검증한 BOOT 전환 사실을 DOMAIN private 경계에 전달하고 실제 VSM 저장 완료·실패를 확인하는 방식을 권장한다. 수신 모듈·함수명·서명·완료 방식은 미확정이다.
 
 1. 유효한 새 CIS BOOT 전환을 확인하면 구 BOOT의 신규 전달을 막고 아직 실행하지 않은 패킷·콜백을 폐기한다. 처음 본 임의 BOOT를 무조건 최신으로 인정하지 않는다.
 2. 이미 실행 중인 구 콜백과 그 콜백에서 시작된 DOMAIN 후속 비동기 쓰기가 완료되거나 더 이상 commit할 수 없는 상태임을 기존 owner 직렬 처리로 확인한다. 콜백 반환만으로 완료 판정하지 않으며 실행 중 작업을 취소했다고 가정하거나 owner를 동기 대기로 막아 교착시키지 않는다.
-3. 구 BOOT 쓰기가 이후 끼어들 수 없어진 뒤 기존 `DomainIf_RxCisCabinEnvironment()`로 NO_DATA 무효화를 전달한다.
-4. VSM의 이전 정상값·독립 Meta 무효화가 실제 저장 완료됐음을 확인한다. Queue 접수, 호출 시도 또는 반환값에 임의로 붙인 완료 의미로 대체하지 않는다.
+3. 구 BOOT 쓰기가 이후 끼어들 수 없어진 뒤 DOMAIN 소유 private 경계에 검증된 전환 사실을 통지하는 후보를 적용한다. private 경계가 NO_DATA 무효화까지 수행할지, 기존 Rx를 병행할지는 확인 대기이며 이중 commit을 만들지 않는다.
+4. VSM의 이전 정상값·독립 Meta 및 필요한 DOMAIN 순서 비교 문맥의 무효화가 실제 저장 완료됐음을 확인한다. Queue 접수·호출 시도·단순 콜백 반환은 완료 근거가 아니다. 동일 owner 문맥에서 저장과 구 후속 쓰기 배제까지 끝나는 동기 반환, 또는 원 BOOT 사건에 연결된 비동기 완료 식별/Callback/상태 확인 중 실제 방식은 DOMAIN 수용 대기다. 완료 전 새 정상 입력은 보류하며 timeout·실패·재기동·늦은 완료를 새 BOOT 성공으로 오인하지 않는다.
 5. 그 뒤 새 BOOT의 검증된 관측을 **원 Sequence 그대로**, 원 생성 기준점을 유지한 AGE로 전달한다. 대기 경과는 한 번 누적하고 온습도 AGE가2500ms에 도달하면 정상값으로 복원하지 않는다.
 6. 기억된 종료 BOOT의 지연 프레임·대기 콜백이 다시 저장되지 않게 막는다. BOOT 재사용이나 Network 재시작으로 종료 이력을 잃는 경우까지 영구 차단을 보장하지 않는다.
 
@@ -144,7 +144,7 @@ DOMAIN이 자체 환경 세대를 알아야 하거나 다른 쓰기 경로·비�
 
 NET_SUBMIT_OK/DOMAIN_IF_OK는 필요한 데이터를 안정되게 복사·인계한 로컬 성공이지 실제 CAN/UART TX·상대 ECU 수용·차량 DONE이 아니다. 접수 전 INVALID_ARGUMENT/NOT_READY/NO_CAPACITY는 미접수 반환이며 그 항목의 후발 실패 사건을 만들지 않는다.
 
-정상 접수된 필요한 명령·결과·일회성 이벤트는 driver 제출의 확정 최종 실패, 송신 전 만료, 송신 전 문맥 무효화가 기존 세 reason에 정확히 맞을 때만 DOMAIN LocalFailure에 원 식별자를 전달한다. 미분류 in-flight 오류·callback 부재를 세 reason으로 확장하지 않고 원 식별자·phase·진단과 영향 경로 HOLD를 남긴다. [실패 범위 정본](04_COMMON/20_API_USAGE_AND_FAILURE.md#r1-local-failure-reasons)을 따른다. 주기 상태·Query 실패는 각 통신/Query 경로를 사용하고 CAN 성공 Callback·CIS/Pi용 C2 함수를 추가하지 않는다. BCM_RESULT 수신/DONE만으로 CONFIRMED나 차량 FAILED/DONE을 합성하지 않는다. 실제 확인 근거와 binding은 검증 대기다.
+정상 접수된 필요한 명령·결과·일회성 이벤트는 driver 제출의 확정 최종 실패, 송신 전 만료, 송신 전 문맥 무효화가 기존 세 reason에 정확히 맞을 때만 DOMAIN LocalFailure에 원 식별자를 전달한다. 미분류 in-flight 오류·callback 부재를 세 reason으로 확장하지 않고 원 식별자·phase·진단과 영향 경로 HOLD를 남긴다. [실패 범위 정본](04_COMMON/20_API_USAGE_AND_FAILURE.md#r1-local-failure-reasons)을 따른다. 주기 상태·Query 실패는 각 통신/Query 경로를 사용하고 CAN 성공 Callback·CIS/Pi용 C2 함수를 추가하지 않는다. BCM_RESULT 수신/DONE만으로 CONFIRMED나 차량 FAILED/DONE을 합성하지 않는다. 실제 확인 근거와 binding은 검증 대기다. Door·Climate·Interior Light별 원 Command ID·세대·새 관측 시각·상태·품질/Fault의 충분조건은 BCM/DOMAIN 확인 대기이며, 근거가 부족한 기능 결과만 UNCONFIRMED로 제한한다.
 
 <a id="scenarios"></a>
 ## 8. 노드 간 처리 흐름
@@ -204,11 +204,11 @@ NET_SUBMIT_OK/DOMAIN_IF_OK는 필요한 데이터를 안정되게 복사·인계
 | <a id="plan-ncp-t22"></a>S32K144↔344 CAN with Gen/Power | real FDF/BRS/DLC/Boot/Codec and C2 observer |
 | ALLOW/OK, DENY/OK, UNKNOWN/NO_DATA, UNKNOWN/OK | 확정 DENY와 UNKNOWN 구분. UNKNOWN+OK 무손실 필요 시 기존 C2 한계·DOMAIN 기능 정책 미확정 |
 | quality OK / meta.quality INVALID | OK를 골라 허용 생성 금지; 기존 충돌 후보대로 제한 |
-| 성공17 ALLOW/OK 뒤200ms 평가 실패 | 실패 즉시 무효 전달 요청 권장. 원 성공17 유지·품질 하향 누락 금지; DOMAIN 기능 정책 미확정 |
+| 성공17 ALLOW/OK 뒤200ms 평가 실패 | Core ALLOW 철회 완료 보고·원 성공17 유지·내부 stateRevision 증가. 품질 투영 수용 및 Network 전달 검증 대기 |
 | 마지막 성공 반복 뒤 실패 / 성공 이력 없음 | 실패 시각으로 AGE0·성공 순번 생성 금지; 미확인 시간 표현 결정 대기 |
 | 평가가 정상 수행되어 DENY 결정 | false/OK는 확정 불허이며 평가 실패가 아님 |
 | 동일 원 평가 반복, 품질 변경, 새 성공 평가 | 원 평가/합성/프레임 번호의 생성 의미 분리, 반복 TX로 원 평가 재발급 금지 |
-| A900 대기 중 B0 수용 | A대기 폐기→구 쓰기 종료→NO_DATA 저장 확인→B 원0. 리매핑 금지 |
+| A900 대기 중 B0 수용 | A대기 폐기→구 쓰기 격리→private 전환 통지 후보→실제 무효화 저장 확인→B 원0. 완료 방식 수용 대기·리매핑 금지 |
 | A 콜백 실행 중 B 수용 | A 쓰기가 무효화 뒤 끼어들지 않음; 임의 취소·owner 교착 없이 직렬 경계 확인 |
 | 콜백 반환 후 A 비동기 쓰기 대기 | 반환만으로 완료 판정 금지; 실제 후속 저장 종료 전 새 정상 보류 |
 | NO_DATA 저장 거부·완료 미확인 | 새 정상 차단. 과거 OK가 이미 지워졌다고 판정 금지 |

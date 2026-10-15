@@ -2,6 +2,8 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+**Production v0.2/v0.5와 후보 v0.3/v0.6은 별도 타입 집합이다.** Production 버전은 담당자 보고 기준이며 아래 Data는 후보 선언을 설명한다. 조도 폭, 거리 cm/mm, Session 식별자 폭, 필드별 품질·원 세대와 복합 타입의 차이는 [Vehicle 호환 표](11_VEHICLE_TYPES.md#production-compatibility)·[C2 호환 표](12_DOMAIN_TYPES.md#production-c2-compatibility)를 따른다. 실제 Adapter 대상과 구조체 크기·정렬·복사 경계는 미검증이다. 함수 이름이 같아도 raw cast·memcpy 또는 동일 ABI를 가정하지 않는다.
+
 **DECLARED_SOURCE / PROPOSED_DESIGN / BINDING_OPEN.** Application은 기존 C2 의미 객체를 만들고 Network는 직접 명시 Codec 투영한다. 추가 App Intent→중간 DTO→최종 Wire DTO의 세 단계 변환을 요구하지 않는다.
 
 [개요](00_OVERVIEW.md) · [API](20_API.md) · [내부 경로](25_PRIVATE_ROUTING.md) · [공통 품질·식별·시간](../../04_COMMON/10_DATA_AND_ID_RULES.md)

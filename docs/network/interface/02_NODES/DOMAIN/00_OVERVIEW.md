@@ -2,6 +2,8 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
+**Production과 후보:** 담당자 보고상 Production 기준은 Vehicle Types v0.2 / Domain Interface v0.5다. 아래 연결 흐름과 72개 공개 API·Query18·TxPort26은 v0.3/v0.6 후보 기준이며 실제 Production 적용을 보증하지 않는다. [타입 호환](11_VEHICLE_TYPES.md#production-compatibility)·[참고 헤더의 선언 차이](12_DOMAIN_TYPES.md#production-c2-compatibility) 및 실제 빌드 파일 SHA·Adapter·ABI 확인이 필요하다. Permission Core의 평가 실패·NO_DATA 시 ALLOW 철회는 담당자 구현 완료 보고이며, Network 전달·실기기 검증은 별도 대기다.
+
 DOMAIN은 MOBILE 원 요청을 수용하고 차량 허용·기능 정책·명령 중재·원 요청별 결과를 소유한다. Network는 CAN/UART framing·검증·ID 보존·AGE 누적·typed 인계를 맡는다. 실제 ECU 실행 결과는 BCM/WINDOW 등 실행 owner가 생산한다.
 
 **설계 초안 / BINDING_OPEN.** Source API는 선언이며 Network Adapter는 제안이다. 실제 SDK/Firmware/Codec/보드 시험은 NOT_EXECUTED다.
