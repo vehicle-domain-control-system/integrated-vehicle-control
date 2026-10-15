@@ -1,6 +1,8 @@
 # WINDOW API — 송신·수신 호출 계약
 
-**[구현 보류 — 설계 유지]**. 아래 원형은 DEFERRED / PROPOSED_DESIGN이며 현재 WINDOW firmware 구현 요구 또는 통합 동작 승인이 아니다.
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
+**[구현 보류 — 설계 유지]**. 아래 원형은 DEFERRED / PROPOSED_DESIGN이며 WINDOW firmware 구현과 통합 동작은 보류한다.
 
 [노드 개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md) · [전체 시작](../../00_START_HERE.md) · [공통 의미·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md) · [CAN FD](../../03_COMMUNICATION/10_CAN_FD.md)
 
@@ -45,14 +47,14 @@ RX callback은 Node owner 처리 문맥에서 호출하고 ISR 직접 호출을 
 void WindowApp_OnDomainPermission(const NetDomainPermission *message, const NetCanRxMeta *meta);
 ```
 
-**WINDOW 상위 동작허용과 원 품질·수명을 기존 동작 담당자에 전달한다.** DEFERRED · PROPOSED_DESIGN / BINDING_OPEN.
+**WINDOW 상위 동작허용과 원 품질·수명을 기존 동작 모듈에 전달한다.** DEFERRED · PROPOSED_DESIGN / BINDING_OPEN.
 
 | 인자 | 정확한 타입·방향 | 생성·소비·수명 |
 |---|---|---|
 | `message` | `const NetDomainPermission *` · IN/borrowed; [전체 Data](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission) | 수신 Network가 길이/enum/기동/순서 검증 후 제공; WINDOW 기능 입력 연결이 소비; NULL 금지, 호출 반환까지 유효 |
 | `meta` | `const NetCanRxMeta *` · IN/borrowed; [전체 메타](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcanrxmeta) | Network 기동/프레임 전송순번·로컬 RX 시간. 원 관측 source sequence/Age와 별개; NULL 금지, 호출 동안 읽기 전용 |
 
-**언제·어떻게 사용:** 원 허용과 수신 생존을 분리한다. 최초 NO_DATA/INVALID/STALE을 새 이동허용으로 만들지 않으며 permission 복구로 과거 이동 재개 금지.
+**언제·어떻게 사용:**원 허용과 수신 생존을 분리한다. 최초 NO_DATA/INVALID/STALE을 새 이동허용으로 만들지 않으며 permission 복구로 과거 이동 재개 금지.
 
 **반환·실패:** `void`이며 local 전달 callback 호출은 기능적 수용·실제 이동·정지·보호 완료를 증명하지 않는다. 의미상 무효/만료 근거를 typed 상태로 전달할 수 있지만 CRC·length·unsupported code 등 구조 오류는 Network가 구분한다. 실패를 CLEAR/DONE으로 합성하지 않는다.
 
@@ -71,7 +73,7 @@ WindowApp_OnDomainPermission(&decoded, &rx_meta);
 void WindowApp_OnDomainCommand(const NetWindowCommand *message, const NetCanRxMeta *meta);
 ```
 
-**수용 조건을 확인한 DOMAIN 이동·STOP 명령을 WINDOW 동작 담당자에 전달한다.** DEFERRED · PROPOSED_DESIGN / BINDING_OPEN.
+**수용 조건을 확인한 DOMAIN 이동·STOP 명령을 WINDOW 동작 모듈에 전달한다.** DEFERRED · PROPOSED_DESIGN / BINDING_OPEN.
 
 | 인자 | 정확한 타입·방향 | 생성·소비·수명 |
 |---|---|---|
@@ -128,7 +130,7 @@ NetSubmitResult WindowNet_SendResult(const NetWindowResult *message);
 |---|---|---|
 | `message` | `const NetWindowResult *` · IN/borrowed; [전체 Data](10_DATA.md#type-netwindowresult) | 실제 기능 owner가 생성한 보고; Network가 접수 전 검사·복사; NULL 금지, 호출 반환까지 유효 |
 
-**언제·어떻게 사용:** 원 DOMAIN 기동/식별/채널 echo이며 commandId 대응 OPEN. 실제 동작 담당자만 결과를 생성한다. DONE은 목표 확인 근거, local OK는 결과 아님. terminal 뒤 이전 단계 회신으로 후퇴 금지.
+**언제·어떻게 사용:**원 DOMAIN 기동/식별/채널 echo이며 commandId 대응 OPEN. 실제 동작 모듈만 결과를 생성한다. DONE은 목표 확인 근거, local OK는 결과 아님. terminal 뒤 이전 단계 응답으로 후퇴 금지.
 
 **반환·실패:** 위4개 NetSubmitResult만 local 수용 상태로 사용한다. 실패 뒤 재시도해도 원 상태평가/발생/명령 식별을 바꾸거나 원 Age를 초기화하지 않는다. State/Fault와 discrete Event/Result의 서로 다른 교체·수명 규칙은 Data를 따른다. Network는 송신시 Boot/TX_SEQUENCE/실제 대기 Age를 보완하고 기능 상태·고장을 재판정하지 않는다.
 
@@ -178,7 +180,7 @@ NetSubmitResult WindowNet_PublishFault(const NetWindowFault *message);
 |---|---|---|
 | `message` | `const NetWindowFault *` · IN/borrowed; [전체 Data](10_DATA.md#type-netwindowfault) | 실제 기능 owner가 생성한 보고; Network가 접수 전 검사·복사; NULL 금지, 호출 반환까지 유효 |
 
-**언제·어떻게 사용:** 현재 고장 상태와 occurrence 기록을 분리한다. COMM 근거는 WINDOW Network가 관측해 기능 진단 담당자가 반영하며 fault 원 근거 생성자로 위장하지 않는다. FaultInfo_t ingress의 추가 provenance owner OPEN.
+**언제·어떻게 사용:** 현재 고장 상태와 occurrence 기록을 분리한다. COMM 근거는 WINDOW Network가 관측해 기능 진단 모듈이 반영하며 fault 원 근거 생성자로 위장하지 않는다. FaultInfo_t ingress의 추가 provenance owner OPEN.
 
 **반환·실패:** 위4개 NetSubmitResult만 local 수용 상태로 사용한다. 실패 뒤 재시도해도 원 상태평가/발생/명령 식별을 바꾸거나 원 Age를 초기화하지 않는다. State/Fault와 discrete Event/Result의 서로 다른 교체·수명 규칙은 Data를 따른다. Network는 송신시 Boot/TX_SEQUENCE/실제 대기 Age를 보완하고 기능 상태·고장을 재판정하지 않는다.
 

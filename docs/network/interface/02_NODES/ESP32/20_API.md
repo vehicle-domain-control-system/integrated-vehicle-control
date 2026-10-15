@@ -1,10 +1,15 @@
 # ESP32 — 기존 공개/소비 경계 API
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 Firmware 구현·연결·컴파일 완료를 의미하지 않는다.
 
 [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [내부 Adapter](25_PRIVATE_ROUTING.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
 
 <a id="query-entry"></a>
+<a id="r1-context-binding"></a>
+M_CONTEXT 생산자 호출은 등록·연결/App/근접의 독립 u32 순번과 원 AGE를 보존해야 한다. [UpdateBasis Header/Adapter 권고](11_GATEWAY_TYPES.md#r1-updatebasis-binding)의 세 생산원 변환과 ABI 검증 전에는 H01 HOLD_BINDING을 유지한다. 문서에 필드가 존재하는 것만으로 실제 ESP32 헤더와 Encoder 연결이 완료된 것은 아니다.
+
 ## Query가 통과하는 호출부터 찾기
 
 | 단계 | 정확한 원형·Data로 이동 | 역할·미정 경계 |
@@ -16,7 +21,7 @@
 
 ## 호출 경계
 
-BLE/UART Adapter→Core는 `Gateway_Interface_OnMobileMessage/OnDomainMessage()`이다. Core→Transport는 `SendToDomain/SendToMobile()`이다. 등록·연결/앱 활성/근접의 typed Publish3 종을 M_CONTEXT로 합성한다. 메시지 subtype 별 중계에 새 23 개 공개 함수를 요구하지 않는다.
+BLE/UART Adapter→Core는 `Gateway_Interface_OnMobileMessage/OnDomainMessage`이다. Core→Transport는 `SendToDomain/SendToMobile`이다. 등록·연결/앱 활성/근접의 typed Publish3 종을 M_CONTEXT로 합성한다. 메시지 subtype 별 중계에 새 23 개 공개 함수를 요구하지 않는다.
 
 ## 원형 바로 찾기
 
@@ -68,7 +73,7 @@ ByteView와 nested payload는 호출이 끝날 때까지 borrowed 다. Core/Tran
 
 이미 OK로 안정된 복사/encode를 인수한 뒤 실패하면 과거 반환을 NOT_READY로 소급하거나 사용자에게 무조건 같은 명령을 재실행시키지 않는다. 최종 실패는 기존 Transport/Network 감독의 해당 work/Query 식별자와 함께 인계하며 source callback 시점의 내부 오류는 기존 `GATEWAY_STATUS_INTERNAL_ERROR`를 사용한다. Request 실패를 차량 FAILED로, Query 실패를 STATUS0 완료로 합성하지 않는다. sender가 실제 송신 여부를 모르면 결과 확인/새 Query 경로를 사용하고 자동 중복 실행을 만들지 않는다.
 
-**Gateway owner 확인 질문:** NOT_READY의 안전한 재제출과 실패 원인 진단을 기존 caller가 구분해 사용할 수 있는가? 로컬 OK 이후 work-ID/최종 TX 실패를 현재 Transport 감독에 연결할 지점은 어디인가? 확인 전 후발 실패 관측은 `BINDING_OPEN`이며 새 public failure API/DTO를 추가하지 않는다. 이 안은 `PROPOSED`이며 실제 Firmware/Codec 시험은 `NOT_EXECUTED`다.
+**Gateway 반환·연동 조건:** caller는 NOT_READY에 대한 안전한 재제출과 실패 원인 진단을 구분해야 한다. 로컬 OK 이후 work-ID/최종 TX 실패를 기존 Transport 감독에 연결할 관측 지점이 필요하다. 그 연결 전에는 후발 실패 관측이 `BINDING_OPEN`이다. 새 public failure API/DTO는 정의하지 않는다. 반환 규칙은 `PROPOSED`이며 실제 Firmware/Codec 동작은 검증 전이다.
 
 <a id="api-gateway_interface_init"></a>
 ## `Gateway_Interface_Init()`

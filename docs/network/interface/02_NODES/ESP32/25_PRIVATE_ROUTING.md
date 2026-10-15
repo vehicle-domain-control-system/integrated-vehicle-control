@@ -1,5 +1,7 @@
 # ESP32 — Gateway schema dispatch와 Network private 경로
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **PROPOSED_DESIGN / BINDING_OPEN.** 공개 API는 [기존 Gateway13 종](20_API.md)을 재사용한다. 세 개 MOBILE relay TX와 17 개 ordinary M_* RX마다 새로운 공개 함수를 만들지 않는다. 상세 typed schema를 제거하지 않고 기존 Interface Core/Transport port에 정확하게 연결한다.
 
 [Data](10_DATA.md) · [공개 API](20_API.md) · [공통 API·실패](../../04_COMMON/20_API_USAGE_AND_FAILURE.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
@@ -74,7 +76,7 @@ source `Gateway_LogicalMessageType_t`는 broad 논리 분류다. `Gateway_RelayM
 
 **Context의 존재·종류 검사:** `device_context_id`/`session_id` view는 recipient/상향 현재 Device(u32)/Session(u64)와 일치시킨다. `request_id` view는 **Request ID**이며 QueryID나 Occurrence를 대입하지 않는다. M_REQUEST/M_RESULT에는 해당 원 REQUEST_ID(u32)를 연결한다. M_QUERY에서 조회 대상 REQUEST_ID가 있으면 그 값과 일치시키고, 상태 조회처럼 대상 Request가 없으면 empty view(`data=NULL,length=0`)를 허용한다. QUERY_ID는 M_QUERY/M_* payload의 별도 조회 식별자로만 보존한다. M_WARNING_ACK·M_WARNING·상태·가용성·M_DIGITAL_RESULT 등 RequestID가 없는 schema의 request_id view도 empty이며 자동 occurrence를 Request로 꾸미지 않는다. M_RESULT의 과거 REQUEST_SESSION은 payload에 그대로 두고 context.session_id에는 현재 recipient Session을 쓴다. UART-M payload에 VEHICLE_ID가 없으므로 `vehicle_id`는 인증된 configured vehicle 문맥이 있을 때만 별도 검증하고 없으면 source의 empty-view 계약을 따른다. Wire payload에 vehicle 값을 신설하지 않는다. private ALIVE는 recipient context가 없고, private QueryEnd는 현재 recipient/Query context만 검사한다.
 
-category 또는 payload 길이만으로 subtype을 추론하는 안은 42 B의 BCM_STATUS/WINDOW_STATE/WINDOW_FAULT 충돌과 DIGITAL_STATUS/RESULT의 공통 category 때문에 제외한다. 가변 전역 subtype나 `user_context`의 최신 tag에 의존하는 안도 비동기 수명·동시 호출에서 원 payload와 분리되므로 제외한다. 권장안은 공개 DTO/API를 추가하지 않으며 borrowed 수명·local OK 전 안정된 복사/동기 encode 조건을 유지한다. **ESP32 Core/두 Transport Adapter owner 확인 질문:** 위 ByteView convention과 context의 중복 일치 검사를 함께 채택할 수 있는가? 채택 전 다른 convention의 buffer를 묵시적으로 수용하지 않고 해당 subtype binding은 `BINDING_OPEN`이다. 이 권장안은 `PROPOSED`; 새 `AGREED/IMPLEMENTED/TESTED` 증거는 없다. 실제 Codec 시험 `NOT_EXECUTED`.
+category 또는 payload 길이만으로 subtype을 추론하면 42 B의 BCM_STATUS/WINDOW_STATE/WINDOW_FAULT 및 DIGITAL_STATUS/RESULT의 공통 category가 충돌한다. 가변 전역 subtype나 `user_context`의 최신 tag는 비동기 수명·동시 호출에서 원 payload와 분리될 수 있다. 권장 ByteView convention은 공개 DTO/API를 추가하지 않으며 borrowed 수명·local OK 전 안정된 복사/동기 encode 조건을 유지한다. ESP32 Core와 두 Transport Adapter에서 ByteView와 context의 중복 일치 검사가 필요하다. 다른 convention의 buffer를 묵시적으로 수용하지 않는다. 해당 subtype 연결은 `BINDING_OPEN`, 규칙은 `PROPOSED`이며 실제 Codec 동작은 검증 전이다.
 
 | UART-M subtype / TYPE | 방향 / 정확한 payload P | 기존 typed schema | 기존 Gateway category·실제 경계 / Session 검사 |
 |---|---|---|---|
@@ -113,7 +115,7 @@ category 또는 payload 길이만으로 subtype을 추론하는 안은 42 B의 B
 | M_WARNING_ACK | 원 Domain Boot·경고 종류·Occurrence를 echo 한다. 현재 Session/단말과 대조하고 읽음 의도만 전달한다. 위험 해제를 생성하지 않는다. |
 | M_RESULT | 현재 수신 대상 Session과 과거 request_session을 구분한다. hasVehicleResult/confirmation/commandId/origin/AGE를 보존하고 확인할 수 없는 기록을 FAILED로 바꾸지 않는다. |
 | M_WARNING | C2 경고 종류↔Wire 코드 명시 변환, 원 occurrence/provenance/quality/AGE 유지. UNCONFIRMED에 대응하는 raw 코드가 없으면 CLEAR를 합성하지 않는다. |
-| M_AVAILABILITY | 기능별 availability/reason. C2 UNSUPPORTED raw 부재이면 차단/팀 결정, AVAILABLE로 대체하지 않는다. |
+| M_AVAILABILITY | 기능별 availability/reason. C2 UNSUPPORTED raw 부재이면 차단/계약 미확정, AVAILABLE로 대체하지 않는다. |
 | M_DIGITAL_STATUS/RESULT | 설정·가용성과 실제 자동 해제 결과를 구분한다. 실제 잠금 해제 전이가 없는 ALREADY_AT_TARGET+DONE을 전이 성공으로 만들지 않는다. |
 | M_USER_SETTINGS | 확정된 설정과 필드 존재 여부·품질을 보존한다. 생산자 TTL·허용 온도 범위가 미정인 상태에서 임의 정상 값을 합성하지 않는다. |
 | M_BCM_* / M_CIS_* / M_VSS_STATUS | 원 CAN header의 Boot/TxSeq와 의미 객체의 원 평가 번호/AGE를 구분한다. BCM/CIS/Pi/VSS 원 관측을 Domain의 새 관측으로 재라벨하지 않는다. |
@@ -137,7 +139,7 @@ Gateway_Status_t Gateway_Interface_PublishProximity(
 | `send_app_activity_to_domain` | App 활성 state/독립 quality/sequence/age. source producer·TTL OPEN, 연결만으로 ACTIVE 만들지 않음. |
 | `send_proximity_to_domain` | 근접 state/독립 validity/reason/quality/sequence/age. 근접 담당 모듈의 원 평가를 사용하며 생산자 TTL은 OPEN 이다. |
 
-Transport Adapter는 한 검증된 현재 peer/Device/Session에 속한 세 component를 조립하여 `EspNetPriv_PublishContext()`로 제출한다. 존재하지 않는 component는 정상 값을 합성하지 않고 명시 no-data/unknown 계약을 적용한다. quality UNKNOWN의 raw 매핑이 없으므로 합의 전 해당 필드 encode는 차단하고 TEAM_DECISION_REQUIRED로 표시한다. View와 각 update snapshot은 호출이 끝날 때까지 유효해야 하며 local OK 전에 deep copy 또는 동기 encode를 확보한다. 같은 M_CONTEXT 반복은 세 원 평가 순번을 올리지 않고 AGE만 증가시킨다. UART LINK_SEQUENCE는 별도로 frame마다 증가한다.
+Transport Adapter는 한 검증된 현재 peer/Device/Session에 속한 세 component를 조립하여 `EspNetPriv_PublishContext()`로 제출한다. 존재하지 않는 component는 정상 값을 합성하지 않고 명시 no-data/unknown 계약을 적용한다. quality UNKNOWN의 raw 매핑이 없으므로 조건 확정 전 해당 필드 encode는 차단하고 WIRE_MAPPING_OPEN로 표시한다. View와 각 update snapshot은 호출이 끝날 때까지 유효해야 하며 local OK 전에 deep copy 또는 동기 encode를 확보한다. 같은 M_CONTEXT 반복은 세 원 평가 순번을 올리지 않고 AGE만 증가시킨다. UART LINK_SEQUENCE는 별도로 frame마다 증가한다.
 
 ## Alive·Query 종료는 Gateway private
 
@@ -146,20 +148,20 @@ Transport Adapter는 한 검증된 현재 peer/Device/Session에 속한 세 comp
 | M_DOMAIN_ALIVE | `EspNetPriv_OnDomainAlive()`가 Domain Boot/준비·SessionReady·감독 시각을 Gateway 감독에 반영 | BLE App에 그대로 전달하거나 차량 기능 가용성으로 임의 변환 |
 | M_QUERY_END | `EspNetPriv_OnQueryEnd()`가 같은 QueryId/scope/현재 recipient/Domain Boot·수신 응답 수·부분 상태를 Query 감독에 반영 | M_RESULT DONE 또는 차량 실행 완료로 전환 |
 
-SESSION_READY=0인 최초 유효 Query도 Domain의 passive 검증 후 처리할 수 있다. Query 종료는 원 Request Session 변경이나 새 Session 생성의 근거가 아니다. End의 ITEM_COUNT는 아래 수신 수와 대조하며 queue 접수/BLE 수신 완료로 해석하지 않는다. MOBILE 조회 UI의 종료·부분 표시는 별도 BLE 논리 projection 합의가 필요하다.
+SESSION_READY=0인 최초 유효 Query도 Domain의 passive 검증 후 처리할 수 있다. Query 종료는 원 Request Session 변경이나 새 Session 생성의 근거가 아니다. End의 ITEM_COUNT는 아래 수신 수와 대조하며 queue 접수/BLE 수신 완료로 해석하지 않는다. MOBILE 조회 UI의 종료·부분 표시는 별도 BLE 논리 projection 조건 확정이 필요하다.
 
 
 <a id="r2-query-consumer"></a>
-### PROPOSED — Query 수신·종결 판단 (O25/O12)
+### PROPOSED — Query 수신·종결 판단
 
 **NETWORK_OWNED + CROSS_NODE_AGREEMENT.** 활성 조회는 `(Device, 현재 Session, Domain Boot, QueryID, scope)`로 묶고, 종료 전 같은 조회의 실제 유효 수신 응답만 센다. `QUERY_ID=0` 자발 갱신·ALIVE·END·동일 원 frame의 중복은 제외한다. 응답별 품질·원 BOOT/TX/관측 순번/AGE와 과거 RequestSession은 유지한다. 한 조회를 원자적 차량 전체 최신 Snapshot으로 주장하지 않는다.
 
 - End의 기존 `STATUS=0`은 DOMAIN의 해당 scope 처리가 누락/encode 불가/송신 실패 없이 끝났다는 **전송 목록 완료 후보**이다. ESP32는 현재 문맥·scope·Boot 일치, 유효 응답 수=`ITEM_COUNT`, 수신 reject/미확인 손실 없음까지 확인한 경우만 목록 완료로 기록한다. 각 값이 모두 fresh/정상이라는 뜻은 아니다.
 - `STATUS=2`는 실제 도착한 독립 항목을 부분 자료로 유지하고 조회 전체 완료를 만들지 않는다. `ITEM_COUNT=0`이라도 확인 불가이면 부분이다. `STATUS=1`은 요청 결과 조회에서 owner가 해당 원 Request 기록 없음까지 확인한 경우이며 조회 0건과 구분한다. `STATUS=3`은 문맥 거부이고 차량 실행 실패가 아니다.
-- End count 불일치·종료 frame 자체 실패·수신 reject·확인할 수 없는 순서/손실은 완료 보류 후 로컬 Query 만료/실패로 인계한다. 만료 기한 수치 및 BLE의 조회 완료/부분/실패 표현은 아직 합의되지 않았다. 이를 M_RESULT DONE/FAILED나 새 raw 값으로 바꾸지 않는다.
+- End count 불일치·종료 frame 자체 실패·수신 reject·확인할 수 없는 순서/손실은 완료 보류 후 로컬 Query 만료/실패로 인계한다. 만료 기한 수치 및 BLE의 조회 완료/부분/실패 표현은 미확정이다. 이를 M_RESULT DONE/FAILED나 새 raw 값으로 바꾸지 않는다.
 - 활성 Query 중 원 Session/Domain Boot가 바뀌면 이전 조회를 불완전 종료한다. 동일 종료를 다시 받으면 결과를 재발행하지 않는다. 종료·만료 후 도착한 End는 이미 닫힌 원 Query를 다시 열지 않는다. 다시 조회하려면 MOBILE가 새 QueryID를 생성한다. 단일 현재 recipient의 조회를 직렬 처리하는 안을 권장하며 중복/동시 조회 admission과 큐 구현은 Adapter owner binding이다.
 
-**확인 질문:** DOMAIN/ESP32가 아래 [UART-M 종료 규칙](../../03_COMMUNICATION/20_UART_M.md#r2-query-contract)의 TX 완료 count·0건·부분 기준을 같이 채택하는가? ESP32가 End를 private에 남기면서 MOBILE에 조회 결과의 부분/미완료를 어떤 기존 BLE 논리 경계로 인계하는가? 실제 TX 완료/수신 dedup/큐 순서/BLE 결과 표현이 확인되기 전 해당 완료 binding은 `BINDING_OPEN`; 미합의 입력은 완전 완료로 표시하지 않는다. `PROPOSED`, 실제 Codec/무선 시험 `NOT_EXECUTED`.
+**Query 수신·표시 전제:** DOMAIN/ESP32 양단에서 [UART-M 종료 규칙](../../03_COMMUNICATION/20_UART_M.md#r2-query-contract)의 TX 완료 count·0건·부분 기준이 일치해야 한다. End는 private이며 MOBILE 조회 결과의 부분/미완료를 전달할 BLE 논리 경계는 미확정이다. 실제 TX 완료/수신 dedup/큐 순서/BLE 결과 표현이 확인되기 전 완료 binding은 `BINDING_OPEN`이다. 미확정 입력을 완전 완료로 표시하지 않는다. 규칙은 `PROPOSED`이며 실제 Codec/무선 동작은 검증 전이다.
 
 ## 실제 source API 호출 예 — 구현 시험 아님
 

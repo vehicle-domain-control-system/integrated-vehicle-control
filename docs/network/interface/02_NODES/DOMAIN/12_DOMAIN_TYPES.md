@@ -1,8 +1,10 @@
-# DOMAIN — Domain_Interface_v0.5_C2_target.h 전체 의미 타입
+# DOMAIN — Domain_Interface_v0.6_C2.h 전체 의미 타입
 
-**DECLARED_SOURCE / BINDING_OPEN.** 아래 code block은 제공된 원 헤더의 typedef 원문이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-[노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](../../DECLARED_HEADERS/DOMAIN/Domain_Interface_v0.5_C2_target.h)
+**DECLARED_SOURCE / BINDING_OPEN.** 아래 선언은 C2 v0.6 후보의 의미 타입이다. 공개 API 72개와 TxPort 26개를 정의한다. 실제 ABI·연결 검증은 남아 있다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+
+[노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/36b4f43db03859518dd82664faa2464d13875a75/firmware/DOMAIN/src/interface/Domain_Interface_v0.6_C2.h)
 
 ## 타입 바로 찾기
 
@@ -21,7 +23,7 @@
 <a id="type-domainif-status-t"></a>
 ## `DomainIf_Status_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -49,7 +51,7 @@ typedef enum
 <a id="type-domainfunctionid-t"></a>
 ## `DomainFunctionId_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -83,7 +85,7 @@ typedef enum
 <a id="type-domainif-commandcontext-t"></a>
 ## `DomainIf_CommandContext_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -120,7 +122,7 @@ typedef struct
 <a id="type-domainif-mobilerequesttype-t"></a>
 ## `DomainIf_MobileRequestType_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -150,7 +152,7 @@ typedef enum
 <a id="type-domainif-mobilerequestpayload-t"></a>
 ## `DomainIf_MobileRequestPayload_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef union
@@ -178,7 +180,7 @@ typedef union
 <a id="type-domainif-mobilerequest-t"></a>
 ## `DomainIf_MobileRequest_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -202,7 +204,7 @@ typedef struct
 <a id="type-domainwarningtype-t"></a>
 ## `DomainWarningType_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -234,7 +236,7 @@ typedef enum
 <a id="type-domainif-warningack-t"></a>
 ## `DomainIf_WarningAck_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -256,7 +258,7 @@ typedef struct
 <a id="type-domainwarningseverity-t"></a>
 ## `DomainWarningSeverity_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -276,7 +278,7 @@ typedef enum
 <a id="type-domainwarningstate-t"></a>
 ## `DomainWarningState_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -296,7 +298,7 @@ typedef enum
 <a id="type-domainif-warninginfo-t"></a>
 ## `DomainIf_WarningInfo_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -320,7 +322,7 @@ typedef struct
 | `state` | [`DomainWarningState_t`](12_DOMAIN_TYPES.md#type-domainwarningstate-t) | 해당 타입의 의미 상태. 타입별 enum의 UNKNOWN/UNCONFIRMED/STALE를 정상 CLEAR/FAR로 만들지 않는다. | Domain 기능 결정/설정/결과 owner |
 | `occurrenceId` | [`OccurrenceId_t`](11_VEHICLE_TYPES.md#type-occurrenceid-t) | 원 사건/결과/경고 발생 식별 u32. 생산 ECU의 generation과 함께 중복 판단; 링크 전송순번과 다르다. | Domain 기능 결정/설정/결과 owner |
 | `isRead` | `bool` | MOBILE 읽음 확인 상태. true는 위험 해제나 음향 종료 의미가 아니다. | Domain 기능 결정/설정/결과 owner |
-| `simulated` | `bool` | Domain-local 시험 근거 bool. raw에 대응이 없는 상태를 정상 실측으로 조용히 export 하지 않음: TEAM_DECISION_REQUIRED. | Domain 기능 결정/설정/결과 owner |
+| `simulated` | `bool` | Domain-local 시험 근거 bool. raw에 대응이 없는 상태를 정상 실측으로 조용히 export 하지 않음: WIRE_MAPPING_OPEN. | Domain 기능 결정/설정/결과 owner |
 | `quality` | [`DataQuality_t`](11_VEHICLE_TYPES.md#type-dataquality-t) | 이 값의 품질. OK/STALE/INVALID/NO_DATA를 정상 값/위험 해제 여부와 분리한다. | Domain 기능 결정/설정/결과 owner |
 | `qualityReason` | [`QualityReason_t`](11_VEHICLE_TYPES.md#type-qualityreason-t) | 원 품질 사유. 무효/STALE/NO_DATA를 정상 값으로 바꾸지 않는다. | Domain 기능 결정/설정/결과 owner |
 | `source` | [`SourceEvidence_t`](11_VEHICLE_TYPES.md#type-sourceevidence-t) | 원 경고 판단 근거 generation/sequence/AGE 또는 타입별 원본 출처. 다음 링크 전송순번으로 대체 금지. | Domain 기능 결정/설정/결과 owner |
@@ -328,7 +330,7 @@ typedef struct
 <a id="type-domainif-functionavailability-t"></a>
 ## `DomainIf_FunctionAvailability_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -348,7 +350,7 @@ typedef struct
 <a id="type-domainif-functionavailabilityset-t"></a>
 ## `DomainIf_FunctionAvailabilitySet_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -366,7 +368,7 @@ typedef struct
 <a id="type-domainif-digitalkeyresult-t"></a>
 ## `DomainIf_DigitalKeyResult_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -409,7 +411,7 @@ typedef struct
 <a id="type-domainif-bcmcommandkind-t"></a>
 ## `DomainIf_BcmCommandKind_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -429,7 +431,7 @@ typedef enum
 <a id="type-domainif-bcmdoorevidencetype-t"></a>
 ## `DomainIf_BcmDoorEvidenceType_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -453,7 +455,7 @@ typedef enum
 <a id="type-domainif-bcmdoorresultevidence-t"></a>
 ## `DomainIf_BcmDoorResultEvidence_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -477,7 +479,7 @@ typedef struct
 <a id="type-domainif-bcmcommandresult-t"></a>
 ## `DomainIf_BcmCommandResult_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -505,7 +507,7 @@ typedef struct
 <a id="type-domainif-bcmprotectioneventtype-t"></a>
 ## `DomainIf_BcmProtectionEventType_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -525,7 +527,7 @@ typedef enum
 <a id="type-domainif-bcmprotectionevent-t"></a>
 ## `DomainIf_BcmProtectionEvent_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -555,7 +557,7 @@ typedef struct
 <a id="type-domainif-bcmstatusreport-t"></a>
 ## `DomainIf_BcmStatusReport_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -585,7 +587,7 @@ typedef struct
 <a id="type-domainif-warninginputevidence-t"></a>
 ## `DomainIf_WarningInputEvidence_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -607,7 +609,7 @@ typedef struct
 <a id="type-domainif-mobileresulttarget-t"></a>
 ## `DomainIf_MobileResultTarget_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -627,7 +629,7 @@ typedef enum
 <a id="type-domainif-mobilerequestresult-t"></a>
 ## `DomainIf_MobileRequestResult_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -655,7 +657,7 @@ typedef struct
 <a id="type-domainif-usersettingsstate-t"></a>
 ## `DomainIf_UserSettingsState_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -695,7 +697,7 @@ typedef struct
 <a id="type-networklinkid-t"></a>
 ## `NetworkLinkId_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -715,7 +717,7 @@ typedef enum
 <a id="type-networktransportstate-t"></a>
 ## `NetworkTransportState_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -737,7 +739,7 @@ typedef enum
 <a id="type-networkoperationalcounters-t"></a>
 ## `NetworkOperationalCounters_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -761,7 +763,7 @@ typedef struct
 <a id="type-networkhealthsnapshot-t"></a>
 ## `NetworkHealthSnapshot_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -785,7 +787,7 @@ typedef struct
 <a id="type-networklocalitemkind-t"></a>
 ## `NetworkLocalItemKind_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -805,7 +807,7 @@ typedef enum
 <a id="type-networklocalfailurereason-t"></a>
 ## `NetworkLocalFailureReason_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -825,7 +827,7 @@ typedef enum
 <a id="type-networklocalfailure-t"></a>
 ## `NetworkLocalFailure_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -868,7 +870,7 @@ typedef struct
 <a id="type-domainif-windowfaultstate-t"></a>
 ## `DomainIf_WindowFaultState_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -890,7 +892,7 @@ typedef struct
 <a id="type-domainif-bcmdoorcommand-t"></a>
 ## `DomainIf_BcmDoorCommand_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -908,7 +910,7 @@ typedef struct
 <a id="type-domainif-bcmclimatecommand-t"></a>
 ## `DomainIf_BcmClimateCommand_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -930,7 +932,7 @@ typedef struct
 <a id="type-domainif-bcminteriorlightcommand-t"></a>
 ## `DomainIf_BcmInteriorLightCommand_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -952,7 +954,7 @@ typedef struct
 <a id="type-domainif-cisinterfacestatus-t"></a>
 ## `DomainIf_CisInterfaceStatus_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -972,7 +974,7 @@ typedef enum
 <a id="type-domainif-cisstatusreport-t"></a>
 ## `DomainIf_CisStatusReport_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1018,7 +1020,7 @@ typedef struct
 <a id="type-domainif-cispowerpermission-t"></a>
 ## `DomainIf_CisPowerPermission_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1031,14 +1033,19 @@ typedef struct
 
 | 멤버 | 정확한 C 타입 | 역할·범위·유효성 | 원 생성자 |
 |---|---|---|---|
-| `vehiclePowerAllowed` | `bool` | Domain 전원 허용 bool. quality/meta 유효일 때만 허용 사용; 무효는 허용이 아니다. | Domain 기능 결정/설정/결과 owner |
+| `vehiclePowerAllowed` | `bool` | Domain 전원 허용 bool. 유효 true/OK는 확정 ALLOW, false/OK는 확정 DENY. UNKNOWN을 false+OK로 축약하지 않는다. 아래 권장 투영을 따른다. | Domain 기능 결정/설정/결과 owner |
 | `quality` | [`DataQuality_t`](11_VEHICLE_TYPES.md#type-dataquality-t) | 이 값의 품질. OK/STALE/INVALID/NO_DATA를 정상 값/위험 해제 여부와 분리한다. | Domain 기능 결정/설정/결과 owner |
 | `meta` | [`SignalMeta_t`](11_VEHICLE_TYPES.md#type-signalmeta-t) | 원 생산자의 품질·원본 AGE·평가 번호. 이 메타는 링크 BOOT_ID/TX_SEQUENCE가 아니다. | Domain 기능 결정/설정/결과 owner |
+
+<a id="delta-permission-projection"></a>
+** 추가 권장안 / DOMAIN 연동 조건 확인 필요:** 미관측·근거 없음은 false+NO_DATA, 수명 만료는 false+STALE, 신뢰할 수 없는 평가 실패는 false+INVALID로 투영하는 안이다. `quality`와 `meta.quality`가 일치해야 하며 충돌 시 기존 CAN 후보처럼 확인 불가로 제한하고 임의 OK 선택을 금지한다. 무효 bool을 정상 DENY로 읽지 않는다. UNKNOWN+OK 원 품질을 반드시 보존해야 하면 현재 bool+quality+meta로 무손실 표현할 수 없다. 의미 축약은 DOMAIN Adapter의 정책 수용이 필요하고, 원 의미·원 품질·원인 근거의 DOMAIN 내부 보존 위치도 확인 대기다. Network는 품질 검증·전달을 담당하며 이 정보 손실을 숨기거나 새 필드를 추가하지 않는다. [원인별 권장표·상태](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+
+`meta.updateSequence`는 DOMAIN의 실제 성공 평가에 대한 원 순번이다. 실패 보고는 마지막 성공 순번·원 시각을 보존한 현재 품질 하향이며 새 성공 평가가 아니다. CAN 합성 UPDATE_SEQUENCE·TX_SEQUENCE로 이를 대체하지 않는다. [제출 조건](20_API.md#delta-permission-submit)
 
 <a id="type-domainif-antipinchprotectionstate-t"></a>
 ## `DomainIf_AntiPinchProtectionState_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1060,7 +1067,7 @@ typedef enum
 <a id="type-domainif-antipinchreport-t"></a>
 ## `DomainIf_AntiPinchReport_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1088,7 +1095,7 @@ typedef struct
 <a id="type-domainif-windowcommandresult-t"></a>
 ## `DomainIf_WindowCommandResult_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1106,13 +1113,13 @@ typedef struct
 | `commandId` | [`DomainCommandId_t`](11_VEHICLE_TYPES.md#type-domaincommandid-t) | Domain 기능 결정 owner의 단일 Command 식별 u32. Network 에서 새로 발급하지 않으며 TX_SEQUENCE·requestId와 다르다. | Domain 기능 결정/설정/결과 owner |
 | `result` | [`RequestResult_t`](11_VEHICLE_TYPES.md#type-requestresult-t) | 기능 owner가 판정한 차량 처리 단계. Network local OK와 구분하며 DONE은 실행 근거가 있을 때만. | Domain 기능 결정/설정/결과 owner |
 | `reason` | [`ResultReason_t`](11_VEHICLE_TYPES.md#type-resultreason-t) | 결과·품질·가용성을 설명하는 typed 사유. 예약 값 거부, raw 숫자 변환은 명시 표를 따른다. | Domain 기능 결정/설정/결과 owner |
-| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 직전 합의; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
+| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 전 확정 필요; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
 | `meta` | [`SignalMeta_t`](11_VEHICLE_TYPES.md#type-signalmeta-t) | 원 생산자의 품질·원본 AGE·평가 번호. 이 메타는 링크 BOOT_ID/TX_SEQUENCE가 아니다. | Domain 기능 결정/설정/결과 owner |
 
 <a id="type-domainif-windowcommand-t"></a>
 ## `DomainIf_WindowCommand_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1127,14 +1134,14 @@ typedef struct
 | 멤버 | 정확한 C 타입 | 역할·범위·유효성 | 원 생성자 |
 |---|---|---|---|
 | `context` | [`DomainIf_CommandContext_t`](12_DOMAIN_TYPES.md#type-domainif-commandcontext-t) | 해당 객체의 원 요청/명령 문맥. 하위 타입 전체 정의와 유효성 조건을 함께 적용한다. | Domain 기능 결정/설정/결과 owner |
-| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 직전 합의; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
+| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 전 확정 필요; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
 | `command` | [`WindowCommand_t`](11_VEHICLE_TYPES.md#type-windowcommand-t) | WINDOW 목표 명령 OPEN/CLOSE/STOP/VENT. VENT70↔80% 충돌 미확정; 구현 보류. | Domain 기능 결정/설정/결과 owner |
-| `targetPositionPercent` | `uint8_t` | WINDOW 목표 위치 0~100%. VENT70↔80% 충돌은 TEAM_DECISION_REQUIRED; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
+| `targetPositionPercent` | `uint8_t` | WINDOW 목표 위치 0~100%. VENT70↔80% 충돌은 FUNCTION_POLICY_OPEN; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
 
 <a id="type-domainif-windowoperationpermission-t"></a>
 ## `DomainIf_WindowOperationPermission_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1154,7 +1161,7 @@ typedef struct
 <a id="type-domainif-windowdomainalive-t"></a>
 ## `DomainIf_WindowDomainAlive_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1172,7 +1179,7 @@ typedef struct
 <a id="type-domainif-vssoneshotevent-t"></a>
 ## `DomainIf_VssOneShotEvent_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1199,7 +1206,7 @@ typedef struct
 <a id="type-occupanthazardstate-t"></a>
 ## `OccupantHazardState_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1219,7 +1226,7 @@ typedef enum
 <a id="type-domainif-vsswarningstate-t"></a>
 ## `DomainIf_VssWarningState_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1252,7 +1259,7 @@ typedef struct
 <a id="type-domainif-vssstatereport-t"></a>
 ## `DomainIf_VssStateReport_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1280,7 +1287,7 @@ typedef struct
 <a id="type-domainif-rxobserver-t"></a>
 ## `DomainIf_RxObserver_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1337,7 +1344,7 @@ typedef struct
 <a id="type-domainif-txport-t"></a>
 ## `DomainIf_TxPort_t`
 
-**원 소속:** `Domain_Interface_v0.5_C2_target.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Domain_Interface_v0.6_C2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1429,3 +1436,6 @@ typedef struct
 | `txMobileDigitalKeyState` | `DomainIf_Status_t (*)(const DigitalKeyState_t *state)` | 선택적/필수 책임에 따른 typed callback `txMobileDigitalKeyState`. 호출 동안 const 객체 borrowed, 반환은 Domain local 수용 의미. [Port/Observer 계약](20_API.md#ports) 적용. | Network Adapter 등록 owner(callback); 인자 값 원 owner는 각 typed Data |
 | `txMobileDigitalKeyResult` | `DomainIf_Status_t (*)(const DomainIf_DigitalKeyResult_t *result)` | 선택적/필수 책임에 따른 typed callback `txMobileDigitalKeyResult`. 호출 동안 const 객체 borrowed, 반환은 Domain local 수용 의미. [Port/Observer 계약](20_API.md#ports) 적용. | Network Adapter 등록 owner(callback); 인자 값 원 owner는 각 typed Data |
 | `txMobileUserSettings` | `DomainIf_Status_t (*)(const DomainIf_UserSettingsState_t *settings)` | 선택적/필수 책임에 따른 typed callback `txMobileUserSettings`. 호출 동안 const 객체 borrowed, 반환은 Domain local 수용 의미. [Port/Observer 계약](20_API.md#ports) 적용. | Network Adapter 등록 owner(callback); 인자 값 원 owner는 각 typed Data |
+
+<!-- 기존 문서 anchor 호환; 본문은 위 전체 선언과 설명으로 승계 -->
+<a id="domain--domain_interface_v05_c2_targeth-전체-의미-타입"></a>

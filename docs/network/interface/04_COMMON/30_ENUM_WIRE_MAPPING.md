@@ -1,5 +1,7 @@
 # C enum과 Wire 숫자값의 명시 변환
 
+Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **WIRE_PROPOSED / BINDING_OPEN.** 아래 표는 원 C2/Gateway 헤더의 enum 정수값과 제안 Wire의 의미 대응이다. 같은 숫자도 정렬·폭이 같은 메모리 배열이라는 뜻은 아니다. `sizeof(enum)`·struct padding·raw cast 전송은 금지한다.
 
 [공통 타입](10_DATA_AND_ID_RULES.md) · [CAN](../03_COMMUNICATION/10_CAN_FD.md) · [UART-M](../03_COMMUNICATION/20_UART_M.md) · [UART-C](../03_COMMUNICATION/30_UART_C.md)
@@ -17,7 +19,7 @@
 
 ## 변환 불가 값과 안전한 경계
 
-원 헤더 `FunctionAvailability_t.UNSUPPORTED`, `DomainWarningState_t.UNCONFIRMED`, `OccupantHazardState_t.UNCONFIRMED` 및 일부 `ResultReason_t`는 현 Wire 코드에 동등한 표현이 없다. `NOT_ALLOWED/MOTOR_FAULT/SENSOR_FAULT/TIMEOUT/OTHER`를 아무 근거 없이 POWER_NOT_ALLOWED/FAULT/EXPIRED로 바꾸지 않는다. 해당 경로는 **TEAM_DECISION_REQUIRED / 표현 확정 전 구현 차단**이며 정상 CLEAR/AVAILABLE·사유 NONE·차량 FAILED를 합성하지 않는다.
+원 헤더 `FunctionAvailability_t.UNSUPPORTED`, `DomainWarningState_t.UNCONFIRMED`, `OccupantHazardState_t.UNCONFIRMED` 및 일부 `ResultReason_t`는 현 Wire 코드에 동등한 표현이 없다. `NOT_ALLOWED/MOTOR_FAULT/SENSOR_FAULT/TIMEOUT/OTHER`를 아무 근거 없이 POWER_NOT_ALLOWED/FAULT/EXPIRED로 바꾸지 않는다. 해당 경로는 **WIRE_MAPPING_OPEN / 표현 확정 전 구현 차단**이며 정상 CLEAR/AVAILABLE·사유 NONE·차량 FAILED를 합성하지 않는다.
 
 수신 Wire가 유효한 코드라 해도 C2에서 표현할 수 없는 세부 evidence는 node private 보관과 기능 owner 결정이 필요하다. 송신에 없는 code를 새로 만들지 않는다. code sentinel과 예약 값은 수용하지 않는다. 실제 Codec round-trip은 **NOT_EXECUTED**이고 본 표는 정적 제안 대조이다.
 
@@ -34,7 +36,6 @@
 | `DATA_QUALITY_NO_DATA` | 3 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-valuevalidity-t"></a>
 ## `ValueValidity_t`
 
@@ -44,7 +45,6 @@
 | --- | --- | --- | --- |
 | `VALUE_VALIDITY_INVALID` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `VALUE_VALIDITY_VALID` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-qualityreason-t"></a>
@@ -66,7 +66,6 @@
 | `QUALITY_REASON_DATA_INVALID` | 9 | 9 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-functionavailability-t"></a>
 ## `FunctionAvailability_t`
 
@@ -78,7 +77,6 @@
 | `FUNCTION_AVAILABILITY_DEGRADED` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `FUNCTION_AVAILABILITY_UNAVAILABLE` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `FUNCTION_AVAILABILITY_UNSUPPORTED` | 3 | 미정 | 현 Wire에 동등한 표현 없음. 임의 대체·새 code 추가 금지 |
-
 
 
 <a id="map-requestresult-t"></a>
@@ -96,7 +94,6 @@
 | `REQUEST_RESULT_FAILED` | 5 | 5 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-resultconfirmation-t"></a>
 ## `ResultConfirmation_t`
 
@@ -106,7 +103,6 @@
 | --- | --- | --- | --- |
 | `RESULT_CONFIRMATION_UNCONFIRMED` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `RESULT_CONFIRMATION_CONFIRMED` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-resultreason-t"></a>
@@ -149,7 +145,6 @@
 | `RESULT_REASON_FAN_MISMATCH` | 30 | 25 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-faultcategory-t"></a>
 ## `FaultCategory_t`
 
@@ -162,7 +157,6 @@
 | `FAULT_CATEGORY_FUNCTION` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-faultstate-t"></a>
 ## `FaultState_t`
 
@@ -173,7 +167,6 @@
 | `FAULT_STATE_INACTIVE` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `FAULT_STATE_ACTIVE` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `FAULT_STATE_RECOVERING` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-commonecustate-t"></a>
@@ -189,7 +182,6 @@
 | `ECU_STATE_FAULT` | 3 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-doorlockstate-t"></a>
 ## `DoorLockState_t`
 
@@ -200,7 +192,6 @@
 | `DOOR_LOCK_STATE_UNKNOWN` | 0 | 255 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `DOOR_LOCK_STATE_LOCKED` | 1 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `DOOR_LOCK_STATE_UNLOCKED` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-dooropenstate-t"></a>
@@ -215,7 +206,6 @@
 | `DOOR_OPEN_STATE_OPEN` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-doorcompositestate-t"></a>
 ## `DoorCompositeState_t`
 
@@ -228,7 +218,6 @@
 | `DOOR_COMPOSITE_STATE_UNTRUSTED` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-doorlocktarget-t"></a>
 ## `DoorLockTarget_t`
 
@@ -238,7 +227,6 @@
 | --- | --- | --- | --- |
 | `DOOR_TARGET_LOCK` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `DOOR_TARGET_UNLOCK` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-fanlevel-t"></a>
@@ -255,7 +243,6 @@
 | `FAN_LEVEL_UNKNOWN` | 4 | 255 | 상태만 255. 명령·모바일 Fan 설정에 사용 금지 |
 
 
-
 <a id="map-thermaldirection-t"></a>
 ## `ThermalDirection_t`
 
@@ -268,7 +255,6 @@
 | `THERMAL_DIRECTION_HEAT` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-heatremovalstate-t"></a>
 ## `HeatRemovalState_t`
 
@@ -279,7 +265,6 @@
 | `HEAT_REMOVAL_STATE_NORMAL` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `HEAT_REMOVAL_STATE_BLOCKED_OVERHEAT` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `HEAT_REMOVAL_STATE_UNMEASURABLE` | 2 | 255 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-interiorlighttype-t"></a>
@@ -295,7 +280,6 @@
 | `INTERIOR_LIGHT_TYPE_FAULT` | 3 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-interiorlightapplystate-t"></a>
 ## `InteriorLightApplyState_t`
 
@@ -306,7 +290,6 @@
 | `INTERIOR_LIGHT_APPLY_UNKNOWN` | 0 | 255 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `INTERIOR_LIGHT_APPLY_APPLIED` | 1 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `INTERIOR_LIGHT_APPLY_FAILED` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-deviceregistrationstate-t"></a>
@@ -321,7 +304,6 @@
 | `DEVICE_REGISTRATION_REGISTERED` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-btconnectionstate-t"></a>
 ## `BtConnectionState_t`
 
@@ -332,7 +314,6 @@
 | `BT_CONNECTION_UNKNOWN` | 0 | 255 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `BT_CONNECTION_DISCONNECTED` | 1 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `BT_CONNECTION_CONNECTED` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-appactivestate-t"></a>
@@ -347,7 +328,6 @@
 | `APP_ACTIVE_ACTIVE` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-proximitystate-t"></a>
 ## `ProximityState_t`
 
@@ -358,7 +338,6 @@
 | `PROXIMITY_UNKNOWN` | 0 | 255 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `PROXIMITY_FAR` | 1 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `PROXIMITY_NEAR` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-digitalkeysetting-t"></a>
@@ -372,7 +351,6 @@
 | `DIGITAL_KEY_SETTING_ON` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-unlockorigin-t"></a>
 ## `UnlockOrigin_t`
 
@@ -382,7 +360,6 @@
 | --- | --- | --- | --- |
 | `UNLOCK_ORIGIN_USER_REQUEST` | 0 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `UNLOCK_ORIGIN_PROXIMITY_AUTO` | 1 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-rearmeasurementstate-t"></a>
@@ -400,7 +377,6 @@
 | `REAR_MEASUREMENT_INACTIVE` | 5 | 5 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-cisstate-t"></a>
 ## `CisState_t`
 
@@ -412,7 +388,6 @@
 | `CIS_STATE_READY` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `CIS_STATE_ACTIVE` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `CIS_STATE_FAULT` | 3 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-cisfunctionstatus-t"></a>
@@ -429,7 +404,6 @@
 | `CIS_FUNCTION_STATUS_RECOVERING` | 4 | 4 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-windowcommand-t"></a>
 ## `WindowCommand_t`
 
@@ -442,7 +416,6 @@
 | `WINDOW_COMMAND_STOP` | 2 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `WINDOW_COMMAND_VENT` | 3 | 4 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `WINDOW_COMMAND_MOVE_TO_POSITION` | 4 | 5 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-windowmotionstate-t"></a>
@@ -459,7 +432,6 @@
 | `WINDOW_MOTION_ANTIPINCH_REVERSING` | 4 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-antipinchstate-t"></a>
 ## `AntiPinchState_t`
 
@@ -469,7 +441,6 @@
 | --- | --- | --- | --- |
 | `ANTIPINCH_STATE_CLEAR` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `ANTIPINCH_STATE_ACTIVE` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-vssstate-t"></a>
@@ -485,7 +456,6 @@
 | `VSS_STATE_FAULT` | 3 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-vssavailability-t"></a>
 ## `VssAvailability_t`
 
@@ -496,7 +466,6 @@
 | `VSS_AVAILABILITY_FULL` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `VSS_AVAILABILITY_DEGRADED` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `VSS_AVAILABILITY_UNAVAILABLE` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-rearobstaclestate-t"></a>
@@ -511,7 +480,6 @@
 | `REAR_OBSTACLE_STATE_EMERGENCY` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-reardetectionactivation-t"></a>
 ## `RearDetectionActivation_t`
 
@@ -521,7 +489,6 @@
 | --- | --- | --- | --- |
 | `REAR_DETECTION_DISABLED` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `REAR_DETECTION_ACTIVE` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-vssoneshotevent-t"></a>
@@ -536,7 +503,6 @@
 | `VSS_EVENT_DOOR_LOCK_COMPLETE` | 2 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `VSS_EVENT_DOOR_UNLOCK_COMPLETE` | 3 | 4 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `VSS_EVENT_DOOR_LOCK_ERROR` | 4 | 5 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-domainfunctionid-t"></a>
@@ -558,7 +524,6 @@
 | `DOMAIN_FUNCTION_COUNT` | 9 | 미정 | 개수 sentinel; 값으로 송신 금지 |
 
 
-
 <a id="map-domainif-mobilerequesttype-t"></a>
 ## `DomainIf_MobileRequestType_t`
 
@@ -574,7 +539,6 @@
 | `MOBILE_REQUEST_INTERIOR_LIGHT_LEVEL` | 5 | kind3 / op2 / ARG0=0..100%, ARG1..5=0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `MOBILE_REQUEST_INTERIOR_LIGHT_COLOR` | 6 | kind3 / op3 / ARG0..2=RGB0..255, ARG3..5=0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `MOBILE_REQUEST_DIGITAL_KEY_SETTING` | 7 | kind4 / op1 / ARG0=OFF0/ON1, ARG1..5=0 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-domainwarningtype-t"></a>
@@ -595,7 +559,6 @@
 | `DOMAIN_WARNING_COUNT` | 8 | 미정 | 개수 sentinel; 값으로 송신 금지 |
 
 
-
 <a id="map-domainwarningseverity-t"></a>
 ## `DomainWarningSeverity_t`
 
@@ -606,7 +569,6 @@
 | `DOMAIN_WARNING_SEVERITY_INFO` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `DOMAIN_WARNING_SEVERITY_CAUTION` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `DOMAIN_WARNING_SEVERITY_EMERGENCY` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-domainwarningstate-t"></a>
@@ -621,7 +583,6 @@
 | `DOMAIN_WARNING_STATE_UNCONFIRMED` | 2 | 미정 | 현 Wire에 동등한 표현 없음. 임의 대체·새 code 추가 금지 |
 
 
-
 <a id="map-domainif-bcmcommandkind-t"></a>
 ## `DomainIf_BcmCommandKind_t`
 
@@ -632,7 +593,6 @@
 | `BCM_COMMAND_KIND_DOOR` | 0 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `BCM_COMMAND_KIND_CLIMATE` | 1 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `BCM_COMMAND_KIND_INTERIOR_LIGHT` | 2 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-domainif-bcmdoorevidencetype-t"></a>
@@ -649,7 +609,6 @@
 | `BCM_DOOR_EVIDENCE_REQUEST_FAILED` | 4 | 5 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-domainif-bcmprotectioneventtype-t"></a>
 ## `DomainIf_BcmProtectionEventType_t`
 
@@ -660,7 +619,6 @@
 | `BCM_PROTECTION_OVERHEAT_DETECTED` | 0 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `BCM_PROTECTION_FAN_MISMATCH_DETECTED` | 1 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `BCM_PROTECTION_RECOVERY_CONFIRMED` | 2 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-domainif-mobileresulttarget-t"></a>
@@ -675,7 +633,6 @@
 | `MOBILE_RESULT_TARGET_WINDOW` | 2 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-domainif-cisinterfacestatus-t"></a>
 ## `DomainIf_CisInterfaceStatus_t`
 
@@ -686,7 +643,6 @@
 | `CIS_INTERFACE_AVAILABLE` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `CIS_INTERFACE_UNAVAILABLE` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `CIS_INTERFACE_RECOVERING` | 3 | 2 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-domainif-antipinchprotectionstate-t"></a>
@@ -702,7 +658,6 @@
 | `ANTIPINCH_PROTECTION_ABORTED` | 3 | 3 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-occupanthazardstate-t"></a>
 ## `OccupantHazardState_t`
 
@@ -713,7 +668,6 @@
 | `OCCUPANT_HAZARD_CLEAR` | 0 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `OCCUPANT_HAZARD_ACTIVE` | 1 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `OCCUPANT_HAZARD_UNCONFIRMED` | 2 | 미정 | 현 Wire에 동등한 표현 없음. 임의 대체·새 code 추가 금지 |
-
 
 
 <a id="map-gateway-registrationstate-t"></a>
@@ -728,7 +682,6 @@
 | `GATEWAY_REGISTERED` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-gateway-connectionstate-t"></a>
 ## `Gateway_ConnectionState_t`
 
@@ -739,7 +692,6 @@
 | `GATEWAY_CONNECTION_UNKNOWN` | 0 | 255 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `GATEWAY_DISCONNECTED` | 1 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `GATEWAY_CONNECTED` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-gateway-appactivitystate-t"></a>
@@ -754,7 +706,6 @@
 | `GATEWAY_APP_ACTIVE` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-gateway-proximitystate-t"></a>
 ## `Gateway_ProximityState_t`
 
@@ -765,7 +716,6 @@
 | `GATEWAY_PROXIMITY_UNKNOWN` | 0 | 255 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `GATEWAY_PROXIMITY_FAR` | 1 | 0 | 의미로 명시 변환; C 숫자 cast 금지 |
 | `GATEWAY_PROXIMITY_NEAR` | 2 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
-
 
 
 <a id="map-gateway-dataquality-t"></a>
@@ -782,11 +732,10 @@
 | `GATEWAY_DATA_QUALITY_STALE` | 4 | 1 | 의미로 명시 변환; C 숫자 cast 금지 |
 
 
-
 <a id="map-commandorigin-t"></a>
 ## `CommandOrigin_t` → ORIGIN/SOURCE_CONTEXT
 
-**PROPOSED_DESIGN / TEAM_DECISION_REQUIRED.** ORIGIN은 축약 projection이다. C2 origin을 역방향으로 복구할 수 없다. decisionSequence·원 요청 등 Domain 내부 provenance는 소멸시키지 않는다. 실제 소비자에게 세부 policy가 필요하면 축약을 승인하기 전 바인딩을 차단한다.
+**PROPOSED_DESIGN / CONTRACT_OPEN.** ORIGIN은 축약 projection이다. C2 origin을 역방향으로 복구할 수 없다. decisionSequence·원 요청 등 Domain 내부 provenance는 소멸시키지 않는다. 실제 소비자에게 세부 policy가 필요하면 축약의 소비 의미가 확정되기 전 바인딩을 차단한다.
 
 | 기존 C 상수 | C 값 | ORIGIN 후보 | 제약 |
 | --- | --- | --- | --- |
@@ -795,7 +744,7 @@
 | COMMAND_ORIGIN_CLIMATE_POLICY | 2 | 5 | VEHICLE_POLICY; 세부 provenance는 Domain 내부만 |
 | COMMAND_ORIGIN_INTERIOR_LIGHT_POLICY | 3 | 5 | VEHICLE_POLICY; 세부 provenance는 Domain 내부만 |
 | COMMAND_ORIGIN_AUTO_VENTILATION | 4 | 5 | VEHICLE_POLICY; WINDOW SOURCE_CONTEXT에는 AUTO_FUNCTION 2 후보 |
-| COMMAND_ORIGIN_SYSTEM | 5 | 5 | VEHICLE_POLICY 후보; SYSTEM/LOCAL/TEST 구체 입력 합의 필요 |
+| COMMAND_ORIGIN_SYSTEM | 5 | 5 | VEHICLE_POLICY 후보; SYSTEM/LOCAL/TEST 구체 입력 조건 미확정 |
 
 
 WINDOW SOURCE_CONTEXT(0 없음 / 1 Domain 정책 / 2 자동 기능 / 3 로컬 / 4 시험)는 ORIGIN(0..5)과 다른 코드다. MOBILE 창문 제어는 현 범위 밖이며 관련 요청을 임의 송신하지 않는다.

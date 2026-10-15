@@ -1,11 +1,20 @@
 # 단일 공유 CAN FD — 22 메시지 후보
 
+Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **메시지 이름·방향 MESSAGE_LOCKED / ID·DLC·offset·시간 WIRE_PROPOSED.** 하나의 공유 CAN에 DOMAIN/BCM/CIS/VSS가 참여한다. WINDOW는 **[구현 보류 — 설계 유지]**이며 현재 미연결 노드의 timeout을 고장으로 활성화하지 않는다.
 
 [시작 안내](../00_START_HERE.md) · [48 메시지별 API](../05_MESSAGE_INDEX.md) · [공통 타입·AGE](../04_COMMON/10_DATA_AND_ID_RULES.md) · [C enum↔Raw](../04_COMMON/30_ENUM_WIRE_MAPPING.md)
 
 <a id="section-profile"></a>
 ## 설정·공통 Header
+
+<a id="r1-can-receive"></a>
+수신 순서는 송신 출처·수용 BOOT·CAN ID별로 판정한다. 같은 TX_SEQUENCE와 같은 raw의 정확 중복은 새 liveness 근거가 아니다. 새 TX_SEQUENCE의 정상 반복은 수용 뒤 해당 기능 수신감시에 전달하지만 원 관측값·생성시각·관측번호를 새로 만들지 않는다. 같은 원 관측의 확인된 품질 저하는 기존 C2로 인계하고, 높은 TX만으로 값 변경/정상 승격을 허용하지 않는다. raw·품질·Meta·순서의 수용 결과를 함께 연결하며 실패 시 부분 commit하지 않는다. [공통 분기](../04_COMMON/10_DATA_AND_ID_RULES.md#section-repeat-and-quality)의 실제 binding은 검증 대기다.
+
+CAN TX_SEQUENCE는 수용한 송신 노드 BOOT 안에서 메시지별로 관리한다. 수신 비교 범위는 송신 출처·BOOT·CAN ID/메시지 구분을 포함한다. CIS_ENVIRONMENT(TX1), CIS_OCCUPANT(TX1), CIS_ENVIRONMENT(TX2)는 서로 다른 메시지의 순번을 섞지 않으면 정상 순서다. 원 센서 관측 순번 및 UART-C 방향별 LINK_SEQUENCE와 합치지 않는다. 새 필드가 아니라 기존 카운터 비교 범위를 명확히 한 것이다.
+
+DLC 인코딩과 전송 바이트를 구별한다. CIS_REAR/DOMAIN_PERMISSION은 사용19B·전송20B·DLC11, CIS_OCCUPANT는25B·32B·DLC13, CIS_ENVIRONMENT는40B·48B·DLC14, CIS_STATUS는34B·48B·DLC14다. 기존 숫자·offset을 변경하지 않는다.
 
 | 항목 | 후보 / 상태 |
 | --- | --- |
@@ -24,13 +33,15 @@
 | B8~11(명령만) | TARGET_BOOT_ID | u32LE | DOMAIN Network가 마지막 정상 대상 상태에서 확인 |
 | B12~15(명령만) | COMMAND_ID | u32LE | **C2 최종 결정의 commandId 그대로**. Network 재발급 금지 |
 | B16~17(명령만) | COMMAND_AGE | u16LE | 명령 최초 생성부터 누적. 원 판단의 meta.age와 별개 |
-| B18~19(명령만) | ACCEPT_LIMIT | u16LE | 200 ms 후보 ↔ 구 SysRS 1 s 충돌 OPEN. 구현 합의 전 확정 금지 |
+| B18~19(명령만) | ACCEPT_LIMIT | u16LE | 200 ms 후보 ↔ 구 SysRS 1 s 충돌 OPEN. 적용 조건 미확정 |
 
 CAN ACK는 참여 노드의 수신 증거이며 지정 ECU의 수용·실행 DONE과 구분한다. padding은 의미값으로 사용하지 않는다. 필수 코드·ID·길이·세대 오류를 정상 typed callback이나 liveness로 연결하지 않는다.
 
 DLC 9/10/11/12/13/14/15는 12/16/20/24/32/48/64 B에 대응한다. Codec는 C struct의 `sizeof`를 Wire 길이로 사용하지 않는다. 수신 상태의 UPDATE_SEQUENCE는 새 관측에서만 증가하며 TX_SEQUENCE와 독립이다.
 
 ## 메시지 목록 — 시간은 PROPOSED
+
+메시지별 길이·주기는 아래 후보를 적용한다. 후방 활성 Permission은 원 평가 약 200ms/원 기한 500ms와 CAN 50ms 송신/150ms 수신 감시를 적용한다. 온습도 원 사용 기한은 각 2500ms다. 후방 거리 원 150ms 후보와 Permission 원 500ms는 별개다. [시간 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#timing)
 
 | 메시지 | ID/Type | 송신 → 수신 | 사용 / 전체 B | 주기 / 수신 중단 |
 | --- | --- | --- | --- | --- |
@@ -61,22 +72,29 @@ DLC 9/10/11/12/13/14/15는 12/16/20/24/32/48/64 B에 대응한다. Codec는 C st
 <a id="message-domain-permission"></a>
 ## `DOMAIN_PERMISSION` — `0x080`
 
+후방 활성 Power는 약 200ms 실제 재평가·원 사용 기한 500ms·새 평가/값 변경 전달 및 CAN 50ms 송신/150ms 수신 감시를 적용한다. 반복 CAN TX는 원 AGE나 원 평가 순번을 초기화하지 않는다. 아래 Power/Operation/Alive 생성·공유 AGE 합성은 별도의 미확정 후보이다. [Permission 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#permission)
+
 **DOMAIN → BCM, CIS, WINDOW, VSS · 19 B 사용 / 20 B CAN 전송 / DLC 11 · WIRE_PROPOSED.**
 
 CIS/WINDOW는 허용 기능을 소비하고 BCM/VSS는 Network-private Domain 감시를 소비한다. [공통 7필드 타입·합성 미정](../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission)과 [합성 규칙](../04_COMMON/10_DATA_AND_ID_RULES.md#section-permission-synthesis)을 따른다.
 
-**PROPOSED — 기존 C2 세 입력을 같은 평가시점에 읽는 최소 합성(O05):** 기존 `DomainIf_TxCisPowerPermission()`, `DomainIf_TxWindowOperationPermission()`, `DomainIf_TxWindowDomainAlive()` 입력의 값·각 SignalMeta·로컬 수용 기준점을 별도로 보관한다. private adapter가 하나의 로컬 `t_eval`에서 입력과 원 평가 번호를 고정해 읽고, 읽는 동안 원 tuple이 바뀌면 그 결과로 새 허용을 만들지 않고 현재 입력을 다시 평가하는 안을 권장한다. 이는 원 세 판단의 생성시각이 같다는 뜻이 아니다. 별도 공개 API/DTO/범용 관리자를 추가하지 않는다.
+**PROPOSED — 기존 C2 세 입력을 같은 평가시점에 읽는 최소 합성:** 기존 `DomainIf_TxCisPowerPermission()`, `DomainIf_TxWindowOperationPermission()`, `DomainIf_TxWindowDomainAlive()` 입력의 값·각 SignalMeta·로컬 수용 기준점을 별도로 보관한다. private adapter가 하나의 로컬 `t_eval`에서 입력과 원 평가 번호를 고정해 읽고, 읽는 동안 원 tuple이 바뀌면 그 결과로 새 허용을 만들지 않고 현재 입력을 다시 평가하는 안을 권장한다. 이는 원 세 판단의 생성시각이 같다는 뜻이 아니다. 별도 공개 API/DTO/범용 관리자를 추가하지 않는다.
 
-전원은 전원 입력의 `quality`와 `meta.quality`가 일치하고 원 사용 기한을 만족할 때 기존 bool을 0/1로 명시 변환한다. 품질 충돌은 전원 값 255/INVALID, 미입력은 255/NO_DATA로 제한하며 OK를 고르지 않는다. operation은 기존 operation 판단과 실제 alive 근거를 필요한 입력으로 보는 후보지만 기능 owner 확인 전 허용을 생성하지 않는다. `POWER_OPERATION_STATE` 생성원은 제공 C2 bool들에서 증명되지 않으므로 255를 권장하며, operation 근거 미입력/충돌은 `OPERATION_ALLOWED=0`과 해당 NO_DATA/INVALID 품질을 함께 전달한다. 이 0은 **확인된 정책 거부를 주장하는 값이 아니며**, 소비자는 비유효 품질을 반드시 함께 확인한다. 독립적으로 확인된 전원 품질을 operation 부재만으로 새 불허 정책으로 바꾸지 않는다.
+전원은 전원 입력의 `quality`와 `meta.quality`가 일치하고 원 사용 기한을 만족할 때 기존 bool을 0/1로 명시 변환한다. 품질 충돌은 전원 값 255/INVALID, 미입력은 255/NO_DATA로 제한하며 OK를 고르지 않는다. operation은 기존 operation 판단과 실제 alive 근거를 필요한 입력으로 보는 후보지만 기능 모듈 조건 확인 전 허용을 생성하지 않는다. `POWER_OPERATION_STATE` 생성원은 제공 C2 bool들에서 증명되지 않으므로 255를 권장하며, operation 근거 미입력/충돌은 `OPERATION_ALLOWED=0`과 해당 NO_DATA/INVALID 품질을 함께 전달한다. 이 0은 **확인된 정책 거부를 주장하는 값이 아니며**, 소비자는 비유효 품질을 반드시 함께 확인한다. 독립적으로 확인된 전원 품질을 operation 부재만으로 새 불허 정책으로 바꾸지 않는다.
 
-공통 `SOURCE_AGE`는 같은 `t_eval`까지 각각 한 번 누적한, 이번 합성에 보존·사용하는 확인 가능한 원 근거 AGE들의 최댓값을 포화하는 안을 권장한다. 품질/원 근거가 없는 입력의 AGE를 0 또는 65535로 지어내지 않는다. 어느 필드에 독립 원 기한 이내라는 근거가 없는지는 그 필드 품질과 사용 제한으로 표시한다. 공통 AGE가 이미 보존된 오래된 근거 때문에 전원 사용 한도를 넘으면 이를 전원 AGE0으로 낮춰 ALLOW를 만들지 않는다. 공유 AGE는 필드별 독립 최신성을 모두 증명하지 못하며, 이 제약을 제거하려면 별도 양단 변경 승인이 필요하다. 원 입력 tuple 또는 실제 전달 의미/품질 제한이 변할 때만 합성 `UPDATE_SEQUENCE`를 바꾸고 반복 TX/50ms 보고로 AGE0·새 판단을 만들지 않는다.
+공통 `SOURCE_AGE`는 같은 `t_eval`까지 각각 한 번 누적한, 이번 합성에 보존·사용하는 확인 가능한 원 근거 AGE들의 최댓값을 포화하는 안을 권장한다. 품질/원 근거가 없는 입력의 AGE를 0 또는 65535로 지어내지 않는다. 어느 필드에 독립 원 기한 이내라는 근거가 없는지는 그 필드 품질과 사용 제한으로 표시한다. 공통 AGE가 이미 보존된 오래된 근거 때문에 전원 사용 한도를 넘으면 이를 전원 AGE0으로 낮춰 ALLOW를 만들지 않는다. 공유 AGE는 필드별 독립 최신성을 모두 증명하지 못하며, 이 제약을 제거하려면 별도의 양단 계약 변경이 필요하다. 원 입력 tuple 또는 실제 전달 의미/품질 제한이 변할 때만 합성 `UPDATE_SEQUENCE`를 바꾸고 반복 TX/50ms 보고로 AGE0·새 판단을 만들지 않는다.
 
-`NETWORK_OWNED`는 검증·원 근거 보존과 수신 분배이고, 합성·단일 AGE/품질 소비는 `CROSS_NODE_AGREEMENT`, power/operation 필수 입력과 생성원은 `FUNCTION_OWNER`, 실제 adapter/clock/consumer 연결은 `IMPLEMENTATION_BINDING`이다. DOMAIN/CIS 및 보류 WINDOW 담당자는 “각 허용의 실제 필수 입력·원 기한·POWER_OPERATION_STATE 생성원은 무엇인가?”, CIS/Pi 담당자는 “power 품질과 공통 보수 AGE로 기존 원 허용을 제한 소비하며 1500ms 후보로 원 기한을 연장하지 않는가?”를 확인해야 한다. 이 처리 순서는 `PROPOSED`이며 `AGREED/IMPLEMENTED/TESTED` 증거는 아직 없다. BCM/VSS Network-private 감시와 WINDOW `[구현 보류 — 설계 유지]`는 그대로 보존한다.
+Network는 원 근거를 보존하며 검증·수신 분배와 CIS·Pi 통신 처리를 담당한다. 후방 Power 시간 규칙은 약 200ms 재평가/원 500ms다. POWER_OPERATION_STATE 생성원, Power/Operation/Alive 필수 입력과 공통 AGE/Quality/세대 합성, UNKNOWN 투영·평가 실패의 기능 정책은 미확정이다. USE_LIMIT 1500ms 후보로 검증된 원 기한을 연장하지 않으며 500ms 전송값은 조건부 권장 프로필이다. 실제 adapter/clock/consumer 연결과 합성 후보의 기능 동작은 검증 전이다. BCM/VSS Network-private 감시와 WINDOW 보류를 유지한다.
 
+
+<a id="delta-can-permission"></a>
+**의미 투영 권장안 / DOMAIN 연동 조건 확인 필요:** DOMAIN Adapter는 확정 ALLOW/DENY만 true/false+OK로 투영하고 UNKNOWN은 원인에 맞는 false+NO_DATA/STALE/INVALID로 구분하는 안을 따른다. CAN에서는 해당 무효 전원을255+비정상 품질로 전달한다. UNKNOWN+OK 보존이 필수인 경우 기존 C2의 표현 손실을 숨기지 않고 [최소 계약 대안](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)을 별도 검토한다. Network는 의미를 추측하지 않고 C2 품질 충돌·시간·문맥을 검증한다.
+
+아래 B13~16의 ‘허용 상태의 새 평가 번호’는 **Network 합성 UPDATE_SEQUENCE**의 설명이며 DOMAIN 원 성공 평가 Sequence와 동일한 번호라는 뜻이 아니다. B17~18은 위 공통 SOURCE_AGE 후보로서 각 입력의 독립 최신성을 모두 증명하지 못한다. 성공17 뒤 실패는 원 성공17·원 시각을 보존하면서 현재 품질 제한을 전달 요청하는 권장 경로다. 동일 원 성공 Sequence 중복으로 버리거나 실패 시 AGE0을 만들지 않는다. 합성·프레임·relay 갱신은 [번호 공간](../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)으로 구분한다. 구 Permission 원TTL150 후보는 원500ms로 대체됐으며 CAN 수신 중단150ms·후방 거리150ms 후보·UART1500ms는 유지한다.
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `VEHICLE_POWER_PERMISSION` | `u8` · 0=불허; 1=허용; 255=확인 불가 | D2C-001 |
 | B9 | `POWER_PERMISSION_QUALITY` | `u8` · VALUE_QUALITY | D2C-002 |
 | B10 | `POWER_OPERATION_STATE` | `u8` · 0=이동 불가; 1=이동 가능; 255=확인 불가 | D2W-007 |
@@ -97,8 +115,8 @@ CIS/WINDOW는 허용 기능을 소비하고 BCM/VSS는 Network-private Domain �
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
-| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | Stage B 5.3 명령 공통부 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
+| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | CAN 명령 공통부(TARGET_BOOT_ID·COMMAND_ID·AGE·LIMIT) |
 | B20 | `DOOR_LOCK_TARGET` | `u8` · 0=LOCK; 1=UNLOCK | D2B-001 |
 | B21 | `ORIGIN` | `u8` · 요청 출처 코드 | 공통·추가 상세 |
 | B22~23 | PADDING | 0. 의미 해석하지 않음 | 없음 |
@@ -114,8 +132,8 @@ CIS/WINDOW는 허용 기능을 소비하고 BCM/VSS는 Network-private Domain �
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
-| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | Stage B 5.3 명령 공통부 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
+| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | CAN 명령 공통부(TARGET_BOOT_ID·COMMAND_ID·AGE·LIMIT) |
 | B20 | `FAN_TARGET_LEVEL` | `u8` · FAN 코드; UNKNOWN 금지 | D2B-003 |
 | B21 | `THERMAL_DIRECTION` | `u8` · 0=IDLE; 1=COOL; 2=HEAT | D2B-004 |
 | B22 | `THERMAL_TARGET_LEVEL` | `u8` · 0~100%, 1%/raw | D2B-005 |
@@ -132,8 +150,8 @@ CIS/WINDOW는 허용 기능을 소비하고 BCM/VSS는 Network-private Domain �
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
-| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | Stage B 5.3 명령 공통부 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
+| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | CAN 명령 공통부(TARGET_BOOT_ID·COMMAND_ID·AGE·LIMIT) |
 | B20 | `INTERIOR_LIGHT_TYPE` | `u8` · LIGHT_TYPE 코드 | D2B-006 |
 | B21 | `INTERIOR_LIGHT_LEVEL` | `u8` · 0~100%, 1%/raw | D2B-007 |
 | B22~24 | `INTERIOR_LIGHT_COLOR` | `rgb` · R/G/B 각각 0~255 | D2B-008 |
@@ -143,19 +161,19 @@ CIS/WINDOW는 허용 기능을 소비하고 BCM/VSS는 Network-private Domain �
 <a id="message-window-command"></a>
 ## `WINDOW_COMMAND` — `0x090`
 
-**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 합의 전 보류한다.
+**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 조건 확정 전 보류한다.
 
 **DOMAIN → WINDOW · 24 B 사용 / 24 B CAN 전송 / DLC 12 · WIRE_PROPOSED.**
 
 의미 타입 `NetWindowCommand`: [WINDOW Data](../02_NODES/WINDOW/10_DATA.md) · [WINDOW API](../02_NODES/WINDOW/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
-VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수용 200 ms와 구 1 s도 팀 결정이 필요하다.
+VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수용 200 ms와 구 1 s도 적용 계약이 미확정이다.
 
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
-| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | Stage B 5.3 명령 공통부 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
+| B8~19 | `TARGET_BOOT_ID`, `COMMAND_ID`, `COMMAND_AGE`, `ACCEPT_LIMIT` | u32/u32/u16/u16. 기동·명령 ID·원본 Age·수용 한도 | CAN 명령 공통부(TARGET_BOOT_ID·COMMAND_ID·AGE·LIMIT) |
 | B20 | `WINDOW_COMMAND` | `u8` · 1=OPEN; 2=CLOSE; 3=STOP; 4=VENT; 5=MOVE_TO_POSITION | D2W-001 |
 | B21 | `TARGET_CHANNEL` | `u8` · 0=현재 단일 채널 | D2W-002 |
 | B22 | `TARGET_POSITION` | `u8` · 0~100% 닫힘 비율; VENT=70 | D2W-006 |
@@ -172,7 +190,7 @@ VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `DOOR_LOCK_STATE` | `u8` · 0=LOCKED; 1=UNLOCKED; 255=UNKNOWN | B2D-002 |
 | B9 | `DOOR_OPEN_STATE` | `u8` · 0=CLOSED; 1=OPEN; 255=UNKNOWN | B2D-003 |
 | B10 | `DOOR_COMPOSITE_STATE` | `u8` · 0=NORMAL; 1=INCONSISTENT; 2=UNTRUSTED | B2D-004 |
@@ -193,7 +211,7 @@ VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `FAN_COMMAND_LEVEL` | `u8` · 0=OFF; 1=LOW; 2=MEDIUM; 3=HIGH | B2D-005 |
 | B9 | `FAN_MEASURED_LEVEL` | `u8` · FAN 코드 및 255=UNKNOWN | B2D-006 |
 | B10 | `THERMAL_DIRECTION_STATE` | `u8` · 0=IDLE; 1=COOL; 2=HEAT | B2D-007 |
@@ -218,7 +236,7 @@ VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `INTERIOR_LIGHT_TYPE_STATE` | `u8` · LIGHT_TYPE 코드 | B2D-010 |
 | B9 | `INTERIOR_LIGHT_LEVEL_STATE` | `u8` · 0~100% | B2D-011 |
 | B10~12 | `INTERIOR_LIGHT_COLOR_STATE` | `rgb` · R/G/B 각각 0~255 | B2D-012 |
@@ -243,11 +261,11 @@ VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수�
 
 **PROPOSED — 원 실행 연결과 확인의 분리:** 수용한 원 `COMMAND_DOMAIN_BOOT+COMMAND_ID+COMMAND_KIND` 및 원 명령 내용을 기존 실행 문맥에 연결한다. 같은 명령의 재전송은 새 ID나 새 실행이 아니며 원 Application의 단계·결과·occurrence·발생 AGE를 재사용한다. 같은 identity에 다른 내용이면 재실행하지 않고 기존 오류 인계로 BCM 실행 owner가 판단한다. 실제 Application 사실만 ACCEPTED/IN_PROGRESS/DONE/REJECTED/FAILED의 근거이며 local submit OK·CAN 수신·결과 미수신으로 실행 DONE/FAILED를 합성하지 않는다.
 
-C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별도 필드가 없다. 별도 합의된 BCM 의미 근거가 없으면 수신 결과를 기존 `RESULT_CONFIRMATION_UNCONFIRMED`로 소비하는 안을 권장한다. 원 DONE/reason/event를 바꾸지 않으며, 정상 프레임 또는 DONE만으로 CONFIRMED나 실제 unlock 전이를 만들지 않는다. 도어 COMPLETED+유효 event quality/원 AGE가 충분한 확인 근거인지, 비도어 terminal 결과가 어떤 실제 피드백을 뜻하는지는 BCM/DOMAIN 기능 owner가 확인해야 한다. `NETWORK_OWNED`는 원 identity·검증·전달, `FUNCTION_OWNER`는 실행·피드백, `CROSS_NODE_AGREEMENT`는 confirmation 소비, `IMPLEMENTATION_BINDING`은 재전송/실패 인계 연결이다. 후보는 PROPOSED이며 새 AGREED/IMPLEMENTED/TESTED 근거는 없다.
+C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별도 필드가 없다. 확정된 BCM 의미 근거가 없으면 수신 결과를 기존 `RESULT_CONFIRMATION_UNCONFIRMED`로 소비하는 안을 권장한다. 원 DONE/reason/event를 바꾸지 않으며, 정상 프레임 또는 DONE만으로 CONFIRMED나 실제 unlock 전이를 만들지 않는다. 도어 COMPLETED+유효 event quality/원 AGE가 충분한 확인 근거인지, 비도어 terminal 결과가 어떤 실제 피드백을 뜻하는지는 BCM/DOMAIN 기능 owner가 확인해야 한다. `NETWORK_OWNED`는 원 identity·검증·전달, `FUNCTION_OWNER`는 실행·피드백, `CROSS_NODE_AGREEMENT`는 confirmation 소비, `IMPLEMENTATION_BINDING`은 재전송/실패 인계 연결이다. 후보는 PROPOSED이며 기능 정책과 실제 동작은 검증 전이다.
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8~11 | `COMMAND_DOMAIN_BOOT` | `u32` · 원 명령을 생성한 Domain 기동 번호 | 공통·추가 상세 |
 | B12~15 | `COMMAND_ID` | `u32` · 처리한 Domain 명령 ID | D2B-002 |
 | B16 | `COMMAND_KIND` | `u8` · 1=도어; 2=공조; 3=조명 | 공통·추가 상세 |
@@ -271,7 +289,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `EVENT_KIND` | `u8` · 1=OVERHEAT_DETECTED; 2=FAN_MISMATCH_DETECTED; 3=RECOVERY_CONFIRMED | B2D-023;  B2D-024;  B2D-025 |
 | B9~12 | `OCCURRENCE_ID` | `u32` · 이벤트 식별 | 공통·추가 상세 |
 | B13~14 | `EVENT_AGE` | `u16` · 발생 후 경과 시간, ms | 공통·추가 상세 |
@@ -290,11 +308,11 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 의미 타입 `NetBcmStatus`: [BCM Data](../02_NODES/BCM/10_DATA.md) · [BCM API](../02_NODES/BCM/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
 
-**PROPOSED — 통신 Health는 기존 진단 owner가 평가:** Network의 최초 링크 상실 발견 주체·시각·감시 구간과 실제 회복 관측을 해당 기존 BCM 진단 owner에 전달한다. owner가 근거에 따라 기존 COMM bit7·영향 기능·회복 상태를 평가해 `BcmNet_PublishStatus()`로 제출한다. DOMAIN이 확인한 BCM 수신 상실은 DOMAIN 로컬 관측이며, BCM이 보내지 않은 remote COMM bit가 아니다. 이 메시지의 SOURCE_AGE는 현재 BCM 평가의 AGE이며 최초 COMM 발생 AGE/최근 이력을 대신하지 않는다. 최초 발견·복구 세부 근거는 기존 owner가 보존한다. VSS에는 COMM mask bit가 없으므로 링크 상실을 AUDIO_OUTPUT_FAILURE로 합성하지 않는다. `NETWORK_OWNED`는 관측/인계, `FUNCTION_OWNER`는 진단·clear, `IMPLEMENTATION_BINDING`은 기존 실제 입력·수명 연결이다. BCM 담당자는 최초 발견/회복을 받는 기존 연결과 actuator feedback timeout의 평가 주체를 확인해야 한다. 실제 연결/SDK 시험은 NOT_EXECUTED이고 처리 안은 PROPOSED다.
+**PROPOSED — 통신 Health는 기존 진단 owner가 평가:** Network의 최초 링크 상실 발견 주체·시각·감시 구간과 실제 회복 관측을 해당 기존 BCM 진단 owner에 전달한다. owner가 근거에 따라 기존 COMM bit7·영향 기능·회복 상태를 평가해 `BcmNet_PublishStatus()`로 제출한다. DOMAIN이 확인한 BCM 수신 상실은 DOMAIN 로컬 관측이며, BCM이 보내지 않은 remote COMM bit가 아니다. 이 메시지의 SOURCE_AGE는 현재 BCM 평가의 AGE이며 최초 COMM 발생 AGE/최근 이력을 대신하지 않는다. 최초 발견·복구 세부 근거는 기존 owner가 보존한다. VSS에는 COMM mask bit가 없으므로 링크 상실을 AUDIO_OUTPUT_FAILURE로 합성하지 않는다. `NETWORK_OWNED`는 관측/인계, `FUNCTION_OWNER`는 진단·clear, `IMPLEMENTATION_BINDING`은 기존 실제 입력·수명 연결이다. BCM 모듈은 최초 발견/회복을 받는 기존 연결과 actuator feedback timeout의 평가 주체를 확인해야 한다. 실제 연결/SDK 시험은 NOT_EXECUTED이고 처리 안은 PROPOSED다.
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `BCM_ECU_STATE` | `u8` · 0=INIT; 1=READY; 2=DEGRADED; 3=FAULT | B2D-001 |
 | B9~10 | `FAULT_MASK` | `u16` · BCM 고장 비트 0~7 | B2D-026;  B2D-027;  B2D-028; B2D-029;  B2D-030;  B2D-031; B2D-032;  B2D-033 |
 | B11 | `ACTIVE_FAULT_CATEGORY` | `u8` · 0=없음; 1=SENSOR; 2=FUNCTION; 3=COMM | 공통·추가 상세 |
@@ -311,12 +329,14 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 **CIS → DOMAIN · 40 B 사용 / 48 B CAN 전송 / DLC 14 · WIRE_PROPOSED.**
 
+**환경 저장 순서 권장안:** 기존 BOOT_ID와 센서별 원 Sequence로 A900→B0을 검증하며 새 전역번호로 이어 붙이지 않는다. 구 BOOT의 대기/실행 중 후속 저장을 정리하고 기존 환경 Rx의 NO_DATA 저장 완료 확인 뒤 새 BOOT 관측을 전달한다. 일반 NO_DATA를 재부팅·Sequence 리셋 신호로 해석하지 않는다. DOMAIN의 실제 저장 순서 수용과 완료 경계는 [확인 대기](../02_NODES/DOMAIN/20_API.md#delta-environment-completion)다. BOOT 재사용/Network 기억 상실은 보장 제외이며 이 순서를 위해 Wire에 Environment Generation을 추가하지 않는다. 아래 ID·길이·필드 바이트는 유지한다.
+
 의미 타입 `NetCisEnvironment`: [CIS Data](../02_NODES/CIS/10_DATA.md) · [CIS API](../02_NODES/CIS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8~9 | `TEMPERATURE` | `i16` · 0.01°C/raw; -4000~12500; -32768=무효 | C2D-003 |
 | B10~13 | `TEMPERATURE_SEQUENCE` | `u32` · 해당 값의 새 측정 번호 | C2D-014 |
 | B14~15 | `TEMPERATURE_AGE` | `u16` · 해당 값 원본 측정 후 ms | C2D-013 |
@@ -345,7 +365,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8~11 | `PI_BOOT_ID` | `u32` · Pi 원본 기동 번호 | C2D-013 |
 | B12~15 | `VISION_SEQUENCE` | `u32` · Pi 새 판정 번호, 중계 시 보존 | C2D-014 |
 | B16~17 | `VISION_AGE` | `u16` · Pi 원본 판정 후 누적 ms | C2D-013 |
@@ -362,6 +382,8 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 <a id="message-cis-rear"></a>
 ## `CIS_REAR` — `0x0A0`
 
+후방 거리 원 관측 사용 한도는 `CIS_REAR` 150ms 후보이며 Permission 원 500ms와 별개다. SysRS 후방 거리 최대 500ms 잠정 기준보다 이르게 사용을 제한하지만 실제 센서·전송·소비 주기에서의 가용성은 미검증이다. 이 프로필에서는 누적 AGE 150ms에 도달하면 거리값을 사용하지 않으며 149ms에서도 품질·상태·수신 감시 조건을 만족해야 한다. 실제 DOMAIN 소비 기준 변경에는 해당 거리 한도와 가용성 검증이 필요하다. [시간 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#timing)
+
 **CIS → DOMAIN · 19 B 사용 / 20 B CAN 전송 / DLC 11 · WIRE_PROPOSED.**
 
 의미 타입 `NetCisRear`: [CIS Data](../02_NODES/CIS/10_DATA.md) · [CIS API](../02_NODES/CIS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
@@ -369,7 +391,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8~11 | `UPDATE_SEQUENCE` | `u32` · 새 거리 관측 번호 | C2D-014 |
 | B12~13 | `SOURCE_AGE` | `u16` · 거리 원본 관측 후 ms | C2D-013 |
 | B14~15 | `REAR_DISTANCE` | `u16` · 0.1cm/raw; 65535=거리 없음/무효, 상태로 구분 | C2D-006 |
@@ -389,7 +411,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `CIS_STATE` | `u8` · 0=STARTUP; 1=READY; 2=ACTIVE; 3=FAULT | C2D-008 |
 | B9 | `VISION_STATUS` | `u8` · 0=NOT_READY; 1=READY; 2=ACTIVE; 3=FAULT; 4=RECOVERING | C2D-009 |
 | B10 | `TEMPERATURE_STATUS` | `u8` · 0=NOT_READY; 1=READY; 2=ACTIVE; 3=FAULT; 4=RECOVERING | C2D-009 |
@@ -412,7 +434,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 <a id="message-window-state"></a>
 ## `WINDOW_STATE` — `0x0B0`
 
-**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 합의 전 보류한다.
+**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 조건 확정 전 보류한다.
 
 **WINDOW → DOMAIN · 22 B 사용 / 24 B CAN 전송 / DLC 12 · WIRE_PROPOSED.**
 
@@ -421,7 +443,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `MOTION_STATE` | `u8` · 0=STOPPED; 1=OPENING; 2=CLOSING; 3=ANTIPINCH_REVERSING; 255=UNKNOWN | W2D-002 |
 | B9 | `WINDOW_ECU_STATE` | `u8` · 0=INIT; 1=READY; 2=DEGRADED; 3=FAULT | W2D-003 |
 | B10 | `WINDOW_POSITION` | `u8` · 0~100% 닫힘 비율,255=확인 불가 | W2D-004 |
@@ -438,7 +460,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 <a id="message-window-event"></a>
 ## `WINDOW_EVENT` — `0x091`
 
-**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 합의 전 보류한다.
+**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 조건 확정 전 보류한다.
 
 **WINDOW → DOMAIN · 26 B 사용 / 32 B CAN 전송 / DLC 13 · WIRE_PROPOSED.**
 
@@ -449,7 +471,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `EVENT_KIND` | `u8` · 1=FULLY_OPENED; 2=FULLY_CLOSED; 3=WINDOW_ANTIPINCH | W2D-008;  W2D-009;  W2D-010 |
 | B9 | `TARGET_CHANNEL` | `u8` · 현재 0 | 공통·추가 상세 |
 | B10~13 | `OCCURRENCE_ID` | `u32` · 새 전이/끼임 발생 번호 | 공통·추가 상세 |
@@ -464,7 +486,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 <a id="message-window-result"></a>
 ## `WINDOW_RESULT` — `0x092`
 
-**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 합의 전 보류한다.
+**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 조건 확정 전 보류한다.
 
 **WINDOW → DOMAIN · 20 B 사용 / 20 B CAN 전송 / DLC 11 · WIRE_PROPOSED.**
 
@@ -475,7 +497,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8~11 | `REQUEST_DOMAIN_BOOT` | `u32` · 원 명령을 생성한 Domain 기동 번호 | 공통·추가 상세 |
 | B12~15 | `REQUEST_SEQUENCE` | `u32` · 원 Domain 명령 식별 | D2W-003 |
 | B16 | `TARGET_CHANNEL` | `u8` · 현재 0 | 공통·추가 상세 |
@@ -486,7 +508,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 <a id="message-window-fault"></a>
 ## `WINDOW_FAULT` — `0x330`
 
-**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 합의 전 보류한다.
+**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 조건 확정 전 보류한다.
 
 **WINDOW → DOMAIN · 22 B 사용 / 24 B CAN 전송 / DLC 12 · WIRE_PROPOSED.**
 
@@ -495,7 +517,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `FAULT_CATEGORY` | `u8` · 0=없음; 1=SENSOR; 2=FUNCTION; 3=COMM | W2D-014 |
 | B9~10 | `FAULT_CODE` | `u16` · WINDOW 고장 코드 | W2D-014 |
 | B11 | `FAULT_STATUS` | `u8` · 0=없음; 1=현재 고장; 2=복구 중 | W2D-014 |
@@ -515,7 +537,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `EVENT_KIND` | `u8` · 1=WELCOME; 2=GOODBYE; 3=LOCK_COMPLETE; 4=UNLOCK_COMPLETE; 5=LOCK_ERROR | D2V-001;  D2V-002;  D2V-003; D2V-004;  D2V-005 |
 | B9~12 | `OCCURRENCE_ID` | `u32` · Domain 기동 내 의미 이벤트 번호 | 공통·추가 상세 |
 | B13~14 | `ORIGINAL_AGE` | `u16` · 이벤트 원본 발생 후 누적 ms | D2V-010 |
@@ -533,12 +555,12 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 의미 타입 `NetVssWarningState`: [VSS Data](../02_NODES/VSS/10_DATA.md) · [VSS API](../02_NODES/VSS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
-51used→60used후보는ACTIVATION_META_FORMAT및활성근거9B를포함한다. CAN전송64/DLC 15는같다. format1은이번활성근거,0은legacy근거없음,그외미지원이다.0을후방허용OK로합성하지않는다. 양끝해석합의전혼용금지.
+51used→60used후보는ACTIVATION_META_FORMAT및활성근거9B를포함한다. CAN전송64/DLC 15는같다. format1은이번활성근거,0은legacy근거없음,그외미지원이다.0을후방허용OK로합성하지않는다. 양끝해석확정전혼용금지.
 
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8~11 | `ANTIPINCH_SOURCE_BOOT` | `u32` · 원 판단 근거 생성 노드 기동 번호 | D2V-010 |
 | B12~15 | `ANTIPINCH_SOURCE_SEQUENCE` | `u32` · 새 유효 판단 근거 번호 | D2V-010 |
 | B16~17 | `ANTIPINCH_ORIGINAL_AGE` | `u16` · 원 판단 근거 관측 후 누적 ms | D2V-010 |
@@ -583,7 +605,7 @@ LAST_FAULT_QUALITY는 기존 기록0/확인된 부재3만 표현한다. C2/로�
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | 공통 Stage B 5.3 |
+| B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
 | B8 | `VSS_STATE` | `u8` · 0=STARTUP; 1=READY; 2=PLAYING; 3=FAULT | V2D-001 |
 | B9 | `VSS_AVAILABILITY` | `u8` · 0=FULL; 1=DEGRADED; 2=UNAVAILABLE | V2D-002 |
 | B10 | `VSS_ACCEPTING_EVENTS` | `u8` · 0=불가; 1=수용 가능 | V2D-003 |
@@ -596,4 +618,3 @@ LAST_FAULT_QUALITY는 기존 기록0/확인된 부재3만 표현한다. C2/로�
 | B22~25 | `UPDATE_SEQUENCE` | `u32` · 이번 상태 평가 | 공통·추가 상세 |
 | B26~27 | `SOURCE_AGE` | `u16` · 평가 후 ms | 공통·추가 상세 |
 | B28~31 | PADDING | 0. 의미 해석하지 않음 | 없음 |
-

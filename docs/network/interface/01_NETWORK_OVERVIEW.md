@@ -1,5 +1,7 @@
 # 전체 연결과 책임
 
+Interface v2 · r1 · [규격과 연동 조건](07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 DOMAIN이 차량 허용·목표·위험을 판단하고, 실행 노드가 로컬 보호와 실제 결과를 만든다. Network는 기능을 다시 판단하지 않고 유효한 의미 데이터를 목적지에 전달한다.
 
 ```mermaid
@@ -35,11 +37,11 @@ Application→Network의 local OK는 네트워크 인계 성공이며 ECU 실행
 
 48개 메시지(CAN 22/UART-M 23/UART-C 3)는 135개 논리 ID를 조합해 전달한다. DOMAIN_PERMISSION 한 메시지를 BCM/CIS/VSS/WINDOW 네 곳이 수신한다. 기존 C2 72개/Gateway 13개는 제공된 선언이며 메시지마다 함수를 추가하는 규칙이 아니다. 노드별 SDK/RTOS/superloop 선택은 Network/App 계약의 호출과 수명을 만족하는 방식으로 별도 바인딩한다.
 
-[노드·Data/API 시작](00_START_HERE.md) · [메시지 색인](05_MESSAGE_INDEX.md) · [팀 결정](06_OPEN_FOR_TEAM.md)
+[노드·Data/API 시작](00_START_HERE.md) · [메시지 색인](05_MESSAGE_INDEX.md) · [기술 제약](06_TECHNICAL_CONSTRAINTS.md)
 
 <a id="section-implementation-reading"></a>
 ## 구현 문서로 이동
 
 [노드별 Overview→Data→API](00_START_HERE.md#section-nodes)에서 로컬 호출을 확인한 뒤, [CAN 22종](05_MESSAGE_INDEX.md#section-can-messages)·[UART-M 23종](05_MESSAGE_INDEX.md#section-uart-m-messages)·[UART-C 3종](05_MESSAGE_INDEX.md#section-uart-c-messages)에서 상대 노드와 의미 타입을 찾는다. [공통 호출·수명](04_COMMON/20_API_USAGE_AND_FAILURE.md)과 [C enum→raw 변환](04_COMMON/30_ENUM_WIRE_MAPPING.md)은 양단에 적용하며 SDK/RTOS 배치를 확정하지 않는다.
 
-상태 보고를 제출한 사실과 실제 동작 결과를 구분한다. [미합의 경로와 확인 담당](06_OPEN_FOR_TEAM.md#section-active-bindings)에 표시된 subtype·완료·원본 연결·허용·VSS 변환은 구현 완료를 뜻하지 않는다.
+상태 보고를 제출한 사실과 실제 동작 결과를 구분한다. [미확정 연동 조건](06_TECHNICAL_CONSTRAINTS.md#section-active-bindings)에 표시된 subtype·완료·원본 연결·허용·VSS 변환은 구현 완료를 뜻하지 않는다.

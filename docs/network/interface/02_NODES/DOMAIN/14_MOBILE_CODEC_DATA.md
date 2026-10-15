@@ -1,5 +1,7 @@
 # DOMAIN↔ESP32 — Mobile Codec 전용 typed Data
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **PROPOSED_DESIGN / WIRE_PROPOSED / NETWORK_PRIVATE.** 아래 전체 선언과 멤버 표는 Network 내부의 typed Codec 계약이다. 공개 source C2/Gateway 객체를 이 schema로 직접 투영하며 App에 최종 raw envelope 초기화를 요구하지 않는다. packed C layout/실제 Firmware 구현이 아니다.
 
 [DOMAIN Data](10_DATA.md) · [ESP32 Data](../ESP32/10_DATA.md) · [UART-M](../../03_COMMUNICATION/20_UART_M.md) · [명시 enum 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)
@@ -1353,7 +1355,6 @@ enum NetCommandTargetCode
 | `NET_COMMAND_TARGET_WINDOW` | `2` | M_RESULT가 연결하는 반영·실행 대상. |
 
 
-
 ## App 공개 인자와 Codec owner 경계
 
 | Codec 필드 | 원 소유/생성 | 사용·수명 |
@@ -1367,27 +1368,27 @@ enum NetCommandTargetCode
 | 각 update/vision sequence | 원 관측/평가 producer | 새원 관측에만증가, cache 전달/Query 로증가금지. |
 | age/source_age/result_age | 원 관측/판정/명령/결과 producer | 원 AGE+각 Network 자체대기만한 번 누적, raw u16 포화. |
 
-M_CONTEXT38B 제안과 legacy31B는 서로호환되지 않으며 양 끝 Codec 지원/version 협의 필요. Gateway source 품질 UNKNOWN, C2 warning UNCONFIRMED,availability UNSUPPORTED,일부 source ResultReason·simulated는 정확한 raw 표현이없어 영향받는 encode 차단/TEAM_DECISION_REQUIRED 다. 전체역변환/SDK/실보드/무선검증은 NOT_EXECUTED 다.
+M_CONTEXT38B 제안과 legacy31B는 서로호환되지 않으며 양 끝 Codec 지원/version 일치 필요. Gateway source 품질 UNKNOWN, C2 warning UNCONFIRMED,availability UNSUPPORTED,일부 source ResultReason·simulated는 정확한 raw 표현이없어 영향받는 encode 차단/WIRE_MAPPING_OPEN 다. 전체역변환/SDK/실보드/무선검증은 NOT_EXECUTED 다.
 
 ## Source projection의 부분 존재·실제 전이 보존 조건
 
 | source 정보 | 현재 제안 raw 표현 | 안전한 처리 |
 |---|---|---|
-| `DomainIf_UserSettingsState_t.hasTargetTemperature` 등 존재 bool | 온도·공조/조명 enable·Fan의 미확인 sentinel은 일부 표현 가능하나 NORMAL 밝기/RGB의 독립 존재 여부를 온전히 표현하는 raw flag 없음 | 일부 설정만 확인된 source snapshot을 모두 확인된 값으로 바꾸지 않는다. 독립 존재 여부와 종합 VALUE_QUALITY 관계가 합의되지 않은 부분 설정은 **TEAM_DECISION_REQUIRED / 해당 projection hold**. |
+| `DomainIf_UserSettingsState_t.hasTargetTemperature` 등 존재 bool | 온도·공조/조명 enable·Fan의 미확인 sentinel은 일부 표현 가능하나 NORMAL 밝기/RGB의 독립 존재 여부를 온전히 표현하는 raw flag 없음 | 일부 설정만 확인된 source snapshot을 모두 확인된 값으로 바꾸지 않는다. 독립 존재 여부와 종합 VALUE_QUALITY 관계가 미확정인 부분 설정은 **WIRE_MAPPING_OPEN / 해당 projection hold**. |
 | `DomainIf_DigitalKeyResult_t.hasVehicleResult` | `RESULT=255` 및 confirmation으로 없는 기록 표현 가능 | result 없는 상태를 DONE/FAILED로 합성하지 않는다. |
-| `DomainIf_DigitalKeyResult_t.actualUnlockTransition` | 직접 bool 필드 없음. ALREADY_AT_TARGET 사유는 false 근거지만 전체 sourcebool↔원 raw result/reason의 동등성은 미증명 | 실제 전이와 동일목표 DONE이 구별되는 source 계약을 보존한다. raw로 동등하게 표현할 수 없는 source 조합은 **TEAM_DECISION_REQUIRED / 해당 result export hold**. 임의 추론으로 true 생성 금지. |
+| `DomainIf_DigitalKeyResult_t.actualUnlockTransition` | 직접 bool 필드 없음. ALREADY_AT_TARGET 사유는 false 근거지만 전체 sourcebool↔원 raw result/reason의 동등성은 미증명 | 실제 전이와 동일목표 DONE이 구별되는 source 계약을 보존한다. raw로 동등하게 표현할 수 없는 source 조합은 **WIRE_MAPPING_OPEN / 해당 result export hold**. 임의 추론으로 true 생성 금지. |
 
 
 <a id="r2-partial-export"></a>
-### PROPOSED — 기존 sentinel·결과 의미의 최소 export 규칙 (O21/O22)
+### PROPOSED — 기존 sentinel·결과 의미의 최소 export 규칙
 
-**NETWORK_OWNED + CROSS_NODE_AGREEMENT; 원 설정/실제 전이는 FUNCTION_OWNER.** 원 C2 has flags와 bool을 삭제하거나 새 raw로 바꾸지 않는다.
+**NETWORK_OWNED + CROSS_NODE_AGREEMENT; 원 설정/실제 전이는 FUNCTION_OWNER.**원 C2 has flags와 bool을 삭제하거나 새 raw로 바꾸지 않는다.
 
 - `M_USER_SETTINGS`: `hasTargetTemperature=false`이면 기존 `-32768`, `hasClimateAutoSetting=false`/`hasInteriorLightEnableSetting=false`이면 기존 `255`, `hasUserFanLevel=false`이면 기존 FAN UNKNOWN `255`를 사용한다. 존재=true인 실제0/OFF/RGB0은 그대로 정상 설정으로 구분한다. 실제 값 범위·원 meta 품질/AGE를 검사하며 미확인 값을 현재 유효 설정으로 표시하지 않는다.
 - NORMAL 밝기/RGB는 독립 absent sentinel이 없으므로 **`hasNormalLightLevel`과 `hasNormalLightColor` 모두 true이고 현재 값의 원 품질을 표현할 수 있을 때만** 위 M_USER_SETTINGS composite export를 권장한다. 어느 하나 false이면 해당 설정 frame을 제출하지 않고 로컬 NOT_READY/source NOT_AVAILABLE, Query는 누락을 기존 STATUS2로 인계한다. 확인된 다른 설정은 C2 원본에 보존하며 다른 상태 메시지는 계속 제공한다. absent 밝기/RGB를0으로 채운 뒤 VALUE_QUALITY OK로 보내거나, 전체 NO_DATA로 보내고 일부 숫자만 유효하다고 추론시키는 안은 독립 존재를 표현하지 못하므로 제외한다.
 - `M_DIGITAL_RESULT`: hasVehicleResult=false인 source는 기존 RESULT255/UNCONFIRMED 의미로 처리하며 확인되지 않은 result/reason을 읽어 DONE/FAILED를 만들지 않는다. 기록 자체 없음(outHasRecord=false)은 결과 조회의 원 기록 부재로 처리한다. 원 occurrence/relatedDoorCommandId/origin/confirmation/resultAge를 보존한다.
-- 실제 전이 bool을 소비하는 경로의 권장안은 **결과 처리 완료와 잠금 해제 전이를 분리**하는 것이다. `DONE + ALREADY_AT_TARGET`은 이미 목표 상태였다는 결과이며 전이 성공 알림이 아니다. 이 프레임을 단순 결과로 소비하는 경로는 유지할 수 있지만, 현 Wire에 actualUnlockTransition이 없으므로 다른 DONE 조합도 true로 추론하지 않는다. 실제 전이 표시는 원 C2 bool과 BCM door evidence를 가진 기능 경로에서만 한다. MOBILE이 bool이 꼭 필요한 경우 그 전이 표시 export만 제한하고 별도 schema 합의 요청을 남긴다. 미표현 reason을 다른 reason으로 덮거나 frame 전체를 임의 성공으로 축약하지 않는다.
+- 실제 전이 bool을 소비하는 경로의 권장안은 **결과 처리 완료와 잠금 해제 전이를 분리**하는 것이다. `DONE + ALREADY_AT_TARGET`은 이미 목표 상태였다는 결과이며 전이 성공 알림이 아니다. 이 프레임을 단순 결과로 소비하는 경로는 유지할 수 있지만, 현 Wire에 actualUnlockTransition이 없으므로 다른 DONE 조합도 true로 추론하지 않는다. 실제 전이 표시는 원 C2 bool과 BCM door evidence를 가진 기능 경로에서만 한다. MOBILE이 bool이 꼭 필요한 경우 그 전이 표시 export만 제한하고 별도 schema 계약이 필요하다. 미표현 reason을 다른 reason으로 덮거나 frame 전체를 임의 성공으로 축약하지 않는다.
 
-**확인 질문:** DOMAIN Settings/ESP32/MOBILE owner가 위 sentinel별 미확인과 밝기/RGB 미확인 시 frame 누락+Query 부분 표시를 채택하는가? MOBILE이 M_DIGITAL_RESULT를 '결과 완료'로 표시하면서 실제 전이 확정을 요구하지 않을 수 있는가? 요구한다면 어떤 기존 기능 evidence로 소비할 수 있는가? 새 presence/transition bit·DTO/Header 추가는 이번에 하지 않는다. 허용된 export 규칙은 `PROPOSED`; 실제 변환/BLE 표시 시험 `NOT_EXECUTED`, 미합의 경로는 해당 설정/전이 `BINDING_OPEN`이다.
+**연동 전제:** sentinel별 미확인 표현과 밝기/RGB 미확인 시 frame 누락+Query 부분 표시의 소비 의미가 DOMAIN Settings·ESP32·MOBILE에서 일치해야 한다. M_DIGITAL_RESULT의 결과 완료 표시가 실제 전이 확정을 요구하는지는 미확정이다. 전이가 필요한 소비 경로에는 기존 기능 evidence가 필요하며 그 근거가 없으면 해당 전이 export를 제한한다. 새 presence/transition bit·DTO/Header는 현재 계약에 포함되지 않는다. export 규칙은 `PROPOSED`, 실제 변환/BLE 표시는 검증 전이며 미확정 설정/전이 경로는 `BINDING_OPEN`이다.
 
 기존 source 헤더와 Wire 계약을 유지하며 미표현 의미의 export만 제한한다.

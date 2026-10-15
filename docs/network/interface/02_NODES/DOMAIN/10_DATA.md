@@ -1,5 +1,7 @@
 # DOMAIN — 공개 의미 Data와 내부 Wire 투영
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **DECLARED_SOURCE / PROPOSED_DESIGN / BINDING_OPEN.** Application은 기존 C2 의미 객체를 만들고 Network는 직접 명시 Codec 투영한다. 추가 App Intent→중간 DTO→최종 Wire DTO의 세 단계 변환을 요구하지 않는다.
 
 [개요](00_OVERVIEW.md) · [API](20_API.md) · [내부 경로](25_PRIVATE_ROUTING.md) · [공통 품질·식별·시간](../../04_COMMON/10_DATA_AND_ID_RULES.md)
@@ -60,6 +62,6 @@ C2 Query Getter는 owner의 의미 상태를 반환하며 원 CAN header 전체�
 | CIS 탑승자 | Pi 원 Boot/vision_sequence/AGE + 존재·인원수 별 유효성, CIS 재평가 근거 | C2 한 meta로 원 Pi 품질과 추가 CIS 품질을 모두 표현하는 규칙 미정. 한 번 더 AGE 더하거나 새 관측을 합성하지 않음. |
 | VSS 상태 | 음향 서비스 상태·원 fault code/occurrence/AGE/quality/generation | 실제 R4/R6 Snapshot→wire DTO owner/표현은 미정. Domain이 재생 DONE을 합성하지 않음. |
 | WINDOW Event/Fault | END/AntiPinch 종류, occurrence, related command, 원 generation/AGE/quality | END를 AntiPinch로 압축 금지. FaultInfo_t 만으로 원 evidence 소실 금지. [구현 보류 — 설계 유지]. |
-| 경고/가용성/결과 | UNCONFIRMED·UNSUPPORTED·unsupported reason·simulated | raw 표현 없으면 encode 차단/팀 결정. CLEAR/AVAILABLE/NONE의 정상 값 fallback 금지. |
+| 경고/가용성/결과 | UNCONFIRMED·UNSUPPORTED·unsupported reason·simulated | raw 표현 없으면 encode 차단/계약 미확정. CLEAR/AVAILABLE/NONE의 정상 값 fallback 금지. |
 
-C enum 원 숫자와 raw code 차이는 [명시 변환표](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)를 적용한다. source header의 `Domain_Interface_types_v0.2_draft.h`는 이전 대체 타입 참조이며 현 C2와 중복으로 include 하거나 live 배포 헤더로 교체하지 않는다. 제공 원 `.h`는 정확하게 보존했으며 include 이름/경로의 실제 Firmware resolution은 별도 binding 이다.
+C enum 숫자와 raw code 사이에는 [명시 변환표](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)를 적용한다. 조건부 후보 `Domain_Interface_v0.6_C2.h`는 `Vehicle_Types_v0.3.h`를 include한다. `Domain_Interface_types_v0.2_draft.h`는 이전 대체 타입이므로 중복 include하지 않는다. 실제 양단의 동일 헤더·ABI·Firmware include 연결은 검증 전이다.

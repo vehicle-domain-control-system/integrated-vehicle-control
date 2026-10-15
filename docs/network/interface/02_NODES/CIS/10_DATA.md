@@ -1,5 +1,9 @@
 # CIS Data — 값별 원 관측과 Pi 취합·상태
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
+타입 9종의 선언과 멤버·단위·예약값을 정의한다. 확정된 시간 규칙, 권장 프로필과 실제 연동 검증 전 조건을 구분한다. [공통 시간·식별](../../04_COMMON/10_DATA_AND_ID_RULES.md#section-timing)을 Data·API·Wire에 동일하게 적용한다.
+
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
 **PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제 설치 헤더/firmware가 아니며 struct padding·enum 크기를 raw bytes로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
@@ -96,11 +100,11 @@ typedef struct NetCisOccupant
 | `vision_sequence` | `uint32_t` | Pi 새 판정 번호, 중계 시 보존 | Pi runtime/비전 원본. CIS는 수신한 값을 보존; CIS CAN Boot/TX_SEQUENCE로 대체하지 않음. |
 | `vision_age_ms` | `uint16_t` | Pi 원본 판정 후 누적 ms | Pi 원 판정 Age + CIS 수신 후 보관/송신 대기. 각 구간을 한 번만 추가; 새 수신·상태평가로 0 초기화 금지. |
 | `occupant_presence` | `NetTriState` | 0=없음; 1=있음; 255=확인 불가 | Pi 원 값. CIS 추가 검사 실패 때 정상 없음/0명을 합성하지 않음; 해당 validity를 함께 소비. |
-| `presence_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가 후보. Pi 원 품질을 cache에 보존하고 추가 검사로만 제한; 이 CAN 한 벌로 양측 품질을 동시에 표현할 수 없음(OPEN). |
-| `presence_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가 후보. Pi 원 품질을 cache에 보존하고 추가 검사로만 제한; 이 CAN 한 벌로 양측 품질을 동시에 표현할 수 없음(OPEN). |
+| `presence_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
+| `presence_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
 | `occupant_count` | `uint8_t` | 0~5명,255=확인 불가 | Pi 원 값. CIS 추가 검사 실패 때 정상 없음/0명을 합성하지 않음; 해당 validity를 함께 소비. |
-| `count_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가 후보. Pi 원 품질을 cache에 보존하고 추가 검사로만 제한; 이 CAN 한 벌로 양측 품질을 동시에 표현할 수 없음(OPEN). |
-| `count_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가 후보. Pi 원 품질을 cache에 보존하고 추가 검사로만 제한; 이 CAN 한 벌로 양측 품질을 동시에 표현할 수 없음(OPEN). |
+| `count_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
+| `count_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
 | `vision_function_status` | `NetSensorFunctionState` | CIS 기능 상태 | CIS 기능 평가 owner. 이 occupant update와 함께 고정한 CIS 비전 기능 상태; Pi VISION_STATUS 단순 raw cast 금지. |
 <a id="type-netcisrear"></a>
 ## `NetCisRear`
@@ -318,13 +322,27 @@ enum NetCisFaultCode
 <a id="pi-원-관측과-cis-추가-평가"></a>
 ## Pi 원 관측과 CIS 추가 평가
 
-Pi의 `pi_boot_id/vision_sequence/vision_age_ms`와 Presence/Count·각 원 validity/reason은 [Pi Data](../PI/10_DATA.md)에서 생산된다. UART-C 수신 후 CIS owner는 **원 record를 보존**한다. CIS_OCCUPANT에는 같은 Pi 원 identity/값과 CIS 관리의 `vision_function_status`를 연결한다. 독립 최신 CIS_STATUS를 과거 occupant record의 동반 상태에 덮어쓰지 않는다.
+통신 처리 규칙 — 원 관측의 동일성은 현재 품질이 영구히 같다는 뜻이 아니다. CIS는 같은 Pi BOOT/VISION_SEQUENCE의 확인된 품질 저하를 `CisNet_PublishOccupant()`로 제출한다. 새 CAN 프레임을 받은 DOMAIN 쪽 Network는 메시지별 TX_SEQUENCE를 확인하고 원 식별·누적 AGE를 유지한 채 로컬 `DomainIf_RxCisOccupant()`에 전달한다. 관측 순번 중복만으로 무효 품질을 버리지 않는다. 지연된 구 VALID, 단순 READY 또는 링크 복구만으로 이전 정상값을 복원하지 않는다. 정상 복원에는 새 유효 관측과 해당 기능의 복구 규칙을 적용한다. 이 규칙은 관측 번호·품질 필드·새 공개 API를 추가하지 않는다. DOMAIN 저장값과 Getter까지 반영되는지는 실제 연결 시험 대상이다.
 
-**PROPOSED — 원 품질을 우선 보존하는 제한 평가(O13):** Network는 UART-C TYPE/길이/코드와 수용한 Pi 세대를 검사한 뒤 `CisApp_OnPiVisionResult()`에 원 record와 수신 메타를 전달한다. CIS owner는 반환 전에 원 record·수신 기준점을 복사하고, Presence와 Count를 각각 평가하여 기존 `CisNet_PublishOccupant()`로 제출하는 순서를 권장한다. 두 값의 동일 Pi Boot/VisionSequence/원 AGE를 유지한다. 원 INVALID인 값은 그 값·INVALID·Pi 원 사유를 보존한다. 원 VALID인 값만 CIS의 실제 사용 조건을 추가 검사하며, 확인된 만료이면 해당 validity를 INVALID/사유 STALE로, 확인된 전달 장애이면 INVALID/사유 COMMUNICATION_FAULT로 제한한다. 나머지 원 품질은 승격하지 않는다. CIS READY나 새 CAN frame만으로 이 평가를 통과시키지 않는다.
+권장 프로필 — 원 판정과 현재 사용 품질을 분리한다. 기존 CAN에는 최종 validity/reason 한 벌만 유지하며 새로운 품질 필드를 추가하지 않는다. 이 권장안은 실제 Codec·기능 연결 시험 완료를 뜻하지 않는다.
 
-Pi 원 사유와 CIS 추가 사유가 동시에 있으면 **Pi INVALID의 원 사유를 전송하고 CIS 추가 근거는 로컬 원 record와 함께 보존**하는 최소안을 권장한다. Pi가 VALID인 경우에만 CIS에서 실제 확인한 차단 원인을 기존 사유 코드로 전달한다. 한 벌의 Wire validity/reason이 두 근거를 모두 표현한다고 주장하지 않는다. 여러 CIS 차단 원인의 대표 선택과 `vision_function_status` 변환은 CIS 기능 owner가 확인해야 하며, 표현 근거 없는 조합은 해당 값만 제어 입력으로 사용하지 않는다. Count 실패로 정상 Presence까지 INVALID로 만들거나 반대로 Presence 실패를 Count 0으로 치환하지 않는다. 이 안은 `NETWORK_OWNED` 수신 검증과 `CROSS_NODE_AGREEMENT` 품질 전달 권고이며, Pi/CIS/DOMAIN 담당자가 “이 한 벌을 최종 사용 품질로 소비하며 Pi INVALID 원 사유 우선을 수용하는가?”를 확인해야 한다. 채택·실제 변환/Codec·시험 근거는 아직 없으며 `AGREED/IMPLEMENTED/TESTED`로 표시하지 않는다.
+Pi의 `pi_boot_id/vision_sequence/vision_age_ms`와 Presence/Count의 원 validity/reason은 Pi가 생산한다. Network는 형식·수용한 세대·순서를 검증한 뒤 `CisApp_OnPiVisionResult()`로 인계한다. CIS 기능은 콜백이 끝나기 전에 필요한 원 값·품질·수신 기준점을 복사하고, 같은 원 판정에 대한 제한 결과를 `CisNet_PublishOccupant()`로 제출한다.
 
-`P_VISION_STATUS` READY/RECOVERING은 기능 상태 변경이다. 이 수신으로 `VISION_SEQUENCE`나 원 판정 생성시각을 갱신하지 않고 이전 Presence/Count를 새 관측으로 표시하지 않는다. 후방 위험 판단은 DOMAIN이 수행하므로 CIS_REAR가 VSS 위험 수준을 생성하지 않는다. NO_OBJECT는 측정 불가와 구분한다.
+| 확인한 사실 | 현재 전달 품질 | 보존할 원 근거 |
+|---|---|---|
+| 같은 판정에서 각 필드가 VALID이고 값 범위·기능 상태가 사용 가능 | 해당 필드 VALID | Pi BOOT·VisionSequence·원 AGE |
+| 한 필드가 원 INVALID이고 지원되는 사유가 있음 | 후속 제한이 없으면 그 필드 INVALID와 원 사유 사용. 실제 CIS 추가 제한이 생기면 현재 제한 사유를 적용하되 Pi 당시 사유를 원 근거로 별도 보존 | 다른 정상 필드는 독립 유지 |
+| 같은 판정의 두 필드가 각각 사용 가능한데 ABSENT/count>0 또는 PRESENT/count=0 | 양쪽 INVALID/DATA_INVALID | 모순을 일으킨 원 값과 품질 |
+| 이후 실제 관측 수신 중단 또는 원 AGE 만료 | COMMUNICATION_FAULT 또는 STALE 등 확인한 사유로 현재 사용 제한 | 이전 Pi 사유와 이후 장애를 별도로 보존 |
+| 수용된 최신 STATUS의 FAULT와 영향 필드가 확인됨 | 해당 영향 필드 제한 | 판정 원본과 이후 상태·고장 근거 분리 |
+| STATUS READY/RECOVERING만 수신 | 상태만 갱신 | 과거 VisionSequence·AGE·유효성을 새 판정으로 복원하지 않음 |
+| 다른 CIS 센서에만 고장이 발생 | Pi 정상 관측을 일괄 무효화하지 않음 | 영향 기능별 격리 |
+
+상호 모순 검사는 두 값이 각각 유효·사용 가능한 경우에만 한다. `presence=ABSENT/VALID`, `count=255/INVALID/NO_DATA`에서 255를 정상 인원수로 비교하여 Presence까지 무효화하지 않는다.
+
+원 Pi 사유를 언제나 최종 사유로 고정하지 않는다. 수용된 판정의 원 사유는 보존하되, 이후 통신 단절·만료·기동 변경·확인된 기능 고장이 생기면 현재 사용 품질을 더 제한한다. 예약 코드·미지원 사유 등 형식 오류는 수신 검증 규칙을 따르며 임의의 정상 코드로 바꾸어 수용하지 않는다.
+
+`vision_function_status`는 해당 취합 시점의 CIS 기능 평가다. 독립적으로 갱신된 최신 CIS_STATUS를 과거 occupant record에 붙이지 않는다. 한 벌의 CAN reason만으로 Pi 원 사유와 모든 후속 CIS 장애를 역복원할 수는 없다. 실제 최종 사유·상태 변환 및 C2 원본 연결은 구현 검증으로 확인한다.
 
 ## Source AGE를 한 번씩 누적
 
@@ -335,26 +353,61 @@ Pi Network는 원 판정 Age에 **Pi 제출→실제 UART 송신 대기**만 더
 <a id="허용-입력과-pi-relay"></a>
 ## 허용 입력과 Pi relay
 
-허용의 세 입력 합성·독립 품질·보수 AGE 정본은 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission), Pi 실제 사용 조건은 [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)다. 아래는 CIS의 App 소비·내부 중계 역할과 수명만 설명한다.
+DOMAIN 원 허용의 합성은 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission), Pi 수신의 사용 기한 검사는 [공통 시간표](../../04_COMMON/10_DATA_AND_ID_RULES.md#section-timing)를 따른다. [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)에도 같은 원 기한을 적용한다. 실제 기능 사용과 통신 중계를 나눈다.
 
-DOMAIN_PERMISSION의 전체 타입은 [Common Data](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission)다. CIS App은 원 전원 허용을 소비하며, `P_PERMISSION` 구성은 내부 `CisNetPriv_RelayPiPermission()`이 맡는다. 공개 App이 임의 `NetPiPermission`을 작성해 새 허용을 보내는 경계는 채택하지 않는다.
+후방 활성 Permission은 약 200ms마다 실제 재평가하고 원 사용 기한은 500ms로 한다. 값이 바뀌면 즉시 제출하며, 같은 값이어도 실제 새 평가가 성공하면 그 평가 번호·시각을 전달한다. CAN 50ms 송신/150ms 수신 중단과 UART-C 500ms 반복/1500ms 수신 중단은 유지한다. 반복 프레임 때문에 원 AGE를 0으로 만들거나 이전 허용을 연장하지 않는다.
 
-P_PERMISSION의 `cis_boot_id`는 CIS runtime, `update_sequence`는 CIS relay 의미 평가 번호 후보다. DOMAIN 원 Boot/순번을 이 두 값과 동일시하지 않는다. 원 DOMAIN 세대 변경 시 기존 relay 허용을 무효화하고 현재 원 허용 재확인 뒤 새 relay 의미 평가를 만든다. 반복 송신은 sequence 유지·Age 증가다. 최종 use_limit 1500ms 후보, relay 품질/사유와 무수신 consumer 무효화 연결은 TEAM_DECISION_REQUIRED/BINDING_OPEN이다.
+CIS Network는 같은 검증된 `NetDomainPermission`/`NetCanRxMeta`를 `CisApp_OnDomainPermission()`과 private `CisNetPriv_RelayPiPermission()`에 분배한다. CIS App은 후방 기능을 제어하고, Network 내부 relay는 원 허용을 제한·전달한다. 공개 App에 별도의 Pi 허용 생성 API를 요구하지 않는다.
 
-**PROPOSED — 동일 입력의 두 소비와 제한 relay(O05):** 검증된 동일 `NetDomainPermission`과 `NetCanRxMeta`를 기존 `CisApp_OnDomainPermission()` 및 private `CisNetPriv_RelayPiPermission()`에 분배한다. CIS/Pi의 전원 소비는 `vehicle_power_permission`, `power_permission_quality`, 수용한 DOMAIN 세대와 공통 보수 AGE를 함께 확인한다. 같은 frame의 WINDOW operation 정보로 전원 허용을 새로 만들거나, operation 근거 부재만으로 독립적으로 확인된 전원 판단을 새 불허 정책으로 바꾸지 않는다. 다만 공통 AGE로 전원 원 기한 이내임을 입증할 수 없으면 그 전원 사용은 제한한다. power 품질이 OK이고 값이 1이며 원 기한 이내임을 확인한 경우에만 relay 허용 후보를 전달한다. 원 값 0/OK는 확인된 불허 그대로, 원 255 또는 NO_DATA/INVALID/STALE는 해당 비유효 의미 그대로 전달하고 Pi가 허용으로 사용하지 않게 한다.
+새 원 DOMAIN 평가·수용한 세대 변경·실제 중계 품질 제한이 생기면 중계 record를 갱신해 가능한 즉시 제출한다. 단순 반복은 기존 relay revision과 증가한 AGE를 유지한다. 매 CAN 전송의 TX_SEQUENCE를 새 허용 평가 번호로 쓰지 않는다. `CIS_BOOT_ID`는 CIS 통신 기동이며 원 DOMAIN BOOT가 아니다.
 
-새 원 DOMAIN 평가/세대 또는 relay 품질 제한이 생길 때 기존 relay record를 갱신·로컬 제출하고, 단순 반복은 기존 relay revision과 증가한 원 AGE를 유지하는 안을 권장한다. 새 DOMAIN TX_SEQUENCE만으로 relay 원 평가를 발급하지 않는다. CAN 수신 후 경과·UART 대기를 각각 한 번 누적하고, Pi가 원 DOMAIN 150ms 사용 상한 후보와 `use_limit_ms` 중 더 짧은 한도를 확인하도록 양단 합의하는 안을 권장한다. 따라서 500ms 반복/1500ms `USE_LIMIT` 후보는 원 허용을 연장하는 근거가 아니다. 제출 실패는 기존 `NOT_READY/NO_CAPACITY` 등 로컬 실패로 관측하며 이전 허용을 새 OK로 재제출하지 않는다. 실패·무수신·만료 때 실제 Pi 소비자가 허용 상실을 관측하는 연결은 `IMPLEMENTATION_BINDING` 미정이다. 이 `CROSS_NODE_AGREEMENT` 권고에 대해 DOMAIN/CIS/Pi 담당자는 원 전원 판단의 사용 상한, 새 원 평가·실효성 상실의 전달 조건, 실제 소비자 무효화 연결을 확인해야 한다. 연속 유효 허용이 필요하면 500ms 반복만으로 충분하지 않다는 점과 실제 전달 지연도 함께 확인한다. 새 주기·Wire·공개 API는 확정하지 않는다.
+전원 값·전원 품질·수용한 세대·신뢰 가능한 원 AGE를 함께 검사한다. 0/OK는 확인된 불허, 255 또는 NO_DATA/INVALID/STALE는 허용 확인 불가다. 같은 프레임의 WINDOW operation 부재만으로 확인된 Power를 새 불허 정책으로 바꾸지 않으며, 확인되지 않은 공통 AGE로 ALLOW를 생성하지 않는다. `POWER_OPERATION_STATE` 생성원과 독립 입력의 공통 AGE/순번 합성은  미결이다.
 
-## 센서별 부분 실패와 링크 관측 — O19
+`P_PERMISSION.USE_LIMIT=1500ms`는 기존 필드 값 후보로 보존한다. 같은 후방 Power 원 판단의 중계라는 근거를 확인한 경우 `500ms`로 전달하는 안은 조건부 권장 프로필이다. 배포 전 양단 바이트·AGE·만료 해석을 검증하며, 실제 송신 필드 값은 미확정이다. 어떤 `USE_LIMIT`도 원 판단의 검증된 사용 기한을 연장하지 않는다.
+
+제출 거절은 NOT_READY/NO_CAPACITY 등 로컬 반환으로 구분한다. 지연·실패·무수신으로 원 기한을 만족하지 못하면 이전 ALLOW를 새 OK로 재사용하지 않는다. 실제 송신 완료·수신 중단 관측과 소비자 무효화 연결은 BINDING_OPEN이다. Pi가 이 값을 비전 기능에 사용하는 정책은 별도이며, 그 선택을 통신 문서·수신 시험의 선행조건으로 삼지 않는다.
+
+<a id="delta-cis-permission"></a>
+**실패 정책은 DOMAIN 기능 정책 미확정의 권장안:** DOMAIN이 평가 실패를 현재 무효 품질로 전달한 경우 원500ms 안이라도 과거 ALLOW를 사용하지 않는다. 원 성공 평가 순번이 같다는 이유로 품질 하향을 누락하지 않고 검증된 입력을 기존 App callback과 private relay에 함께 전달한다. 원 성공 평가·CAN 합성·CIS relay 번호 공간은 별개이며 무효 보고로 성공 순번·AGE0을 만들지 않는다. relay 갱신·즉시 전달 요청과 원격 실제 적용을 구분하고 적체·송신 실패 뒤 구 ALLOW 재전달 방지는 연결 시험에서 확인한다. [권장 투영과 실패의 지위](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+
+## 센서별 부분 실패와 링크 관측 —
 
 **PROPOSED — 독립 원 관측을 그대로 보고:** CIS owner는 `NetCisEnvironment`의 각 값·sequence·AGE·validity·reason 묶음을 독립 갱신해 기존 `CisNet_PublishEnvironment()`로 제출한다. 예를 들어 온도 NO_DATA는 기존 온도 무효 표현과 INVALID/NO_DATA 사유로 보고하되, 유효한 습도·조도의 값과 원 측정 번호·AGE를 보존한다. 환경 frame 수신이나 CIS READY는 세 값의 원 측정을 갱신하지 않는다. 후방 UNAVAILABLE/FAULT 및 거리 65535를 정상 거리 0 또는 NO_OBJECT로 바꾸지 않으며, DOMAIN의 위험/CLEAR 판단을 CIS가 대신 생성하지 않는다. 기존 타입·raw를 사용하는 `NETWORK_OWNED` 전달 권고이며 센서 사용 범위·기능 판단은 `FUNCTION_OWNER` 확인 사항이다.
 
-Network가 관측한 Pi UART/CAN 제공 경로 상태는 CIS 진단 owner가 실제 근거와 영향 기능을 확인한 뒤 기존 `NetCisStatus`의 interface 상태·현재 fault·affected_function에 반영하고 `CisNet_PublishStatus()`로 제출하는 안을 권장한다. 단순 수신 누락을 센서 자체 고장이나 최근 fault의 새 발생으로 직접 변환하지 않는다. 다른 정상 센서의 값/품질은 보존하고, 링크 실패가 영향을 주는 제공·소비 경로만 사용을 제한한다. CIS 담당자에게 “현재 Network 관측을 진단 owner에 전달하는 실제 기존 연결은 무엇이며, 어떤 기능/제공 경로의 사용이 제한되는가?”를 확인한다. 미확인 health 전달 함수나 신규 fault frame을 만들지 않는다. SDK/Firmware/Codec/Board 시험은 `NOT_EXECUTED`다.
+Network가 관측한 Pi UART/CAN 제공 경로 상태는 CIS 진단 owner가 실제 근거와 영향 기능을 확인한 뒤 기존 `NetCisStatus`의 interface 상태·현재 fault·affected_function에 반영하고 `CisNet_PublishStatus()`로 제출하는 안을 권장한다. 단순 수신 누락을 센서 자체 고장이나 최근 fault의 새 발생으로 직접 변환하지 않는다. 다른 정상 센서의 값/품질은 보존하고, 링크 실패가 영향을 주는 제공·소비 경로만 사용을 제한한다. CIS 진단 모듈은 기존 Health 연결과 실제 영향 기능을 기능 코드에서 확인한다. 그 연결 증거는 아직 제공되지 않았다. 미확인 health 전달 함수나 신규 fault frame을 만들지 않는다. SDK/Firmware/Codec/Board 시험은 `NOT_EXECUTED`다.
 
-## 환경 원본 최신성 — O20
+<a id="r1-permission-consumption"></a>
+**후방 허용 소비:** DOMAIN의 원 Power 평가 주기 약 200ms·원 유효기한 500ms를 적용한다. 원 평가 AGE 499ms라도 출처·품질·기능 조건이 모두 유효해야 하며, 500ms/501ms에는 허용을 사용하지 않는다. CIS relay 송신이나 Pi 재수신으로 원 AGE를 0으로 만들지 않는다. P_PERMISSION.USE_LIMIT 1500ms 후보를 500ms로 바꾸는 안은 원 갱신·전송·기능 owner 근거를 필요로 하는 CONDITIONAL이며 자동 적용하지 않는다. 공유 Operation/Alive/Power의 미확인 source는 미결이며 UNKNOWN을 ALLOW로 승격하지 않는다. WINDOW 부재만으로 이미 확인된 별도 Power를 DENIED로 덮어쓰지도 않는다.
 
-**CONFLICT / TEAM_DECISION_REQUIRED:** 온도·습도 원본 사용 AGE 한도는 pinned Network §8과 제공 Stage B의 **2500ms [초안 제안]**이 구 SysRS §2.5의 **2000ms [잠정]**과 다르다. CIS/DOMAIN/Network 담당자가 결정하기 전 어느 수치를 최종 승인값으로 적용하지 않는다. 조도 원본 한도 **1000ms 후보**, CIS_ENVIRONMENT CAN 보고 주기 **200ms 후보** 및 정상 frame 수신 중단 **600ms 후보**는 각각 원 측정 최신성·전송 주기·링크 감시이며 온도·습도 원본 한도와 대체할 수 없다. 구 SysRS §2.5의 2000ms 행은 **실내 조도에도 적용**된다. 따라서 실내 조도 1000ms 후보↔구 2000ms의 관계도 담당자가 확인한다. 더 짧은 1000ms 후보는 사용을 보수적으로 제한하는 안으로 양립할 수 있으므로 수치 차이만으로 일괄 계약 충돌을 판정하지 않는다. 실제 센서 갱신 조건·수신 경과와 값을 사용하는 기능의 기준을 함께 대조한다. 새 frame 수신이나 다른 센서 갱신으로 오래된 원 측정 AGE를 초기화하지 않는다. [팀 결정 O20](../../06_OPEN_FOR_TEAM.md)과 [CAN 최신성 설정](../../03_COMMUNICATION/10_CAN_FD.md)을 함께 확인한다.
+<a id="환경-원본-최신성--o20"></a>
+## 환경 원본 최신성 —
+
+<a id="r1-environment-transition"></a>
+온도·습도는 각각 원 생성시점 기준 2500ms다. 2499ms에는 해당 센서의 품질까지 확인하고, 2500ms·2501ms에는 사용을 제한한다. 한 센서의 새 유효 관측은 그 센서만 회복시키며 다른 센서의 AGE/품질을 초기화하지 않는다. 조도 1000ms는 미확정 권장 후보다. 새 CIS BOOT를 수용하면 구 BOOT의 캐시를 정상으로 재사용하지 않고, 낮은 새 관측 순번을 구 세대의 높은 순번과 비교하지 않는다. 지연된 구 BOOT 프레임은 새 세대 복구 근거가 아니다. 기존 C2→VSM 저장·독립 Meta·Getter까지의 무효화/회복은 실제 연결 검증 대기이며, 현재 구조로 불가능하다는 근거가 있을 때만 최소 계약 변경을 검토한다.
+
+온도·습도의 각 원본 사용 기한은 2500ms다. 원 AGE가 2500ms에 도달하면 해당 값을 사용하지 않는다. 다른 센서의 정상 측정이나 CAN 반복 송신으로 원 AGE·측정 순번을 갱신하지 않는다.
+
+CIS의 참고 코드에는 약 2000ms 측정 주기와 `ENV_STALE_MS=5000ms` 후보가 있다. 5000ms는 현재 코드의 값 유효성 검사 후보이며 진단 전용 한도로 확정된 것이 아니다. 이 값이 DOMAIN의 2500ms 소비 한도를 연장하지 않는다. CIS 쪽 적용 방식과 `age >= limit` 경계는 기능 코드 연결 시 확인한다.
+
+실내 조도 1000ms는 기능 정책이 미확정인 후보다. CIS 로컬 `LUX_STALE_MS=1000`은 DOMAIN 사용 기한을 확정하는 근거가 아니다. SysRS의 온습도·실내/외 조도 묶음 기준과 별개로 온습도에는 각 2500ms를 적용하며 조도는 후보로 남는다. CAN 환경 보고 200ms/수신 중단 600ms 후보는 원본 사용 기한과 별개다.
+
+환경 C2는 현재 구조를 우선 유지한다. Network는 CIS BOOT와 센서별 Sequence·AGE를 보존하고, BOOT 변경·수신 중단 시 기존 환경값을 NO_DATA/STALE 등 무효 상태로 `DomainIf_RxCisCabinEnvironment()`에 전달하는 방향이다. 실제 DOMAIN VSM 저장값과 Getter까지 무효화되는지 연동 검증이 필요하다. 기존 C2로 필요한 동작을 표현·연결할 수 없다는 근거가 나오면 최소 계약 변경을 검토한다. 지금 새 필드를 임의로 추가하지 않는다.
+
+<a id="delta-cis-environment"></a>
+**환경 저장 순서 권장안 / DOMAIN 연동 조건 확인 필요:** Network는 구 BOOT 대기 데이터·콜백을 배제하고 실행 중 콜백의 DOMAIN 후속 비동기 쓰기까지 정리한 뒤 NO_DATA 무효화를 전달한다. 실제 VSM 저장 완료 확인 후 새 BOOT 센서 원 Sequence·원 시간 근거를 전달한다. 구900/신0을901로 바꾸지 않으며 일반 NO_DATA로 재부팅을 추론하거나 Sequence를 리셋하지 않는다. DOMAIN이 검증된 순서를 실제 저장까지 수용해야 한다. 무효화 실패·완료 미확인에서는 새 정상 전달을 막되 과거 VSM OK가 이미 지워졌다고 기록하지 않는다. commit 이후 Observer 실패는 중복 저장 사유가 아니다.
+
+대기 경과 AGE와 온습도2500ms 만료를 유지한다. 종료 BOOT 차단은 기억 범위 내 조건이며 BOOT 재사용·Network 재시작으로 기억을 잃는 경우까지 보장하지 않는다. 일반 링크 단절 STALE/NO_DATA 선택과 조도1000ms는 미결이다. 실제 C2 저장 경계를 증명할 수 없다면 최소 계약 변경을 검토한다. [전체 환경 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 ## 구현 전 결정
 
-환경 스케일/표현 범위, 후방 센서 최종 유효 범위·Age 상한, Pi process/node 기동 문맥 admission, CIS 최종 품질/상태·fault mapping, 실제 UART/CAN health 전달 경계는 OPEN이다. 별도 CIS_FAULT 메시지나 Pi↔DOMAIN 직결, 원격 Query API를 추가하지 않는다. 실제 SDK/Firmware/Codec/Board 시험 NOT_EXECUTED.
+기존 Wire의 단위·범위·형식은 보존한다. 실제 센서 유효 범위, runtime BOOT 생성·수용, 기능 상태·fault 변환, UART/CAN Health의 실제 연결은 확인이 남아 있다. 통신 처리는 Network가 담당하고, 센서·비전 기능 판단은 CIS·Pi가 구현한다. 별도 CIS_FAULT 메시지·Pi↔DOMAIN 직결·원격 Query API는 추가하지 않는다. 실제 Firmware/Codec/Board 시험은 수행하지 않았다.
+
+## 후방 비활성·재활성 및 기동 경계
+
+후방 거리 원 관측 사용 한도는 `CIS_REAR` 150ms 후보이며 Permission 원 500ms와 별개다. SysRS 후방 거리 최대 500ms 잠정 기준보다 이르게 사용을 제한하지만 실제 센서·전송·소비 주기에서의 가용성은 미검증이다. 이 프로필에서는 누적 AGE 150ms에 도달하면 거리값을 사용하지 않으며 149ms에서도 품질·상태·수신 감시 조건을 만족해야 한다. 실제 DOMAIN 소비 기준 변경에는 해당 거리 한도와 가용성 검증이 필요하다.
+
+후방 허용 상실 시 `INACTIVE=5`를 사용하되, 확인된 불허와 허용 미확인·만료는 validity/reason으로 구분한다. 어떤 경우에도 가짜 거리나 NO_OBJECT를 만들어 정상으로 표시하지 않는다. 재활성 후에는 새 실제 관측이 확인된 뒤 정상 결과를 제공한다. raw 0.1cm는 mm와 같으며 `rearDistanceMm`로 전달할 때 정수 cm로 줄이지 않는다.
+
+권장 프로필: 같은 CIS BOOT가 유지되는 동안 센서만 재초기화하더라도 그 센서의 관측 순번을 임의로 되감지 않는다. 새 CIS BOOT를 수용한 뒤에는 이전 세대의 높은 Sequence와 단순 비교하지 않는다. 이미 종료한 Pi BOOT A를 B 수용 후 다시 받는 경우에는 구세대 차단 규칙을 적용한다. 구세대 기억의 유지 범위·기동 값 충돌·runtime 재시작 뒤의 처리 방식은 검증해야 하며, BOOT 값만으로 영구 재생 공격 방지를 보장하지 않는다.
+
+C2의 기존 `sourceGeneration` 필드가 있는 타입에서는 유효 관측의 nonzero 후보 규칙과 `STALE + generation 0` 정책 미결을 구분한다. 이 예외를 임의로 NO_DATA나 만들어 낸 nonzero로 치환하지 않는다. 환경 C2에 새 Generation 필드를 추가하라는 의미도 아니다. 해당 generation 정책은 DOMAIN 연동 전에 확정해야 한다.

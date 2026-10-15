@@ -1,5 +1,7 @@
 # BCM API — 목표를 받고 실제 결과·상태를 보고
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
 **PROPOSED_DESIGN · BINDING_OPEN.** 아래는 각 노드 안의 로컬 Application/Network 경계다. 제공 DOMAIN C2·ESP32 Gateway 헤더와 달리 해당 노드의 실제 설치/firmware 선언은 확인되지 않았다. 기존 Port가 동일 책임을 충족하면 그 Port에 아래 계약을 매핑하고 공개 wrapper를 중복 설치하지 않는다.
@@ -11,12 +13,12 @@
 | [`void BcmApp_OnDomainDoorCommand(const NetBcmDoorCommand *message, const NetCanRxMeta *meta);`](#api-bcmapp_ondomaindoorcommand) | Network→App · `BCM_DOOR_COMMAND` | BCM Network 수신 Dispatcher → BCM 도어 Application 입력 연결 |
 | [`void BcmApp_OnDomainClimateCommand(const NetBcmClimateCommand *message, const NetCanRxMeta *meta);`](#api-bcmapp_ondomainclimatecommand) | Network→App · `BCM_CLIMATE_COMMAND` | BCM Network 수신 Dispatcher → BCM 공조 Application 입력 연결 |
 | [`void BcmApp_OnDomainLightCommand(const NetBcmLightCommand *message, const NetCanRxMeta *meta);`](#api-bcmapp_ondomainlightcommand) | Network→App · `BCM_LIGHT_COMMAND` | BCM Network 수신 Dispatcher → BCM 실내 조명 Application 입력 연결 |
-| [`NetSubmitResult BcmNet_SendResult(const NetBcmResult *message);`](#api-bcmnet_sendresult) | App→Network · `BCM_RESULT` | BCM 명령 실행 담당자 → BCM Network |
-| [`NetSubmitResult BcmNet_SendEvent(const NetBcmEvent *message);`](#api-bcmnet_sendevent) | App→Network · `BCM_EVENT` | BCM 보호·복구 평가 담당자 → BCM Network |
-| [`NetSubmitResult BcmNet_PublishDoorState(const NetBcmDoorState *message);`](#api-bcmnet_publishdoorstate) | App→Network · `BCM_DOOR_STATE` | BCM 도어 상태 평가 담당자 → BCM Network |
-| [`NetSubmitResult BcmNet_PublishClimateState(const NetBcmClimateState *message);`](#api-bcmnet_publishclimatestate) | App→Network · `BCM_CLIMATE_STATE` | BCM 공조 상태 평가 담당자 → BCM Network |
-| [`NetSubmitResult BcmNet_PublishLightState(const NetBcmLightState *message);`](#api-bcmnet_publishlightstate) | App→Network · `BCM_LIGHT_STATE` | BCM 실내 조명 적용 담당자 → BCM Network |
-| [`NetSubmitResult BcmNet_PublishStatus(const NetBcmStatus *message);`](#api-bcmnet_publishstatus) | App→Network · `BCM_STATUS` | BCM 상태·진단 담당자 → BCM Network |
+| [`NetSubmitResult BcmNet_SendResult(const NetBcmResult *message);`](#api-bcmnet_sendresult) | App→Network · `BCM_RESULT` | BCM 명령 실행 모듈 → BCM Network |
+| [`NetSubmitResult BcmNet_SendEvent(const NetBcmEvent *message);`](#api-bcmnet_sendevent) | App→Network · `BCM_EVENT` | BCM 보호·복구 평가 모듈 → BCM Network |
+| [`NetSubmitResult BcmNet_PublishDoorState(const NetBcmDoorState *message);`](#api-bcmnet_publishdoorstate) | App→Network · `BCM_DOOR_STATE` | BCM 도어 상태 평가 모듈 → BCM Network |
+| [`NetSubmitResult BcmNet_PublishClimateState(const NetBcmClimateState *message);`](#api-bcmnet_publishclimatestate) | App→Network · `BCM_CLIMATE_STATE` | BCM 공조 상태 평가 모듈 → BCM Network |
+| [`NetSubmitResult BcmNet_PublishLightState(const NetBcmLightState *message);`](#api-bcmnet_publishlightstate) | App→Network · `BCM_LIGHT_STATE` | BCM 실내 조명 적용 모듈 → BCM Network |
+| [`NetSubmitResult BcmNet_PublishStatus(const NetBcmStatus *message);`](#api-bcmnet_publishstatus) | App→Network · `BCM_STATUS` | BCM 상태·진단 모듈 → BCM Network |
 | [`void BcmNetPriv_OnDomainPermission(const NetDomainPermission *permission, const NetCanRxMeta *meta);`](#api-bcmnetpriv_ondomainpermission) | NETWORK_PRIVATE · `DOMAIN_PERMISSION` | BCM Network 수신 Dispatcher → BCM Network 내부 감시 |
 
 송신은 비차단 로컬 인계이며 [반환/실패·수명 공통 규칙](../../04_COMMON/20_API_USAGE_AND_FAILURE.md)을 적용한다. 수신은 owner 처리 문맥(superloop 또는 task)에서 등록된 소비자에 전달하며 ISR에서 의미 API를 직접 호출하지 않는다. 실제 task/queue/driver/OS/SDK 배치는 확정하지 않는다. **`NET_SUBMIT_OK ≠ CAN/UART 송신 완료 ≠ 상대 ECU ACCEPTED ≠ 차량 DONE`**.
@@ -69,7 +71,7 @@ void BcmApp_OnDomainDoorCommand(
 
 **반환·실패:** [수신 전달](#local-rx-return)을 적용한다. `void`는 실제 실행·소비 성공이 아니며 오류를 기능 Result로 합성하지 않는다.
 
-**결과 사용:** 실제 목표 확인·거부/실패는 BcmNet_SendResult()의 BCM_RESULT로 보고한다.
+**결과 사용:** 실제 목표 확인·거부/실패는 BcmNet_SendResult의 BCM_RESULT로 보고한다.
 
 **경로·상대 경계:** [`BCM_DOOR_COMMAND`](../../03_COMMUNICATION/10_CAN_FD.md#message-bcm-door-command) · 원 송신 [`DomainIf_TxBcmDoorCommand()`](../DOMAIN/20_API.md).
 
@@ -136,13 +138,13 @@ NetSubmitResult BcmNet_SendResult(
 );
 ```
 
-**호출 주체:** BCM 명령 실행 담당자. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
+**호출 주체:** BCM 명령 실행 모듈. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
 
 **Application → Network(TX) · PROPOSED_DESIGN · BINDING_OPEN**
 
 | 인자 | 정확한 타입 / IN·OUT | 생성·소비·유효 조건 / 수명 |
 |---|---|---|
-| `message` | `const NetBcmResult *` · IN/read-only · OUT 없음 | [`NetBcmResult`](10_DATA.md#type-netbcmresult) 전체 의미 record. NULL 불가. BCM 명령 실행 담당자가 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
+| `message` | `const NetBcmResult *` · IN/read-only · OUT 없음 | [`NetBcmResult`](10_DATA.md#type-netbcmresult) 전체 의미 record. NULL 불가. BCM 명령 실행 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
 **호출·사용:** 처리 단계가 실제로 변경되면 원 command_domain_boot/command_id를 유지해 결과를 제출한다. Network가 원 ID를 발급하지 않고 수신한 값을 참조한다. 선택 도어 event/occurrence/age/quality 근거는 같은 결과와 atomic하게 인계하며 별도 BCM_EVENT로 복제하지 않는다.
 
@@ -163,13 +165,13 @@ NetSubmitResult BcmNet_SendEvent(
 );
 ```
 
-**호출 주체:** BCM 보호·복구 평가 담당자. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
+**호출 주체:** BCM 보호·복구 평가 모듈. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
 
 **Application → Network(TX) · PROPOSED_DESIGN · BINDING_OPEN**
 
 | 인자 | 정확한 타입 / IN·OUT | 생성·소비·유효 조건 / 수명 |
 |---|---|---|
-| `message` | `const NetBcmEvent *` · IN/read-only · OUT 없음 | [`NetBcmEvent`](10_DATA.md#type-netbcmevent) 전체 의미 record. NULL 불가. BCM 보호·복구 담당자가 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
+| `message` | `const NetBcmEvent *` · IN/read-only · OUT 없음 | [`NetBcmEvent`](10_DATA.md#type-netbcmevent) 전체 의미 record. NULL 불가. BCM 보호·복구 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
 **호출·사용:** 과열·Fan 불일치·복구의 실제 새 발생을 제출한다. occurrence는 BCM 발생 owner, 관련 DOMAIN 명령은 있으면 원 값을 echo하고 없으면 0이다. 같은 발생 반복은 occurrence 유지·Age 증가.
 
@@ -190,13 +192,13 @@ NetSubmitResult BcmNet_PublishDoorState(
 );
 ```
 
-**호출 주체:** BCM 도어 상태 평가 담당자. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
+**호출 주체:** BCM 도어 상태 평가 모듈. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
 
 **Application → Network(TX) · PROPOSED_DESIGN · BINDING_OPEN**
 
 | 인자 | 정확한 타입 / IN·OUT | 생성·소비·유효 조건 / 수명 |
 |---|---|---|
-| `message` | `const NetBcmDoorState *` · IN/read-only · OUT 없음 | [`NetBcmDoorState`](10_DATA.md#type-netbcmdoorstate) 전체 의미 record. NULL 불가. BCM 도어 평가 담당자가 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
+| `message` | `const NetBcmDoorState *` · IN/read-only · OUT 없음 | [`NetBcmDoorState`](10_DATA.md#type-netbcmdoorstate) 전체 의미 record. NULL 불가. BCM 도어 평가 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
 **호출·사용:** 잠금/개폐/조합과 각 품질을 한 평가 record로 제출한다. 새 실제 평가에서만 update_sequence를 바꾸고, 반복 전송은 원 sequence와 증가한 source Age를 유지한다.
 
@@ -217,13 +219,13 @@ NetSubmitResult BcmNet_PublishClimateState(
 );
 ```
 
-**호출 주체:** BCM 공조 상태 평가 담당자. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
+**호출 주체:** BCM 공조 상태 평가 모듈. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
 
 **Application → Network(TX) · PROPOSED_DESIGN · BINDING_OPEN**
 
 | 인자 | 정확한 타입 / IN·OUT | 생성·소비·유효 조건 / 수명 |
 |---|---|---|
-| `message` | `const NetBcmClimateState *` · IN/read-only · OUT 없음 | [`NetBcmClimateState`](10_DATA.md#type-netbcmclimatestate) 전체 의미 record. NULL 불가. BCM 공조 평가·보호 담당자가 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
+| `message` | `const NetBcmClimateState *` · IN/read-only · OUT 없음 | [`NetBcmClimateState`](10_DATA.md#type-netbcmclimatestate) 전체 의미 record. NULL 불가. BCM 공조 평가·보호 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
 **호출·사용:** Fan 지시/실측·열 방향/출력·방열 상태의 독립 품질과 같은 평가 sequence/Age를 제출한다. 일부 실측 불가를 정상 지시값으로 대체하지 않는다.
 
@@ -244,13 +246,13 @@ NetSubmitResult BcmNet_PublishLightState(
 );
 ```
 
-**호출 주체:** BCM 실내 조명 적용 담당자. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
+**호출 주체:** BCM 실내 조명 적용 모듈. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
 
 **Application → Network(TX) · PROPOSED_DESIGN · BINDING_OPEN**
 
 | 인자 | 정확한 타입 / IN·OUT | 생성·소비·유효 조건 / 수명 |
 |---|---|---|
-| `message` | `const NetBcmLightState *` · IN/read-only · OUT 없음 | [`NetBcmLightState`](10_DATA.md#type-netbcmlightstate) 전체 의미 record. NULL 불가. BCM 실내 조명 적용 담당자가 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
+| `message` | `const NetBcmLightState *` · IN/read-only · OUT 없음 | [`NetBcmLightState`](10_DATA.md#type-netbcmlightstate) 전체 의미 record. NULL 불가. BCM 실내 조명 적용 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
 **호출·사용:** 조명 종류/밝기/RGB와 적용 결과/물리 확인 지원 여부·각 품질을 제출한다. 새 평가 sequence/Age를 보존한다.
 
@@ -271,13 +273,13 @@ NetSubmitResult BcmNet_PublishStatus(
 );
 ```
 
-**호출 주체:** BCM 상태·진단 담당자. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
+**호출 주체:** BCM 상태·진단 모듈. **구현 담당 후보:** BCM Network. 실제 Port/consumer 연결은 BINDING_OPEN이다.
 
 **Application → Network(TX) · PROPOSED_DESIGN · BINDING_OPEN**
 
 | 인자 | 정확한 타입 / IN·OUT | 생성·소비·유효 조건 / 수명 |
 |---|---|---|
-| `message` | `const NetBcmStatus *` · IN/read-only · OUT 없음 | [`NetBcmStatus`](10_DATA.md#type-netbcmstatus) 전체 의미 record. NULL 불가. BCM 상태·진단 담당자가 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
+| `message` | `const NetBcmStatus *` · IN/read-only · OUT 없음 | [`NetBcmStatus`](10_DATA.md#type-netbcmstatus) 전체 의미 record. NULL 불가. BCM 상태·진단 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
 **호출·사용:** 현재 ECU/active fault mask·대표 code·영향 기능/복구와 평가 sequence/Age를 제출한다. 통신 fault의 실제 원천은 Network health이고 concrete 공급 경계는 BINDING_OPEN이다.
 
@@ -312,9 +314,9 @@ BCM 수신 Dispatcher가 형식/기동 검증 후 내부 supervision에 전달�
 
 ## 사용 순서와 구현 한계
 
-1. Network가 DOMAIN 세대/목표 Boot·명령 Age를 검사하고 해당 `BcmApp_OnDomain*Command()`에 전체 record와 meta를 전달한다.
+1. Network가 DOMAIN 세대/목표 Boot·명령 Age를 검사하고 해당 `BcmApp_OnDomain*Command`에 전체 record와 meta를 전달한다.
 2. BCM 실행 owner는 원 `(DOMAIN Boot,command_id)`를 보존하고 로컬 보호/피드백으로 처리한다. callback `void`가 결과 성공을 뜻하지 않는다.
-3. 같은 명령의 처리 단계는 `BcmNet_SendResult()`, 로컬 보호 새 발생은 `BcmNet_SendEvent()`로 보고한다. 현재값은 해당 `Publish*State/Status()`에 제공한다.
+3. 같은 명령의 처리 단계는 `BcmNet_SendResult()`, 로컬 보호 새 발생은 `BcmNet_SendEvent()`로 보고한다. 현재값은 해당 `Publish*State/Status`에 제공한다.
 
 ```c
 /* 설계 사용 예: 해당 owner가 평가한 전체 record를 인계한다. */

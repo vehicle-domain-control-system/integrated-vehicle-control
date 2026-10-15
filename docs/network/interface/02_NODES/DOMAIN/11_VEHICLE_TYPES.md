@@ -1,8 +1,13 @@
-# DOMAIN — Vehicle_Types_v0.2.h 전체 의미 타입
+# DOMAIN — Vehicle_Types_v0.3.h 전체 의미 타입
 
-**DECLARED_SOURCE / BINDING_OPEN.** 아래 code block은 제공된 원 헤더의 typedef 원문이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-[노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](../../DECLARED_HEADERS/DOMAIN/Vehicle_Types_v0.2.h)
+**DECLARED_SOURCE / BINDING_OPEN.** 아래 선언은 Vehicle_Types v0.3 후보이며 ClimateState_t·InteriorLightState_t에 sourceGeneration을 포함한다. 양단 동일 헤더·ABI 연결은 검증 전이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+
+[노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/36b4f43db03859518dd82664faa2464d13875a75/firmware/DOMAIN/src/interface/Vehicle_Types_v0.3.h)
+
+<a id="r1-generation-preservation"></a>
+`ClimateState_t.sourceGeneration`과 `InteriorLightState_t.sourceGeneration`은 이 초안의 기존 후보 선언에 이미 포함된 필드다. r1에서는 두 C 선언을 그대로 보존한다. 초기화·복사·상위 composite·Getter·MOBILE projection 전체가 원 생산 세대를 보존하는지 실제 Header/ABI와 함께 확인해야 한다. 유효 관측의 nonzero, 이미 알려진 세대를 INVALID/NO_DATA라고 0으로 지우지 않는 조건을 유지하며, **STALE + sourceGeneration 0은 POLICY_OPEN**이다. CAN BOOT와 생산 세대의 lifecycle이 같다는 근거 없이 단순 대입하지 않는다. 필드 존재는 실제 양단 연결 PASS가 아니다.
 
 ## 타입 바로 찾기
 
@@ -22,7 +27,7 @@
 <a id="type-requestid-t"></a>
 ## `RequestId_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef uint32_t RequestId_t;
@@ -33,18 +38,18 @@ typedef uint32_t RequestId_t;
 <a id="type-sessionid-t"></a>
 ## `SessionId_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef uint64_t SessionId_t;
 ```
 
-**범위·소유:** u64 검증된 Session. 수신 대상 Session과 과거 요청 Session을 구분. 발급/교체 정책 팀 결정 필요.
+**범위·소유:** u64 검증된 Session. 수신 대상 Session과 과거 요청 Session을 구분. 발급·교체 정책 미확정.
 
 <a id="type-occurrenceid-t"></a>
 ## `OccurrenceId_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef uint32_t OccurrenceId_t;
@@ -55,7 +60,7 @@ typedef uint32_t OccurrenceId_t;
 <a id="type-updatesequence-t"></a>
 ## `UpdateSequence_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef uint32_t UpdateSequence_t;
@@ -66,7 +71,7 @@ typedef uint32_t UpdateSequence_t;
 <a id="type-devicecontextid-t"></a>
 ## `DeviceContextId_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef uint32_t DeviceContextId_t;
@@ -77,7 +82,7 @@ typedef uint32_t DeviceContextId_t;
 <a id="type-domaincommandid-t"></a>
 ## `DomainCommandId_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef uint32_t DomainCommandId_t;
@@ -88,7 +93,7 @@ typedef uint32_t DomainCommandId_t;
 <a id="type-sourcegeneration-t"></a>
 ## `SourceGeneration_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef uint32_t SourceGeneration_t;
@@ -99,7 +104,7 @@ typedef uint32_t SourceGeneration_t;
 <a id="type-sourceevidence-t"></a>
 ## `SourceEvidence_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -119,7 +124,7 @@ typedef struct
 <a id="type-commandorigin-t"></a>
 ## `CommandOrigin_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -145,7 +150,7 @@ typedef enum
 <a id="type-dataquality-t"></a>
 ## `DataQuality_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -167,7 +172,7 @@ typedef enum
 <a id="type-valuevalidity-t"></a>
 ## `ValueValidity_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -185,7 +190,7 @@ typedef enum
 <a id="type-qualityreason-t"></a>
 ## `QualityReason_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -219,7 +224,7 @@ typedef enum
 <a id="type-functionavailability-t"></a>
 ## `FunctionAvailability_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -241,7 +246,7 @@ typedef enum
 <a id="type-signalmeta-t"></a>
 ## `SignalMeta_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -261,7 +266,7 @@ typedef struct
 <a id="type-valuequality-t"></a>
 ## `ValueQuality_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -281,7 +286,7 @@ typedef struct
 <a id="type-requestresult-t"></a>
 ## `RequestResult_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -307,7 +312,7 @@ typedef enum
 <a id="type-resultconfirmation-t"></a>
 ## `ResultConfirmation_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -325,7 +330,7 @@ typedef enum
 <a id="type-resultreason-t"></a>
 ## `ResultReason_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -401,7 +406,7 @@ typedef enum
 <a id="type-requestcontext-t"></a>
 ## `RequestContext_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -419,7 +424,7 @@ typedef struct
 <a id="type-requestresultinfo-t"></a>
 ## `RequestResultInfo_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -441,7 +446,7 @@ typedef struct
 <a id="type-faultcategory-t"></a>
 ## `FaultCategory_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -461,7 +466,7 @@ typedef enum
 <a id="type-faultstate-t"></a>
 ## `FaultState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -481,7 +486,7 @@ typedef enum
 <a id="type-faultinfo-t"></a>
 ## `FaultInfo_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -503,7 +508,7 @@ typedef struct
 <a id="type-commonecustate-t"></a>
 ## `CommonEcuState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -525,7 +530,7 @@ typedef enum
 <a id="type-doorlockstate-t"></a>
 ## `DoorLockState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -545,7 +550,7 @@ typedef enum
 <a id="type-dooropenstate-t"></a>
 ## `DoorOpenState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -565,7 +570,7 @@ typedef enum
 <a id="type-doorcompositestate-t"></a>
 ## `DoorCompositeState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -585,7 +590,7 @@ typedef enum
 <a id="type-doorlocktarget-t"></a>
 ## `DoorLockTarget_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -603,7 +608,7 @@ typedef enum
 <a id="type-doorstate-t"></a>
 ## `DoorState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -633,7 +638,7 @@ typedef struct
 <a id="type-fanlevel-t"></a>
 ## `FanLevel_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -657,7 +662,7 @@ typedef enum
 <a id="type-thermaldirection-t"></a>
 ## `ThermalDirection_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -677,7 +682,7 @@ typedef enum
 <a id="type-heatremovalstate-t"></a>
 ## `HeatRemovalState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -697,7 +702,7 @@ typedef enum
 <a id="type-climatestate-t"></a>
 ## `ClimateState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -713,6 +718,7 @@ typedef struct
     DataQuality_t thermalOutputQuality;
     DataQuality_t heatRemovalQuality;
     SignalMeta_t meta; /* per-field quality is authoritative */
+    SourceGeneration_t sourceGeneration; /* accepted candidate: original producer generation */
 } ClimateState_t;
 ```
 
@@ -729,11 +735,12 @@ typedef struct
 | `thermalOutputQuality` | [`DataQuality_t`](11_VEHICLE_TYPES.md#type-dataquality-t) | 열 출력 지시량 품질. | BCM 해당 구동·관측·보호 owner |
 | `heatRemovalQuality` | [`DataQuality_t`](11_VEHICLE_TYPES.md#type-dataquality-t) | 잔열 제거 상태 품질. | BCM 해당 구동·관측·보호 owner |
 | `meta` | [`SignalMeta_t`](11_VEHICLE_TYPES.md#type-signalmeta-t) | 원 생산자의 품질·원본 AGE·평가 번호. 이 메타는 링크 BOOT_ID/TX_SEQUENCE가 아니다. | BCM 해당 구동·관측·보호 owner |
+| `sourceGeneration` | `SourceGeneration_t` | 원 상태 생산 세대. 유효 관측 nonzero 후보, 미확인 0. 이미 아는 세대를 무효 품질 때문에 지우지 않음. STALE+0 정책 미결. | 해당 상태 원 생산자 |
 
 <a id="type-interiorlighttype-t"></a>
 ## `InteriorLightType_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -755,7 +762,7 @@ typedef enum
 <a id="type-rgbcolor-t"></a>
 ## `RgbColor_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -775,7 +782,7 @@ typedef struct
 <a id="type-interiorlightapplystate-t"></a>
 ## `InteriorLightApplyState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -795,7 +802,7 @@ typedef enum
 <a id="type-interiorlightstate-t"></a>
 ## `InteriorLightState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -810,6 +817,7 @@ typedef struct
     DataQuality_t colorQuality;
     DataQuality_t applyQuality;
     SignalMeta_t meta;
+    SourceGeneration_t sourceGeneration; /* accepted candidate: original producer generation */
 } InteriorLightState_t;
 ```
 
@@ -825,11 +833,12 @@ typedef struct
 | `colorQuality` | [`DataQuality_t`](11_VEHICLE_TYPES.md#type-dataquality-t) | RGB 독립 품질. | BCM 해당 구동·관측·보호 owner |
 | `applyQuality` | [`DataQuality_t`](11_VEHICLE_TYPES.md#type-dataquality-t) | 조명 지시 적용 독립 품질. | BCM 해당 구동·관측·보호 owner |
 | `meta` | [`SignalMeta_t`](11_VEHICLE_TYPES.md#type-signalmeta-t) | 원 생산자의 품질·원본 AGE·평가 번호. 이 메타는 링크 BOOT_ID/TX_SEQUENCE가 아니다. | BCM 해당 구동·관측·보호 owner |
+| `sourceGeneration` | `SourceGeneration_t` | 원 상태 생산 세대. 유효 관측 nonzero 후보, 미확인 0. 이미 아는 세대를 무효 품질 때문에 지우지 않음. STALE+0 정책 미결. | 해당 상태 원 생산자 |
 
 <a id="type-deviceregistrationstate-t"></a>
 ## `DeviceRegistrationState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -849,7 +858,7 @@ typedef enum
 <a id="type-btconnectionstate-t"></a>
 ## `BtConnectionState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -869,7 +878,7 @@ typedef enum
 <a id="type-appactivestate-t"></a>
 ## `AppActiveState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -889,7 +898,7 @@ typedef enum
 <a id="type-proximitystate-t"></a>
 ## `ProximityState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -909,7 +918,7 @@ typedef enum
 <a id="type-digitalkeysetting-t"></a>
 ## `DigitalKeySetting_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -927,7 +936,7 @@ typedef enum
 <a id="type-unlockorigin-t"></a>
 ## `UnlockOrigin_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -945,7 +954,7 @@ typedef enum
 <a id="type-digitalkeyconnectionstate-t"></a>
 ## `DigitalKeyConnectionState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -971,7 +980,7 @@ typedef struct
 <a id="type-proximityinput-t"></a>
 ## `ProximityInput_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -993,7 +1002,7 @@ typedef struct
 <a id="type-digitalkeyinput-t"></a>
 ## `DigitalKeyInput_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1011,7 +1020,7 @@ typedef struct
 <a id="type-digitalkeystate-t"></a>
 ## `DigitalKeyState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1035,7 +1044,7 @@ typedef struct
 <a id="type-rearmeasurementstate-t"></a>
 ## `RearMeasurementState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1061,7 +1070,7 @@ typedef enum
 <a id="type-cisstate-t"></a>
 ## `CisState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1083,7 +1092,7 @@ typedef enum
 <a id="type-cisfunctionstatus-t"></a>
 ## `CisFunctionStatus_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1107,7 +1116,7 @@ typedef enum
 <a id="type-cisoccupantstate-t"></a>
 ## `CisOccupantState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1127,14 +1136,14 @@ typedef struct
 | `occupantPresent` | `bool` | Pi 원 탑승자 존재 판정 bool. 유효성 실패는 false 인 정상 관측이 아니다. | CIS 센서/유효성 owner; 탑승자 원 판정은 Pi |
 | `occupantCount` | `uint8_t` | Pi 원 인원수, 0~5 정상 후보; 미확인 raw=255는 countQuality 무효 의미와 함께 변환. | CIS 센서/유효성 owner; 탑승자 원 판정은 Pi |
 | `presenceQuality` | [`ValueQuality_t`](11_VEHICLE_TYPES.md#type-valuequality-t) | Pi 존재 판정의 유효성/사유/품질/원 AGE/원 순서. countQuality와 독립. | CIS 센서/유효성 owner; 탑승자 원 판정은 Pi |
-| `countQuality` | [`ValueQuality_t`](11_VEHICLE_TYPES.md#type-valuequality-t) | Pi 인원수의 독립 유효성/품질/AGE/순서. CIS 재평가 표현의 정확한 합성은 팀 결정 필요. | CIS 센서/유효성 owner; 탑승자 원 판정은 Pi |
+| `countQuality` | [`ValueQuality_t`](11_VEHICLE_TYPES.md#type-valuequality-t) | Pi 인원수의 독립 유효성/품질/AGE/순서. CIS 재평가 표현의 정확한 합성 정책 미확정. | CIS 센서/유효성 owner; 탑승자 원 판정은 Pi |
 | `sourceGeneration` | [`SourceGeneration_t`](11_VEHICLE_TYPES.md#type-sourcegeneration-t) | 원 관측/사건 생산 세대. 원 warning/fault 계보에 사용하고 마지막 송신 홉 Boot로 재라벨하지 않는다. | CIS 센서/유효성 owner; 탑승자 원 판정은 Pi |
 | `visionFunctionStatus` | [`CisFunctionStatus_t`](11_VEHICLE_TYPES.md#type-cisfunctionstatus-t) | 비전 기능 준비·고장 상태. 한 번 관측 성공했다고 지속 READY 합성 금지. | CIS 센서/유효성 owner; 탑승자 원 판정은 Pi |
 
 <a id="type-ciscabinenvironmentstate-t"></a>
 ## `CisCabinEnvironmentState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1162,7 +1171,7 @@ typedef struct
 <a id="type-cisrearstate-t"></a>
 ## `CisRearState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1184,7 +1193,7 @@ typedef struct
 <a id="type-cisenvironmentstate-t"></a>
 ## `CisEnvironmentState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1204,7 +1213,7 @@ typedef struct
 <a id="type-windowcommand-t"></a>
 ## `WindowCommand_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1228,7 +1237,7 @@ typedef enum
 <a id="type-windowmotionstate-t"></a>
 ## `WindowMotionState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1252,7 +1261,7 @@ typedef enum
 <a id="type-antipinchstate-t"></a>
 ## `AntiPinchState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1270,7 +1279,7 @@ typedef enum
 <a id="type-windowstate-t"></a>
 ## `WindowState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1289,7 +1298,7 @@ typedef struct
 
 | 멤버 | 정확한 C 타입 | 역할·범위·유효성 | 원 생성자 |
 |---|---|---|---|
-| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 직전 합의; 현재 구현 보류. | WINDOW 로컬 기능 owner [구현 보류 — 설계 유지] |
+| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 전 확정 필요; 현재 구현 보류. | WINDOW 로컬 기능 owner [구현 보류 — 설계 유지] |
 | `motionState` | [`WindowMotionState_t`](11_VEHICLE_TYPES.md#type-windowmotionstate-t) | WINDOW 실제 이동 상태. 상위 Command 목표와 다르며 구현 보류. | WINDOW 로컬 기능 owner [구현 보류 — 설계 유지] |
 | `ecuState` | [`CommonEcuState_t`](11_VEHICLE_TYPES.md#type-commonecustate-t) | 원 ECU 기능 상태. 링크 사용 가능성과 구별. | WINDOW 로컬 기능 owner [구현 보류 — 설계 유지] |
 | `positionPercent` | `uint8_t` | WINDOW 위치 0~100%, 원 품질/AGE와 함께 사용; 구현 보류. | WINDOW 로컬 기능 owner [구현 보류 — 설계 유지] |
@@ -1302,7 +1311,7 @@ typedef struct
 <a id="type-windowcommandrequest-t"></a>
 ## `WindowCommandRequest_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1318,15 +1327,15 @@ typedef struct
 | 멤버 | 정확한 C 타입 | 역할·범위·유효성 | 원 생성자 |
 |---|---|---|---|
 | `context` | [`RequestContext_t`](11_VEHICLE_TYPES.md#type-requestcontext-t) | 해당 객체의 원 요청/명령 문맥. 하위 타입 전체 정의와 유효성 조건을 함께 적용한다. | Domain 기능 결정/설정/결과 owner |
-| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 직전 합의; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
+| `channel` | `uint8_t` | WINDOW 채널 u8. 지원 채널 범위는 구현 전 확정 필요; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
 | `command` | [`WindowCommand_t`](11_VEHICLE_TYPES.md#type-windowcommand-t) | WINDOW 목표 명령 OPEN/CLOSE/STOP/VENT. VENT70↔80% 충돌 미확정; 구현 보류. | Domain 기능 결정/설정/결과 owner |
-| `targetPositionPercent` | `uint8_t` | WINDOW 목표 위치 0~100%. VENT70↔80% 충돌은 TEAM_DECISION_REQUIRED; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
+| `targetPositionPercent` | `uint8_t` | WINDOW 목표 위치 0~100%. VENT70↔80% 충돌은 FUNCTION_POLICY_OPEN; 현재 구현 보류. | Domain 기능 결정/설정/결과 owner |
 | `validity` | [`DataQuality_t`](11_VEHICLE_TYPES.md#type-dataquality-t) | 해당 값의 유효성을 나타내는 typed 상태. 품질 손실을 정상 bool/0으로 표현하지 않는다. | Domain 기능 결정/설정/결과 owner |
 
 <a id="type-vssstate-t"></a>
 ## `VssState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1348,7 +1357,7 @@ typedef enum
 <a id="type-vssavailability-t"></a>
 ## `VssAvailability_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1368,7 +1377,7 @@ typedef enum
 <a id="type-rearobstaclestate-t"></a>
 ## `RearObstacleState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1388,7 +1397,7 @@ typedef enum
 <a id="type-reardetectionactivation-t"></a>
 ## `RearDetectionActivation_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1406,7 +1415,7 @@ typedef enum
 <a id="type-vssoneshotevent-t"></a>
 ## `VssOneShotEvent_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef enum
@@ -1430,7 +1439,7 @@ typedef enum
 <a id="type-vssservicestate-t"></a>
 ## `VssServiceState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1454,7 +1463,7 @@ typedef struct
 <a id="type-vehiclestate-t"></a>
 ## `VehicleState_t`
 
-**원 소속:** `Vehicle_Types_v0.2.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
+**원 소속:** `Vehicle_Types_v0.3.h` · **지위:** DECLARED_SOURCE · **소비:** [노드 API](20_API.md).
 
 ```c
 typedef struct
@@ -1478,3 +1487,6 @@ typedef struct
 | `window` | [`WindowState_t`](11_VEHICLE_TYPES.md#type-windowstate-t) | WINDOW 상태 묶음; 구현 보류. | 해당 의미 객체의 원 생산자; Domain은 소비/집계 |
 | `vss` | [`VssServiceState_t`](11_VEHICLE_TYPES.md#type-vssservicestate-t) | 별도 S32K344 VSS 음향 상태. | 해당 의미 객체의 원 생산자; Domain은 소비/집계 |
 | `digitalKey` | [`DigitalKeyState_t`](11_VEHICLE_TYPES.md#type-digitalkeystate-t) | Domain 디지털 키 의미 상태. | 해당 의미 객체의 원 생산자; Domain은 소비/집계 |
+
+<!-- 기존 문서 anchor 호환; 본문은 위 전체 선언과 설명으로 승계 -->
+<a id="domain--vehicle_types_v02h-전체-의미-타입"></a>

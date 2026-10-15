@@ -1,8 +1,12 @@
 # ESP32 — Gateway_Interface.h 전체 의미 타입
 
-**DECLARED_SOURCE / BINDING_OPEN.** 아래 code block은 제공된 원 헤더의 typedef 원문이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-[노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](../../DECLARED_HEADERS/ESP32/Gateway_Interface.h)
+**DECLARED_SOURCE / BINDING_OPEN.** 아래 code block은 참조 헤더의 typedef 선언이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+
+[노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/9f0bbed4f2a2444111bc71e756103912c983993b/docs/esp32/3_Gateway_Interface/Gateway_Interface.h)
+
+이 헤더 사본은 본문 선언 13개와 일치함을 확인한 참고자료다. include 의존성을 갖춘 빌드 헤더 묶음은 아니며, 실제 ESP32 구현 채택을 뜻하지 않는다.
 
 ## 타입 바로 찾기
 
@@ -50,7 +54,7 @@ typedef struct
 |---|---|---|---|
 | `vehicle_id` | [`Gateway_ByteView_t`](12_GATEWAY_INTERFACE_TYPES.md#type-gateway-byteview-t) | 논리 차량 식별 opaque view. UART-M에 필드 없으므로 차량 binding owner의 사전 확인으로 소비, 새 wire 필드 금지. | ESP32 Gateway / 해당 BLE·등록·link owner |
 | `device_context_id` | [`Gateway_ByteView_t`](12_GATEWAY_INTERFACE_TYPES.md#type-gateway-byteview-t) | 검증된 단말 context view. UART-M 투영은 Device u32. raw MAC/이름/비밀 key로 대신하지 않는다. | ESP32 Gateway / 해당 BLE·등록·link owner |
-| `session_id` | [`Gateway_ByteView_t`](12_GATEWAY_INTERFACE_TYPES.md#type-gateway-byteview-t) | 검증된 현재 Session view. UART-M 투영 Session u64. 발급 owner/교체 규칙 TEAM_DECISION_REQUIRED. | ESP32 Gateway / 해당 BLE·등록·link owner |
+| `session_id` | [`Gateway_ByteView_t`](12_GATEWAY_INTERFACE_TYPES.md#type-gateway-byteview-t) | 검증된 현재 Session view. UART-M 투영 Session u64. 발급 owner/교체 규칙 FUNCTION_POLICY_OPEN. | ESP32 Gateway / 해당 BLE·등록·link owner |
 | `request_id` | [`Gateway_ByteView_t`](12_GATEWAY_INTERFACE_TYPES.md#type-gateway-byteview-t) | 원 MOBILE Request view(u32). QueryID/Occurrence가 아니며, Request 없는 schema는 empty view다. M_QUERY에 대상 REQUEST_ID가 있으면 그 원값을 사용한다. [Context 존재·종류 검사](25_PRIVATE_ROUTING.md#relay-schema). | ESP32 Gateway / 해당 BLE·등록·link owner |
 
 <a id="type-gateway-relaymessageview-t"></a>

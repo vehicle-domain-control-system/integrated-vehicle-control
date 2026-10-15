@@ -1,5 +1,9 @@
 # UART-M v2 — ESP32↔DOMAIN 23 메시지 후보
 
+Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
+최근 요청 결과 조회는 DOMAIN Device별8건 보관/최신순 최대5건 제공, 기록별 M_RESULT 순차 전송 뒤 M_QUERY_END로 종료한다. 이 제한은 최근 결과 항목에만 적용하며 전체 상태 Query의 응답 수를5건으로 자르지 않는다. 기존23종 TYPE/Frame/CRC와 QueryEnd 세부 count 후보를 변경하지 않는다. [노드 간 공통 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#query)
+
 **경로·VERSION 2·초기 115200 bps 적용 기준 / 상세 프레이밍·CRC·offset·시간 WIRE_PROPOSED.** MOBILE ↔ BLE ↔ ESP32 ↔ UART-M ↔ DOMAIN이다. UART-M과 BLE 프로파일은 별도다.
 
 [시작 안내](../00_START_HERE.md) · [메시지별 API](../05_MESSAGE_INDEX.md) · [ESP32](../02_NODES/ESP32/00_OVERVIEW.md) · [DOMAIN](../02_NODES/DOMAIN/00_OVERVIEW.md) · [Enum 변환](../04_COMMON/30_ENUM_WIRE_MAPPING.md)
@@ -56,11 +60,11 @@ M_* 11개 상태 projection은 **DOWN_CONTEXT 20 B + 원 CAN 사용 B**다. B20~
 <a id="section-request-arguments"></a>
 
 <a id="r2-uart-origin"></a>
-### PROPOSED — 11 원 CAN projection과 부분 export (O24/O21/O22)
+### PROPOSED — 11 원 CAN projection과 부분 export
 
 원 CAN `Net*` 수신 객체+`NetCanRxMeta`를 C2 ingress/Getter/TxPort의 동일 원 입력과 owner 직렬 처리 안에서 association한 경우만 DOWN_CONTEXT+원 CAN used(+20 B)로 투영한다. C2 값만 같다는 이유로 최신 CAN Boot/TX를 붙이지 않는다. Pi 관측 identity와 CIS CAN sender identity도 서로 보존한다. 이 결합 증거가 없으면 해당 projection만 local NOT_READY/source NOT_AVAILABLE 및 Query 부분으로 제한하고, Domain Boot/TX/AGE0로 가짜 원본을 만들지 않는다. 원 padding/raw/길이/offset은 변경하지 않는다. 상세 결합·실패는 [DOMAIN 원본 결합](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-origin-join)을 따른다.
 
-M_USER_SETTINGS의 existing sentinel은 미확인 값에만 사용하며 확인된0/OFF는 보존한다. 독립 sentinel이 없는 NORMAL 밝기/RGB의 has=false이면 해당 composite frame 누락과 Query STATUS2를 권장한다. M_DIGITAL_RESULT의 DONE는 결과 완료이며 ALREADY_AT_TARGET는 실제 Unlock 전이를 뜻하지 않는다. Wire에 없는 전이 bool을 임의 추론하지 않고 그 전이 표시만 제한한다. [부분 export 규칙](../02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md#r2-partial-export)은 `PROPOSED`; 양단 담당자 채택·Codec binding은 아직 미확인이다.
+M_USER_SETTINGS의 existing sentinel은 미확인 값에만 사용하며 확인된0/OFF는 보존한다. 독립 sentinel이 없는 NORMAL 밝기/RGB의 has=false이면 해당 composite frame 누락과 Query STATUS2를 권장한다. M_DIGITAL_RESULT의 DONE는 결과 완료이며 ALREADY_AT_TARGET는 실제 Unlock 전이를 뜻하지 않는다. Wire에 없는 전이 bool을 임의 추론하지 않고 그 전이 표시만 제한한다. [부분 export 규칙](../02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md#r2-partial-export)은 `PROPOSED`; 양단 모듈 채택·Codec binding은 아직 미확인이다.
 
 ## M_REQUEST — Kind/operation/ARG의 정확한 분해
 
@@ -115,26 +119,26 @@ M_USER_SETTINGS의 existing sentinel은 미확인 값에만 사용하며 확인�
 
 Codec 전용 타입 `NetMobileContext`: [DOMAIN Codec Data](../02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [ESP32 API](../02_NODES/ESP32/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
-등록·현재 연결 shared meta 7 B를 추가한 38 B payload / 48 B frame 후보이다. legacy 31 B payload / 41 B frame는 수용하지 않는다. 양 끝이 같은 v2 Codec을 선택하는 것은 TEAM_DECISION_REQUIRED다.
+등록·현재 연결 shared meta 7 B를 추가한 38 B payload / 48 B frame 후보이다. legacy 31 B payload / 41 B frame는 수용하지 않는다. 양 끝이 같은 v2 Codec을 선택하는 것은 CONTRACT_OPEN다.
 
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~11 | `DEVICE_CONTEXT_ID`, `SESSION_ID` | u32/u64. 현재 단말·세션 문맥 | E2D-003/004 |
-| B12 | `DEVICE_REGISTRATION_STATE` | `u8` · 0=NOT_REGISTERED; 1=REGISTERED; 255=UNKNOWN | 관련 기능/Stage B 추가 정보 |
-| B13 | `BT_CONNECTION_STATE` | `u8` · 0=DISCONNECTED; 1=CONNECTED; 255=UNKNOWN | 관련 기능/Stage B 추가 정보 |
-| B14 | `APP_ACTIVE_STATE` | `u8` · 0=INACTIVE; 1=ACTIVE; 255=UNKNOWN | 관련 기능/Stage B 추가 정보 |
-| B15 | `APP_QUALITY` | `u8` · VALUE_QUALITY | 관련 기능/Stage B 추가 정보 |
-| B16~19 | `APP_UPDATE_SEQUENCE` | `u32` · App의 새 활성 정보 번호 | 관련 기능/Stage B 추가 정보 |
-| B20~21 | `APP_AGE` | `u16` · App 활성 정보 후 ms | 관련 기능/Stage B 추가 정보 |
-| B22 | `PROXIMITY_STATE` | `u8` · 0=FAR; 1=NEAR; 255=UNKNOWN | 관련 기능/Stage B 추가 정보 |
-| B23 | `PROXIMITY_VALIDITY` | `u8` · 0=INVALID; 1=VALID | 관련 기능/Stage B 추가 정보 |
-| B24 | `PROXIMITY_REASON` | `u8` · 품질 사유 | 관련 기능/Stage B 추가 정보 |
-| B25~28 | `PROXIMITY_UPDATE_SEQUENCE` | `u32` · ESP32 새 RSSI 평가 번호 | 관련 기능/Stage B 추가 정보 |
-| B29~30 | `PROXIMITY_AGE` | `u16` · RSSI 평가 후 ms | 관련 기능/Stage B 추가 정보 |
-| B31 | `REGISTRATION_CONNECTION_QUALITY` | `u8` · 등록·현재 연결 coherent context의 공유 VALUE_QUALITY | 관련 기능/Stage B 추가 정보 |
-| B32~35 | `REGISTRATION_CONNECTION_UPDATE_SEQUENCE` | `u32` · 기존 owner의 shared observation revision을 반영한 실제 공동 평가 순서 | 관련 기능/Stage B 추가 정보 |
-| B36~37 | `REGISTRATION_CONNECTION_AGE` | `u16` · 같은 등록·현재 peer/연결 평가 이후 누적 ms | 관련 기능/Stage B 추가 정보 |
+| B12 | `DEVICE_REGISTRATION_STATE` | `u8` · 0=NOT_REGISTERED; 1=REGISTERED; 255=UNKNOWN | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B13 | `BT_CONNECTION_STATE` | `u8` · 0=DISCONNECTED; 1=CONNECTED; 255=UNKNOWN | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B14 | `APP_ACTIVE_STATE` | `u8` · 0=INACTIVE; 1=ACTIVE; 255=UNKNOWN | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B15 | `APP_QUALITY` | `u8` · VALUE_QUALITY | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B16~19 | `APP_UPDATE_SEQUENCE` | `u32` · App의 새 활성 정보 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B20~21 | `APP_AGE` | `u16` · App 활성 정보 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B22 | `PROXIMITY_STATE` | `u8` · 0=FAR; 1=NEAR; 255=UNKNOWN | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B23 | `PROXIMITY_VALIDITY` | `u8` · 0=INVALID; 1=VALID | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B24 | `PROXIMITY_REASON` | `u8` · 품질 사유 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B25~28 | `PROXIMITY_UPDATE_SEQUENCE` | `u32` · ESP32 새 RSSI 평가 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B29~30 | `PROXIMITY_AGE` | `u16` · RSSI 평가 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B31 | `REGISTRATION_CONNECTION_QUALITY` | `u8` · 등록·현재 연결 coherent context의 공유 VALUE_QUALITY | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B32~35 | `REGISTRATION_CONNECTION_UPDATE_SEQUENCE` | `u32` · 기존 owner의 shared observation revision을 반영한 실제 공동 평가 순서 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B36~37 | `REGISTRATION_CONNECTION_AGE` | `u16` · 같은 등록·현재 peer/연결 평가 이후 누적 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-request"></a>
@@ -148,24 +152,23 @@ Codec 전용 타입 `NetMobileRequest`: [DOMAIN Codec Data](../02_NODES/DOMAIN/1
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~11 | `DEVICE_CONTEXT_ID`, `SESSION_ID` | u32/u64. 현재 단말·세션 문맥 | E2D-003/004 |
-| B12~15 | `REQUEST_ID` | `u32` · App이 새 사용자 입력마다 생성 | 관련 기능/Stage B 추가 정보 |
-| B16 | `REQUEST_KIND` | `u8` · 1=도어; 2=공조; 3=실내 조명; 4=디지털 키 | 관련 기능/Stage B 추가 정보 |
-| B17 | `OPERATION` | `u8` · 요청 종류별 동작 코드 | 관련 기능/Stage B 추가 정보 |
-| B18 | `ARG_0` | `u8` · §6.1 요청 종류별 인수 | 관련 기능/Stage B 추가 정보 |
-| B19 | `ARG_1` | `u8` · §6.1 요청 종류별 인수 | 관련 기능/Stage B 추가 정보 |
-| B20 | `ARG_2` | `u8` · §6.1 요청 종류별 인수 | 관련 기능/Stage B 추가 정보 |
-| B21 | `ARG_3` | `u8` · §6.1 요청 종류별 인수 | 관련 기능/Stage B 추가 정보 |
-| B22 | `ARG_4` | `u8` · §6.1 요청 종류별 인수 | 관련 기능/Stage B 추가 정보 |
-| B23 | `ARG_5` | `u8` · §6.1 요청 종류별 인수 | 관련 기능/Stage B 추가 정보 |
-
+| B12~15 | `REQUEST_ID` | `u32` · App이 새 사용자 입력마다 생성 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B16 | `REQUEST_KIND` | `u8` · 1=도어; 2=공조; 3=실내 조명; 4=디지털 키 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B17 | `OPERATION` | `u8` · 요청 종류별 동작 코드 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B18 | `ARG_0` | `u8` · §6.1 요청 종류별 인수 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B19 | `ARG_1` | `u8` · §6.1 요청 종류별 인수 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B20 | `ARG_2` | `u8` · §6.1 요청 종류별 인수 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B21 | `ARG_3` | `u8` · §6.1 요청 종류별 인수 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B22 | `ARG_4` | `u8` · §6.1 요청 종류별 인수 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B23 | `ARG_5` | `u8` · §6.1 요청 종류별 인수 | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="r2-request-deadline"></a>
-### 조건부 PROPOSED — 구 SENT3s 정책 확인과 현재 Request 제한 (N01/O08)
+### 조건부 PROPOSED — 구 SENT3s 정책 확인과 현재 Request 제한 (N01/)
 
 구 SysRS의 MOBILE SENT부터3s 정책은 최신 효력이 확인되지 않았고, 현재 M_REQUEST24 B에는 원 SENT 시각/AGE가 없다. **NETWORK_OWNED 권장 현재 처리**는 peer/Session 재검증, 원 RequestId 보존, 링크/현재 문맥이 준비되지 않은 시점의 요청을 기존 NOT_READY로 로컬 거부, 재연결을 넘는 보류 Request 자동 송신 금지다. 이 안은 늦은 재생/중복 실행을 줄이지만 ESP32 수신 시각을 MOBILE SENT로 바꾸거나 end-to-end3s 준수를 증명하지 않는다.
 
-**FUNCTION_OWNER + CROSS_NODE_AGREEMENT 확인 질문:** MOBILE/DOMAIN 기능 owner가 옛3s 정책을 유지하는가? 유지한다면 MOBILE SENT 경과를 신뢰할 기존 BLE/producer evidence와 Gateway 단조시간 매칭 근거가 실제로 있는가? 있다면 원 경과+Gateway 대기+남은 전달 상한으로 수용 기한을 검사하는 후보를 검토한다. 확인되지 않으면 해당3s 정책 의존 실행은 `SAFE_RESTRICTED`; Query/정상 상태 조회 전체는 차단하지 않는다. Gateway 수신 이후3s만 검사하는 대안은 별도 완화 정책 합의 없이는 원 정책의 대체가 아니다. 원 시간 Wire 추가를 요구하는 대안은 승인 요청 기록으로만 남기고 이번24 B/원형은 보존한다. 3.5s 지연·재연결·중복/큐대기 실험은 `NOT_EXECUTED`; 정책 미확인 상태는 현재 확정 결함으로 승격하지 않는다.
+**기능 정책·연동 조건 미확정:** MOBILE SENT 기준 3s 정책의 적용 여부와 원 SENT 경과를 신뢰할 BLE/producer evidence·Gateway 단조시간 대응 근거가 필요하다. 그 근거가 있으면 원 경과+Gateway 대기+남은 전달 상한으로 수용 기한을 검사하는 후보를 적용할 수 있다. 근거가 없으면 해당 3s 정책에 의존하는 실행은 `SAFE_RESTRICTED`이며 Query/정상 상태 조회 전체를 차단하지 않는다. Gateway 수신 이후 3s만 검사하는 것은 원 정책과 동등하지 않다. 원 시간 Wire 추가는 별도 계약 변경이 필요하며 현재 24 B/원형에는 포함되지 않는다. 3.5s 지연·재연결·중복/큐 대기 동작은 검증 전이고, 정책 미확정과 구현 결함을 구분한다.
 
 <a id="message-m-query"></a>
 ## `M_QUERY` — `0x11`
@@ -180,12 +183,12 @@ MOBILE 원 Query → Gateway 현재 Device/Session 검증 → DOMAIN private Que
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~11 | `DEVICE_CONTEXT_ID`, `SESSION_ID` | u32/u64. 현재 단말·세션 문맥 | E2D-003/004 |
-| B12~15 | `QUERY_ID` | `u32` · 이번 조회 식별, 0 금지 | 관련 기능/Stage B 추가 정보 |
-| B16 | `QUERY_SCOPE` | `u8` · 0=현재 상태; 1=요청 결과; 2=경고; 3=전체 | 관련 기능/Stage B 추가 정보 |
-| B17 | `RESERVED` | `u8` · 0 | 관련 기능/Stage B 추가 정보 |
-| B18~25 | `REQUEST_SESSION` | `u64` · 조회할 원 요청 Session; 상태 조회면 0 | 관련 기능/Stage B 추가 정보 |
-| B26~29 | `REQUEST_ID` | `u32` · 조회할 요청; 상태 조회면 0 | 관련 기능/Stage B 추가 정보 |
-| B30~31 | `CURSOR` | `u16` · 이 초안에서는 0 | 관련 기능/Stage B 추가 정보 |
+| B12~15 | `QUERY_ID` | `u32` · 이번 조회 식별, 0 금지 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B16 | `QUERY_SCOPE` | `u8` · 0=현재 상태; 1=요청 결과; 2=경고; 3=전체 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B17 | `RESERVED` | `u8` · 0 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B18~25 | `REQUEST_SESSION` | `u64` · 조회할 원 요청 Session; 상태 조회면 0 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B26~29 | `REQUEST_ID` | `u32` · 조회할 요청; 상태 조회면 0 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B30~31 | `CURSOR` | `u16` · 이 초안에서는 0 | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-warning-ack"></a>
@@ -201,9 +204,9 @@ Domain Boot + Warning Type + Occurrence + 원 단말 문맥에 대한 읽음이�
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~11 | `DEVICE_CONTEXT_ID`, `SESSION_ID` | u32/u64. 현재 단말·세션 문맥 | E2D-003/004 |
-| B12 | `WARNING_TYPE` | `u8` · 경고 종류 | 관련 기능/Stage B 추가 정보 |
-| B13~16 | `OCCURRENCE_ID` | `u32` · 읽은 경고 발생 번호 | 관련 기능/Stage B 추가 정보 |
-| B17~20 | `WARNING_DOMAIN_BOOT` | `u32` · 읽은 경고의 Domain 기동 번호 | 관련 기능/Stage B 추가 정보 |
+| B12 | `WARNING_TYPE` | `u8` · 경고 종류 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B13~16 | `OCCURRENCE_ID` | `u32` · 읽은 경고 발생 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B17~20 | `WARNING_DOMAIN_BOOT` | `u32` · 읽은 경고의 Domain 기동 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-domain-alive"></a>
@@ -218,11 +221,11 @@ Codec 전용 타입 `NetMobileDomainAlive`: [DOMAIN Codec Data](../02_NODES/DOMA
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
-| B0~3 | `DOMAIN_BOOT_ID` | `u32` · Domain 현재 기동 번호 | 관련 기능/Stage B 추가 정보 |
-| B4~7 | `UPDATE_SEQUENCE` | `u32` · Domain 생존 평가 번호 | 관련 기능/Stage B 추가 정보 |
-| B8~9 | `SOURCE_AGE` | `u16` · 평가 후 ms | 관련 기능/Stage B 추가 정보 |
-| B10 | `DOMAIN_STATE` | `u8` · 0=INIT; 1=READY; 2=DEGRADED; 3=FAULT | 관련 기능/Stage B 추가 정보 |
-| B11 | `VALUE_QUALITY` | `u8` · VALUE_QUALITY | 관련 기능/Stage B 추가 정보 |
+| B0~3 | `DOMAIN_BOOT_ID` | `u32` · Domain 현재 기동 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B4~7 | `UPDATE_SEQUENCE` | `u32` · Domain 생존 평가 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B8~9 | `SOURCE_AGE` | `u16` · 평가 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B10 | `DOMAIN_STATE` | `u8` · 0=INIT; 1=READY; 2=DEGRADED; 3=FAULT | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B11 | `VALUE_QUALITY` | `u8` · VALUE_QUALITY | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-result"></a>
@@ -236,15 +239,15 @@ Codec 전용 타입 `NetMobileResult`: [DOMAIN Codec Data](../02_NODES/DOMAIN/14
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~19 | `DOWN_CONTEXT` | DEVICE_CONTEXT_ID/u32 + SESSION_ID/u64 + DOMAIN_BOOT_ID/u32 + QUERY_ID/u32 | E2D-003/004 · query |
-| B20~27 | `REQUEST_SESSION` | `u64` · 원 요청 Session | 관련 기능/Stage B 추가 정보 |
-| B28~31 | `REQUEST_ID` | `u32` · 원 요청 ID | 관련 기능/Stage B 추가 정보 |
-| B32 | `RESULT` | `u8` · 공통 차량 Result; 확인 기록 없으면 255=필드 없음 | 관련 기능/Stage B 추가 정보 |
-| B33~34 | `RESULT_REASON` | `u16` · 공통 사유 코드 | 관련 기능/Stage B 추가 정보 |
-| B35 | `RESULT_CONFIRMATION` | `u8` · 0=UNCONFIRMED; 1=CONFIRMED | 관련 기능/Stage B 추가 정보 |
-| B36 | `COMMAND_TARGET` | `u8` · 0=Domain 설정; 1=BCM; 2=WINDOW | 관련 기능/Stage B 추가 정보 |
-| B37~40 | `COMMAND_ID` | `u32` · 실행 명령 연계; 설정만 반영한 경우 0 | 관련 기능/Stage B 추가 정보 |
-| B41 | `ORIGIN` | `u8` · 요청 출처 코드 | 관련 기능/Stage B 추가 정보 |
-| B42~43 | `RESULT_AGE` | `u16` · 결과 확인 후 ms | 관련 기능/Stage B 추가 정보 |
+| B20~27 | `REQUEST_SESSION` | `u64` · 원 요청 Session | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B28~31 | `REQUEST_ID` | `u32` · 원 요청 ID | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B32 | `RESULT` | `u8` · 공통 차량 Result; 확인 기록 없으면 255=필드 없음 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B33~34 | `RESULT_REASON` | `u16` · 공통 사유 코드 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B35 | `RESULT_CONFIRMATION` | `u8` · 0=UNCONFIRMED; 1=CONFIRMED | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B36 | `COMMAND_TARGET` | `u8` · 0=Domain 설정; 1=BCM; 2=WINDOW | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B37~40 | `COMMAND_ID` | `u32` · 실행 명령 연계; 설정만 반영한 경우 0 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B41 | `ORIGIN` | `u8` · 요청 출처 코드 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B42~43 | `RESULT_AGE` | `u16` · 결과 확인 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-warning"></a>
@@ -258,16 +261,16 @@ Codec 전용 타입 `NetMobileWarning`: [DOMAIN Codec Data](../02_NODES/DOMAIN/1
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~19 | `DOWN_CONTEXT` | DEVICE_CONTEXT_ID/u32 + SESSION_ID/u64 + DOMAIN_BOOT_ID/u32 + QUERY_ID/u32 | E2D-003/004 · query |
-| B20 | `WARNING_TYPE` | `u8` · 경고 종류 | 관련 기능/Stage B 추가 정보 |
-| B21~24 | `OCCURRENCE_ID` | `u32` · Domain 기동 내 경고 발생 번호 | 관련 기능/Stage B 추가 정보 |
-| B25 | `SEVERITY` | `u8` · 0=INFO; 1=CAUTION; 2=EMERGENCY | 관련 기능/Stage B 추가 정보 |
-| B26 | `WARNING_STATE` | `u8` · 0=CLEAR; 1=ACTIVE | 관련 기능/Stage B 추가 정보 |
-| B27 | `READ_STATE` | `u8` · 0=UNREAD; 1=READ | 관련 기능/Stage B 추가 정보 |
-| B28 | `VALUE_QUALITY` | `u8` · VALUE_QUALITY | 관련 기능/Stage B 추가 정보 |
-| B29 | `QUALITY_REASON` | `u8` · 품질 사유 | 관련 기능/Stage B 추가 정보 |
-| B30~33 | `SOURCE_BOOT` | `u32` · 원 관측 생성 노드 기동 번호 | 관련 기능/Stage B 추가 정보 |
-| B34~37 | `SOURCE_SEQUENCE` | `u32` · 원 관측 번호 | 관련 기능/Stage B 추가 정보 |
-| B38~39 | `SOURCE_AGE` | `u16` · 원 관측 후 누적 ms | 관련 기능/Stage B 추가 정보 |
+| B20 | `WARNING_TYPE` | `u8` · 경고 종류 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B21~24 | `OCCURRENCE_ID` | `u32` · Domain 기동 내 경고 발생 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B25 | `SEVERITY` | `u8` · 0=INFO; 1=CAUTION; 2=EMERGENCY | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B26 | `WARNING_STATE` | `u8` · 0=CLEAR; 1=ACTIVE | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B27 | `READ_STATE` | `u8` · 0=UNREAD; 1=READ | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B28 | `VALUE_QUALITY` | `u8` · VALUE_QUALITY | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B29 | `QUALITY_REASON` | `u8` · 품질 사유 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B30~33 | `SOURCE_BOOT` | `u32` · 원 관측 생성 노드 기동 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B34~37 | `SOURCE_SEQUENCE` | `u32` · 원 관측 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B38~39 | `SOURCE_AGE` | `u16` · 원 관측 후 누적 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-availability"></a>
@@ -283,9 +286,9 @@ Codec 전용 타입 `NetMobileAvailability`: [DOMAIN Codec Data](../02_NODES/DOM
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~19 | `DOWN_CONTEXT` | DEVICE_CONTEXT_ID/u32 + SESSION_ID/u64 + DOMAIN_BOOT_ID/u32 + QUERY_ID/u32 | E2D-003/004 · query |
-| B20~55 | `9개 기능 항목` | `항목 i=0~8: B20+4i 기능 ID/u8, +1 가용성/u8, +2~3 사유/u16` · 항목 i=0~8: B20+4i 기능 ID/u8, +1 가용성/u8, +2~3 사유/u16 | 관련 기능/Stage B 추가 정보 |
-| B56~59 | `UPDATE_SEQUENCE` | `u32, 새 가용성 평가 번호` · u32, 새 가용성 평가 번호 | 관련 기능/Stage B 추가 정보 |
-| B60~61 | `SOURCE_AGE` | `u16, 평가 후 ms` · u16, 평가 후 ms | 관련 기능/Stage B 추가 정보 |
+| B20~55 | `9개 기능 항목` | `항목 i=0~8: B20+4i 기능 ID/u8, +1 가용성/u8, +2~3 사유/u16` · 항목 i=0~8: B20+4i 기능 ID/u8, +1 가용성/u8, +2~3 사유/u16 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B56~59 | `UPDATE_SEQUENCE` | `u32, 새 가용성 평가 번호` · u32, 새 가용성 평가 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B60~61 | `SOURCE_AGE` | `u16, 평가 후 ms` · u16, 평가 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-digital-status"></a>
@@ -299,11 +302,11 @@ Codec 전용 타입 `NetMobileDigitalStatus`: [DOMAIN Codec Data](../02_NODES/DO
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~19 | `DOWN_CONTEXT` | DEVICE_CONTEXT_ID/u32 + SESSION_ID/u64 + DOMAIN_BOOT_ID/u32 + QUERY_ID/u32 | E2D-003/004 · query |
-| B20 | `DIGITAL_KEY_SETTING_STATE` | `u8` · 0=OFF; 1=ON | 관련 기능/Stage B 추가 정보 |
-| B21 | `DIGITAL_KEY_AVAILABILITY` | `u8` · 0=AVAILABLE; 1=LIMITED; 2=UNAVAILABLE | 관련 기능/Stage B 추가 정보 |
-| B22~23 | `REASON` | `u16` · 공통 사유 코드 | 관련 기능/Stage B 추가 정보 |
-| B24~27 | `UPDATE_SEQUENCE` | `u32` · 새 판단/설정 평가 | 관련 기능/Stage B 추가 정보 |
-| B28~29 | `SOURCE_AGE` | `u16` · 평가 후 ms | 관련 기능/Stage B 추가 정보 |
+| B20 | `DIGITAL_KEY_SETTING_STATE` | `u8` · 0=OFF; 1=ON | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B21 | `DIGITAL_KEY_AVAILABILITY` | `u8` · 0=AVAILABLE; 1=LIMITED; 2=UNAVAILABLE | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B22~23 | `REASON` | `u16` · 공통 사유 코드 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B24~27 | `UPDATE_SEQUENCE` | `u32` · 새 판단/설정 평가 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B28~29 | `SOURCE_AGE` | `u16` · 평가 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-digital-result"></a>
@@ -317,13 +320,13 @@ Codec 전용 타입 `NetMobileDigitalResult`: [DOMAIN Codec Data](../02_NODES/DO
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~19 | `DOWN_CONTEXT` | DEVICE_CONTEXT_ID/u32 + SESSION_ID/u64 + DOMAIN_BOOT_ID/u32 + QUERY_ID/u32 | E2D-003/004 · query |
-| B20~23 | `AUTO_OCCURRENCE_ID` | `u32` · 자동 Unlock 실행 식별 | 관련 기능/Stage B 추가 정보 |
-| B24~27 | `RELATED_DOOR_COMMAND_ID` | `u32` · BCM 도어 명령 연계 | 관련 기능/Stage B 추가 정보 |
-| B28 | `ORIGIN` | `u8` · 2=PROXIMITY_AUTO | 관련 기능/Stage B 추가 정보 |
-| B29 | `RESULT` | `u8` · 공통 Result; 기록 없으면 255=필드 없음 | 관련 기능/Stage B 추가 정보 |
-| B30~31 | `RESULT_REASON` | `u16` · 공통 사유 코드 | 관련 기능/Stage B 추가 정보 |
-| B32 | `RESULT_CONFIRMATION` | `u8` · 0=UNCONFIRMED; 1=CONFIRMED | 관련 기능/Stage B 추가 정보 |
-| B33~34 | `RESULT_AGE` | `u16` · 결과 확인 후 ms | 관련 기능/Stage B 추가 정보 |
+| B20~23 | `AUTO_OCCURRENCE_ID` | `u32` · 자동 Unlock 실행 식별 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B24~27 | `RELATED_DOOR_COMMAND_ID` | `u32` · BCM 도어 명령 연계 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B28 | `ORIGIN` | `u8` · 2=PROXIMITY_AUTO | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B29 | `RESULT` | `u8` · 공통 Result; 기록 없으면 255=필드 없음 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B30~31 | `RESULT_REASON` | `u16` · 공통 사유 코드 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B32 | `RESULT_CONFIRMATION` | `u8` · 0=UNCONFIRMED; 1=CONFIRMED | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B33~34 | `RESULT_AGE` | `u16` · 결과 확인 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-user-settings"></a>
@@ -337,15 +340,15 @@ Codec 전용 타입 `NetMobileUserSettings`: [DOMAIN Codec Data](../02_NODES/DOM
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~19 | `DOWN_CONTEXT` | DEVICE_CONTEXT_ID/u32 + SESSION_ID/u64 + DOMAIN_BOOT_ID/u32 + QUERY_ID/u32 | E2D-003/004 · query |
-| B20~21 | `TARGET_TEMPERATURE` | `i16` · Domain이 반영한 목표 온도, 0.01°C/raw, -32768=미확인 | 관련 기능/Stage B 추가 정보 |
-| B22 | `CLIMATE_AUTO` | `u8` · 0=OFF; 1=ON; 255=미확인 | 관련 기능/Stage B 추가 정보 |
-| B23 | `USER_FAN_LEVEL` | `u8` · 사용자가 설정한 FAN 코드 | 관련 기능/Stage B 추가 정보 |
-| B24 | `INTERIOR_LIGHT_ENABLED` | `u8` · 0=OFF; 1=ON; 255=미확인 | 관련 기능/Stage B 추가 정보 |
-| B25 | `NORMAL_LIGHT_LEVEL` | `u8` · 사용자 NORMAL 밝기,0~100% | 관련 기능/Stage B 추가 정보 |
-| B26~28 | `NORMAL_LIGHT_RGB` | `rgb` · 사용자 NORMAL 색상 R/G/B | 관련 기능/Stage B 추가 정보 |
-| B29 | `VALUE_QUALITY` | `u8` · 설정 확인 품질 | 관련 기능/Stage B 추가 정보 |
-| B30~33 | `UPDATE_SEQUENCE` | `u32` · 현재 설정 확인 평가 번호 | 관련 기능/Stage B 추가 정보 |
-| B34~35 | `SOURCE_AGE` | `u16` · 설정 확인 평가 후 ms | 관련 기능/Stage B 추가 정보 |
+| B20~21 | `TARGET_TEMPERATURE` | `i16` · Domain이 반영한 목표 온도, 0.01°C/raw, -32768=미확인 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B22 | `CLIMATE_AUTO` | `u8` · 0=OFF; 1=ON; 255=미확인 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B23 | `USER_FAN_LEVEL` | `u8` · 사용자가 설정한 FAN 코드 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B24 | `INTERIOR_LIGHT_ENABLED` | `u8` · 0=OFF; 1=ON; 255=미확인 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B25 | `NORMAL_LIGHT_LEVEL` | `u8` · 사용자 NORMAL 밝기,0~100% | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B26~28 | `NORMAL_LIGHT_RGB` | `rgb` · 사용자 NORMAL 색상 R/G/B | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B29 | `VALUE_QUALITY` | `u8` · 설정 확인 품질 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B30~33 | `UPDATE_SEQUENCE` | `u32` · 현재 설정 확인 평가 번호 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B34~35 | `SOURCE_AGE` | `u16` · 설정 확인 평가 후 ms | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="message-m-query-end"></a>
@@ -361,14 +364,15 @@ Codec 전용 타입 `NetMobileQueryEnd`: [DOMAIN Codec Data](../02_NODES/DOMAIN/
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~19 | `DOWN_CONTEXT` | DEVICE_CONTEXT_ID/u32 + SESSION_ID/u64 + DOMAIN_BOOT_ID/u32 + QUERY_ID/u32 | E2D-003/004 · query |
-| B20 | `QUERY_SCOPE` | `u8` · 원 조회 범위 | 관련 기능/Stage B 추가 정보 |
-| B21 | `QUERY_STATUS` | `u8` · 0=완료; 1=요청 없음; 2=일부 확인 불가; 3=문맥 거부 | 관련 기능/Stage B 추가 정보 |
-| B22~23 | `ITEM_COUNT` | `u16` · 조회 종료를 뺀 응답 메시지 수 | 관련 기능/Stage B 추가 정보 |
-
+| B20 | `QUERY_SCOPE` | `u8` · 원 조회 범위 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B21 | `QUERY_STATUS` | `u8` · 0=완료; 1=요청 없음; 2=일부 확인 불가; 3=문맥 거부 | 메시지별 부가 필드(현 UART-M Wire 계약) |
+| B22~23 | `ITEM_COUNT` | `u16` · 조회 종료를 뺀 응답 메시지 수 | 메시지별 부가 필드(현 UART-M Wire 계약) |
 
 
 <a id="r2-query-contract"></a>
-### PROPOSED — Query 양단 완료·0건·부분 사용 (O25/O12)
+### PROPOSED — Query 양단 완료·0건·부분 사용
+
+성공한 최종 로컬 UART TX 응답만 ITEM_COUNT에 포함한다. 확정 실패 terminal은 종결 판정 근거지만 성공 count가 아니며 pending이 남으면 End를 보류한다. 10개 중 8개 성공/2개 확정 실패는 `STATUS=2, ITEM_COUNT=8` 후보이고 8개 성공/2개 pending은 End 보류다. 품질 UNCONFIRMED인 정상 응답의 TX 성공과 송신 결과 미확인은 다르다. [DOMAIN 종결 규칙](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-query-producer)의 PROPOSED/BINDING_OPEN 지위를 유지한다.
 
 기존 byte/STATUS 숫자는 그대로다. 권장 `ITEM_COUNT`는 같은 현재 Device/Session·Domain Boot·QueryID/scope의 응답 중 **최종 로컬 UART TX 완료를 증명한 N**이며 End·자발 QUERY_ID0·중복 frame은 제외한다. DOMAIN은 모든 응답의 terminal TX 완료/확정 실패 후 End를 그 뒤 송신한다. enqueue/NET_SUBMIT_OK는 count 근거가 아니고 UART TX 완료도 ESP32/BLE 수신 증거가 아니다.
 
@@ -376,7 +380,7 @@ Codec 전용 타입 `NetMobileQueryEnd`: [DOMAIN Codec Data](../02_NODES/DOMAIN/
 
 0건은 원 scope의 빈 집합을 실제 증명한 경우만 `0,count0` 후보이며 Getter 실패·미표현 raw·provenance 부재를 0건 성공으로 만들지 않는다. TX 완료/부분 송신 도착 여부/End 순서·송신을 관측하지 못하면 성공 End를 생성하지 않고 해당 Query 완료 binding을 제한한다. 응답 ordinal이 없으므로 모호한 송신을 새 LINK_SEQUENCE로 자동 재시도하지 않는다. End count 불일치, End 미수신, timeout, Session/Domain Boot 변경은 로컬 조회 불완전/만료로 처리하고 차량 DONE/FAILED를 만들지 않는다. 중복/late End는 닫힌 조회를 재개하지 않는다.
 
-**NETWORK_OWNED + CROSS_NODE_AGREEMENT / PROPOSED:** [DOMAIN 생산자](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-query-producer)와 [ESP32 소비자](../02_NODES/ESP32/25_PRIVATE_ROUTING.md#r2-query-consumer)가 같은 count/직렬화/0건 기준을 확인해야 한다. driver TX 완료·수신 dedup·timeout 수치·MOBILE/BLE 부분/종결 전달은 `IMPLEMENTATION_BINDING`/기능 owner 확인 대상이며 `BINDING_OPEN`. 별도 ACK/raw/BLE format을 신설하지 않는다. 실제 Firmware/Codec/Board/무선 시험 `NOT_EXECUTED`.
+**NETWORK_OWNED + CROSS_NODE_AGREEMENT / PROPOSED:** [DOMAIN 생산자](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-query-producer)와 [ESP32 소비자](../02_NODES/ESP32/25_PRIVATE_ROUTING.md#r2-query-consumer)가 같은 count/직렬화/0건 기준을 확인해야 한다. driver TX 완료·수신 dedup·timeout 수치·MOBILE/BLE 부분/종결 전달은 `IMPLEMENTATION_BINDING`/기능 모듈 조건 확인 대상이며 `BINDING_OPEN`. 별도 ACK/raw/BLE format을 신설하지 않는다. 실제 Firmware/Codec/Board/무선 시험 `NOT_EXECUTED`.
 
 <a id="message-m-bcm-door-state"></a>
 ## `M_BCM_DOOR_STATE` — `0x30`
@@ -604,7 +608,7 @@ Codec 전용 타입 `NetMobileVssStatus`: [DOMAIN Codec Data](../02_NODES/DOMAIN
 <a id="message-m-window-state"></a>
 ## `M_WINDOW_STATE` — `0x38`
 
-**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 합의 전 보류한다.
+**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 조건 확정 전 보류한다.
 
 **DOMAIN → ESP32 · 42 B 사용 / 52 B 전체 frame · WIRE_PROPOSED.**
 
@@ -630,7 +634,7 @@ Codec 전용 타입 `NetMobileWindowState`: [DOMAIN Codec Data](../02_NODES/DOMA
 <a id="message-m-window-fault"></a>
 ## `M_WINDOW_FAULT` — `0x39`
 
-**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 합의 전 보류한다.
+**[구현 보류 — 설계 유지]**. 실제 송수신·감시는 활성화 조건 확정 전 보류한다.
 
 **DOMAIN → ESP32 · 42 B 사용 / 52 B 전체 frame · WIRE_PROPOSED.**
 
@@ -647,4 +651,3 @@ Codec 전용 타입 `NetMobileWindowFault`: [DOMAIN Codec Data](../02_NODES/DOMA
 | B32~35 | `OCCURRENCE_ID` | `u32` · 현재/최근 고장 연결 | 공통·추가 상세 |
 | B36~39 | `UPDATE_SEQUENCE` | `u32` · 상태 평가 번호 | 공통·추가 상세 |
 | B40~41 | `SOURCE_AGE` | `u16` · 평가 후 ms | 공통·추가 상세 |
-

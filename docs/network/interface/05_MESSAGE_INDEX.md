@@ -1,5 +1,7 @@
 # 메시지 48종과 양측 인터페이스
 
+Interface v2 · r1 · [규격과 연동 조건](07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 [시작 안내](00_START_HERE.md) · [공통 ID·Data](04_COMMON/10_DATA_AND_ID_RULES.md) · [사용·실패](04_COMMON/20_API_USAGE_AND_FAILURE.md)
 
 CAN 22 · UART-M 23 · UART-C 3종이다. `DOMAIN_PERMISSION`은 하나의 공유 CAN 프레임을 네 노드가 소비하므로 수신 연결은 51건이다. 함수는 기존 선언(`DECLARED_SOURCE`) 또는 구체 설계 후보이며 실제 Port·Codec·SDK 연결은 `BINDING_OPEN`이다. WINDOW는 **[구현 보류 — 설계 유지]**다.
@@ -13,7 +15,7 @@ CAN 22 · UART-M 23 · UART-C 3종이다. `DOMAIN_PERMISSION`은 하나의 공�
 
 [CAN](#section-can-messages) · [UART-M](#section-uart-m-messages) · [UART-C](#section-uart-c-messages) · [BLE 경계](03_COMMUNICATION/40_BLE.md)
 
-M_CONTEXT는 기존 생산자 3종으로 구성하고, M_DOMAIN_ALIVE와 M_QUERY_END는 Network-private에서 처리한다. [Gateway TYPE registry](02_NODES/ESP32/25_PRIVATE_ROUTING.md#relay-schema)와 [Query 생산·종결](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-query-producer)의 내부 후보를 공개 API 추가로 해석하지 않는다. 현재 채택/바인딩 제한은 [팀 확인 사항](06_OPEN_FOR_TEAM.md#section-active-bindings)에서 확인한다.
+M_CONTEXT는 기존 생산자 3종으로 구성하고, M_DOMAIN_ALIVE와 M_QUERY_END는 Network-private에서 처리한다. [Gateway TYPE registry](02_NODES/ESP32/25_PRIVATE_ROUTING.md#relay-schema)와 [Query 생산·종결](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-query-producer)의 내부 후보를 공개 API 추가로 해석하지 않는다. 현재 채택/바인딩 제한은 [기술 제약과 연동 조건](06_TECHNICAL_CONSTRAINTS.md#section-active-bindings)에서 확인한다.
 
 <a id="section-can-messages"></a>
 ## 공유 CAN FD — 22종
@@ -37,11 +39,11 @@ M_CONTEXT는 기존 생산자 3종으로 구성하고, M_DOMAIN_ALIVE와 M_QUERY
 | [CIS_STATUS](03_COMMUNICATION/10_CAN_FD.md#message-cis-status)<br>CIS → DOMAIN | [CisNet_PublishStatus](02_NODES/CIS/20_API.md#api-cisnet_publishstatus) | DOMAIN: [DomainIf_RxCisStatus](02_NODES/DOMAIN/20_API.md#api-domainif_rxcisstatus) | [NetCisStatus](02_NODES/CIS/10_DATA.md#type-netcisstatus)<br>명시적 Codec 변환·실제 바인딩 OPEN. |
 | [WINDOW_STATE](03_COMMUNICATION/10_CAN_FD.md#message-window-state)<br>WINDOW → DOMAIN | [WindowNet_PublishState](02_NODES/WINDOW/20_API.md#api-windownet_publishstate) | DOMAIN: [DomainIf_RxWindowState](02_NODES/DOMAIN/20_API.md#api-domainif_rxwindowstate) | [NetWindowState](02_NODES/WINDOW/10_DATA.md#type-netwindowstate)<br>**구현 보류 — 설계 유지**. 명시적 Codec 변환·실제 바인딩 OPEN. |
 | [WINDOW_EVENT](03_COMMUNICATION/10_CAN_FD.md#message-window-event)<br>WINDOW → DOMAIN | [WindowNet_SendEvent](02_NODES/WINDOW/20_API.md#api-windownet_sendevent) | DOMAIN: [DomainNetPriv_OnWindowEvent](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnetpriv_onwindowevent) *(private)* | [NetWindowEvent](02_NODES/WINDOW/10_DATA.md#type-netwindowevent)<br>**구현 보류 — 설계 유지**. END와 AntiPinch 근거 분리. related_request_sequence 연계 OPEN. |
-| [WINDOW_RESULT](03_COMMUNICATION/10_CAN_FD.md#message-window-result)<br>WINDOW → DOMAIN | [WindowNet_SendResult](02_NODES/WINDOW/20_API.md#api-windownet_sendresult) | DOMAIN: [DomainIf_RxWindowCommandResult](02_NODES/DOMAIN/20_API.md#api-domainif_rxwindowcommandresult) | [NetWindowResult](02_NODES/WINDOW/10_DATA.md#type-netwindowresult)<br>**구현 보류 — 설계 유지**. request_sequence↔C2 commandId 연계 TEAM_DECISION_REQUIRED. |
+| [WINDOW_RESULT](03_COMMUNICATION/10_CAN_FD.md#message-window-result)<br>WINDOW → DOMAIN | [WindowNet_SendResult](02_NODES/WINDOW/20_API.md#api-windownet_sendresult) | DOMAIN: [DomainIf_RxWindowCommandResult](02_NODES/DOMAIN/20_API.md#api-domainif_rxwindowcommandresult) | [NetWindowResult](02_NODES/WINDOW/10_DATA.md#type-netwindowresult)<br>**구현 보류 — 설계 유지**. request_sequence↔C2 commandId 연계 CONTRACT_OPEN. |
 | [WINDOW_FAULT](03_COMMUNICATION/10_CAN_FD.md#message-window-fault)<br>WINDOW → DOMAIN | [WindowNet_PublishFault](02_NODES/WINDOW/20_API.md#api-windownet_publishfault) | DOMAIN: [DomainNetPriv_OnWindowFault](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnetpriv_onwindowfault) *(private)* | [NetWindowFault](02_NODES/WINDOW/10_DATA.md#type-netwindowfault)<br>**구현 보류 — 설계 유지**. Fault occurrence 근거 보존. FaultInfo 투영 OPEN. |
 | [VSS_EVENT](03_COMMUNICATION/10_CAN_FD.md#message-vss-event)<br>DOMAIN → VSS | [DomainIf_TxVssOneShotEvent](02_NODES/DOMAIN/20_API.md#api-domainif_txvssoneshotevent) | VSS: [VssApp_OnDomainEvent](02_NODES/VSS/20_API.md#api-vssapp_ondomainevent) | [NetVssEvent](02_NODES/VSS/10_DATA.md#type-netvssevent)<br>명시적 Codec 변환·실제 바인딩 OPEN. |
 | [VSS_WARNING_STATE](03_COMMUNICATION/10_CAN_FD.md#message-vss-warning-state)<br>DOMAIN → VSS | [DomainIf_TxVssWarningState](02_NODES/DOMAIN/20_API.md#api-domainif_txvsswarningstate) | VSS: [VssApp_OnDomainWarningState](02_NODES/VSS/20_API.md#api-vssapp_ondomainwarningstate) | [NetVssWarningState](02_NODES/VSS/10_DATA.md#type-netvsswarningstate)<br>명시적 Codec 변환·실제 바인딩 OPEN. |
-| [VSS_STATUS](03_COMMUNICATION/10_CAN_FD.md#message-vss-status)<br>VSS → DOMAIN | [VssNet_PublishStatus](02_NODES/VSS/20_API.md#api-vssnet_publishstatus) | DOMAIN: [DomainNetPriv_OnVssStatus](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnetpriv_onvssstatus) *(private)* | [NetVssStatus](02_NODES/VSS/10_DATA.md#type-netvssstatus)<br>R4 snapshot→NetVssStatus 및 Domain C2 투영 소유자 TEAM_DECISION_REQUIRED. |
+| [VSS_STATUS](03_COMMUNICATION/10_CAN_FD.md#message-vss-status)<br>VSS → DOMAIN | [VssNet_PublishStatus](02_NODES/VSS/20_API.md#api-vssnet_publishstatus) | DOMAIN: [DomainNetPriv_OnVssStatus](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnetpriv_onvssstatus) *(private)* | [NetVssStatus](02_NODES/VSS/10_DATA.md#type-netvssstatus)<br>R4 snapshot→NetVssStatus 및 Domain C2 투영 소유자 FUNCTION_POLICY_OPEN. |
 
 <a id="section-uart-m-messages"></a>
 ## UART-M v2 — 23종
@@ -80,4 +82,3 @@ M_CONTEXT는 기존 생산자 3종으로 구성하고, M_DOMAIN_ALIVE와 M_QUERY
 | [P_VISION_RESULT](03_COMMUNICATION/30_UART_C.md#message-p-vision-result)<br>PI → CIS | [PiNet_PublishVisionResult](02_NODES/PI/20_API.md#api-pinet_publishvisionresult) | CIS: [CisApp_OnPiVisionResult](02_NODES/CIS/20_API.md#api-cisapp_onpivisionresult) | [NetVisionResult](02_NODES/PI/10_DATA.md#type-netvisionresult)<br>명시적 Codec 변환·실제 바인딩 OPEN. |
 | [P_VISION_STATUS](03_COMMUNICATION/30_UART_C.md#message-p-vision-status)<br>PI → CIS | [PiNet_PublishVisionStatus](02_NODES/PI/20_API.md#api-pinet_publishvisionstatus) | CIS: [CisApp_OnPiVisionStatus](02_NODES/CIS/20_API.md#api-cisapp_onpivisionstatus) | [NetVisionStatus](02_NODES/PI/10_DATA.md#type-netvisionstatus)<br>명시적 Codec 변환·실제 바인딩 OPEN. |
 | [P_PERMISSION](03_COMMUNICATION/30_UART_C.md#message-p-permission)<br>CIS → PI | [CisNetPriv_RelayPiPermission](02_NODES/CIS/20_API.md#api-cisnetpriv_relaypipermission) *(private)* | PI: [PiApp_OnCisPermission](02_NODES/PI/20_API.md#api-piapp_oncispermission) | [NetPiPermission](02_NODES/PI/10_DATA.md#type-netpipermission)<br>유효 DOMAIN permission만 중계. 각 홉에서 원 AGE 누적; CIS generation/update 의미 OPEN. |
-

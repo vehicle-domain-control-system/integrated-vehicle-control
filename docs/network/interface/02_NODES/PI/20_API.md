@@ -1,5 +1,9 @@
 # Pi API — 비전 생산과 차량용 사용 허용
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
+권장 프로필과 실제 연동 검증 전 조건을 구분한다. 각 API의 호출·품질·시간 조건을 적용한다.
+
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
 **PROPOSED_DESIGN · BINDING_OPEN.** 아래는 각 노드 안의 로컬 Application/Network 경계다. 제공 DOMAIN C2·ESP32 Gateway 헤더와 달리 해당 노드의 실제 설치/firmware 선언은 확인되지 않았다. 기존 Port가 동일 책임을 충족하면 그 Port에 아래 계약을 매핑하고 공개 wrapper를 중복 설치하지 않는다.
@@ -22,10 +26,14 @@ Pi는 언어 중립 record/호출 규격을 사용한다. 각 상세의 C 원형
 <a id="local-tx-return"></a>
 ### 송신 반환
 
+접수 전 INVALID_ARGUMENT/NOT_READY/NO_CAPACITY는 그 항목이 접수되지 않았다는 반환이다. 이를 접수 후 최종 전송 실패 사건으로 중복 생성하지 않는다. DOMAIN의 기존 `DomainIf_RxNetworkLocalFailure()`는 DOMAIN 측 계약이며 CIS나 Pi에 같은 공개 함수를 설치하지 않는다. 정상 접수 뒤 실패·만료를 관측하는 통신 처리와 주기 상태·Query 실패 경로는 각각 분리한다.
+
 **반환·실패:** `NET_SUBMIT_OK`=필요한 필드의 로컬 복사/수용 완료, `NET_SUBMIT_INVALID_ARGUMENT`=NULL·예약값/범위·필드 조합 오류, `NET_SUBMIT_NOT_READY`=필요한 링크/현재 원 문맥 미준비, `NET_SUBMIT_NO_CAPACITY`=유한 보관 공간 없음. OK는 전송 완료·상대 수신·차량 DONE이 아니다. 정상 형식 INVALID/STALE 자료는 품질을 보존하여 수용할 수 있다.
 
 <a id="local-rx-return"></a>
 ### 수신 전달
+
+정상 형식의 INVALID/NO_DATA/STALE 보고와 CRC·길이·예약 코드 오류를 구분한다. 전자는 현재 품질을 전달할 자료이며, 후자를 버렸다고 마지막 정상 관측의 원 AGE가 다시 시작되지는 않는다. 후속 처리에 필요한 message·meta·수신 시각은 콜백 반환 전에 복사한다.
 
 **반환·실패:** `void`는 의미 전달 notification이며 ECU ACCEPTED/DONE을 반환하는 API가 아니다. 필수 소비자가 연결·준비된 owner 처리 문맥에서만 호출한다. CRC/length/예약 코드/수용되지 않은 세대/명령 Age 오류는 Network에서 격리하며 실제 기능 Result를 합성하지 않는다. 정상 형식의 INVALID/FAULT 상태 전달은 허용한다. 소비자 연결 실패의 실제 진단/무효화 경계는 BINDING_OPEN이다.
 
@@ -95,6 +103,8 @@ NetSubmitResult PiNet_PublishVisionStatus(
 <a id="api-piapp_oncispermission"></a>
 ## `PiApp_OnCisPermission()`
 
+이 경계는 Permission의 수신·해석을 제공한다. 이를 카메라/비전 기능의 실행 조건으로 사용할지는 Pi 기능 모듈이 결정한다. 비전 기능을 적용하지 않더라도 통신 경계와 만료 해석은 검증할 수 있다. 기능 적용 시험을 선택한 경우에만 실제 기능 소비 연결까지 확인한다.
+
 ```c
 void PiApp_OnCisPermission(
     const NetPiPermission *message,
@@ -113,7 +123,7 @@ void PiApp_OnCisPermission(
 | `message` | `const NetPiPermission *` · IN/read-only · OUT 없음 | [`NetPiPermission`](10_DATA.md#type-netpipermission) 전체 의미 record. NULL 불가. Network 검증 후 Pi 차량용 관측 허용 소비 담당에게 전달, 반환까지 borrowed; 보관할 의미와 시간근거는 App이 복사. |
 | `meta` | `const NetUartRxMeta *` · IN/read-only | [`NetUartRxMeta`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netuartrxmeta)는 수신 Network 생산. 로컬 수신 시각/그 홉 전송 순번; 원 관측 sequence/현재 Session/command ID로 대체하지 않음. callback 반환까지 borrowed. |
 
-**호출·사용:** CIS relay Boot/revision과 허용·품질·사유·use_limit·DOMAIN 원 판단 Age를 받는다. 현재 기동과 source Age/수신 경과를 확인하고 값1 단독으로 허용하지 않는다. [허용 소비와 원본 Age](10_DATA.md#허용-소비와-원본-age)의 원 150ms/relay 500ms/use_limit 1500ms 후보 및 제한 조건은 PROPOSED/BINDING_OPEN이다.
+**호출·사용:** CIS relay BOOT/revision, 허용·품질·사유·use_limit·원 DOMAIN 판단 AGE를 받는다. [허용 소비와 원본 Age](10_DATA.md#허용-소비와-원본-age)에 따라 원 AGE에 수신 이후 경과를 누적하고 수용한 세대와 원 수명/USE_LIMIT를 함께 검사한다. 후방 원 500ms를 적용하며 `USE_LIMIT=500ms` 전송값은 조건부 권장 프로필이다. UART-C 반복 500ms/수신 중단 1500ms를 원 수명과 혼동하지 않는다.
 
 **반환·실패:** [수신 전달](#local-rx-return)을 적용한다. `void`는 실제 실행·소비 성공이 아니며 오류를 기능 Result로 합성하지 않는다.
 

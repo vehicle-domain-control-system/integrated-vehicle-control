@@ -1,5 +1,7 @@
 # DOMAIN — 기존 공개/소비 경계 API
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 Firmware 구현·연결·컴파일 완료를 의미하지 않는다.
 
 [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [내부 Adapter](25_PRIVATE_ROUTING.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
@@ -15,7 +17,7 @@
 
 ## 호출 경계
 
-Application TX는 `DomainIf_Tx...()`를 호출한다. Network 수신은 Codec 검증과 typed 투영 후 `DomainIf_Rx...()`로 인계한다. `DomainIf_QueryGet...()` 18 종은 Domain 내부 snapshot Getter 이며 다른 ECU의 RPC가 아니다. TX Port26 종이 실제 Network Adapter로 이어진다. `M_QUERY_END`와 `M_DOMAIN_ALIVE`는 내부에 둔다.
+Application TX는 `DomainIf_Tx...`를 호출한다. Network 수신은 Codec 검증과 typed 투영 후 `DomainIf_Rx...`로 인계한다. `DomainIf_QueryGet...` 18 종은 Domain 내부 snapshot Getter 이며 다른 ECU의 RPC가 아니다. TX Port26 종이 실제 Network Adapter로 이어진다. `M_QUERY_END`와 `M_DOMAIN_ALIVE`는 내부에 둔다.
 
 ## 원형 바로 찾기
 
@@ -365,6 +367,8 @@ DomainIf_Status_t DomainIf_RxCisStatus( const DomainIf_CisStatusReport_t *status
 <a id="api-domainif_rxcisoccupant"></a>
 ## `DomainIf_RxCisOccupant()`
 
+통신 처리 규칙 — 원 관측의 동일성은 현재 품질이 영구히 같다는 뜻이 아니다. 같은 Pi BOOT/VISION_SEQUENCE에 대한 새 CAN 프레임이 확인된 품질 저하를 전달하면, 새로 수용한 메시지별 TX_SEQUENCE를 확인하고 원 식별·누적 AGE를 유지한 채 기존 `DomainIf_RxCisOccupant()`에 반영한다. 관측 순번 중복만으로 무효 품질을 버리지 않는다. 지연된 구 VALID, 단순 READY 또는 링크 복구만으로 이전 정상값을 복원하지 않는다. 정상 복원에는 새 유효 관측과 해당 기능의 복구 규칙을 적용한다. 이 규칙은 관측 번호·품질 필드·새 공개 API를 추가하지 않는다. DOMAIN 저장값과 Getter까지 반영되는지는 실제 연결 시험 대상이다. [노드 간 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#identity)
+
 ```c
 DomainIf_Status_t DomainIf_RxCisOccupant( const CisOccupantState_t *state);
 ```
@@ -384,6 +388,8 @@ DomainIf_Status_t DomainIf_RxCisOccupant( const CisOccupantState_t *state);
 <a id="api-domainif_rxciscabinenvironment"></a>
 ## `DomainIf_RxCisCabinEnvironment()`
 
+온습도 각각의 원 사용 기한은 2500ms다. Network는 원 CIS BOOT·센서별 순번·AGE를 보존하고 기동 변경/수신 중단의 무효 품질을 이 기존 API로 전달한다. VSM/독립 Meta/Getter의 실제 무효화는 연동 검증 전이다. 현재 C2를 우선 유지하되 필요한 동작을 표현·연결할 수 없다는 근거가 있을 때만 최소 계약 변경을 검토한다. [노드 간 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#environment)
+
 ```c
 DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState_t *state);
 ```
@@ -399,6 +405,13 @@ DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState
 **반환·호출:** 로컬 C2 입력 처리 결과. Network 수신 및 Core commit/observer 계약은 [공통 호출 계약](#ports)을 따른다.
 
 **메시지:** `CIS_ENVIRONMENT` — [송수신 색인](../../05_MESSAGE_INDEX.md). 원 wire 객체를 C2/Gateway App 객체로 raw cast 하지 않고 명시 decode/projection 후 호출한다.
+
+<a id="delta-environment-completion"></a>
+**환경 저장 순서 권장 계약 / DOMAIN 기능 정책·연동 검증 전:** 구 BOOT의 미실행 패킷·콜백을 폐기하고, 실행 중 콜백 및 DOMAIN 후속 비동기 저장이 종료되어 이후 commit할 수 없는 상태를 확인한 뒤 이 Rx로 NO_DATA를 반영한다. VSM의 구 정상값·독립 Meta 무효화 저장 완료를 확인하고 나서 새 BOOT 관측을 원 Sequence·원 생성 기준점 그대로 전달한다. 대기 AGE는 누적하며 온습도2500ms에 도달한 관측을 정상으로 복원하지 않는다. Queue 접수나 callback 반환만으로 저장 완료를 주장하지 않는다.
+
+DOMAIN이 확인해야 할 것은 실제 Rx→Manager/VSM→Getter의 commit 위치, 구 후속 쓰기 배제 및 완료를 판단할 기존 관측 근거다. `DOMAIN_IF_OK`에 새 공개 완료 의미를 임의 부여하지 않으며 TX의 로컬 접수 의미를 환경 저장 완료로 가져오지 않는다. Core commit 후 optional Observer 실패는 직접 저장 실패가 아니고 이미 끝난 commit의 재실행 근거도 아니다. 무효화 실패·완료 미확인에서는 새 정상 입력을 차단하되 과거 OK가 이미 지워졌다고 판정하지 않는다.
+
+환경 C2에는 CIS BOOT/sourceGeneration이 없다. Network가 검증한 A900→B0을 전역 순번으로 비교·거절하거나 901로 재발급하지 않고 실제 저장 순서를 유지하는 연결이 실제 DOMAIN 저장 경계에서 성립해야 한다. 일반 NO_DATA는 재부팅/Sequence 리셋 명령이 아니다. 기존 연결로 완료·순서를 증명할 수 없거나 다른 쓰기 경로·DOMAIN 자체 세대 판별이 필요하면 해당 연결을 보류하고 최소 Environment Generation/완료 경계 계약을 계약 변경 검토한다. 현재 헤더·API에는 추가 필드가 없다. [전체 저장 순서와 BOOT 한계](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 <a id="api-domainif_rxcisrear"></a>
 ## `DomainIf_RxCisRear()`
@@ -466,7 +479,7 @@ DomainIf_Status_t DomainIf_RxWindowCommandResult( const DomainIf_WindowCommandRe
 
 **방향:** Network→C2 · **지위:** DECLARED_SOURCE / BINDING_OPEN / [구현 보류 — 설계 유지].
 
-**용도·호출자·시점:** DOMAIN CAN Codec가 WINDOW_RESULT의 원 Command 연결을 검증해 결과 owner에 인계한다. REQUEST_SEQUENCE↔commandId의 정확관계는 팀 결정 전 전환보류.
+**용도·호출자·시점:** DOMAIN CAN Codec가 WINDOW_RESULT의 원 Command 연결을 검증해 결과 owner에 인계한다. REQUEST_SEQUENCE↔commandId의 정확 대응 관계 확인 전 변환 보류.
 
 | 인자 | 정확한 타입 | IN/OUT | 사용·수명 |
 |---|---|---|---|
@@ -521,7 +534,7 @@ DomainIf_Status_t DomainIf_RxVssState( const DomainIf_VssStateReport_t *state);
 
 **방향:** Network→C2 · **지위:** DECLARED_SOURCE / BINDING_OPEN.
 
-**용도·호출자·시점:** DOMAIN CAN Codec가 VSS_STATUS를 C2 서비스상태/원 fault 묶음으로 명시투영해 인계한다. R4/R6 원 Snapshot→DTO 변환위치 합의와 별도 단계다.
+**용도·호출자·시점:** DOMAIN CAN Codec가 VSS_STATUS를 C2 서비스상태/원 fault 묶음으로 명시투영해 인계한다. R4/R6 원 Snapshot→DTO 변환위치와 별도 단계다.
 
 | 인자 | 정확한 타입 | IN/OUT | 사용·수명 |
 |---|---|---|---|
@@ -625,6 +638,11 @@ DomainIf_Status_t DomainIf_TxCisPowerPermission( const DomainIf_CisPowerPermissi
 **반환·호출:** 로컬 TX 수용 결과. 안정된 복사/encode 전 OK 금지; ECU 실행 DONE과 다르다.
 
 **메시지:** `DOMAIN_PERMISSION` — [송수신 색인](../../05_MESSAGE_INDEX.md). 원 wire 객체를 C2/Gateway App 객체로 raw cast 하지 않고 명시 decode/projection 후 호출한다.
+
+<a id="delta-permission-submit"></a>
+** 추가 계약:**원 평가 Sequence는 실제 성공 평가에서만 증가하고 원 AGE는 그 평가 시각에서 누적한다. 반복 TX나 실패를 성공으로 기록하지 않는다. 정상 평가의 DENY는 false/OK로 제출할 수 있다. DOMAIN Adapter의 [UNKNOWN 투영](12_DOMAIN_TYPES.md#delta-permission-projection)은 권장안이며 Network가 원 의미를 대신 정하지 않는다.
+
+실패 즉시 UNKNOWN은 **권장안 / DOMAIN 기능 정책·연동 검증 전**다. 이 안에서는 성공17 뒤 실패도 마지막 성공17·원 시각을 유지한 품질 하향으로 이 기존 TxPort 경로에 제출한다. Network는 같은 원 성공 Sequence만으로 그 실패 보고를 중복 폐기하지 않는다. 실패 시각을 AGE0으로 만들거나 성공 이력이 없는데 정상 순번·시간을 생성하지 않는다. 합성 UPDATE_SEQUENCE 갱신과 CAN TX_SEQUENCE는 원 성공 평가 번호와 별개다. 무효 전달의 Queue 접수/송신 실패 및 과거 ALLOW 재전달 방지는 실제 연결 검증 대상이며 로컬 OK는 CIS/Pi 수용 완료가 아니다.
 
 <a id="api-domainif_txwindowcommand"></a>
 ## `DomainIf_TxWindowCommand()`
@@ -1448,6 +1466,8 @@ DomainIf_Status_t DomainIf_QueryGetRequestResult( DeviceContextId_t requestingDe
 <a id="api-domainif_querygetrecentrequestresults"></a>
 ## `DomainIf_QueryGetRecentRequestResults()`
 
+DOMAIN은 Device별 최근 8건을 보관하고, 최근 결과 조회에는 최신순 최대 5건을 제공한다. Network는 M_RESULT를 기록당 1프레임으로 순차 전송한 뒤 M_QUERY_END로 끝낸다. 기존 capacity/outCount 원형은 유지하며, 5건을 전체 Query의 공통 응답 상한으로 확대하지 않는다. 동일 요청의 내부 갱신과 SysRS의 표시 중복 제거는 ResultManager 검증에서 구분한다. ITEM_COUNT와 전송 실패 시 종결 처리는 Network–ESP32의 기존 후보로 남긴다. [조회 범위](../../07_CROSS_NODE_INTERFACE_RULES.md#query)
+
 ```c
 DomainIf_Status_t DomainIf_QueryGetRecentRequestResults( DeviceContextId_t requestingDevice, uint32_t nowMs, DomainIf_MobileRequestResult_t *outResults, size_t capacity, size_t *outCount);
 ```
@@ -1518,11 +1538,11 @@ DomainIf_Status_t DomainIf_RxNetworkLocalFailure(const NetworkLocalFailure_t *fa
 
 **방향:** Network→C2 · **지위:** DECLARED_SOURCE / BINDING_OPEN.
 
-**용도·호출자·시점:** Network가 local OK 후 identity 관련 최종실패가 발생했을때 기존 필수 담당 모듈/supervision sink에 전달한다. 이미 DISPATCHED 한명령을 AbortBeforeDispatch 로되돌리거나 차량 FAILED 를만들지 않는다.
+**용도·호출자·시점:** Network의 local OK 이후 기존 세 reason에 대응하는 실제 사건, 즉 driver 제출의 확정 최종 실패·송신 전 만료·송신 전 문맥 무효화일 때만 원 identity를 보존하여 기존 필수 담당 모듈/supervision sink에 전달한다. 일시 busy·callback 부재·미분류 in-flight 오류를 세 reason으로 자동 치환하지 않는다. [정확한 사건 범위와 영향 제한](../../04_COMMON/20_API_USAGE_AND_FAILURE.md#r1-local-failure-reasons)을 따른다. 이미 DISPATCHED인 명령을 AbortBeforeDispatch로 되돌리거나 차량 FAILED/DONE을 합성하지 않는다.
 
 | 인자 | 정확한 타입 | IN/OUT | 사용·수명 |
 |---|---|---|---|
-| `failure` | [`const NetworkLocalFailure_t *`](12_DOMAIN_TYPES.md#type-networklocalfailure-t) | IN / borrowed | 로컬 성공 admission 이후 발생한 identity가 있는 최종 실패 근거. 기존 필수 sink에 인계; vehicle FAILED/AbortBeforeDispatch 합성 금지. |
+| `failure` | [`const NetworkLocalFailure_t *`](12_DOMAIN_TYPES.md#type-networklocalfailure-t) | IN / borrowed | 로컬 성공 admission 이후 기존 세 reason의 실제 사건에 대응하는 원 identity·phase·근거. 임의 in-flight 실패는 제외. 기존 필수 sink에 인계; vehicle FAILED/AbortBeforeDispatch 합성 금지. |
 
 **반환·호출:** 로컬 C2 입력 처리 결과. Network 수신 및 Core commit/observer 계약은 [공통 호출 계약](#ports)을 따른다.
 

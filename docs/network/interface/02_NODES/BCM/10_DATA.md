@@ -1,5 +1,7 @@
 # BCM Data — 명령, 실제 상태, 결과와 보호 발생
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
 **PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제 설치 헤더/firmware가 아니며 struct padding·enum 크기를 raw bytes로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
@@ -54,7 +56,7 @@ typedef struct NetBcmDoorCommand
 | `origin` | `NetOrigin` | 요청 출처 코드 | DOMAIN 기능 결정. BCM은 로컬 보호·가용성을 별도 판단하며 Network 접수로 실행을 확정하지 않음. |
 
 <a id="command-context"></a>
-`command`의 전체 선언·4개 멤버는 [`NetCommandMeta`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcommandmeta)에 둔다. `command_id`는 DOMAIN C2 원 결정 ID, `target_boot_id`는 DOMAIN Network가 확인한 대상 BCM 세대, `command_age_ms`는 원 명령 생성 이후 경과, `accept_limit_ms`는 제안 수용 상한이다. BCM은 `meta.source.boot_id`로 원 DOMAIN 세대를 함께 보존한다. 200ms↔구 SysRS 1초는 TEAM_DECISION_REQUIRED이며 이 문서에서 확정하지 않는다.
+`command`의 전체 선언·4개 멤버는 [`NetCommandMeta`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcommandmeta)에 둔다. `command_id`는 DOMAIN C2 원 결정 ID, `target_boot_id`는 DOMAIN Network가 확인한 대상 BCM 세대, `command_age_ms`는 원 명령 생성 이후 경과, `accept_limit_ms`는 제안 수용 상한이다. BCM은 `meta.source.boot_id`로 원 DOMAIN 세대를 함께 보존한다. 200ms↔구 SysRS 1초는 CONTRACT_OPEN이며 이 문서에서 확정하지 않는다.
 <a id="type-netbcmclimatecommand"></a>
 ## `NetBcmClimateCommand`
 

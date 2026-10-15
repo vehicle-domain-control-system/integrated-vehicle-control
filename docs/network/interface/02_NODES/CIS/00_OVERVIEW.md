@@ -1,10 +1,14 @@
 # CIS — 노드 인터페이스 안내
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
+권장 프로필과 실제 연동 검증 전 조건을 구분한다. 각 API의 호출·품질·시간 조건을 적용한다.
+
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
 센서 ECU에서 환경·후방 관측을 생성하고 Pi 카메라 결과를 취합하여 DOMAIN에 보고한다. Pi는 UART-C로 CIS에만 연결되며 DOMAIN과 직접 연결하지 않는다.
 
-**공유 초안: PROPOSED_DESIGN · IMPLEMENTATION_BINDING_HOLD.** 아래 Data/API는 구체 계약 후보이며 실제 firmware 설치/보드 통합 승인이 아니다. 공용 CAN FD는 단일 공유 버스이고 nominal 500kbps/data 2Mbps는 WIRE_PROPOSED다. WINDOW는 **[구현 보류 — 설계 유지]**다.
+**PROPOSED_DESIGN · IMPLEMENTATION_BINDING_HOLD.** Data/API는 계약 후보이며 실제 firmware·보드 연결은 검증 전이다. 공용 CAN FD는 단일 공유 버스이고 nominal 500kbps/data 2Mbps는 WIRE_PROPOSED다. WINDOW는 **[구현 보류 — 설계 유지]**다.
 
 ## 구현자가 먼저 볼 문서
 
@@ -30,9 +34,11 @@
 
 ## 소유권과 현재 결정
 
+Network는 CIS의 CAN/UART-C 통신 스택과 API를 제공하고, CIS 모듈은 센서·비전 취합·후방 활성 기능을 연결한다. [온습도 2500ms와 환경 무효화](10_DATA.md#환경-원본-최신성--o20)는 원 사용 기한과 실제 구현 연결을 구분하여 적용한다. Network는 센서 알고리즘을 중복 구현하지 않는다.
+
 - 온도/습도/조도/후방의 원 품질·Age·새 측정 순번은 CIS 센서 owner가 만든다. 환경 세 값은 독립 품질이다.
 - Pi boot/vision_sequence/관측 Age·각 원 품질을 보존한다. CIS 기능 상태/추가 평가는 별도 원천이며 현재 CAN에 양측 품질 한 벌씩을 동시에 표현할 수 없다.
-- [Pi 원 품질을 승격하지 않는 CIS 제한 평가](10_DATA.md#pi-원-관측과-cis-추가-평가)는 PROPOSED다. 사유 우선순위·상태 변환은 TEAM_DECISION_REQUIRED이며 미정 조합을 VALID로 승격하지 않는다.
-- 전원 허용은 DOMAIN 원 판단이다. [CIS App 소비·private Pi relay](10_DATA.md#허용-입력과-pi-relay)를 나누며 공개 두 번째 허용 생성 API를 두지 않는다. 원 150ms·반복 500ms·use_limit 1500ms 후보의 관계와 consumer 무효화는 OPEN이다.
+- [Pi 원 품질과 CIS 추가 평가](10_DATA.md#pi-원-관측과-cis-추가-평가)는 권장 프로필로 구체화했다. 원 판정의 품질을 보존하면서 이후 실제 통신 단절·만료·기동 변경을 현재 사용 상태에 반영한다. 상세 상태 변환과 기능 코드 연결은 미검증이다.
+- 전원 허용은 DOMAIN 원 판단이다. [CIS App 소비·private Pi relay](10_DATA.md#허용-입력과-pi-relay)를 나누며 공개 두 번째 허용 생성 API를 두지 않는다. 후방 활성 원 사용 한도 500ms와 DOMAIN 약 200ms 재평가를 적용한다. CAN 50ms 송신/150ms 수신 중단, UART-C 500ms 반복/1500ms 수신 중단은 유지한다. `USE_LIMIT=1500ms`는 기존 필드 값 후보이며 `500ms` 변경은 조건부 권장 프로필이다. 어느 값도 원 허용 기한을 연장하지 않는다. 실제 중계·소비자 연결은 확인이 필요하다.
 
-[팀 미결](../../06_OPEN_FOR_TEAM.md) · [48 메시지 색인](../../05_MESSAGE_INDEX.md). 실제 SDK/Firmware/Codec/Board/무선/카메라 통합 시험은 **NOT_EXECUTED**다.
+[팀 미결](../../06_TECHNICAL_CONSTRAINTS.md) · [48 메시지 색인](../../05_MESSAGE_INDEX.md). 실제 SDK/Firmware/Codec/Board/무선/카메라 통합 시험은 **NOT_EXECUTED**다.

@@ -1,5 +1,7 @@
 # DOMAIN — typed Port·수신 투영·Query 내부 경로
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 **PROPOSED_DESIGN / BINDING_OPEN.** 여기에 있는 `Net...Priv` 함수는 필요한 Network 내부 경계 후보다. Application의 새 공개 호출 의무가 아니며 Firmware symbol/Codec 구현 존재를 주장하지 않는다.
 
 [Data](10_DATA.md) · [공개 API](20_API.md) · [공통 API·실패](../../04_COMMON/20_API_USAGE_AND_FAILURE.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
@@ -25,7 +27,7 @@ NetSubmitResult DomainNet_PublishPermission(const NetDomainPermission *message);
 
 **분류·호출 주체:** Network 내부 Permission composer가 기존 C2 허용 입력을 일관되게 읽어 구성한 Snapshot을 제출하는 경계다(PROPOSED_DESIGN/BINDING_OPEN). Application에 C2 허용 TX와 이 함수를 함께 호출할 의무를 만들지 않는다.
 
-**소비·조건:** 단일 `DOMAIN_PERMISSION`을 BCM/CIS/VSS/WINDOW 4개 수신 경계로 보낸다. 개별 품질·가장 오래된 보존 근거 AGE·operation의 필수 입력/기한은 [Permission 합성 정본](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)을 따른다. 실제 composer/Port 등록 및 기능 정책 합의는 OPEN이다.
+**소비·조건:** 단일 `DOMAIN_PERMISSION`을 BCM/CIS/VSS/WINDOW 4개 수신 경계로 보낸다. 개별 품질·가장 오래된 보존 근거 AGE·operation의 필수 입력/기한은 [Permission 합성 정본](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)을 따른다. 실제 composer/Port 등록 및 기능 정책은 OPEN이다.
 
 | 인자 | 정확한 타입 | 사용·수명 |
 |---|---|---|
@@ -49,7 +51,7 @@ DomainIf_Status_t DomainNetPriv_OnWindowEvent(const NetWindowEvent *message, con
 
 **반환:** 로컬 C2 인계/검증 결과. 추정한 차량 결과를 반환하지 않으며 immutable 원 객체를 보존한다.
 
-**[구현 보류 — 설계 유지] / TEAM_DECISION_REQUIRED:** occurrence·원 AGE·원 세대·관련 command·END/Fault owner binding이 확정되기 전 좁은 C2 투영으로 원 Evidence를 삭제하지 않는다.
+**[구현 보류 — 설계 유지] / BINDING_OPEN:** occurrence·원 AGE·원 세대·관련 command·END/Fault owner binding이 확정되기 전 좁은 C2 투영으로 원 Evidence를 삭제하지 않는다.
 
 <a id="api-domainnetpriv_onwindowfault"></a>
 ### `DomainNetPriv_OnWindowFault()`
@@ -67,7 +69,7 @@ DomainIf_Status_t DomainNetPriv_OnWindowFault(const NetWindowFault *message, con
 
 **반환:** 로컬 C2 인계/검증 결과. 추정한 차량 결과를 반환하지 않으며 immutable 원 객체를 보존한다.
 
-**[구현 보류 — 설계 유지] / TEAM_DECISION_REQUIRED:** occurrence·원 AGE·원 세대·관련 command·END/Fault owner binding이 확정되기 전 좁은 C2 투영으로 원 Evidence를 삭제하지 않는다.
+**[구현 보류 — 설계 유지] / BINDING_OPEN:** occurrence·원 AGE·원 세대·관련 command·END/Fault owner binding이 확정되기 전 좁은 C2 투영으로 원 Evidence를 삭제하지 않는다.
 
 <a id="api-domainnetpriv_onvssstatus"></a>
 ### `DomainNetPriv_OnVssStatus()`
@@ -157,9 +159,9 @@ NetSubmitResult DomainNetPriv_SendQueryEnd(const NetMobileQueryEnd *message);
 | `port->txBcmDoorCommand(command)` | [`const DomainIf_BcmDoorCommand_t *`](12_DOMAIN_TYPES.md#type-domainif-bcmdoorcommand-t) | `BCM_DOOR_COMMAND` — C2 원 commandId/origin/목표 보존. Network targetBoot/commandAge/linkBoot/TxSeq/CRC 보완. |
 | `port->txBcmClimateCommand(command)` | [`const DomainIf_BcmClimateCommand_t *`](12_DOMAIN_TYPES.md#type-domainif-bcmclimatecommand-t) | `BCM_CLIMATE_COMMAND` — C2 원 commandId/origin/목표 보존. Network targetBoot/commandAge/linkBoot/TxSeq/CRC 보완. |
 | `port->txBcmInteriorLightCommand(command)` | [`const DomainIf_BcmInteriorLightCommand_t *`](12_DOMAIN_TYPES.md#type-domainif-bcminteriorlightcommand-t) | `BCM_LIGHT_COMMAND` — C2 원 commandId/origin/목표 보존. Network targetBoot/commandAge/linkBoot/TxSeq/CRC 보완. |
-| `port->txCisPowerPermission(permission)` | [`const DomainIf_CisPowerPermission_t *`](12_DOMAIN_TYPES.md#type-domainif-cispowerpermission-t) | `DOMAIN_PERMISSION` — 한 shared CAN 허용 snapshot에 연계. 독립 source tuple을 섞는 집계/원 powerOperationState binding은 TEAM_DECISION_REQUIRED. |
+| `port->txCisPowerPermission(permission)` | [`const DomainIf_CisPowerPermission_t *`](12_DOMAIN_TYPES.md#type-domainif-cispowerpermission-t) | `DOMAIN_PERMISSION` — 한 shared CAN 허용 snapshot에 연계. 독립 source tuple을 섞는 집계/원 powerOperationState binding은 FUNCTION_POLICY_OPEN. |
 | `port->txWindowCommand(command)` | [`const DomainIf_WindowCommand_t *`](12_DOMAIN_TYPES.md#type-domainif-windowcommand-t) | `WINDOW_COMMAND` — C2 원 commandId/origin/목표 보존. Network targetBoot/commandAge/linkBoot/TxSeq/CRC 보완. |
-| `port->txWindowOperationPermission(permission)` | [`const DomainIf_WindowOperationPermission_t *`](12_DOMAIN_TYPES.md#type-domainif-windowoperationpermission-t) | `DOMAIN_PERMISSION` — 한 shared CAN 허용 snapshot에 연계. 독립 source tuple을 섞는 집계/원 powerOperationState binding은 TEAM_DECISION_REQUIRED. |
+| `port->txWindowOperationPermission(permission)` | [`const DomainIf_WindowOperationPermission_t *`](12_DOMAIN_TYPES.md#type-domainif-windowoperationpermission-t) | `DOMAIN_PERMISSION` — 한 shared CAN 허용 snapshot에 연계. 독립 source tuple을 섞는 집계/원 powerOperationState binding은 FUNCTION_POLICY_OPEN. |
 | `port->txWindowDomainAlive(alive)` | [`const DomainIf_WindowDomainAlive_t *`](12_DOMAIN_TYPES.md#type-domainif-windowdomainalive-t) | `DOMAIN_PERMISSION` — 기존 WINDOW liveness 의미 callback 보존. 신규 frame 없음. shared DOMAIN_PERMISSION 수신 감독과 중복된 sourcebool의 정확한 사용/binding OPEN; [구현 보류 — 설계 유지]. |
 | `port->txVssOneShotEvent(event)` | [`const DomainIf_VssOneShotEvent_t *`](12_DOMAIN_TYPES.md#type-domainif-vssoneshotevent-t) | `VSS_EVENT` — 원 Event/Warning의 occurrence/quality/provenance 보존. VSS는 음향 소비만. |
 | `port->txVssWarningState(state)` | [`const DomainIf_VssWarningState_t *`](12_DOMAIN_TYPES.md#type-domainif-vsswarningstate-t) | `VSS_WARNING_STATE` — 원 Event/Warning의 occurrence/quality/provenance 보존. VSS는 음향 소비만. |
@@ -182,6 +184,9 @@ NetSubmitResult DomainNetPriv_SendQueryEnd(const NetMobileQueryEnd *message);
 | `port->txMobileUserSettings(settings)` | [`const DomainIf_UserSettingsState_t *`](12_DOMAIN_TYPES.md#type-domainif-usersettingsstate-t) | `M_USER_SETTINGS` — source 의미 객체에서 UART projection 직접 encode. query=NULL 일 때 현재 수신단말·Session을 확인; 원 요청 Session은 보존. |
 
 **포인터·원 ID:** callback이 OK를 반환하기 전에 immutable 값복사/encode와 required failure sink를 확보한다. target Boot가 불명확하거나 source enum을 raw로 표현할 수 없으면 local NOT_AVAILABLE/INVALID_ARGUMENT 등 실패를 반환하며 vehicle outcome을 만들지 않는다. source table26 종은 보존했으나 실제 등록 table/구현 symbol/큐 용량은 NOT_EXECUTED 다.
+
+<a id="delta-permission-routing"></a>
+**의미 생성·전달 책임 권장안 / DOMAIN 연동 조건 확인 필요:** DOMAIN Permission Adapter는 Power/Operation/Alive의 실제 의미·원 판단과 UNKNOWN 투영을 생성한다. Network의 기존 TxPort/composer는 품질 일치·시간·수용 문맥을 검증하고 CAN으로 합성·전달한다. POWER_OPERATION_STATE 생성원·필수 입력·공통 AGE/Quality/세대 조건은 여전히 미결이다. 같은 원 성공 Sequence의 평가 실패 보고도 현재 품질 제한으로 인계하며, Queue에 남은 이전 ALLOW를 무효화 뒤 재전달하지 않는지 검증해야 한다. [원 평가·합성·전송 순번 분리](../../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)를 적용하며 새 TxPort/API를 만들지 않는다.
 
 <a id="rx-projection"></a>
 ## CAN/UART 수신 → source typed 인계
@@ -208,34 +213,46 @@ NetSubmitResult DomainNetPriv_SendQueryEnd(const NetMobileQueryEnd *message);
 | `VSS_STATUS` | `DomainNetPriv_OnVssStatus()` → `DomainIf_RxVssState()`/`RxVssFault()` | VSS 원 음향 상태/최근 fault 발생·AGE/quality 보존. 원 R4→DTO converter owner 확정과 다른 단계. |
 
 
+<a id="delta-environment-routing"></a>
+**환경 저장 순서 권장안 / DOMAIN 기능 정책 미확정:** 유효한 새 CIS BOOT 전환에서 구 BOOT 전달을 막고 미실행 패킷·콜백을 폐기한다. 실행 중 콜백과 DOMAIN 비동기 후속 쓰기까지 완료되거나 더 이상 commit할 수 없어진 뒤 기존 환경 Rx로 NO_DATA를 전달하고, VSM 무효화 저장 완료 확인 후 새 BOOT의 원 관측을 전달한다. 단순 callback 반환이나 Queue 접수는 이 완료 경계를 증명하지 못한다. 기존 owner 직렬 처리를 사용하며 취소를 가정하거나 비차단 호출 경계를 동기 대기 교착으로 바꾸지 않는다.
+
+새 정상 전달 전 무효화 실패·완료 미확인을 분리해 보류하고 과거 VSM OK가 지워졌다고 표시하지 않는다. Core commit 뒤 optional Observer 실패로 재commit하지 않는다. A900→B0은 원값 그대로이며 DOMAIN이 Network 검증 순서를 저장까지 소비해야 한다. NO_DATA만으로 재부팅을 추론하거나 순번을 리셋하지 않는다. 대기 AGE·2500ms 만료, 종료 BOOT 차단, BOOT 재사용/Network 재시작의 한계와 기존 C2로 입증 불가할 때의 최소 변경 대안은 [환경 저장 계약](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)을 따른다. 실제 완료·원자적 association·후속 쓰기 배제 근거는 [Rx 완료 판정](20_API.md#delta-environment-completion)의 확인 대기다.
+
 <a id="r2-origin-join"></a>
-### PROPOSED — 수신 Evidence와 C2 Snapshot의 결합 (O24)
+### PROPOSED — 수신 Evidence와 C2 Snapshot의 결합
+
+<a id="r1-atomic-provenance"></a>
+같은 원 관측의 품질 저하도 수용된 C2 commit과 원 raw/BOOT/관측번호·현재 품질/사유·순서 상태를 함께 연결한다. 높은 전송 순번은 원값 변경이나 INVALID→VALID 근거가 아니다. 인계·저장 실패 시 provenance나 순서만 먼저 전진시키지 않는다. 최신 Getter와 가장 최근 수신 raw를 시간상 가깝다는 이유로 결합하지 않으며, 동일 수용 결과를 증명하지 못하는 Query projection은 제한한다. 원 생성 기준점은 고정하고 현재 AGE는 증가한다. 실제 C2 저장/Meta/Getter의 원자적 연결은  BINDING_NOT_VERIFIED다.
+
+통신 처리 규칙 — 원 관측의 동일성은 현재 품질이 영구히 같다는 뜻이 아니다. 같은 Pi BOOT/VISION_SEQUENCE에 대한 새 CAN 프레임이 확인된 품질 저하를 전달하면, 새로 수용한 메시지별 TX_SEQUENCE를 확인하고 원 식별·누적 AGE를 유지한 채 기존 `DomainIf_RxCisOccupant()`에 반영한다. 관측 순번 중복만으로 무효 품질을 버리지 않는다. 지연된 구 VALID, 단순 READY 또는 링크 복구만으로 이전 정상값을 복원하지 않는다. 정상 복원에는 새 유효 관측과 해당 기능의 복구 규칙을 적용한다. 이 규칙은 관측 번호·품질 필드·새 공개 API를 추가하지 않는다. DOMAIN 저장값과 Getter까지 반영되는지는 실제 연결 시험 대상이다.
+
+환경도 원 CIS BOOT 변경 시 구 값의 무효화와 새 기동의 낮은 순번 수용을 분리해야 한다. 원 수신 객체를 최신 Getter에 단순 부착하지 않는다. DOMAIN이 처리한 입력과 Network 원 기록의 연결은 직렬 처리/commit 증거로 검증한다. 실제 VSM 확인 대기는 완료로 바꾸지 않는다. [노드 간 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#environment)
 
 **NETWORK_OWNED + CROSS_NODE_AGREEMENT.** 권장안은 기존 메시지별 **검증된 원 `Net*` 객체와 `NetCanRxMeta`의 안정된 복사**를 보존하여 이미 존재하는 C2 ingress/Getter와 연결하는 것이다. 별도 공개 DTO·새 store/범용 관리자·새 원본 번호를 만들지 않는다. 수신 검증 단계는 현재 CAN ID/원 sender Boot·TX, 메시지별 원 관측/사건 식별자, 품질과 원 AGE를 한 immutable evidence로 취급한다. C2의 `sourceGeneration`이 Pi Boot인 경우 그것을 CIS CAN Boot로 바꾸지 않는다.
 
 1. 원 DTO+meta를 확보하고 기존 C2 `DomainIf_Rx*`에 명시 변환한다. C2 owner가 동일 입력을 실제 상태에 반영했다고 확인한 처리 문맥에서만 그 원 Evidence와의 association을 유지한다. 단순 callback queue 접수 OK를 cache commit 증거로 사용하지 않는다. ingress 거부 또는 association 확인 불가이면 이전 정상 원본의 identity/AGE를 새로 쓰지 않는다.
-2. Query Getter 또는 unsolicited TxPort와 evidence 결합은 **같은 owner 직렬 처리 안에서 중간 갱신 없이 해당 원 입력의 Snapshot임을 확인**한 경우만 수행한다. 확인 가능한 원 generation/update/occurrence, 원 값·필드별 품질 및 경과 AGE 관계도 대조한다. 값 또는 PiBoot만 같은 것은 충분하지 않다. 예를 들어 인원수1/PiBoot7이 같은 서로 다른 VisionSeq9/10을 같은 원본으로 join하지 않는다. 해당 C2 타입에 관측 번호가 없으면 실제 atomic association 증거가 없을 때 join을 승인하지 않는다.
+2. Query Getter 또는 unsolicited TxPort와 evidence 결합은 **같은 owner 직렬 처리 안에서 중간 갱신 없이 해당 원 입력의 Snapshot임을 확인**한 경우만 수행한다. 확인 가능한 원 generation/update/occurrence, 원 값·필드별 품질 및 경과 AGE 관계도 대조한다. 값 또는 PiBoot만 같은 것은 충분하지 않다. 예를 들어 인원수1/PiBoot7이 같은 서로 다른 VisionSeq9/10을 같은 원본으로 join하지 않는다. 해당 C2 타입에 관측 번호가 없으면 실제 atomic association 증거가 없을 때 join하지 않는다.
 3. 11 CAN-origin M_*는 해당 evidence의 `meta.source.boot_id/tx_sequence`를 B20~27에 보존하고 원 CAN 사용부를 +20 B로 encode한다. CAN padding 제외, 각 source/last-fault/result AGE에 수신 후 로컬 대기를 각각 한 번 추가하고 포화·역행 방지 공통 계약을 적용한다. 원 PI_BOOT/VISION_SEQUENCE·독립 field quality도 그대로 보존한다. 새 UART LINK_SEQUENCE/Domain Boot는 외부 envelope에만 쓴다.
 4. provenance 없는 해당 projection은 `NET_SUBMIT_NOT_READY`/source `DOMAIN_IF_NOT_AVAILABLE`의 로컬 인계 실패로 남기고 Query에서는 해당 항목 누락을 `STATUS=2`로 인계한다. 다른 검증된 메시지·센서 값을 일괄 차단하지 않는다. 잘못된 source enum/인자는 기존 INVALID_ARGUMENT으로 실패시키며 가짜 NO_DATA frame 또는 새 DOMAIN 원 관측을 생성하지 않는다.
 
-**선택 이유:** C2 Getter의 좁은 Snapshot을 최신 raw cache에 값만 맞춰 붙이는 안은 동일값 새 관측/구 Boot에서 오결합한다. C2 공개 선언에 BOOT/TX/extra DTO를 추가하는 안은 이번 잠금 위반이므로 실행하지 않는다. 원 DTO+meta 재사용과 owner 원자적 association을 권장한다. **DOMAIN C2/Network 확인 질문:** 각 `Rx*`→Getter/TxPort가 같은 원 입력에 속했음을 확인할 실제 commit/직렬 처리 위치는 어디인가? 특히 CIS_OCCUPANT처럼 C2에 VisionSeq가 없는 경우 동시 갱신 없는 association을 증명할 수 있는가? 확인 전 해당 projection만 `BINDING_OPEN`; 채택·구현·Codec 시험 증거 없음(`PROPOSED`, `NOT_EXECUTED`).
+**원자적 연결 전제:** C2 Getter의 Snapshot을 최신 raw cache에 값만 맞춰 붙이면 동일값 새 관측/구 Boot가 오결합할 수 있다. 기존 원 DTO+meta 재사용과 owner의 원자적 association을 권장한다. 각 `Rx*`→Getter/TxPort가 같은 원 입력임을 증명할 commit·직렬 처리 위치가 필요하다. CIS_OCCUPANT처럼 C2에 VisionSeq가 없는 경우에도 동시 갱신 없는 association이 입증돼야 한다. 확인 전 해당 projection은 `BINDING_OPEN`이다. BOOT/TX/추가 DTO는 현재 공개 C2 선언에 포함되지 않으며 후보는 `PROPOSED`, 실제 Codec 연결은 검증 전이다.
 
 ### 좁은 source 구조에서 표현되지 않는 정보
 
-**PROPOSED — BCM_RESULT confirmation (NETWORK_OWNED + FUNCTION_OWNER):** C2의 `confirmation`을 CAN에서 직접 읽은 값처럼 취급하지 않는다. 원 COMMAND_DOMAIN_BOOT/commandId/kind를 해당 원 명령에 연결하고 result/reason은 기존 명시 mapping을 보존한다. 확인 근거가 없으면 기존 `RESULT_CONFIRMATION_UNCONFIRMED`로 인계하며 CAN 수신·Network submit OK·DONE raw만으로 CONFIRMED를 생성하지 않는다. BCM/DOMAIN 기능 owner에게 같은 원 명령의 door COMPLETED·quality OK 등 현재 door evidence가 어떤 경우 C2 confirmation의 충분한 확인 근거인지 질문한다. 그 채택 근거가 없으면 결과의 confirmation 경로만 `BINDING_OPEN`; 새 Wire confirmation byte/원형을 추가하지 않는다. 실제 BCM/Codec 시험 `NOT_EXECUTED`.
+**PROPOSED — BCM_RESULT confirmation (NETWORK_OWNED + FUNCTION_OWNER):** C2의 `confirmation`을 CAN에서 직접 읽은 값처럼 취급하지 않는다. 원 COMMAND_DOMAIN_BOOT/commandId/kind를 해당 원 명령에 연결하고 result/reason은 기존 명시 mapping을 보존한다. 확인 근거가 없으면 기존 `RESULT_CONFIRMATION_UNCONFIRMED`로 인계하며 CAN 수신·Network submit OK·DONE raw만으로 CONFIRMED를 생성하지 않는다. 같은 원 명령의 door COMPLETED·quality OK 등 현재 door evidence가 C2 confirmation을 입증하는 충분조건인지는 BCM/DOMAIN 기능 정책에서 확정해야 한다. 그 확인 근거가 없으면 결과의 confirmation 경로만 `BINDING_OPEN`; 새 Wire confirmation byte/원형을 추가하지 않는다. 실제 BCM/Codec 시험 `NOT_EXECUTED`.
 
 | 원 객체 | source 구조의 경계 | 안전한 설계 상태 |
 |---|---|---|
-| WINDOW END event | `DomainIf_AntiPinchReport_t`는 END 타입·관련 Command 전부를 표현하지 못함 | NetWindowEvent 전체 유지. 실제 END 소비 owner의 typed handoff 합의 전 activation hold. |
+| WINDOW END event | `DomainIf_AntiPinchReport_t`는 END 타입·관련 Command 전부를 표현하지 못함 | NetWindowEvent 전체 유지. 실제 END 소비 owner의 typed handoff 조건 확정 전 activation hold. |
 | WINDOW fault / CIS status fault / VSS status fault | `FaultInfo_t`는 occurrence·원 generation·AGE가 없음 | 넓은 원 상태+Network 원 Evidence 유지한 뒤 좁은 callback 별도 투영. 새 Fault store/정책 owner를 Network에 만들지 않음. |
 | CIS 탑승자 | C2의 sourceGeneration/quality와 Pi 원 Boot·CIS 품질의 정확한 대응 미정 | 원 NetCisOccupant metadata를 preserved provenance로 유지. source C2 품질을 Pi 판정으로 relabel 하지 않음. |
 | C2 snapshot→M_* raw CAN origin | SOURCE QueryGetter는 NetCanSource의 원 TxSeq를 반환하지 않음 | 수신 provenance와 source snapshot 동일 identity 확인 후 부착. 확인불가 시 부분 결과/no data 또는 전송차단; 현재 frame 번호로 가짜 원본 출처를 만들지 않는다. |
-| source enum unsupported 값 | UNCONFIRMED/UNSUPPORTED/source-only reason 등 raw code 부재 | encode 차단/TEAM_DECISION_REQUIRED. CLEAR/AVAILABLE/NONE으로 정상화 금지. |
+| source enum unsupported 값 | UNCONFIRMED/UNSUPPORTED/source-only reason 등 raw code 부재 | encode 차단/WIRE_MAPPING_OPEN. CLEAR/AVAILABLE/NONE으로 정상화 금지. |
 
 <a id="query-flow"></a>
 ## Query —18 snapshot Getter와 17 schema encoder 재사용
 
-15 개의 `SendQueryMobile*()`를 공개 함수로 유지하지 않는다. 기존 C2 unsolicited TX와 QueryGet이 같은 source 의미 타입을 사용하므로 schema 별 17 개의 내부 submit encoder를 재사용한다(15 개 상태/경고/설정 + RequestResult + DigitalKeyResult). 외부 source72 개와 원 Wire48 종은 그대로 보존한다.
+15 개의 `SendQueryMobile*`를 공개 함수로 유지하지 않는다. 기존 C2 unsolicited TX와 QueryGet이 같은 source 의미 타입을 사용하므로 schema 별 17 개의 내부 submit encoder를 재사용한다(15 개 상태/경고/설정 + RequestResult + DigitalKeyResult). 외부 source72 개와 원 Wire48 종은 그대로 보존한다.
 
 ### 내부 Query response context 전체 선언
 
@@ -258,6 +275,8 @@ typedef struct
 
 ### 최소 호출 순서
 
+최근 요청 결과는 해당 Device의 내부 8건 중 최신순 최대 5건을 조회해 M_RESULT 0~5개로 순차 전송하고 M_QUERY_END로 끝낸다. 다른 Query 종류를 포함한 전체 응답 수의 상한이 아니다. Getter 실패, 확인된 빈 목록, 부분 응답을 구분하고 로컬 접수 성공만으로 완료 count를 만들지 않는다. 이력 8/5 규칙과 기존 QueryEnd의 생산·소비 후보를 별도로 유지한다. [조회 범위](../../07_CROSS_NODE_INTERFACE_RULES.md#query)
+
 1. UART-M v2 CRC/length/type/context를 검사하고 prior M_CONTEXT를 C2 owner 문맥에 먼저 반영한다.
 2. `DomainIf_ValidatePassiveQueryContext(device, session)`를 같은 직렬 owner 처리에서 호출한다. SESSION_READY=0 이라도 유효한 최초 Query 허용. Session 생성/활성화 하지 않음.
 3. 현재 monotonic nowMs로 scope에 맞는 기존 owner snapshot Getter를 호출한다. Getter 실패 시 OUT을 읽지 않는다. fresh/validity/UNKNOWN/없는기록을 그대로 보존. scope 여러항목의 snapshot 일관성을 owner 직렬화로 보장하며 실제 binding OPEN.
@@ -267,11 +286,11 @@ typedef struct
 
 
 <a id="r2-query-producer"></a>
-### PROPOSED — 기존 Query 상태·실송신 종결 규칙 (O25/O12)
+### PROPOSED — 기존 Query 상태·실송신 종결 규칙
 
 **NETWORK_OWNED + CROSS_NODE_AGREEMENT.** 기존 `DomainQueryResponseContext_t`와 18 Getter/17 encoder를 재사용한다. 조회 시작에 현재 recipient/QueryID/scope/Domain Boot와 처리할 기존 Getter·기록 범위를 잡고 owner 직렬 처리로 응답을 준비한다. 하나의 Query를 처리하는 동안 다른 Query의 응답을 같은 stream으로 합치지 않는다. Getter 실패 시 OUT 읽기 금지, `outHasRecord=false`는 실패와 구분한다.
 
-`ITEM_COUNT` 권장 기준은 해당 조회 응답 frame의 **최종 로컬 UART TX 완료를 실제 증명한 수**다. source copy/encode·큐 등록·`NET_SUBMIT_OK`로 증가시키지 않으며 End와 QUERY_ID0 자발 갱신은 제외한다. 모든 응답의 TX 완료/확정 실패를 관측한 뒤 End를 같은 UART 송신 순서로 뒤에 보낸다. End 자체의 submit 성공도 전송 완료가 아니다. 송신 완료는 ESP32/BLE/MOBILE 수신·차량 동작 완료를 보증하지 않는다. `u16` count 초과, 부분 전송의 도착 여부 불명, 완료 관측 부재이면 정확한 count/완료를 주장하지 않는다. 응답에 별도 ordinal이 없으므로 미확인 송신을 새 LINK_SEQUENCE로 자동 재시도하여 목록 건수를 부풀리는 방식도 피한다.
+`ITEM_COUNT` 권장 기준은 해당 조회 응답 frame의 **성공한 최종 로컬 UART TX를 실제 증명한 수**다. 확정 실패 terminal은 개수에 넣지 않는다. source copy/encode·큐 등록·`NET_SUBMIT_OK`, End, QUERY_ID0 자발 갱신, 재전송 복제도 제외한다. 모든 예정 응답이 TX 성공 또는 확정 실패 terminal에 도달한 뒤 End를 같은 UART 송신 순서로 뒤에 보낸다. pending이 남으면 End를 보류한다. End submit 성공은 전송 완료가 아니고 UART TX 성공은 ESP32/BLE/MOBILE 수신·차량 완료를 보증하지 않는다. `u16` count 초과, 부분 frame 도착 여부 불명 또는 완료 관측 부재이면 정확한 count/완료를 주장하지 않는다. 응답 ordinal이 없으므로 미확인 송신을 새 LINK_SEQUENCE로 자동 재시도하여 건수를 부풀리지 않는다.
 
 | 실제 사실 | 기존 QUERY_STATUS / count 권장 사용 | 소비 제한 |
 |---|---|---|
@@ -282,9 +301,9 @@ typedef struct
 | 실제로 빈 응답집합임을 양단의 기존 scope/Getter 의미로 증명 | `0` / `0`만 조건부 허용 | Getter 실패·미확인 목록을 0건 성공으로 대체 금지 |
 | TX 결과/순서/End 송신 결과를 증명할 수 없음 | 성공 End 금지; 로컬 불완전/만료 인계 | count를 추정하지 않고 완료 binding 제한 |
 
-**0건/부분 검증:** 응답0은 그 자체로 성공 증거가 아니다. 10개 enqueue 중 8개 TX 완료/2개 확정 실패는 기존 `STATUS=2, ITEM_COUNT=8` 후보이고 `0,10`은 금지한다. 단, 부분 frame이 수신됐는지 불명확하면 End 수치만으로 완료를 만들지 않는다. 큐의 terminal failure와 End 순서를 실제 관측할 callback/driver binding이 없으면 이 권장 count도 `BINDING_OPEN`이다. owner 처리 기한은 수치 OPEN이며, timeout 후 새 QueryID 없이 뒤늦은 End로 성공을 재개하지 않는다. 재연결·Domain reboot는 이전 조회를 불완전 종료하고 원 RequestSession은 유지한다.
+**0건/부분 검증:** 응답0 자체는 성공 증거가 아니다. 10개 enqueue 중 **8개 TX 성공/2개 확정 실패**이면 기존 `STATUS=2, ITEM_COUNT=8` 후보이며 `0,10`과 실패 terminal을 더한 count는 금지한다. **8개 TX 성공/2개 pending**이면 아직 End를 보내지 않는다. 값이 UNCONFIRMED인 응답도 TX 성공 근거가 있으면 count에 포함하지만 송신 성공 미확인은 제외한다. 일부 frame 도착 여부가 불명확하면 End 수치만으로 완료를 만들지 않는다. 실제 terminal/순서를 관측할 driver binding이 없으면 이 권장 count는 `BINDING_OPEN`이다. owner 처리 기한 수치는 OPEN이며 timeout 후 새 QueryID 없이 뒤늦은 End로 성공을 재개하지 않는다. 재연결·Domain reboot는 이전 조회를 불완전 종료하고 원 RequestSession을 유지한다.
 
-**대안·확인 질문:** enqueue count는 비동기 손실을 숨기므로 제외한다. ESP32 ACK 수를 Wire에 추가하는 안은 기존 표현/원형을 바꾸므로 실행하지 않는다. DOMAIN/ESP32 Network owner에게 최종 TX 완료의 관측 지점·확정 실패 후 End 순서·동일 stream 중복 수신·scope의 실제 빈 집합을 확인하도록 요청한다. timeout 수치 및 MOBILE 완료/부분 UI는 해당 기능/모바일 owner와 별도 합의한다. 규칙 상태는 `PROPOSED`; 실제 queue/Codec/board 시험 `NOT_EXECUTED`.
+**Query 종결 전제:** enqueue count는 비동기 손실을 반영하지 못하므로 완료 count로 사용하지 않는다. ESP32 ACK 수는 현재 Wire에 포함되지 않는다. 최종 TX 완료 관측 지점, 확정 실패 후 End 순서, 동일 stream 중복 수신과 scope의 실제 빈 집합을 DOMAIN/ESP32 경계에서 확인해야 한다. timeout 수치와 MOBILE 완료/부분 UI는 기능 정책이 미확정이다. 규칙은 `PROPOSED`이며 실제 queue/Codec/board 연결은 검증 전이다.
 
 ### Source Getter18 종 → 직접 typed encoder
 

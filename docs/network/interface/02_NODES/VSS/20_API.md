@@ -1,5 +1,7 @@
 # VSS API — 송신·수신 호출 계약
 
+Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
+
 Event·Warning 입력은 Network→Application, Status 출력은 기존 Application 통신 연결→Network다. 원형은 **PROPOSED_DESIGN / BINDING_OPEN**이고 VSS R4/R6 실제 함수 원형을 대체하지 않는다.
 
 [노드 개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md) · [전체 시작](../../00_START_HERE.md) · [공통 의미·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md) · [CAN FD](../../03_COMMUNICATION/10_CAN_FD.md)
@@ -107,7 +109,7 @@ NetSubmitResult VssNet_PublishStatus(const NetVssStatus *message);
 |---|---|---|
 | `message` | `const NetVssStatus *` · IN/borrowed; [전체 Data](10_DATA.md#type-netvssstatus) | 실제 기능 owner가 생성한 보고; Network가 접수 전 검사·복사; NULL 금지, 호출 반환까지 유효 |
 
-**언제·어떻게 사용:** 일관된 반영 완료 관측에 근거한 서비스·고장 보고만 제출한다. currentFaults는 완전성이 확인된 현재 목록, last_fault는 원 발생·AGE를 가진 최근 기록이다. `VSS_STATUS_REEVALUATE`로 이전 보고의 평가 번호·AGE를 새로 만들지 않는다. Snapshot→DTO owner·인계 형식은 TEAM_DECISION_REQUIRED이며 이 인자 후보가 App 선행 변환·Network 변환을 확정하지 않는다.
+**언제·어떻게 사용:** 일관된 반영 완료 관측에 근거한 서비스·고장 보고만 제출한다. currentFaults는 완전성이 확인된 현재 목록, last_fault는 원 발생·AGE를 가진 최근 기록이다. `VSS_STATUS_REEVALUATE`로 이전 보고의 평가 번호·AGE를 새로 만들지 않는다. Snapshot→DTO owner·인계 형식은 BINDING_OPEN이며 이 인자 후보가 App 선행 변환·Network 변환을 확정하지 않는다.
 
 **반환·실패:** 위4개 NetSubmitResult만 local 수용 상태로 사용한다. 실패 뒤 재시도해도 원 상태평가/발생/명령 식별을 바꾸거나 원 Age를 초기화하지 않는다. State/Fault와 discrete Event/Result의 서로 다른 교체·수명 규칙은 Data를 따른다. Network는 송신시 Boot/TX_SEQUENCE/실제 대기 Age를 보완하고 기능 상태·고장을 재판정하지 않는다.
 
@@ -135,7 +137,7 @@ void VssNetPriv_OnDomainPermission(const NetDomainPermission *message, const Net
 | `message` | `const NetDomainPermission *` · IN/borrowed; [전체 Data](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission) | 수신 Network가 길이/enum/기동/순서 검증 후 제공; Network 감독이 소비; NULL 금지, 호출 반환까지 유효 |
 | `meta` | `const NetCanRxMeta *` · IN/borrowed; [전체 메타](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcanrxmeta) | Network 기동/프레임 전송순번·로컬 RX 시간. 원 관측 source sequence/Age와 별개; NULL 금지, 호출 동안 읽기 전용 |
 
-**언제·어떻게 사용:** App의 필수 permission callback을 추가하지 않는다. VSS App 실제 소비 항목·R4 연결 필요성이 확인되면 해당 담당과 조건부 경계를 합의한다. Backend 복구 허용 VssRecoveryPermission으로 자동 변환하지 않는다.
+**언제·어떻게 사용:** App의 필수 permission callback을 추가하지 않는다. VSS App 실제 소비 항목·R4 연결 필요성이 확인되면 해당 담당과 조건부 경계를 확정해야 한다. Backend 복구 허용 VssRecoveryPermission으로 자동 변환하지 않는다.
 
 **반환·실패:** `void`이며 local 전달 callback 호출은 기능적 수용·저장 수용·음향 시작·완료를 증명하지 않는다. 의미상 무효/만료 근거를 typed 상태로 전달할 수 있지만 CRC·length·unsupported code 등 구조 오류는 Network가 구분한다. 실패를 CLEAR/DONE으로 합성하지 않는다.
 
@@ -147,6 +149,6 @@ VssNetPriv_OnDomainPermission(&decoded, &rx_meta);
 /* consumer가 반환 이후 필요 값을 owner 저장소로 복사한다. */
 ```
 
-## 구현 협의 경계
+## 구현 연동 경계
 
-`VssNet_PublishStatus`는 정확한 NetVssStatus 보고가 제공됐을 때 사용할 로컬 handoff 후보다. R4 Snapshot을 직접 인자로 받는 구조를 확정하지 않는다. 형식·owner 합의 전 normal0/READY/Fault없음으로 누락을 보완하지 않는다. `LAST_FAULT_QUALITY`의 이력 있음0/부재3은 current service·전체 Fault 품질을 표현하지 않으므로 미확인 품질을 정상 보고로 채우지 않는다. [변환·제한 정본](10_DATA.md#r2-status-proposal) · [입력 상실·복구](10_DATA.md#vss-input-recovery). VSS App permission ingress는 consumer 필요성이 미확인이라 필수 API에서 제외했다. 하나의 DOMAIN_PERMISSION은 VSS 포함4수신 의무를 유지하며 private handler가 담당한다. 별도 VSS_FAULT frame·VSS MOBILE Query RPC·재생제어 wrapper를 신설하지 않는다.
+`VssNet_PublishStatus`는 정확한 NetVssStatus 보고가 제공됐을 때 사용할 로컬 handoff 후보다. R4 Snapshot을 직접 인자로 받는 구조를 확정하지 않는다. 형식·owner 조건 확정 전 normal0/READY/Fault없음으로 누락을 보완하지 않는다. `LAST_FAULT_QUALITY`의 이력 있음0/부재3은 current service·전체 Fault 품질을 표현하지 않으므로 미확인 품질을 정상 보고로 채우지 않는다. [변환·제한 정본](10_DATA.md#r2-status-proposal) · [입력 상실·복구](10_DATA.md#vss-input-recovery). VSS App permission ingress는 consumer 필요성이 미확인이라 필수 API에서 제외했다. 하나의 DOMAIN_PERMISSION은 VSS 포함4수신 의무를 유지하며 private handler가 담당한다. 별도 VSS_FAULT frame·VSS MOBILE Query RPC·재생제어 wrapper를 신설하지 않는다.
