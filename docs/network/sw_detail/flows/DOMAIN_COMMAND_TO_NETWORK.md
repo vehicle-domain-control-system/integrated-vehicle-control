@@ -113,7 +113,7 @@ DomainIf_TxWindowDomainAlive          → txWindowDomainAlive          ┘   (�
 | WindowOperationPermission | operationAllowed, quality, meta.quality/ageMs/updateSequence | WINDOW 실행 허용 정책, 공유 순번·AGE, 현재 기능 구현 보류 |
 | WindowDomainAlive | domainLinkAvailable, meta.quality/ageMs/updateSequence | 생성 책임·실제 링크 감독과의 관계, 별도 heartbeat가 아닌 기존 합성 의미 |
 
-r1의 [Permission 의미 투영](CAN_BCM_AND_PERMISSION.md#permission-projection)은 DOMAIN 정책 미확정 권장안이다. 확정 ALLOW/OK·정상 평가 DENY/OK를 구별하고 확인된 원인과 채택된 범위에서만 false+비정상 품질→255를 적용한다. UNKNOWN+OK 표현 불가와 quality/meta 충돌은 해당 투영 HOLD이며 입력 자체를 임의 DENY/OK로 바꾸지 않는다. Network가 기능 원인을 추측하지 않는다.
+r1의 [Permission 의미 투영](CAN_BCM_AND_PERMISSION.md#permission-projection)은 UNKNOWN의 원인별 C2 Quality 투영에 대한 권장안으로 DOMAIN Adapter 수용 대기다. FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고이며 실제 Network→CIS→Pi 인계는 BINDING_NOT_VERIFIED다. 확정 ALLOW/OK·정상 평가 DENY/OK를 구별하고 확인된 원인과 채택된 범위에서만 false+비정상 품질→255를 적용한다. UNKNOWN+OK 표현 불가와 quality/meta 충돌은 해당 투영 HOLD이며 입력 자체를 임의 DENY/OK로 바꾸지 않는다. Network가 기능 원인을 추측하지 않는다.
 
 새 power 평가가 와도 오래된 operation/alive의 원 AGE와 순번은 갱신하지 않는다. 같은 now로 환산한 각 AGE 중 최대값은 기존 **보수적 합성 후보**이며 채택된 규칙으로 확정하지 않는다. Generation0·DOMAIN Boot 수명·CIS 정책 회신 전에는 해당 근거를 미확인으로 보존한다.
 

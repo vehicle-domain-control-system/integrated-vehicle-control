@@ -177,9 +177,9 @@ DomainIf_Status_t (*txCisPowerPermission)( const DomainIf_CisPowerPermission_t *
 
 vehiclePowerAllowed와 quality 및 meta의 품질·AGE·updateSequence는 같은 원 성공 평가와 현재 품질에 연결한 입력이다. 원 성공 평가 번호와 CAN 합성 UPDATE_SEQUENCE는 다른 번호 공간이다. 이 3개 필드만으로 POWER_OPERATION_STATE·WINDOW 동작 허용·합성 revision·공유 AGE를 만들 수 없다. 원본 평가와 합성 계약이 없으면 부분 접수 성공도 반환하지 않는다.
 
-r1 [Permission 의미 투영](../../interface/07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)의 표는 **권장안 / DOMAIN 기능 정책 미확정**이다. 실제 채택·생성원 근거가 있는 경우 확정 ALLOW true/OK는1/OK, 정상 평가의 확정 DENY false/OK는0/OK로 구분한다. 확인된 미관측·만료·평가실패를 DOMAIN이 false+NO_DATA/STALE/INVALID로 투영한 경우에만255+해당 품질의 조건부 경로를 검토한다. 일반 false에서 UNKNOWN을 추측하지 않는다. UNKNOWN+OK를 무손실 보존해야 하면 기존 bool+quality+meta로 표현할 수 없으므로 해당 경로는 NOT_AVAILABLE/HOLD다. quality와 meta.quality가 충돌하면 임의 OK를 선택하지 않고 원 충돌을 보존한다. 정상 형식의 품질 저하를 인자오류나 DENY/OK로 덮지 않는다. 원 의미·원 품질·원인은 DOMAIN 원 기록 소유이며 Network에 새 사유 필드·기능 판단을 추가하지 않는다. 실제 세부 검사는 [합성 Flow](../flows/CAN_BCM_AND_PERMISSION.md#permission-projection)의 같은 조건을 따른다.
+r1 [Permission 의미 투영](../../interface/07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)의 표는 **UNKNOWN의 원인별 C2 Quality 투영 권장안 / DOMAIN Adapter 수용 대기**다. FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고이며 실제 Network→CIS→Pi 연결은 BINDING_NOT_VERIFIED다. 실제 채택·생성원 근거가 있는 경우 확정 ALLOW true/OK는1/OK, 정상 평가의 확정 DENY false/OK는0/OK로 구분한다. 확인된 미관측·만료·평가실패를 DOMAIN이 false+NO_DATA/STALE/INVALID로 투영한 경우에만255+해당 품질의 조건부 경로를 검토한다. 일반 false에서 UNKNOWN을 추측하지 않는다. UNKNOWN+OK를 무손실 보존해야 하면 기존 bool+quality+meta로 표현할 수 없으므로 해당 경로는 NOT_AVAILABLE/HOLD다. quality와 meta.quality가 충돌하면 임의 OK를 선택하지 않고 원 충돌을 보존한다. 정상 형식의 품질 저하를 인자오류나 DENY/OK로 덮지 않는다. 원 의미·원 품질·원인은 DOMAIN 원 기록 소유이며 Network에 새 사유 필드·기능 판단을 추가하지 않는다. 실제 세부 검사는 [합성 Flow](../flows/CAN_BCM_AND_PERMISSION.md#permission-projection)의 같은 조건을 따른다.
 
-실패 즉시 UNKNOWN도 조건부 권장안이다. 성공17 뒤200ms 평가실패에서 원17·마지막 성공시각을 보존하며 성공18/AGE0을 만들지 않는다. 검증된 현재 제한은 같은 원 성공seq라는 이유만으로 중복 폐기하지 않는다. [번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)의 CAN 합성 UPDATE, CAN TX, UART LINK, CIS relay UPDATE를 원 성공번호와 구분한다. 실제 새 합성 revision 발급 규칙·필수 입력·공통 AGE는 미결이다. 성공 이력이 없으면 정상 원 순번·시간을 발명하지 않는다. 후방 원500ms/실제 재평가 약200ms와 CAN50/150·UART500/1500·후방거리150 후보·USE_LIMIT1500 후보/500 조건부는 각각 보존한다.
+FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영은 DOMAIN Adapter 수용 대기인 조건부 권장안이며 Network→CIS→Pi 실제 연결은 BINDING_NOT_VERIFIED다. 성공17 뒤200ms 평가실패에서 원17·마지막 성공시각을 보존하며 성공18/AGE0을 만들지 않는다. 검증된 현재 제한은 같은 원 성공seq라는 이유만으로 중복 폐기하지 않는다. [번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)의 CAN 합성 UPDATE, CAN TX, UART LINK, CIS relay UPDATE를 원 성공번호와 구분한다. 실제 새 합성 revision 발급 규칙·필수 입력·공통 AGE는 미결이다. 성공 이력이 없으면 정상 원 순번·시간을 발명하지 않는다. 후방 원500ms/실제 재평가 약200ms와 CAN50/150·UART500/1500·후방거리150 후보·USE_LIMIT1500 후보/500 조건부는 각각 보존한다.
 
 검증된 현재 DOMAIN 제한 사건은 원 소유자의 기존 기록에 귀속한다. 그 제한 이후 미시작 구 ALLOW의 pending/retry 재게시를 막는 관측 fence와 새 전송 항목의 원자 접수는 별개다. 용량 실패로 제한 전달이 실패해도 검증된 원 제한을 이전 ALLOW로 되돌리지 않는다. 검증 전 입력·malformed·일반 접수 실패로 fence를 만들지는 않는다. Driver 참조 중 프레임은 수정·임의취소·재사용하지 않으며 원격 CIS/Pi 동시 제한 반영을 보장하지 않는다. 전송 불능은 실제 실패로 남긴다.
 
@@ -196,7 +196,7 @@ DomainIf_Status_t NetDomain_TxCisPowerPermission(const DomainIf_CisPowerPermissi
         return DOMAIN_IF_INVALID_ARGUMENT;
     if (/* UNKNOWN+OK 무손실 필요, quality/meta 충돌 또는 실제 원인·DOMAIN 투영 채택 근거 부재 */)
         return DOMAIN_IF_NOT_AVAILABLE; // 원 품질·실패 근거 보존; 임의 DENY/OK 없음.
-    // 아래 의미 매핑·실패 즉시 제한은 r1 조건부 권장안이다. 실제 채택 전 정상 경로는 열지 않는다.
+    // Core의 FAILED/NO_DATA ALLOW 철회는 담당자 구현 완료 보고다. UNKNOWN 품질 투영은 DOMAIN Adapter 수용 대기, Network 합성·CIS/Pi 전달은 미검증이므로 승인·검증 전 정상 경로는 HOLD다.
     // owner 직렬 문맥·원 성공/현재 제한 결합·POWER_OPERATION_STATE 생성자·공유 AGE/합성순번의
     // 승인 근거와 기존 source별 사본·전체 게시 공간이 모두 있어야 한다.
     if (/* 어느 하나의 합성/등록/시간 근거가 없거나 해당 기능이 구현 보류임 */)

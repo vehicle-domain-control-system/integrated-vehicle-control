@@ -84,4 +84,4 @@ F02/F03은 DOMAIN의 후방 활성 Power 실제 재평가 약200ms와 원500ms/�
 
 ## PG6-SW02 — Permission 번호 공간
 
-DOMAIN 원 성공 평가 Sequence·마지막 성공 시각은 실제 성공에서만 갱신한다. 성공17 뒤 평가 실패는 원17·원 시각을 유지한다. Network CAN 합성 UPDATE_SEQUENCE는 검증한 원 tuple 또는 실제 전달 의미·품질 제한 변경 후보이며 DOMAIN 성공 번호와 다르다. CAN TX_SEQUENCE·UART LINK_SEQUENCE는 전송 번호, CIS relay UPDATE_SEQUENCE는 원 평가·수용 세대·실제 제한의 별도 중계 번호다. 같은 원 성공 seq만으로 확인된 제한을 버리지 않는다. UNKNOWN 투영·실패 즉시 제한은 r1 조건부 권장안으로 POLICY_OPEN/BINDING_NOT_VERIFIED이며 합성 세부조건은 미결이다. [투영·번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-projection).
+DOMAIN 원 성공 평가 Sequence·마지막 성공 시각은 실제 성공에서만 갱신한다. 성공17 뒤 평가 실패는 원17·원 시각을 유지한다. Network CAN 합성 UPDATE_SEQUENCE는 검증한 원 tuple 또는 실제 전달 의미·품질 제한 변경 후보이며 DOMAIN 성공 번호와 다르다. CAN TX_SEQUENCE·UART LINK_SEQUENCE는 전송 번호, CIS relay UPDATE_SEQUENCE는 원 평가·수용 세대·실제 제한의 별도 중계 번호다. 같은 원 성공 seq만으로 확인된 제한을 버리지 않는다. FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영은 DOMAIN Adapter 수용 대기의 POLICY_OPEN이며 Network 합성·CIS relay·Pi 연결은 BINDING_NOT_VERIFIED다. 합성 세부조건은 미결이다. [투영·번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-projection).

@@ -167,7 +167,7 @@ bool NetUartC_DecodePermissionPayload(
 | Typed 인계 | 임시 전 필드 decode·meta를 완성, 수용한 CIS세대/순서·Pi consumer 문맥 확인 | 무근거 Boot/구 형식/순서 wrap은 정상 소비 보류. 정상 INVALID/NO_DATA는 품질 그대로 |
 | 사용 시점 | 값1/OK·원 DOMAIN 기한·relay 한도·원 연결과 동일 세대·현재 AGE 증거를 함께 확인 | 하나라도 없으면 새 허용 근거 없음. callback void/CRC 정상은 허용 승인 아님 |
 
-[r1 조건부 실패/번호 분리](../../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)에 따라 성공17 뒤 평가 실패는 원17·마지막 성공 시각을 유지한 현재 제한이다. 확인된 제한의 새 relay 의미를 원 성공번호가 같다는 이유로 버리지 않는다. 실패 즉시 UNKNOWN과 false+비정상 품질→255는 DOMAIN 정책 미확정 권장안이며, 이 Codec이 원인을 추측해 값/품질을 바꾸지 않는다. 원 UNKNOWN+OK의 표현 한계를 false/OK로 숨기지 않는다. 이미 확인된 현재 제한·만료 뒤 구 ALLOW pending/retry 재게시를 막고 실제 in-flight frame은 참조 해제까지 불변 유지한다. 전송 실패·원격 동시 반영 미확인은 별도로 남는다.
+[r1 조건부 실패/번호 분리](../../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)에 따라 성공17 뒤 평가 실패는 원17·마지막 성공 시각을 유지한 현재 제한이다. 확인된 제한의 새 relay 의미를 원 성공번호가 같다는 이유로 버리지 않는다. FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영과 false+비정상 품질→255는 DOMAIN Adapter 수용 대기인 권장안이며 Network→CIS→Pi 실제 전달·소비는 BINDING_NOT_VERIFIED다. 이 Codec이 원인을 추측해 값/품질을 바꾸지 않는다. 원 UNKNOWN+OK의 표현 한계를 false/OK로 숨기지 않는다. 이미 확인된 현재 제한·만료 뒤 구 ALLOW pending/retry 재게시를 막고 실제 in-flight frame은 참조 해제까지 불변 유지한다. 전송 실패·원격 동시 반영 미확인은 별도로 남는다.
 
 각 로컬 반환의 실제 바인딩·동기화·후발 실패 관측은 D-03/D-05/IF-O12/G06 미결이다. 이미 반환한 OK를 소급 FAILED로 바꾸지 않고 원 item identity와 실패 관측을 보존한다. DOMAIN C2 failure sink를 CIS/Pi에 복제하지 않는다. 상세 분기는 [relay·소비 후보 의사코드](../../flows/UART_C_CIS_TO_PI_PERMISSION.md#relay-projection), 버퍼/Driver는 [공통 송수신](../UART_C_TX_RX_CONTROL.md)을 따른다.
 

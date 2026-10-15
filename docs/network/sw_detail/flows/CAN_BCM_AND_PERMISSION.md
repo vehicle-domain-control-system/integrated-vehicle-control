@@ -35,7 +35,7 @@
 <a id="permission-projection"></a>
 ## Permission 합성의 입력별 보존과 조건부 의미 투영
 
-r1 [Permission 투영 조건](../../interface/07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)은 **권장안 / DOMAIN 기능 정책 미확정**이다. DOMAIN Permission Adapter가 원 의미·원인에 맞는 C2를 만들고 Network는 실제로 채택된 투영의 품질 일치·원 시간·문맥을 검증한다. 이 절은 정책 채택이나 실행 바인딩을 확정하지 않는다. 원 의미·원 품질·원인의 보존 위치도 DOMAIN 확인 전 미정이며 Network가 bool만으로 추측하거나 사유 필드·새 DTO를 추가하지 않는다.
+r1 [Permission 투영 조건](../../interface/07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)은 **UNKNOWN의 원인별 C2 Quality 투영 권장안 / DOMAIN Adapter 수용 대기**다. FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고이며 실제 Network 합성·CIS/Pi 전달은 BINDING_NOT_VERIFIED다. DOMAIN Permission Adapter가 원 의미·원인에 맞는 C2를 만들고 Network는 실제로 채택된 투영의 품질 일치·원 시간·문맥을 검증한다. 이 절은 정책 채택이나 실행 바인딩을 확정하지 않는다. 원 의미·원 품질·원인의 보존 위치도 DOMAIN 확인 전 미정이며 Network가 bool만으로 추측하거나 사유 필드·새 DTO를 추가하지 않는다.
 
 | 기존 C2 입력 | 보존할 자료 | Wire 대응 후보 / 제약 |
 |---|---|---|
@@ -49,7 +49,7 @@ r1 [Permission 투영 조건](../../interface/07_CROSS_NODE_INTERFACE_RULES.md#p
 | 실제 정상 평가의 확정 DENY | false + OK |0 + OK | 평가 실패나 UNKNOWN을 DENY로 바꾸지 않음 |
 | 미관측·판단 근거 없음 | false + NO_DATA |255 + NO_DATA | 그 원인을 DOMAIN이 확인하고 매핑 채택 범위를 입증할 때만 |
 | 이전 판단 수명 만료 | false + STALE |255 + STALE | 원 성공 시각 유지; 과거 ALLOW 사용 불가 |
-| 신뢰할 수 없는 평가 실패 | false + INVALID |255 + INVALID | 실패 즉시 제한·이 매핑의 DOMAIN 수용이 필요한 조건부 권장안 |
+| 신뢰할 수 없는 평가 실패 | false + INVALID |255 + INVALID | Core의 FAILED/NO_DATA ALLOW 철회는 담당자 구현 완료 보고; 이 품질 매핑은 DOMAIN Adapter 수용 대기인 조건부 권장안이며 실제 Network→CIS→Pi 전달은 미검증 |
 | UNKNOWN이면서 원 OK 품질의 무손실 보존 필요 | 기존 bool+quality+meta로 세 상태 표현 불가 | 해당 투영 HOLD | false/OK 또는 임의 비정상 품질로 조용히 치환하지 않음; 최소 계약 변경은 별도 검토 |
 
 정상적으로 표현된 비정상 품질 보고를 인자 오류로 숨기지 않는다. 원 의미와 품질을 축약하는 투영을 채택했다면 축약 전 기록은 DOMAIN에 보존되어야 하며 실제 연결 근거가 필요하다. 품질 충돌은 해당 입력을 확인 불가로 제한하고 원 충돌 자료를 보존한다. 임의 OK 선택·enum 숫자 max·전체 입력의 OK 보정은 없다. WINDOW 부재만으로 독립 Power를 불허로 바꾸지 않으며, 필요한 입력·공통 AGE를 입증하지 못한 ALLOW도 만들지 않는다.
@@ -99,7 +99,7 @@ if (/* 입력별 source 사본·완성 DTO·원 연결을 원자 게시할 공�
 | UART LINK_SEQUENCE | UART 방향별 프레임 전송 | 원 성공/relay 평가와 별개 |
 | P_PERMISSION relay UPDATE_SEQUENCE | CIS private relay의 새 원 평가·수용 세대·실제 제한 변경 후보 | 단순500ms 반복은 유지. 원 성공번호나 CAN 합성번호의 무손실 전달 필드가 아님 |
 
-실패 즉시 UNKNOWN/INVALID 전달은 **조건부 권장안**이다. 실제 DOMAIN 실패·제한 원인이 확인되고 정책이 채택된 경우 원 성공17·마지막 성공 시각을 유지한 제한을 다음 성공이나500ms 만료까지 미루지 않고 기존 합성/relay에 요청한다. 같은 원 성공 Sequence만으로 제한을 중복 폐기하지 않는다. 최초 실패라 성공 기록이 없으면 정상 source Sequence·시각·AGE0을 발명하지 않으며 기존 NO_DATA/포화 규칙과 대조할 시간·Wire 표현은 HOLD다. 합성번호의 갱신 자체가 원 시간을 새로 시작하지 않는다.
+**FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고(OWNER_REPORTED_IMPLEMENTED)**다. UNKNOWN의 원인별 C2 Quality 투영은 권장안·DOMAIN Adapter 수용 대기이며 Network 합성·CIS relay·Pi 전달은 BINDING_NOT_VERIFIED다. 실제 DOMAIN 실패·제한 원인이 확인되고 정책이 채택된 경우 원 성공17·마지막 성공 시각을 유지한 제한을 다음 성공이나500ms 만료까지 미루지 않고 기존 합성/relay에 요청한다. 같은 원 성공 Sequence만으로 제한을 중복 폐기하지 않는다. 최초 실패라 성공 기록이 없으면 정상 source Sequence·시각·AGE0을 발명하지 않으며 기존 NO_DATA/포화 규칙과 대조할 시간·Wire 표현은 HOLD다. 합성번호의 갱신 자체가 원 시간을 새로 시작하지 않는다.
 
 CAN 수신의 같은 합성 UPDATE에 다른 품질을 넣는 것은 이 원 성공번호 규칙과 다르다. 확인된 제한의 새 합성 UPDATE와 실제 전이 근거를 사용하고, 같은 합성번호의 의미 충돌을 일반 semanticExactlyEqual에서 허용하지 않는다. Pi에서도 새 relay 제한을 같은 원 성공이라는 이유로 단순 반복 처리하지 않으며 실제 전이·원 AGE 근거를 확인한다.
 

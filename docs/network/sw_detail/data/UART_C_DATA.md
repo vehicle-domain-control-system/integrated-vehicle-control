@@ -124,7 +124,7 @@ typedef struct NetPiPermission
 
 사용 타입: [`NetQualityReason`](CIS_REAR_DATA.md#type-NetQualityReason), [`NetTriState`](CAN_COMMON_DATA.md#type-NetTriState), [`NetValueQuality`](CAN_COMMON_DATA.md#type-NetValueQuality).
 
-원 성공17 뒤 실패에서도 원17·원 시각은 유지하고, 확인된 현재 제한의 합성/relay 번호만 조건부로 변경한다. [번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)의 원 성공번호를 이 update_sequence나 UART LINK로 복원하지 않는다. UNKNOWN 조건부 투영과 실패 즉시 제한은 DOMAIN 정책 OPEN이며 기존 DTO에 새 원인/원 번호 필드를 추가하지 않는다.
+원 성공17 뒤 실패에서도 원17·원 시각은 유지하고, 확인된 현재 제한의 합성/relay 번호만 조건부로 변경한다. [번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)의 원 성공번호를 이 update_sequence나 UART LINK로 복원하지 않는다. FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영은 DOMAIN Adapter 수용 대기이고 Network→CIS→Pi 실제 전달은 BINDING_NOT_VERIFIED다. 기존 DTO에 새 원인/원 번호 필드를 추가하지 않는다.
 
 직접 사용 API: [`PiApp_OnCisPermission`](../functions/uart_c/P_PERMISSION.md#api-PiApp_OnCisPermission).
 
