@@ -34,7 +34,7 @@ P_PERMISSION은 CIS private relay가 검증한 원 DOMAIN 허용을 전달한다
 원 기한과 반복 간격이 모두 500ms라는 사실만으로 연속 허용이 보장되지는 않는다. 실제 새 평가의 즉시 중계·지연·실패·무수신을 검증해야 한다. Pi의 통신 해석과 비전 기능 적용은 분리하며 카메라 정지·프로세스 종료를 강제하지 않는다.  Power/Operation 생성원·공유 AGE 합성 및 실제 기능 연결은 미결이다.
 
 <a id="delta-uart-permission"></a>
-**DOMAIN 실패 정책 수용·실제 연결 대기:** 실패 즉시 UNKNOWN 권장안을 적용할 경우 같은 원 성공 평가의 새 품질 하향도 기존 CIS relay로 전달 요청하며 다음 성공 평가·원500ms 만료·500ms 반복까지 유예하지 않는 안이다. 원 성공 Sequence와 원 AGE 시작점은 보존하고 P_PERMISSION relay UPDATE_SEQUENCE·UART LINK_SEQUENCE를 새 DOMAIN 성공 평가로 보지 않는다. Pi는 원500ms 이내라도 수용한 무효 품질이면 이전 ALLOW를 사용하지 않는다. 적체/송신 실패 뒤 구 ALLOW 재전달 방지와 실제 수신 시점은 검증 대기이며 동시 전달을 보증하지 않는다. 기존3TYPE·필드·USE_LIMIT 후보 및 조건부500ms 지위는 유지한다. [정책·전달 경계](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**DOMAIN Core 실패 철회 구현 완료 보고 / UART-C 실제 연결 대기:** FAILED/NO_DATA 시 과거 ALLOW 즉시 철회는 담당자 구현 완료 보고다. UNKNOWN의 C2 Quality 투영은 수용 대기이며 Network→CIS→Pi 전달은 통합 검증 대기다. 검증된 제한·품질 하향을 전달할 때 같은 원 성공 평가의 새 품질 하향도 기존 CIS relay로 전달 요청하며 다음 성공 평가·원500ms 만료·500ms 반복까지 유예하지 않는 안이다. 원 성공 Sequence와 원 AGE 시작점은 보존하고 P_PERMISSION relay UPDATE_SEQUENCE·UART LINK_SEQUENCE를 새 DOMAIN 성공 평가로 보지 않는다. Pi는 원500ms 이내라도 수용한 무효 품질이면 이전 ALLOW를 사용하지 않는다. 적체/송신 실패 뒤 구 ALLOW 재전달 방지와 실제 수신 시점은 검증 대기이며 동시 전달을 보증하지 않는다. 기존3TYPE·필드·USE_LIMIT 후보 및 조건부500ms 지위는 유지한다. [정책·전달 경계](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 ## 메시지 목록 — 전송·감시와 원본 사용 기한 구분
 

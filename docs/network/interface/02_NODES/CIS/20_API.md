@@ -76,7 +76,7 @@ void CisApp_OnDomainPermission(
 
 **결과 사용:** 같은 수신 의무에서 Pi relay는 private CisNetPriv_RelayPiPermission이 담당한다. App callback이 허용을 재발급하지 않는다.
 
-** 추가 조건:** 실패 즉시 UNKNOWN은 DOMAIN 기능 정책 미확정의 권장안이다. 그 정책으로 검증된 무효 품질이 오면 원 성공 평가 Sequence가 같아도 품질 하향을 누락하지 않고 과거 ALLOW 사용을 제한한다. 정상 DENY/OK와 UNKNOWN/비정상 품질을 구분하고, CAN 합성 UPDATE_SEQUENCE를 DOMAIN 원 성공 번호로 보지 않는다. [실패·순번 분리](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**추가 조건:** FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. 원인별 UNKNOWN의 C2 Quality 투영과 Network→CIS 전달은 수용·연동 검증 대기다. 검증된 무효 품질이 오면 원 성공 평가 Sequence가 같아도 품질 하향을 누락하지 않고 과거 ALLOW 사용을 제한한다. 정상 DENY/OK와 UNKNOWN/비정상 품질을 구분하고, CAN 합성 UPDATE_SEQUENCE를 DOMAIN 원 성공 번호로 보지 않는다. [실패·순번 분리](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 **경로·상대 경계:** [`DOMAIN_PERMISSION`](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission) · 원 송신 [`DomainIf_TxCisPowerPermission()`](../DOMAIN/20_API.md).
 

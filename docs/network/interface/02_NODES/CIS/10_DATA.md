@@ -368,7 +368,7 @@ CIS Network는 같은 검증된 `NetDomainPermission`/`NetCanRxMeta`를 `CisApp_
 제출 거절은 NOT_READY/NO_CAPACITY 등 로컬 반환으로 구분한다. 지연·실패·무수신으로 원 기한을 만족하지 못하면 이전 ALLOW를 새 OK로 재사용하지 않는다. 실제 송신 완료·수신 중단 관측과 소비자 무효화 연결은 BINDING_OPEN이다. Pi가 이 값을 비전 기능에 사용하는 정책은 별도이며, 그 선택을 통신 문서·수신 시험의 선행조건으로 삼지 않는다.
 
 <a id="delta-cis-permission"></a>
-**실패 정책은 DOMAIN 기능 정책 미확정의 권장안:** DOMAIN이 평가 실패를 현재 무효 품질로 전달한 경우 원500ms 안이라도 과거 ALLOW를 사용하지 않는다. 원 성공 평가 순번이 같다는 이유로 품질 하향을 누락하지 않고 검증된 입력을 기존 App callback과 private relay에 함께 전달한다. 원 성공 평가·CAN 합성·CIS relay 번호 공간은 별개이며 무효 보고로 성공 순번·AGE0을 만들지 않는다. relay 갱신·즉시 전달 요청과 원격 실제 적용을 구분하고 적체·송신 실패 뒤 구 ALLOW 재전달 방지는 연결 시험에서 확인한다. [권장 투영과 실패의 지위](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**DOMAIN Core 실패 철회 구현 완료 보고 / C2 품질 투영·Network 전달 미검증:** FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN 담당자 구현 완료 보고다. 원인별 UNKNOWN의 C2 Quality 매핑은 수용 대기이며, 검증된 평가 실패·무효 품질이 실제 전달된 경우 원500ms 안이라도 과거 ALLOW를 사용하지 않는다. 원 성공 평가 순번이 같다는 이유로 품질 하향을 누락하지 않고 검증된 입력을 기존 App callback과 private relay에 함께 전달한다. 원 성공 평가·CAN 합성·CIS relay 번호 공간은 별개이며 무효 보고로 성공 순번·AGE0을 만들지 않는다. relay 갱신·즉시 전달 요청과 원격 실제 적용을 구분하고 적체·송신 실패 뒤 구 ALLOW 재전달 방지는 연결 시험에서 확인한다. [권장 투영과 실패의 지위](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 ## 센서별 부분 실패와 링크 관측 —
 

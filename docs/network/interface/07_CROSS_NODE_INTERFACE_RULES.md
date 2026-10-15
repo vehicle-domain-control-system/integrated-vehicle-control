@@ -57,7 +57,7 @@ P_PERMISSION.USE_LIMIT는 1500ms 후보이며, 같은 후방 Power 원 판단을
 
 후방 활성 Permission의 원 사용 기한은 500ms이며 구 원 TTL 150ms 후보를 적용하지 않는다. CAN 수신 중단 150ms, 후방 거리 원 150ms 후보, UART 수신 중단 1500ms는 각각 별개다.
 
-**권장안 / DOMAIN 기능 정책 미확정:** 의미 투영은 DOMAIN Permission Adapter가 수행하고 Network는 투영된 C2의 품질 일치·원 시간·문맥을 검증한다. `UNKNOWN+OK`를 `false+OK`로 조용히 바꾸면 확정 DENY와 구분되지 않는다. 기존 bool+quality+meta로 그 세 상태를 무손실 표현할 수 없다는 한계를 유지한다.
+**UNKNOWN의 C2 Quality 투영 권장안 / DOMAIN Adapter 수용 확인 대기:** FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. 이 절에서 미확정인 것은 원인별 의미·품질 투영 및 실제 Network 인계다. 의미 투영은 DOMAIN Permission Adapter가 수행하고 Network는 투영된 C2의 품질 일치·원 시간·문맥을 검증한다. `UNKNOWN+OK`를 `false+OK`로 조용히 바꾸면 확정 DENY와 구분되지 않는다. 기존 bool+quality+meta로 그 세 상태를 무손실 표현할 수 없다는 한계를 유지한다.
 
 | 원 기능 의미 | C2 권장 투영 | CAN 전원 값·품질 | 조건 |
 |---|---|---|---|
@@ -202,7 +202,7 @@ NET_SUBMIT_OK/DOMAIN_IF_OK는 필요한 데이터를 안정되게 복사·인계
 | <a id="plan-ncp-t20"></a>Local Publish OK vs tx delivery and queue failures | bounded copy not DONE/peer RX; error preserved |
 | <a id="plan-ncp-t21"></a>S32K144+Pi UART concurrent sensor blocking | no loss/permission deadline violations measured |
 | <a id="plan-ncp-t22"></a>S32K144↔344 CAN with Gen/Power | real FDF/BRS/DLC/Boot/Codec and C2 observer |
-| ALLOW/OK, DENY/OK, UNKNOWN/NO_DATA, UNKNOWN/OK | 확정 DENY와 UNKNOWN 구분. UNKNOWN+OK 무손실 필요 시 기존 C2 한계·DOMAIN 기능 정책 미확정 |
+| ALLOW/OK, DENY/OK, UNKNOWN/NO_DATA, UNKNOWN/OK | 확정 DENY와 UNKNOWN 구분. UNKNOWN+OK 무손실 필요 시 기존 C2 한계·원인별 품질 투영의 DOMAIN Adapter 수용 대기. Core 실패 철회는 담당자 구현 완료 보고 |
 | quality OK / meta.quality INVALID | OK를 골라 허용 생성 금지; 기존 충돌 후보대로 제한 |
 | 성공17 ALLOW/OK 뒤200ms 평가 실패 | Core ALLOW 철회 완료 보고·원 성공17 유지·내부 stateRevision 증가. 품질 투영 수용 및 Network 전달 검증 대기 |
 | 마지막 성공 반복 뒤 실패 / 성공 이력 없음 | 실패 시각으로 AGE0·성공 순번 생성 금지; 미확인 시간 표현 결정 대기 |

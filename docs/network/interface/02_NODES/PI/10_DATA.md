@@ -171,6 +171,6 @@ P_PERMISSION에는 DOMAIN 원 BOOT/순번이 직접 없다. CIS는 수용한 DOM
 UART-C의 500ms 반복만으로 원 기한 500ms 이내의 연속 ALLOW를 보증하지 않는다. 새 DOMAIN 평가가 CIS에 도착하면 원 근거를 유지하여 가능한 즉시 중계하고 실제 지연·실패를 확인해야 한다. Pi의 통신 수신·해석·만료 검증과 비전 기능 적용은 별개다. 비전 기능에 사용할지는 Pi 모듈이 결정하며, 카메라 중지·프로세스 종료·물리 전원 차단을 이 계약의 새 요구로 만들지 않는다. 비전 기능을 적용하지 않는 구성에서도 통신 문서와 수신 시험은 진행할 수 있다.
 
 <a id="delta-pi-permission"></a>
-**추가 소비 조건:** 실패 즉시 UNKNOWN은 DOMAIN 기능 정책 미확정의 권장안이지만 수신한 정상 형식의 무효 품질을 과거 ALLOW로 대체하지 않는 기존 소비 원칙은 유지한다. 검증된 relay가 실패·품질 하향을 전달하면 원 AGE가500ms 안이어도 이전 ALLOW를 사용하지 않고 다음 성공 평가/TTL 만료까지 무효화를 미루지 않는다. Pi Wire에는 원 DOMAIN 성공 Sequence가 없으므로 relay revision을 그것으로 간주하지 않는다. 원 AGE를 재수신·실패 시각으로0으로 만들지 않으며 지연된 구 ALLOW로 복원하지 않는다. 실제 relay·Queue·수신 연결은 미검증이고 Pi 카메라/비전 기능 적용 선택은 모듈 범위다. [적용 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**추가 소비 조건:** FAILED/NO_DATA 시 과거 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영과 Network→CIS→Pi 실제 전달은 수용·검증 대기이며, 정상 형식의 무효 품질을 과거 ALLOW로 대체하지 않는 기존 소비 원칙은 유지한다. 검증된 relay가 실패·품질 하향을 전달하면 원 AGE가500ms 안이어도 이전 ALLOW를 사용하지 않고 다음 성공 평가/TTL 만료까지 무효화를 미루지 않는다. Pi Wire에는 원 DOMAIN 성공 Sequence가 없으므로 relay revision을 그것으로 간주하지 않는다. 원 AGE를 재수신·실패 시각으로0으로 만들지 않으며 지연된 구 ALLOW로 복원하지 않는다. 실제 relay·Queue·수신 연결은 미검증이고 Pi 카메라/비전 기능 적용 선택은 모듈 범위다. [적용 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 **Generation 수용 조건:** 생산자와 runtime의 실제 기동/관측 세대 연결은 BINDING_OPEN이다. runtime reset 후 이전 record를 다시 제출하여 새 BOOT를 얻는 방식은 금지하며 새 판정/상태 평가가 필요하다. 이는 신규 wire 필드·별도 App DTO를 추가하는 계약이 아니다.

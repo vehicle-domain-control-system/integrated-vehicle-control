@@ -116,7 +116,7 @@ DOMAIN 원 평가 Sequence는 실제 평가 성공에서만 증가하며 반복 
 | UART LINK_SEQUENCE | UART 방향별 프레임 전송 | 원 평가·relay 갱신 아님 |
 | P_PERMISSION relay UPDATE_SEQUENCE | CIS private relay, 새 원 평가·수용 세대·실제 품질 제한 변경의 기존 후보 | DOMAIN 원 번호나 CAN 합성 번호의 무손실 전달 필드 아님 |
 
-각 번호의 수치가 우연히 같아도 생성 의미·동일성은 다르다. 실패 즉시 UNKNOWN은 [DOMAIN 기능 정책 미확정의 권장안](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)이며, 적용 시 성공17 뒤 실패는 원 성공17과 원 시각을 보존한 품질 하향으로 처리한다. 원 성공 Sequence 중복만으로 이 보고를 버리지 않는다. 새 성공/AGE0으로 위조하거나 정상 성공 이력이 없는데 source Sequence·시간을 만들지 않는다. 합성 품질 하향과 기존 relay 전달 요청은 다음 성공 평가·500ms 만료까지 미루지 않는 안이며 원격 동시 적용 보장은 아니다. 적체/송신 실패 뒤 구 ALLOW 재전달 방지는 연결 검증 대기다.
+각 번호의 수치가 우연히 같아도 생성 의미·동일성은 다르다. FAILED/NO_DATA 시 기존 ALLOW의 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. [UNKNOWN의 원인별 C2 Quality 투영](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)은 수용 대기이고 Network→CIS/Pi 전달은 검증 대기다. 검증된 제한이 전달될 때 성공17 뒤 실패는 원 성공17과 원 시각을 보존한 품질 하향으로 처리한다. 원 성공 Sequence 중복만으로 이 보고를 버리지 않는다. 새 성공/AGE0으로 위조하거나 정상 성공 이력이 없는데 source Sequence·시간을 만들지 않는다. 합성 품질 하향과 기존 relay 전달 요청은 다음 성공 평가·500ms 만료까지 미루지 않는 안이며 원격 동시 적용 보장은 아니다. 적체/송신 실패 뒤 구 ALLOW 재전달 방지는 연결 검증 대기다.
 
 <a id="section-timing"></a>
 ## 원 사용 기한과 통신 시간표
