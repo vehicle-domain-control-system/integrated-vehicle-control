@@ -1,5 +1,7 @@
 # Input / Time Data — R3
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > 2026-10-07 · 고정 Baseline / Execution Plan v1.1 · 논리 필드와 pseudo-C 상세
 
 [Data Overview](00_DATA_OVERVIEW.md) · [R2 타입 판정](00_DATA_OVERVIEW.md#type-decisions)
@@ -296,9 +298,24 @@ typedef enum
 | `ordering` | 원본 순서 근거. 도착 순서로 바꾸지 않는다. | 기존 입력 경계 | 동일 출처/세대의 비교 |
 | `timeDomain` | 원본 시간의 비교 문맥. | 기존 입력 경계/INPUT 검증 | 시간 비교가 입증된 범위 |
 | `timeEpoch` | 원본 시간 연속성 범위. | 기존 입력 경계/INPUT 검증 | 해당 원본 시간 범위 |
-| `originalAt` | 원래 발생/판단 시각. 송신·중계·대기 비용을 age에 남긴다. | 원래 의미 producer | 시간 근거 검증 후. 확인 불가 시 정상 사건으로 확정하지 않음 |
+| `originalAt` | RX Age에서 투영한 원 발생/판단 시각 구간 하한. 송신·중계·대기 비용을 age에 남긴다. | 원래 의미 producer | 시간 근거 검증 후. 확인 불가 시 정상 사건으로 확정하지 않음 |
 | `validUntil` | 원본 판단의 유효기한. Hold 기산 비교에 필요하다. 정의된 기한이 없는 입력에는 없음. | 원본 의미/기존 정책 | 유효기한이 정의된 입력. 미정값은 정책 TBD |
 | `continuity` | 원본 비교/연속성 근거. | INPUT 검증 | 해당 적용 문맥 |
+
+### A1 추가 필드와 의미
+
+| 필드 / 논리 타입 | 생성·소비·유효 조건 |
+|---|---|
+| evidenceSource / VssSourceKeyType | INPUT이 WINDOW/PI_VIA_CIS/CIS_REAR/DOMAIN_ACTIVATION 원 계보를 구분. source=DOMAIN과 별도 |
+| evidenceGeneration / VssGenerationType | 원 source Boot. generation=DOMAIN Boot와 교환 금지 |
+| evidenceOrdering / VssOrderingType | 원 source 성공 평가 순번. DOMAIN 판단 순서가 아님 |
+| deliveryOrder / VssOrderingType | 승인된 DOMAIN CAN TX. 같은 원 성공 순번의 최신 품질 제한 적용에만 사용, 새 정상 평가를 합성하지 않음 |
+| reason, availability / SemanticIdentity | 이름으로 검증한 원 의미 태그. 필드 부재는 NOT_PROVIDED. 원 사유 진단과 품질 해석; Net raw cast 아님 |
+| relatedCommand / 선택 SemanticIdentity 참조 | Event의 원 연계 command, 0 없음. occurrence로 쓰지 않음. 원 거부 진단까지 보호 |
+| originalAtLatest / SemanticTimePoint | RX Age/오차에서 투영한 원 시각 구간 상한. originalAt≤originalAtLatest; 충분성 없으면 continuity 부족 |
+| useLimit / SemanticDuration | Event는 L=min(양수 Wire값,500ms,2000ms), Warning은 입력별 원 TTL. 0은 새 시작 불가 |
+
+위 기존 alias와 SemanticIdentity/SemanticDuration는 [pseudo-scalar 규칙](00_DATA_OVERVIEW.md#pseudo-conventions)이다. 실제 ABI 폭/숫자 태그는 미정이다. originalAt는 원 ECU 절대시각이 아니다. validUntil=originalAt+useLimit이며 동일 원 근거의 반복 전달로 연장하지 않는다. 원 시각·기한·원 순번이 같은 전달에서 제한 변경은 deliveryOrder로 구별한다. 전체 투영/순서/부재 표는 [A1 연결](../90_BINDING/92_NETWORK_BINDING.md#mapping)을 따른다.
 
 ### Lifetime / Mutability / 폐기
 
@@ -318,10 +335,19 @@ typedef struct
     VssOriginType origin;
     VssSourceKeyType source;
     VssGenerationType generation;
-    VssOrderingType ordering;
+    VssOrderingType ordering; /* 입증된 의미 원 순서; 미입증은 논리 부재 */
+    VssSourceKeyType evidenceSource;
+    VssGenerationType evidenceGeneration;
+    VssOrderingType evidenceOrdering;
+    VssOrderingType deliveryOrder;
+    SemanticIdentity reason;
+    SemanticIdentity availability;
+    const SemanticIdentity * relatedCommand;
     VssTimeDomainType timeDomain;
     VssEpochType timeEpoch;
     SemanticTimePoint originalAt;
+    SemanticTimePoint originalAtLatest;
+    SemanticDuration useLimit;
     const SemanticTimePoint * validUntil;
     VssContinuity continuity;
 } VssInputMeta;
@@ -362,6 +388,7 @@ typedef struct
 | `signal` | 어떤 VSS 의미인지 제한한다. | 기존 제품/TEST 변환 | 검증 대상. 허용 조합은 INPUT 판단 |
 | `value` | 원래 사건/상태 값이다. 품질 상실을 CLEAR 값으로 바꾸지 않는다. | 원본 의미 producer | VALID이고 signal과 허용 조합일 때 정상 의미로 적용 |
 | `quality` | 원본 입력의 품질 근거. 검증 결과와 동일시하지 않는다. | 기존 통신/TEST | 최신 적용 가능 여부는 INPUT 검증 |
+| `occurrence` | Event에만 필요한 보호된 원 발생 key 읽기 참조. Warning에는 없음; INPUT이 VssOneShotEvent로 전달 | DOMAIN→INPUT | origin/DOMAIN Boot/원 occurrence로 구성; 새 발급 금지 |
 | `meta` | 값과 동행하는 원본 Meta다. | 기존 통신/TEST → INPUT 검증 | Input_Process 검증/전달 동안 |
 
 ### Lifetime / Mutability / 폐기
@@ -383,6 +410,7 @@ typedef struct
     VssInputValue value;
     VssInputQuality quality;
     VssInputMeta meta;
+    const VssOccurrenceKeyType * occurrence;
 } VssInputEvidence;
 ```
 
@@ -410,6 +438,8 @@ typedef struct
 
 ### Lifetime / Mutability / 폐기
 
+A1 추가 context 필드: `lastAdvancingRx`는 기존 Network monitor에서 읽은 동일 DOMAIN 세대의 구조 정상/증가 TX 원 RX 시각이다. 같은 source 재송신도 이 링크 시각만 갱신하고 appliedMeta의 원 시간을 바꾸지 않는다. 150ms 수신중단은 주기 Warning 문맥에서만 여기서 기산한다. Event 문맥에 마지막 Event RX+150ms를 적용하지 않는다. Event의 원 L은 시작 기회 한도이고, 신뢰 상실은 별도 승인된 DOMAIN Warning/Permission 감독 또는 명시 품질·세대·시간 근거로 판단한다. Permission은 그 원 감시 주기를 따른다. `diagnosticLossLatched`(SemanticBool), 포화 `diagnosticLossCount`(SemanticCount), 고정 보호 `firstLostDiagnostic/lastLostDiagnostic`(SemanticIdentity 참조)은 INPUT 진단16 포화의 원 key·단계 요약이며 실제 전달 성공이 아니다. 최초/최근 두 요약과 count/latch는 같은 INPUT owner만 변경하고 소비까지 보호한다. 별도 manager는 없다.
+
 해당 출처/세대 적용·품질 판단에 필요한 동안 유지한다. INPUT만 변경하며 읽기 관측은 수집 기간에만 유효하다. STORE 거부로 rollback하지 않는다. 문맥 회수·재부팅 정책은 identity/연속성 근거가 필요하며 원본 age를 새로 시작하지 않는다.
 
 **관련 Function:** [Input_Process](../30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#input-process) · [Flow_Process](../30_FUNCTIONS/10_FLOW_FUNCTIONS.md#flow-process)
@@ -427,6 +457,11 @@ typedef struct
     VssInputSignal signal;
     VssInputMeta appliedMeta;
     VssInputQuality quality;
+    SemanticTimePoint lastAdvancingRx;
+    SemanticBool diagnosticLossLatched;
+    SemanticCount diagnosticLossCount;
+    const SemanticIdentity * firstLostDiagnostic;
+    const SemanticIdentity * lastLostDiagnostic;
     VssRevisionType revision;
 } VssInputContext;
 ```
@@ -612,6 +647,8 @@ received·검증·출처 적용·STORE 수용은 서로 다른 사실이므로 �
 ### Lifetime / Mutability / 폐기
 
 호출 반환 뒤 읽기 전용 값. INPUT 문맥·STORE 원본의 복제가 아니며 다음 관측은 각 owner에서 읽는다. accepted를 validation만으로 합성하지 않는다.
+
+A1의 `input=NULL` 점검은 최대18 문맥에 같은 품질 분기를 각각 적용한다. 단일 반환은 전체 묶음 ACK가 아니다. 고정 문맥 순서에서 첫 거부(검증 거부 또는 실제 STORE REJECTED)의 **세 필드 전체**를 대표 결과로 복사하고, 거부가 없으면 첫 실제 변화의 전체 결과, 변화가 없으면 NO_CHANGE/false/NOT_SUBMITTED를 반환한다. 서로 다른 문맥의 validation/contextApplied/storeAdmission을 섞지 않는다. 각 원 문맥의 반영 revision과 거부 진단은 별도 보호하고, FLOW는 owner 관측·진단 손실/후속 의무를 재수집한다. 대표 결과만으로 나머지17 문맥의 수용을 추정하지 않는다.
 
 **관련 Function:** [Input_Process](../30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#input-process) · [Store_ApplyInput](../30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyinput) · [Flow_Process](../30_FUNCTIONS/10_FLOW_FUNCTIONS.md#flow-process)
 

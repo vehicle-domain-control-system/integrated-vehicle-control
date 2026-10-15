@@ -65,6 +65,10 @@ VssSelectionDecision Select_Choose(
         if (후보_key_mode_originalMeta_revision의_원문맥이나_순서_근거_부족) {
             return result; /* arrival 순서로 보충하지 않고 재수집. */
         }
+        /* APPLICABLE Stateful은 입증된 Hold 내에서도 newSessionAllowed=true 가능.
+           UNCERTAIN은 위 validity 검사에서 제외하며 현재 KEEP 근거도 아님. */
+        if (!후보.newSessionAllowed && 현재_같은_Session의_유지가_아님) continue;
+        if (미시작_OneShot이고_원_meta_useLimit_L_미만_확인불가) continue;
         기존_Class와_중앙_정책의_잠정_세부순위를_읽기전용_비교;
         if (같은_의미의_미시작_One_shot_후보끼리_비교) {
             원발생_순서_비교_후_동률일때만_고정_key_순서를_사용;

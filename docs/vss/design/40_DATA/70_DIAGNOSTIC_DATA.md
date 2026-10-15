@@ -121,7 +121,7 @@ typedef struct
 | `VSS_FAULT_CURRENT` | 현재 대상에 활성인 Fault/제한 |
 | `VSS_FAULT_RECENT` | 해당 현재 제한 해제 뒤 보존하는 최근 기록 |
 
-**Lifetime / Mutability:** 현재는 해제 근거까지, 최근은 기존 보존 정책까지. 보존 기간 숫자는 TBD.
+**Lifetime / Mutability:** 현재는 해제 근거까지, 최신 주요 원기록과 kind 이력 집합은 A2에 따라 해당 기동 종료까지 보존한다. 다른 과거 원기록 회수는 §VssFaultState와 A2 보호 조건을 따른다.
 
 **관련 Function:** [Health_Evaluate](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-evaluate) · [Health_BuildStatus](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus)
 
@@ -154,17 +154,19 @@ typedef enum
 | Field | 의미 / 필요한 이유 | Field 생성 주체 | 유효 조건 |
 | --- | --- | --- | --- |
 | `instance` | 현재/최근 해당 Fault 발생의 identity. 같은 kind여도 새 발생과 구별한다. | HEALTH | 해당 Fault 생성 뒤 |
+| `reportOccurrence` | 기동 내 원 Fault 발생 번호, 논리 1..UINT32_MAX. instance와 별개. | HEALTH 최초 보호 | 중복/복구/revision에서 불변 |
+| `firstOccurredAt` | 원 diagnosis/PB final의 최초 사실 시각 값. 처리 now 금지. | 원 producer → HEALTH 보호 | 불명확도 보존; Status 투영은 충분한 시간 근거 필요 |
 | `kind` | 기존 5종 분류. | HEALTH | 기존 근거 매핑 판단 후 |
 | `target` | 제한/해제의 원래 대상. | 원래 진단 → HEALTH | instance 수명 |
 | `configuration` | 해당 대상의 오류 구성 문맥. | 원래 진단 → HEALTH | instance 수명 |
 | `recordState` | 현재 제한/최근 이력 구별. | HEALTH | 현재 평가 반영 뒤 |
 | `diagnosis` | 보호된 정규화 원래 원인/단계·시각. | 원래 producer → HEALTH 보호 | 진단/최근 기록이 필요할 때까지 |
-| `restriction` | 현재 대상의 제한 의미. 전체 availability/reduction 정책을 이번에 정하지 않는다. | HEALTH 기존 정책 | 현재 대상에서만 |
+| `restriction` | 현재 대상의 제한 의미. 복구 제한의 원 근거이며 A2의 보고 availability/reduction과 구분한다. | HEALTH 기존 정책 | 현재 대상에서만 |
 | `revision` | 해당 Fault instance/대상 판단의 변경 표지. | HEALTH | 제한/해제 변경 반영 뒤 |
 
 ### Lifetime / Mutability / 폐기
 
-HEALTH만 current/recent·제한을 변경한다. 해제는 같은 현재 대상의 실제 복구 수행 뒤 별도 효과 검증이 확인됐을 때만 가능하다. 다른 현재 Fault와 최근 기록은 보존한다. diagnosis는 normalized 불변 값을 보호하고 transient 반환 주소를 장기 저장하지 않는다. exact cause·복구/해제 정책·최근 보존 기간은 기존 TBD다.
+HEALTH만 current/recent·제한을 변경한다. 해제는 같은 현재 대상의 실제 복구 수행 뒤 별도 효과 검증이 확인됐을 때만 가능하다. diagnosis는 normalized 불변 값을 보호한다. A2의 reportOccurrence/firstOccurredAt·완전 current·최신 원기록 기동 내 보존/회수는 [Status Binding §1](../90_BINDING/93_NETWORK_STATUS_BINDING.md#producer)을 따른다. exact cause·복구/해제 정책은 기존 TBD다.
 
 **관련 Function:** [Health_Evaluate](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-evaluate) · [Flow_Process](../30_FUNCTIONS/10_FLOW_FUNCTIONS.md#flow-process) · [Health_BuildStatus](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus)
 
@@ -177,6 +179,7 @@ HEALTH만 current/recent·제한을 변경한다. 해제는 같은 현재 대상
 **구성원 타입 → 정의 위치**
 
 - 의미 alias 값: `instance` → [VssFaultInstanceKeyType](#vssfaultinstancekeytype).
+- pseudo-scalar `reportOccurrence` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions), 원 시간 값 `firstOccurredAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime).
 - enum 값: `kind` → [VssFaultKind](#vssfaultkind).
 - 의미 alias 값: `target` → [VssTargetKeyType](#vsstargetkeytype); `configuration` → [VssConfigurationKeyType](60_AUDIO_TX_DATA.md#vssconfigurationkeytype).
 - enum 값: `recordState` → [VssFaultRecordState](#vssfaultrecordstate).
@@ -187,6 +190,8 @@ HEALTH만 current/recent·제한을 변경한다. 해제는 같은 현재 대상
 typedef struct
 {
     VssFaultInstanceKeyType instance;
+    SemanticCount reportOccurrence;
+    VssFactTime firstOccurredAt;
     VssFaultKind kind;
     VssTargetKeyType target;
     VssConfigurationKeyType configuration;
@@ -451,7 +456,7 @@ typedef enum
 | 값 | 의미 / 유효 조건 |
 | --- | --- |
 | `VSS_STATUS_CREATED` | 일관된 반영 완료 관측에서 새 Snapshot 생성 |
-| `VSS_STATUS_REEVALUATE` | 관측 부족/혼합·기존 미정 reduction 때문에 새 보고 확정 불가 |
+| `VSS_STATUS_REEVALUATE` | 관측 부족/혼합·A2 필수 근거 미충족으로 새 보고 확정 불가 |
 
 **Lifetime / Mutability:** 해당 호출 결과. REEVALUATE에서는 새 VssStatusSnapshot을 생성하지 않는다.
 
@@ -473,7 +478,7 @@ typedef enum
 ## VssReportedPlaybackState — scalar enum
 **Category: Snapshot**
 
-기존 외부 보고의 의미 상태다. 물리 bit/enum 숫자와 전체 조합 reduction은 확정하지 않는다.
+기존 외부 보고의 의미 상태다. 물리 bit/enum 숫자는 기존 Network 변환에 한정하고 전체 조합 reduction은 A2 §2를 따른다.
 
 **Owner:** HEALTH 파생 보고 · **Producer:** Health_BuildStatus · **Consumer:** FLOW → INPUT → Node Communication
 
@@ -484,7 +489,7 @@ typedef enum
 | `VSS_REPORT_PLAYING` | 적법한 actual이 확인된 전체 Session. cue 무음/반복 대기·시작 뒤 종료 진행 포함 |
 | `VSS_REPORT_FAULT` | 정상 출력 보장 불가/QUARANTINED 등 기존 보고 Fault 의미 |
 
-**Lifetime / Mutability:** 생성한 불변 Snapshot의 전달 수명. 상태 우선순위/reduction의 미정은 유지.
+**Lifetime / Mutability:** 생성한 불변 Snapshot의 전달 수명. 상태 우선순위/reduction은 A2 §2를 따른다.
 
 **관련 Function:** [Health_BuildStatus](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus)
 
@@ -548,18 +553,25 @@ typedef enum
 | Field | 의미 / 필요한 이유 | Field 생성 주체 | 유효 조건 |
 | --- | --- | --- | --- |
 | `state` | 기존 STARTUP/READY/PLAYING/FAULT 의미. | HEALTH | 보고 조합 근거가 충분한 경우 |
-| `availability` | 기존 외부 Availability 의미. UNAVAILABLE 연결·초기/전체 reduction TBD를 유지한다. | HEALTH | 기존 계약으로 파생 가능할 때만 |
+| `availability` | FULL/DEGRADED/UNAVAILABLE의 기존 의미. [A2 조합표](../90_BINDING/93_NETWORK_STATUS_BINDING.md#reduction). | HEALTH | 전체 원 근거가 충분할 때 |
 | `serviceLevel` | FULL/DEGRADED 지원 수준. | HEALTH | 지원/제한 근거로 파생 가능한 경우 |
 | `accepting` | INPUT·STORE 자원/출처·시간/replay 준비의 수용 가능 근거. | HEALTH의 반영된 owner 관측 파생 | 개별 accepted 보장이 아님 |
 | `currentFaults` | 보고 소유 자료에 보호한 현재 Fault 의미 값 목록. mutable FaultState 포인터가 아니다. | HEALTH | Snapshot의 불변 storage가 보호되는 동안 |
-| `currentFaultCount` | 실제 보고에 포함한 현재 Fault 수. bit layout/고정 용량을 정하지 않는다. | HEALTH | currentFaults 유효 범위 |
+| `currentFaultCount` | 전체 현재 instance의 kind 중복 제거 수, 0..5. 부분 취득을 완전 공집합으로 보고하지 않음. | HEALTH | 완전한 currentFaults 범위 |
 | `recentFaults` | 보고 소유 자료에 보호한 최근 Fault 의미 목록. 현재 제한과 별개다. | HEALTH | Snapshot의 불변 storage가 보호되는 동안 |
 | `recentFaultCount` | 보고에 포함한 최근 의미 수. | HEALTH | recentFaults 유효 범위 |
 | `basis` | 보고 생성에 사용한 불변 적용/시간 근거. 최신 실행 허가로 재사용하지 않는다. | FLOW 관측 → HEALTH 보고 소유로 보호 | 해당 보고의 생성·전달 기간 |
+| `reportGeneration` | VSS 실제 기동 세대, CAN BOOT와 명시 binding. DOMAIN 입력 세대 아님. | VSS 기동 → HEALTH 보호 | 해당 보고 수명 |
+| `reportSequence` | 새 coherent 평가의 성공 공개에서만 증가하는 논리 1..UINT32_MAX 번호. | HEALTH 보고 책임 | 재인계/REEVALUATE 불변 |
+| `evaluatedAt` | 이번 원 평가 시각. basis.time과 domain/epoch 대조. | Runtime → HEALTH | 원 시간 보호 |
+| `lastFaultPresent` | 기동 내 원기록 존재/확인된 부재. | HEALTH | 미확인은 false로 대체 불가 |
+| `lastFaultKind` | 원 시간으로 선택된 현재/최근 주요 Fault 종류. | HEALTH | present=true만 유효 |
+| `lastFaultOccurrence` | 선택 원기록 reportOccurrence. 없음0. | HEALTH | present와 동일 원기록 |
+| `lastFaultAt` | 선택 원기록 firstOccurredAt 값 복사. | HEALTH | present=true만 유효 |
 
 ### Lifetime / Mutability / 폐기
 
-VssStatusBuildResult=CREATED일 때만 생성하고 전달 뒤 불변이다. 포함한 목록/basis stamp는 보고 소유 또는 독립 불변 보호 자료이며 mutable 원본을 그대로 가리키지 않는다. 기존 송신 연결이 자료를 복사하면 복사 완료 뒤, 참조하면 실제 전송 소비 종료까지 유지한다. 실제 Node Communication 복사/참조 방식은 TBD다. 부족/혼합 관측에서는 새 정상 Snapshot을 만들지 않고 재평가를 반환한다.
+VssStatusBuildResult=CREATED는 서비스·현재 집합·이력 존재/부재·평가 세대/시간의 완전성과 coherence를 보장하는 생산 계약이다. 기존 9필드와 A2 원근거 7필드를 함께 불변 공개한다. [A2 2슬롯·동기 복사](../90_BINDING/93_NETWORK_STATUS_BINDING.md#handoff)를 선택하며 목록/basis stamp와 모든 내부 참조는 INPUT 변환·Network 전체 복사 반환까지 보호한다. Network는 외부 포인터를 보관하지 않는다. 부족/혼합 관측은 REEVALUATE/written0이고 평가 counter/time을 전진시키지 않는다.
 
 **관련 Function:** [Health_BuildStatus](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus) · [Flow_Process](../30_FUNCTIONS/10_FLOW_FUNCTIONS.md#flow-process) · [Input_Process](../30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#input-process)
 
@@ -580,6 +592,8 @@ VssStatusBuildResult=CREATED일 때만 생성하고 전달 뒤 불변이다. 포
 - enum 값 목록 읽기 포인터 (`const T *`): `recentFaults` → [VssFaultKind](#vssfaultkind).
 - pseudo-scalar 값: `recentFaultCount` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions).
 - 구조체 값: `basis` → [VssReadBasis](30_SELECTION_DATA.md#vssreadbasis).
+- `reportGeneration` → [VssGenerationType](10_INPUT_DATA.md#vssgenerationtype); `reportSequence`/`lastFaultOccurrence` → [SemanticCount](00_DATA_OVERVIEW.md#pseudo-conventions).
+- `evaluatedAt`/`lastFaultAt` → [VssFactTime](10_INPUT_DATA.md#vssfacttime); `lastFaultPresent` → [SemanticBool](00_DATA_OVERVIEW.md#pseudo-conventions); `lastFaultKind` → [VssFaultKind](#vssfaultkind).
 
 ```c
 typedef struct
@@ -593,17 +607,24 @@ typedef struct
     const VssFaultKind * recentFaults;
     SemanticCount recentFaultCount;
     VssReadBasis basis;
+    VssGenerationType reportGeneration;
+    SemanticCount reportSequence;
+    VssFactTime evaluatedAt;
+    SemanticBool lastFaultPresent;
+    VssFaultKind lastFaultKind;
+    SemanticCount lastFaultOccurrence;
+    VssFactTime lastFaultAt;
 } VssStatusSnapshot;
 ```
 
-두 `const VssFaultKind *`의 원소는 enum 값이다. `currentFaultCount`·`recentFaultCount`는 각각 해당 목록의 유효 범위를 정한다. 목록 storage와 `basis` 내부 표지의 보호 기간은 위 Lifetime을 따르며, count는 배열 용량·C 정수 폭·통신 저장 방식을 확정하지 않는다.
+두 `const VssFaultKind *`의 원소는 enum 값이다. `currentFaultCount`·`recentFaultCount`는 각각 해당 목록의 유효 범위를 정한다. 목록 storage와 `basis` 내부 표지의 보호 기간은 위 Lifetime을 따르며, current/recent kind 집합 상한은 각각5이며 실제 C 정수 폭/게시 ABI는 E-S01에서 입증한다.
 
-accepting=false여도 기존 duplicate·유효 CLEAR·품질/기한의 안전 경로는 계속된다. Audio Fault와 입력 수용 가능성은 별개다. WINDOW [구현 보류 — 설계 유지] 자체는 Fault/DEGRADED 근거가 아니다. QUARANTINED는 기존 FAULT/UNAVAILABLE 연결을 유지한다. 전체 보고 조합/초기 Availability를 새 정책으로 확정하지 않는다.
+accepting=false여도 기존 duplicate·유효 CLEAR·품질/기한의 안전 경로는 계속된다. Audio Fault와 입력 수용 가능성은 별개다. WINDOW [구현 보류 — 설계 유지] 자체는 Fault/DEGRADED 근거가 아니다. QUARANTINED는 기존 FAULT/UNAVAILABLE 연결을 유지한다. 전체 보고 조합/초기 Availability는 [A2 조합표](../90_BINDING/93_NETWORK_STATUS_BINDING.md#reduction)를 적용한다.
 
 <a id="scalar-aliases"></a>
 ## 보조 scalar / 불투명 의미 표기
 
-**선언 종류:** 아래 8개는 의미 alias다. 표의 기저는 이 절의 `typedef`에서 읽은 [pseudo-scalar](00_DATA_OVERVIEW.md#pseudo-conventions)이며 enum 값 집합이나 구조체가 아니다. 각각 독립 struct/새 ID 생성 API를 만드는 목록이 아니다. 모든 값의 폭/encoding·확정 Header는 미정이다. 실제 producer의 원래 문맥에서 보호하고 전달 뒤 불변으로 사용한다. 회수/무효화는 해당 주 Data의 lifetime을 따른다.
+**선언 종류:** 아래 8개는 의미 alias다. 표의 기저는 이 절의 `typedef`에서 읽은 [pseudo-scalar](00_DATA_OVERVIEW.md#pseudo-conventions)이며 enum 값 집합이나 구조체가 아니다. 각각 독립 struct/새 ID 생성 API를 만드는 목록이 아니다. 실제 C 폭/encoding·확정 Header는 미정이다. A2 reportOccurrence/reportSequence의 논리 u32 범위는 확정하며 opaque identity를 cast하지 않는다. 실제 producer의 원래 문맥에서 보호하고 전달 뒤 불변으로 사용한다. 회수/무효화는 해당 주 Data의 lifetime을 따른다.
 
 | 표기 | Producer / 의미 owner | 목적 / validity | pseudo-scalar 기저 |
 | --- | --- | --- | --- |
@@ -611,10 +632,10 @@ accepting=false여도 기존 duplicate·유효 CLEAR·품질/기한의 안전 �
 | <a id="vsscausetype"></a>`VssCauseType` | 원래 발견 producer | 확인한 원인. exact cause 매핑/새 taxonomy 확정 아님 | [SemanticCause](00_DATA_OVERVIEW.md#pseudo-conventions) |
 | <a id="vsstargetkeytype"></a>`VssTargetKeyType` | 원래 대상 관측/HEALTH 연결 | 오류/제한/복구의 실제 의미 대상. 불투명 scalar key이며 void payload/union 객체 아님 | [SemanticIdentity](00_DATA_OVERVIEW.md#pseudo-conventions) |
 | <a id="vssfaultinstancekeytype"></a>`VssFaultInstanceKeyType` | HEALTH | 현재/최근 해당 Fault 발생. 옛 복구로 새 발생 해제 방지 | [SemanticIdentity](00_DATA_OVERVIEW.md#pseudo-conventions) |
-| <a id="vssrestrictiontype"></a>`VssRestrictionType` | HEALTH 기존 정책 | 현재 대상의 출력/지원 제한 의미. 전체 reduction 확정 아님 | [SemanticPolicyCondition](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vssrestrictiontype"></a>`VssRestrictionType` | HEALTH 기존 정책 | 현재 대상의 출력/지원 제한 의미. 복구 action 정책과 A2 보고 reduction은 별개 | [SemanticPolicyCondition](00_DATA_OVERVIEW.md#pseudo-conventions) |
 | <a id="vssrecoverykeytype"></a>`VssRecoveryKeyType` | HEALTH | 같은 허용·수행/검증 관계. 실제 숫자/token encoding 미정 | [SemanticIdentity](00_DATA_OVERVIEW.md#pseudo-conventions) |
 | <a id="vssrecoveryactiontype"></a>`VssRecoveryActionType` | HEALTH 기존 정책 | 허용한 기존 대상 Action/범위. exact cause 매핑·retry/fallback TBD | [SemanticAction](00_DATA_OVERVIEW.md#pseudo-conventions) |
-| <a id="vssavailabilityvaluetype"></a>`VssAvailabilityValueType` | HEALTH 보고 파생 | 기존 외부 Availability 값의 의미. UNAVAILABLE 연결은 유지; 초기/전체 조합 정책 TBD | [SemanticContractValue](00_DATA_OVERVIEW.md#pseudo-conventions) |
+| <a id="vssavailabilityvaluetype"></a>`VssAvailabilityValueType` | HEALTH 보고 파생 | 기존 외부 Availability 값의 의미. UNAVAILABLE 연결 유지; 초기/전체 조합은 A2 §2 | [SemanticContractValue](00_DATA_OVERVIEW.md#pseudo-conventions) |
 
 ```c
 typedef SemanticStage VssDiagnosticStageType;

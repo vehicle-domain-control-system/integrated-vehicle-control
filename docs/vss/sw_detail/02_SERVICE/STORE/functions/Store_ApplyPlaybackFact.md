@@ -1,5 +1,7 @@
 # Store_ApplyPlaybackFact — 원 발생 재생 사실의 멱등 반영
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [VSS 지도](../../../01_VSS_MAP.md) · [STORE](../00_MODULE_OVERVIEW.md) · CORE-04 · [한국어 의사코드](../pseudocode/Store_ApplyPlaybackFact.md)
 
 > GUIDE · 동결 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
@@ -49,7 +51,7 @@ Caller는 기존 [Playback_Advance/통지 내부 단계](../../../../design/60_P
 | START_OUTCOME_UNCERTAIN | 원 PLAYBACK 불명확 **최종** 판정 근거가 확인됐을 때 finalFact와 replay 금지를 보호해 UncertainFinal. 기존 firstStartFact가 있다면 삭제하지 않음. 이 최종은 물리 cleanup 완료와 별개 |
 | NO_START_REEVALUATE | 최초 actual/uncertain final이 없고 전체 과거 NO_START·미래 후속 차단·retirement가 충분할 때 원 Pending/Expiry의 **재확인만** 허용. 이 호출은 현재 now/새 age로 만료 또는 새 Pending을 만들지 않음 |
 
-최초 actual의 시각 비교는 원 발생→원 actual의 가능한 구간 전체가 `[잠정] <2초`라는 PLAYBACK 적법성 근거를 소비한다. exactly 2초는 적법 최초 시작으로 적용하지 않는다. Network `500ms` 제안과 min/AND로 결합하지 않는다. Started Session의 후속 cue마다 최초 gate를 다시 적용하지 않는다. R6에는 `time` 인자가 없으므로 현재 now를 새 인자로 덧붙이지 않는다.
+최초 actual의 시각 비교는 원 발생→원 actual의 가능한 구간 전체가 `A1 <L`라는 PLAYBACK 적법성 근거를 소비한다. exactly L은 적법 최초 시작으로 적용하지 않는다. Network USE_LIMIT와 기본500ms·절대2000ms 상한을 L로 함께 적용한다. Started Session의 후속 cue마다 최초 gate를 다시 적용하지 않는다. R6에는 `time` 인자가 없으므로 현재 now를 새 인자로 덧붙이지 않는다.
 
 <a id="late-final"></a>
 ## 늦은 결과·최종 후 충돌·보호 실패
@@ -64,7 +66,7 @@ UncertainFinal 또는 기존 whole final 뒤 새로운 정상 actual/final이 �
 | 상태·근거 | 독립 Host 후보 / 정확한 제품 종속성 |
 |---|---|
 | F1_LOCKED_SEMANTIC / [R5 fact 적용](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#store-applyplaybackfact) | 같은 fact 재전달·키 동일 내용 충돌·미추적 occurrence·Started/final 독립 사실·final 후 late fixture. 기대 ALREADY는 증명 있는 경우만, 나머지 NOT_APPLIED/원 이력 보호. TEST_NOT_RUN |
-| F2_PROVISIONAL_TESTABLE / [최초 시작 Timing](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start) | 원 actual 2초 미만/동일/경계 걸침과 원 발생 재전달 fixture. 시간 표현만 잠정, 물리 시각 충분성 승인 아님 |
+| F2_PROVISIONAL_TESTABLE / [최초 시작 Timing](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start) | 원 actual L 미만/동일/경계 걸침과 원 발생 재전달 fixture. 시간 표현만 잠정, 물리 시각 충분성 승인 아님 |
 | F3_PARTIAL_INDEPENDENT / [R4 async](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#late-results) | 추적/참조 보호 실패·cue scope·no-start 후 재확인 분기 검사. 실제 lower 증거 대신 **명시적으로 충분/부족인 typed fixture**를 사용하며 실제 출력 근거를 생성했다고 주장하지 않음 |
 | F4_EXTERNAL_GATE / [Identity TBD](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#identity) | 제품 identity·reboot/wrap·bounded 추적/복사·실제 API 연결만 미확정. 내부 멱등/거부 논리 전체 HOLD 아님 |
 | F5_PHYSICAL_SAFETY_GATE / [HW TBD](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#hardware) | PLAYBACK이 소비하는 실제 fresh actual·과거 no-output coverage·전체 종료/차단 충분성의 물리 증명만 미확정. STORE가 raw 사실을 대체 판정하지 않음 |
@@ -73,3 +75,9 @@ UncertainFinal 또는 기존 whole final 뒤 새로운 정상 actual/final이 �
 보관 C/H 범위에 `Store_ApplyPlaybackFact` 심볼은 미확인이며, 보관 Session의 단일 pending request 경계에 대한 정적 관측만 SOURCE_CONFIRMED다. 이 구현이 최종 fact/ledger 계약을 충족한다는 증거는 아니다. BINDING_TBD/HW_UNVERIFIED를 유지한다. 실제 채택 때 기존 STORE owner의 identity/보호 adapter만 최소 대응하고, 후보 부적합은 그 대응부를 재검토한다. 동결 의미 근거는 LOGICAL_APPROVED이며 그 의미 변경은 별도 CR이다.
 
 [R2](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyplaybackfact) · [R3 fact](../../../../design/40_DATA/40_PLAYBACK_DATA.md#vssplaybackfact) · [R3 record](../../../../design/40_DATA/20_STORE_DATA.md#vssoccurrencerecord) · [R4 async](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md) · [R5 통지](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#fact-notification) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-store-applyplaybackfact)
+
+## A1 입력 상실과 시간 경계
+
+원 L과 원 시각 구간은 [Timing](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)을 따른다. 입력 신뢰 상실의 replayAllowed=false는 NO_START_REEVALUATE/복구로 복원하지 않는다. in-flight/unknown의 만료는 미래 시작 차단·종료 요구이며 NO_START/Expired 합성이 아니다. 충분한 미시도/NO_START 및 retirement에서만 기한 종결을 확정한다. 늦게 도착한 적법 actual은 실제 상실 이전 권한/원 시각이 입증된 경우 원 occurrence에만 반영하고 종료를 취소하지 않는다.
+
+Warning의 원 TTL 도달/첫 loss/고정 Hold는 별개다. no-RX에도 후보 제거와 재평가를 진행하며 lossAt을 점검 now로 바꾸지 않는다. 마지막 유효 Stateful의 Hold 내 재선택은 원 출처·시각·고정 anchor·Rear gate/fence와 old retirement 조건에서 허용한다. 확정 만료는 earliestNow>=anchor+Hold이며 경계 걸침/비교 부족은 UNCERTAIN·보수적 종료·재확인으로 구별한다.

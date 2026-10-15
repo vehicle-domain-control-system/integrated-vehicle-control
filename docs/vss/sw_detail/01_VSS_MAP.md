@@ -1,5 +1,7 @@
 # VSS 지도 — Layer·Module·Core 위치
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [처음 읽기](00_START_HERE.md)
 
 > GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
@@ -67,4 +69,8 @@ Q01~14·R6-01~08·외부 미결15는 미해결이며 P2는 HOLD입니다. 문서
 
 P1B_C1의 **9 Core/16 Q↔Core 연결**에 대한 문서 보정과 제품 C1 검증은 별개입니다. Q01~14와 Network PR #68은 당시 미합의 제안이며, R6-01~08·실제 C ABI·제품 source/image·실제 출력/STOP·DMA 안전은 미확정입니다. [Binding·정책 미정 원문](../design/90_BINDING/91_IMPLEMENTATION_TBD.md)을 따르고 최종 Q 차단 지도를 채택하지 않습니다. 원 G1-B 판정 원본은 SOURCE_NOT_RECOVERED이며, P2는 HOLD입니다.
 
-중복·품질/Hold 기산·읽기 전용 선택·bounded Asset read·PCM 회차/late·Unknown/Status는 독립 SW/Host 후보로 남습니다. `<2초`는 [원 발생→최초 actual의 잠정 조건](../design/50_CONTRACTS/30_TIMING_FRESHNESS.md)이고 Network `500ms` 제안과 별개입니다. WINDOW/Anti-Pinch 제품 연결은 [구현 보류 — 설계 유지]이며 격리 TEST 의미는 유지합니다. 관련 Module의 후속 후보·제품 Gate를 함께 읽으세요.
+중복·품질/Hold 기산·읽기 전용 선택·bounded Asset read·PCM 회차/late·Unknown/Status는 독립 SW/Host 후보로 남습니다. `<L`은 [원 발생→최초 actual의 잠정 조건](../design/50_CONTRACTS/30_TIMING_FRESHNESS.md)이며 A1의 원 USE_LIMIT·500ms·2000ms 상한을 함께 적용합니다. WINDOW/Anti-Pinch 제품 연결은 [구현 보류 — 설계 유지]이며 격리 TEST 의미는 유지합니다. 관련 Module의 후속 후보·제품 Gate를 함께 읽으세요.
+
+## A1 현재 입력 기준과 이력
+
+현재 입력 연결은 [92_NETWORK_BINDING](../design/90_BINDING/92_NETWORK_BINDING.md)과 A1으로 개정한 Data/계약/의사코드다. Network 고정 원문은 `70028972ec713a3ec6b5f0a419e0dc89fd963844`이다. 과거 SHA·Q01~Q14·PASS·P1B HOLD 기록은 당시 검토 이력이며 현재 미결 전체가 아니다. D01 WARNING60, D04 L, D05 RX Age, D06 Hold/활성 후보, D07 owner/용량, D08 복구 분리는 설계 반영했다. Q 관련 DOMAIN 판단 순서/생산·계보·Boot·실제 시간/ABI/HW는 E01~E05로 구체화했다. Status 관련 Q/D09~D11은 A2 미착수다.

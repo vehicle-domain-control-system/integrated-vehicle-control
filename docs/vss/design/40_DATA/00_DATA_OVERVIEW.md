@@ -1,5 +1,7 @@
 # Data Overview — R3
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > 2026-10-07 · R2 Core 18개와 provisional 의미 표지 32개를 출발점으로 Data/Command 상세화
 
 > 2026-10-08 R4 **작성 당시 이력** · R3-C1 세 보완 및 두 함수 논리 경계 독립 PASS 기준. 공통 반복 설명을 R4 계약으로 연결하고 판정/필드/owner/pseudo-C는 보존. 당시에는 일반 채팅의 독립 검수 결과를 기다렸다. 현재 R4는 독립 PASS이며 최신 Stage/게이트는 README를 따른다.
@@ -130,10 +132,10 @@ R2 문서의 32개 이름은 당시 불투명 의미 표지다. 아래가 R3의 
 
 Data 상세의 owner header 후보는 **논리 의미 소유 그룹**이다. R6의 [선언 경계 후보](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#header-candidates)와 [타입 소유권 대응표](../70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#type-map)에서 `H-INPUT`/`H-TIME` 같은 label과 논리 가시성·include 방향을 확인한다. 이 label은 실제 `.h` 파일명이나 파일 실존·구현 완료를 뜻하지 않는다. 실제 Header filename·기존 Header 재사용/신규 Header 필요 여부·C ABI는 미정이다. alias 이름 하나당 Header/struct/ID 생성 API를 만들지 않는다.
 
-모든 상세에서 미정으로 유지한 항목: 실제 field width/enum 숫자·alignment/packing/ABI·메모리 배치·용량, 실제 `.c/.h`/RTD·DMA·TCD, Task/Queue/Mutex, callback/자료 복사·참조 보존 수단, 물리 actual/no-output/전체 종료 충분조건, decoder/PCM format·image/Asset table, exact cause/Recovery Action·timeout/retry·Hold/패턴/초기 Availability·전체 status reduction. [기존 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md)는 보존했다.
+모든 상세에서 미정으로 유지한 항목: 실제 field width/enum 숫자·alignment/packing/ABI·메모리 배치·용량, 실제 `.c/.h`/RTD·DMA·TCD, Task/Queue/Mutex, callback/자료 복사·참조 보존 수단, 물리 actual/no-output/전체 종료 충분조건, decoder/PCM format·image/Asset table, exact cause/Recovery Action·timeout/retry·Hold 실측/패턴/초기 Availability·전체 status reduction. [기존 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md)는 보존했다.
 
 ## 보존한 Semantic Lock과 다음 범위
 
-Occurrence/Session/Attempt·single writer, winner ≠ prepared ≠ start accepted ≠ actual start, OUTPUT_START_CONFIRMED / NO_START_CONFIRMED / OUTPUT_TERMINATION_CONFIRMED, late/uncertain/QUARANTINED, 정확히 PCM A/B, source consumed ≠ safe return ≠ output termination ≠ retirement, 기존 Fault 5종·복구 수행 후 별도 검증·현재 대상 해제, WINDOW [구현 보류 — 설계 유지]를 유지한다. 원본 first-start age < 2초는 [잠정]이며 정확히 2초 불가, USE_LIMIT 별도 조건·Hold 기산/재실행 방어는 바꾸지 않았다.
+Occurrence/Session/Attempt·single writer, winner ≠ prepared ≠ start accepted ≠ actual start, OUTPUT_START_CONFIRMED / NO_START_CONFIRMED / OUTPUT_TERMINATION_CONFIRMED, late/uncertain/QUARANTINED, 정확히 PCM A/B, source consumed ≠ safe return ≠ output termination ≠ retirement, 기존 Fault 5종·복구 수행 후 별도 검증·현재 대상 해제, WINDOW [구현 보류 — 설계 유지]를 유지한다. 원본 first-start age < L은 [잠정]이며 정확히 L 불가, A1에서 USE_LIMIT 결합/입력 복구를 개정했고 최초 Hold 기산·재실행 방어를 유지한다.
 
 다음은 R4 작성 당시 범위·게이트 이력이다. R3 Data 상세/선언을 기준으로 R4에서 [공통 Contract](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md)와 필요한 local 링크만 정리했다. [참고 의사코드](../60_PSEUDOCODE/00_PSEUDOCODE_OVERVIEW.md)·R6 skeleton·Binding은 원문 그대로다. R4 자체 검수 뒤 중단했고 당시 독립 승인 이전에는 R5 진행을 금지했다. 당시 R5/R6/R7/B2-R·C 구현은 수행하지 않았다. 현재 R4는 독립 PASS이며 최신 Stage/게이트는 README를 따른다.

@@ -1,5 +1,7 @@
 # Fault / Recovery — 현재 제한, 허용, 수행, 검증과 해제
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > R4 · 2026-10-08 · 기존 Fault 5종과 owner 유지 · 복구 효과/실측 충분조건은 TBD
 
 [Contract Overview](00_CONTRACT_OVERVIEW.md#fault)
@@ -50,14 +52,14 @@ HEALTH의 복구 허용, FLOW의 안전 연결, Backend의 실제 수행, 별도
 <a id="resume-eligibility"></a>
 ## 4. 복구 뒤 재생은 현재 후보를 새로 판단한다
 
-복구 성공은 원 발생을 다시 만들거나 Hold·UseLimit·first-start age를 리셋하지 않는다. Started One-shot·불명확 최종·replay 금지 발생을 정상 Pending으로 되살리지 않는다. 미시작 One-shot의 재평가는 충분한 NO_START와 기존 replay/최종 조건, 아직 유효한 원본 freshness가 함께 성립할 때만 가능하다.
+복구 성공은 원 발생을 다시 만들거나 Hold·UseLimit·first-start age를 리셋하지 않는다. Started One-shot·불명확 최종·replay 금지 발생을 정상 Pending으로 되살리지 않는다. 입력 신뢰 상실 때 남은 Event는 replayAllowed=false로 잠그고 원 이력을 보존한다. output-only Fault에서 입력 신뢰/replayAllowed가 유지된 미시작 One-shot만 충분한 NO_START·retirement·실제 HEALTH 제한 해제·원 L 내 freshness를 함께 확인하여 재평가한다. ALLOW 또는 단순 통신 회복은 재평가 허가가 아니다.
 
-현재 유효·Hold 내 Stateful은 옛 출력 retirement 뒤 새 Session에서 전체 정책 처음부터 재선택할 수 있다. 옛 PCM offset 재개나 복구 성공만으로 Rear의 옛 위험 후보 부활은 없다. 입력 품질과 실제 Fault 가용성은 별도 원본이며 [Timing §3~4](30_TIMING_FRESHNESS.md#first-start), STORE/PLAYBACK의 local 조건을 유지한다.
+현재 유효 또는 [Hold 내 재선택 조건](30_TIMING_FRESHNESS.md#hold-reselection)을 충족한 Stateful은 옛 출력 retirement 뒤 새 Session에서 전체 정책 처음부터 재선택할 수 있다. 옛 PCM offset 재개나 복구 성공만으로 Rear의 옛 위험 후보 부활은 없다. 입력 품질과 실제 Fault 가용성은 별도 원본이며 [Timing §3~4](30_TIMING_FRESHNESS.md#first-start), STORE/PLAYBACK의 local 조건을 유지한다.
 
 <a id="report-and-tbd"></a>
 ## 5. 보고와 남은 결정
 
-HEALTH 보고는 관측한 STORE·PLAYBACK·장치/복구 사실에서 파생한다. 현재 Fault·최근 Fault·현재 제한/가용성은 구별하며 보고 읽기는 원본을 새로 반영하거나 해제하지 않는다. instance 보존/회수·key alias 방지·진단 축소 정책은 미정이다.
+HEALTH 보고는 관측한 STORE·PLAYBACK·장치/복구 사실에서 파생한다. 현재 Fault·최근 Fault·현재 제한/가용성은 구별하며 보고 읽기는 원본을 새로 반영하거나 해제하지 않는다. A2의 완전 current·최초 발생 번호/시각·기동 내 최신 이력 보존/회수·진단 축약과 인계는 [Status Binding](../90_BINDING/93_NETWORK_STATUS_BINDING.md#producer)을 따른다. 실제 보호 예산/게시/alias 방지는 E-S01~02에서 입증한다. 복구 허용/수행/검증/현재 대상 해제 조건은 유지한다.
 
 [Fault/복구 자료](../40_DATA/70_DIAGNOSTIC_DATA.md#health) · [HEALTH 로컬](../20_MODULES/26_HEALTH_MODULE.md#recovery) · [FLOW 연결](../20_MODULES/10_FLOW_MODULE.md) · [AudioControl_Service](../30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiocontrol-service) · [Implementation TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md)
 

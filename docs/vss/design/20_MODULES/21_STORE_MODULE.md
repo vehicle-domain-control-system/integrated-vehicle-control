@@ -56,7 +56,7 @@ One-shot은 Welcome, Goodbye, Lock Complete, Unlock Complete, Lock Error다. Wel
 | Pending | accepted이나 첫 실제 시작 전. in-flight/불명확 시도는 age 도달만으로 Expired 확정 금지 |
 | Started | PLAYBACK의 원래 발생·출력 시도·사실 시각에 귀속된 최초 적법한 actual start. 같은 시작 중복 통지는 이력 재변경 없음 |
 | Completed / Interrupted | Started 후 전체 정책 완료 / 선점·고장 중단이며 안전 전체 출력 종료와 후속 권한 차단이 확인됨 |
-| Expired | 확정 미시작이며 원본 새 시작 기한에 도달. 안전 retirement 후 아직 유효한 미시작은 기존 조건 아래 Pending 재평가 가능 |
+| Expired | 확정 미시작이며 원본 새 시작 기한에 도달. Expired는 부활하지 않음. output-only Fault에서 아직 종결되지 않은 Pending만 원 L/replayAllowed·NO_START·retirement를 확인하여 재평가 가능 |
 | uncertain 최종 | 시작 결과 불명확 최종·replay 금지. 실제 old 출력 정리와는 독립 |
 
 <a id="stateful"></a>
@@ -98,6 +98,6 @@ accepted는 Pending와 identity·최종 처리까지의 추적 자원을 함께 
 
 ## 16. TBD / Deferred
 
-identity/이력 회수·보호 용량은 [identity TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#identity), 미정 Hold/정책값은 [정책 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy)를 확인한다.
+identity/이력 회수·보호 용량은 [identity TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#identity), A1 Hold 후보의 실측 및 나머지 정책값은 [정책 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy)를 확인한다.
 
 R2 Function 상세화·R3 필드/타입 설계 전이다. age/Hold/replay와 기존 잠정 정책을 이번 정규화로 재결정하지 않는다.

@@ -59,7 +59,7 @@ FLOW → HEALTH → 필요한 RUNTIME이다. STORE/PLAYBACK/Backend의 반영된
 
 복구 요구사항(PER-009)은 recoverable 출력 Fault에 한정하며 PLAYBACK_STATE_FAILURE도 원인에 따라 포함될 수 있다. 다른 현재 Fault·최근 기록은 유지하고 복귀 뒤 재생 자격은 [현재 후보 재평가](../50_CONTRACTS/40_FAULT_RECOVERY.md#resume-eligibility)에서 확인한다.
 
-현재 제한은 해당 대상의 해제 조건까지, 최근 기록은 기존 보존 정책까지 유지한다. 파생 보고는 해당 관측의 일관성과 전달/참조 기간을 따른다.
+현재 제한은 해당 대상의 해제 조건까지, 최근 주요 원기록은 A2에 따라 해당 기동 종료까지 보존한다. 파생 보고는 해당 관측의 일관성과 전달/참조 기간을 따른다.
 
 ## 11. Module-local Contract
 
@@ -74,7 +74,7 @@ FLOW → HEALTH → 필요한 RUNTIME이다. STORE/PLAYBACK/Backend의 반영된
 | FULL / DEGRADED | 지원 서비스 수준. 음원 일부 제한과 공통 경로 불가를 구분하며 개별 start 허가는 아님 |
 | accepting | 입력·검증·저장 자원·시간/출처·replay 준비의 종합. true는 개별 수용 보장이 아님 |
 
-accepting=false여도 추적 중 duplicate·유효 CLEAR·품질/기한의 안전 경로는 진행한다. Audio Fault와 입력 수용 가능성은 별도로 평가한다. WINDOW 보류는 [INPUT](20_INPUT_MODULE.md)의 기준을 따른다. 초기 Availability와 전체 보고 조합/reduction의 미정 정책은 TBD다.
+accepting=false여도 추적 중 duplicate·유효 CLEAR·품질/기한의 안전 경로는 진행한다. Audio Fault와 입력 수용 가능성은 별도로 평가한다. WINDOW 보류는 [INPUT](20_INPUT_MODULE.md)의 기준을 따른다. 초기 Availability와 전체 보고 조합/reduction은 [A2 선택](../90_BINDING/93_NETWORK_STATUS_BINDING.md#reduction)을 따른다.
 
 ## 12. 대표 오류 / 예외 처리 원칙
 
@@ -96,4 +96,4 @@ startup 미평가와 확인 실패, 입력 품질 상실과 출력 Fault, 옛 �
 
 ## 16. TBD / Deferred
 
-exact cause→Fault/DIA-017/Recovery Action·해제/Availability 정책은 [정책 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy)를 확인한다. 초기 Availability·전체 보고 조합/reduction은 미정이다. 실제 보고 표현·필드/타입·Header는 후속 단계다.
+exact cause→Fault/DIA-017/Recovery Action·해제/Availability 정책은 [정책 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy)를 확인한다. 초기 Availability·전체 보고 조합/reduction은 A2 선택 완료이며 실제 구현/시간/DOMAIN 소비는 E-S01~05다. 실제 보고 표현·필드/타입·Header는 후속 단계다.

@@ -1,5 +1,7 @@
 # Input_Process — 검증 문맥 적용과 STORE 전달
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [VSS 지도](../../../01_VSS_MAP.md) · [INPUT](../00_MODULE_OVERVIEW.md) · CORE-02 · [한국어 의사코드](../pseudocode/Input_Process.md)
 
 > GUIDE · 의미 기준 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
@@ -78,3 +80,20 @@ OUT 실패는 진단 완료/통지 ack가 아니다. 독립적으로 안전한 I
 실제 소스 매핑은 BINDING_TBD다. 보관 브링업의 private `AudioAppControl_ProcessVss`와 `VssAudioSession_SubmitRequest`의 single-pending slot에 대한 정적 관측만 SOURCE_CONFIRMED이며, 논리 `Input_Process` 심볼은 보관 C/H에서 미확인이다. 외부 참고를 실제 PRODUCT INPUT 구현으로 주장하지 않는다. 실제 ABI 확정 때 INPUT private adapter/시간 비교 경계만 대응하고 위 의미 분기를 유지한다. 후보가 부적합하면 그 adapter·후보 표현만 재검토하며 동결 계약이나 D2를 바꾸려면 별도 CR이 필요하다. 동결 의미 근거는 LOGICAL_APPROVED, 외부 IF는 PROPOSED_IF다.
 
 [R2](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#input-process) · [R3 자료](../../../../design/40_DATA/10_INPUT_DATA.md#vssinputapplication) · [R4 시간](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md) · [R5 흐름](../../../../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#input-process) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-input-process) · [실소스 Mapping 수준](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md)
+
+## A1 통신 연결과 no-RX
+
+기존 VssApp callback을 FLOW와 같은 직렬화 owner 기회에서 동기 소비한다. Event1개 또는 Warning 최대4개(activation→risk→occupant→anti)를 [단일 연결 명세](../../../../design/90_BINDING/92_NETWORK_BINDING.md#owner)로 변환하고 bundle 뒤 한 번 재중재한다. 부분 실패로 독립 정상 반영을 rollback하지 않는다. callback void/INPUT contextApplied/STORE admission/actual은 별도 완료점이다.
+
+원 계보·DOMAIN authority·전달 순서, 동일 순번의 최신 상실·옛 INVALID 거부, NO_DATA 초기/상실 구별과 format0은 연결 명세 §2~5를 적용한다. 같은 근거의 정상값 변경은 E01 제한이며 TX를 새 평가로 대입하지 않는다. INPUT(NULL)은 최대18 문맥을 입력 종류별로 검사한다. 주기 Warning에만 원 validUntil와 증가 정상RX+150ms를 적용하고, 비주기 Event는 원 L 및 별도 DOMAIN 감독·명시 신뢰 상실 근거를 구별한다. 현재 적용 가능한 각 상실만 quality lane으로 전달한다. 진단16이 가득 차도 손실 latch/count·첫/최근 요약을 보호하며 전체 성공으로 보고하지 않는다.
+
+A1 no-RX 구분: 150ms RX 감시는 주기 Warning의 승인된 monitor에만 적용한다. 비주기 Event 자체의 마지막 RX+150ms를 timeout으로 쓰지 않는다. Event는 원 L 만료를 기회 종료로 처리하고, 입력 신뢰 상실은 별도 DOMAIN Warning/Permission 감독·명시 품질/세대/시간 근거에서 판단한다. Permission의 감시 주기는 그 원 계약을 유지한다.
+
+<a id="a2-status-handoff"></a>
+## A2 기존 INPUT 통신 연결의 Status 책임
+
+[Status Binding §5](../../../../design/90_BINDING/93_NETWORK_STATUS_BINDING.md#handoff)를 적용한다. CREATED만 기존 INPUT 통신 연결 한 곳에서 NetVssStatus로 변환한다. reportGeneration/reportSequence/evaluatedAt과 last Fault 원근거를 보존하고 Network 동기 전체 복사 반환까지 불변 참조를 보호한다. INVALID는 원 진단/재수집, NOT_READY는 준비 변화, NO_CAPACITY는 다음 기존 처리 기회에서 최대1회 재검토다. 아직 미접수 1건만 더 새 coherent 평가로 교체할 수 있으며 accepted/Driver 사본은 수정하지 않는다.
+
+localOK 뒤 terminal 실패는 원 key·BOOT/TX·raw·참조 종료 여부를 Network 기존 관측 → INPUT 진단16/loss latch → FLOW로 bounded drain한다. sink 미준비는 접수 NOT_READY다. 실패를 CAN 수신/DOMAIN 성공이나 음향 Fault로 바꾸지 않는다. 미인계/실패 관측/재수집이 남으면 FOLLOW_UP_REQUIRED/RECOLLECT이며 보고 문제로 독립 입력·정리 처리를 중단하지 않는다. 실제 함수/게시/sink 바인딩은 E-S01~04이고 신규 Core/제품 코드는 없다.
+
+이 Status 연결은 Input_Process의 입력 R6 원형/반환을 변경하지 않는다. HEALTH 정책을 INPUT에서 재평가하지 않고 의미 대응·범위/age·전체 복사만 담당한다.

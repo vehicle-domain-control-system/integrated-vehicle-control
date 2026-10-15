@@ -1,5 +1,7 @@
 # VSS SW 상세 가이드 — 처음 읽기
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 VSS는 Domain이 확정한 사건·경고를 검증하고, 유효한 후보에서 하나의 음향 Session을 진행하며 상태·고장을 보고합니다. 여기서는 **VSS → Layer → Module → 함수 설명·의사코드**를 따라 읽을 수 있습니다.
@@ -40,3 +42,9 @@ VSS는 Domain이 확정한 사건·경고를 검증하고, 유효한 후보에�
 유효 문서 기준은 Master v1.1(원 기술 REQ-01~27 + 편집 REQ-28~35)이며, 기술 의미는 [동결 설계](../design/00_OVERVIEW/00_VSS_DESIGN_OVERVIEW.md)를 따릅니다. 설계 기준 `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`는 [SHA 고정 GitHub 원문](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/0641b2c2268cf47450aeb50302638a45a7a3277f/docs/vss/design/30_FUNCTIONS/00_FUNCTION_OVERVIEW.md)과 같으며, 이 편집의 게시 원본 `VSS@2702d6adec768627794dc07b2b221a63405fd79f`와 구분합니다.
 
 상세 가이드를 따로 배포할 때는 `sw_detail/`과 동결 `design/` 54개 문서의 상대 경로를 함께 유지해야 합니다. 외부 참조 미결15건은 해소되지 않았습니다.
+
+## A1 현재 입력 기준과 이력
+
+현재 입력 연결은 [92_NETWORK_BINDING](../design/90_BINDING/92_NETWORK_BINDING.md)과 A1으로 개정한 Data/계약/의사코드다. Network 고정 원문은 `70028972ec713a3ec6b5f0a419e0dc89fd963844`이다. 과거 SHA·Q01~Q14·PASS·P1B HOLD 기록은 당시 검토 이력이며 현재 미결 전체가 아니다. D01 WARNING60, D04 L, D05 RX Age, D06 Hold/활성 후보, D07 owner/용량, D08 복구 분리는 설계 반영했다. Q 관련 DOMAIN 판단 순서/생산·계보·Boot·실제 시간/ABI/HW는 E01~E05로 구체화했다. Status 관련 Q/D09~D11은 [A2 Status Binding](../design/90_BINDING/93_NETWORK_STATUS_BINDING.md)에서 선택·보완했다. A1-C1 독립 PASS를 인수했으며 A2 문서 자체검수 완료/독립 검수 대기다. 실제 source/시간/Boot/sink/DOMAIN 소비 조건 E-S01~05와 제품 실행 NOT_RUN을 구분한다.
+
+읽기 우선순위: [초기 v0.1 설계](../VSS_function_design_draft_v0.1.md)와 [과거 의사코드 81](../design/60_PSEUDOCODE/reference/81_VSS_PSEUDOCODE.md)의 2초 예시는 당시 이력이다. 현재 최초 시작 판단은 [A1 Timing의 L](../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)과 위 Network 연결을 우선하며, `L=min(양수 USE_LIMIT,500ms,2000ms)`의 2000ms 절대 상한을 독립적인 2초 시작 허가로 읽지 않는다.

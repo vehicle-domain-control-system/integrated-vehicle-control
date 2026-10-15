@@ -1,5 +1,7 @@
 # Playback_Advance — 상세 동작 설명
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상세 설명](../functions/Playback_Advance.md) · [의사코드](../pseudocode/Playback_Advance.md) · [PLAYBACK](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-08
 
 > GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
@@ -73,11 +75,11 @@ STORE는 occurrence ledger/Stateful writer, STREAM은 provider/PCM A/B 사용권
 
 먼저 원 Session/Attempt/activation·scope·transportFacts·원 사실 시각/coverage와 **활성화 이후 새 실제 출력** 충분성을 확인합니다. enum 이름, PREPARED/START accepted+enabled, 현재 idle/HAL IRQ/abort/zero-fill만으로 actual을 만들지 않습니다. actual 충분성에는 미래 PCM 차단이 필수인 것이 아니며 NO_START/TERMINATION의 조건과 합치지 않습니다.
 
-최초 One-shot actual의 원 Meta domain/epoch·연속성과 occurredAt의 가능한 구간이 비교 가능해야 합니다. 전체 구간이 originalAt 이후이고 `occurredAt.latest - originalAt <2초` [잠정]이며 원 당시 권한 범위 안일 때만 적법합니다. **정확히 2초는 미허용**입니다. 구간 전체가 기한/권한 밖임이 입증되면 물리 위반, 경계 걸침·비교/당시 권한 부족이면 적법 여부 불확실입니다. 불확실에서 정상 Started/확정 위반 둘 다 합성하지 않고 원 물리 fact·충분한 실제 coverage와 부족한 적법성 범위를 분리해 보호합니다.
+최초 One-shot actual의 원 Meta domain/epoch·연속성과 occurredAt의 가능한 구간이 비교 가능해야 합니다. 전체 구간이 originalAtLatest 이후이고 `occurredAt.latest - originalAt <L` [잠정]이며 원 당시 권한 범위 안일 때만 적법합니다. **정확히 L은 미허용**입니다. 구간 전체가 기한/권한 밖임이 입증되면 물리 위반, 경계 걸침·비교/당시 권한 부족이면 적법 여부 불확실입니다. 불확실에서 정상 Started/확정 위반 둘 다 합성하지 않고 원 물리 fact·충분한 실제 coverage와 부족한 적법성 범위를 분리해 보호합니다.
 
 적법 actual은 해당 Attempt 지식을 반영하며 최초 One-shot에만 `VSS_FACT_FIRST_ACTUAL_START`를 원 occurrence에 통지합니다. Stateful은 PB 실제 지식/관측을 반영할 뿐 가짜 One-shot fact/occurrence를 만들지 않습니다. STOPPING/ABORTING의 적법 late actual은 원 Started/보고만 반영하고 **phase ACTIVE·후속 cue 권한은 복구하지 않습니다.** uncertain final/retired 뒤 결과는 old 정리/진단만이며 정상 이력을 부활시키지 않습니다.
 
-기한/권한 위반 또는 적법성 부족은 전체 미래 권한 차단·원 STOP/안전 정리를 진행하되 부족만으로 uncertain final/NO_START/종료/retirement를 만들지 않습니다. 처리 now나 HAL capturedAt으로 과거 occurredAt을 대체하지 않고 USE_LIMIT/Network500ms를 최초 gate에 새로 결합하지 않습니다. 이미 적법 Started된 동일 Session의 정상 후속 cue에는 최초 `<2초`를 재적용하지 않습니다.
+기한/권한 위반 또는 적법성 부족은 전체 미래 권한 차단·원 STOP/안전 정리를 진행하되 부족만으로 uncertain final/NO_START/종료/retirement를 만들지 않습니다. 처리 now나 HAL capturedAt으로 과거 occurredAt을 대체하지 않고 A1의 L을 최초 gate에 적용합니다. 이미 적법 Started된 동일 Session의 정상 후속 cue에는 최초 `<L`를 재적용하지 않습니다.
 
 <a id="requests"></a>
 ## 준비·제출·수락과 정상 후속 cue
@@ -106,7 +108,7 @@ actual/종료 사실을 요청 acceptance보다 우선 보존합니다. 원 귀�
 <a id="feasibility"></a>
 ## 독립 후보·제품 Gate
 
-원귀속/late·phase 단조성, 원 actual 가능한 시각 구간의 적법/위반/불확실, 최초 gate와 정상 cue, whole scope/retirement 조건, STORE 멱등 통지·OUT 짝 보호는 `LOGICAL_APPROVED / PROVISIONAL_TESTABLE` Host 주입 후보입니다. `<2초` 원 정책은 기존 한 정의 위치에서 관리·경계 fixture와 채택/변경·철회 조건으로 추적합니다. 부분 효력/손실/용량 불일치도 논리적으로 검증할 수 있으며 시험은 `TEST_NOT_RUN`입니다.
+원귀속/late·phase 단조성, 원 actual 가능한 시각 구간의 적법/위반/불확실, 최초 gate와 정상 cue, whole scope/retirement 조건, STORE 멱등 통지·OUT 짝 보호는 `LOGICAL_APPROVED / PROVISIONAL_TESTABLE` Host 주입 후보입니다. `<L` 원 정책은 기존 한 정의 위치에서 관리·경계 fixture와 채택/변경·철회 조건으로 추적합니다. 부분 효력/손실/용량 불일치도 논리적으로 검증할 수 있으며 시험은 `TEST_NOT_RUN`입니다.
 
 실제 start/no-start/잔류 출력·STOP sufficient coverage 및 PCM/refs 안전은 STREAM/TX/HW owner의 계측이 필요합니다. 원 시간 ABI·key/storage/직렬화·실제 final/timeout 규칙은 VSS/Runtime owner 미정입니다. 해당 제품 확정만 제한하며 전체 PB 로직을 HOLD하지 않습니다. 보관 Session/AudioPlayer의 과거 완료 관측은 정적 재사용 후보이며 최신 R6의 전체 충분성·C ABI·제품 성공으로 승격하지 않습니다. Fault5/PCM A/B 두 개·WINDOW 제품 보류/TEST 격리·Q/R6/P1B_C1/P2 미결 유지입니다.
 

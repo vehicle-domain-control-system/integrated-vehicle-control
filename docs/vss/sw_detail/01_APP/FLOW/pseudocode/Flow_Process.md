@@ -1,5 +1,7 @@
 # Flow_Process — 한국어 C 형태 의사코드
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상세 설명](../functions/Flow_Process.md) · [FLOW](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-01
 
 > GUIDE · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
@@ -46,7 +48,17 @@ VssFlowProgress Flow_Process(
            후속마다 중복 prepare/Session/기존 owner 초기화를 하지 않는다. */
     }
 
-    /* F3: INPUT 도착은 기존 경계에서 읽는다. public 인자에 payload 추가 없음. */
+    /* F3: 같은 owner의 Network dispatcher가 callback을 동기 소비.
+       한 bundle은 Event1/Warning최대4; activation→risk→occupant→anti 반영.
+       각 admission/진단 보호, 뒤 항목 실패로 정상 앞 항목 rollback 없음.
+       bundle 중 POLICY/PB 시작 없음; 전체 반영 뒤 한 번 재중재. */
+    /* A2 후발 실패 관측은 RX 유무·새 Snapshot CREATED 여부와 독립이다.
+       기존 INPUT 연결의 안전한 owner 관측만 이번 예산 안에서 drain한다. */
+    [Network 보호 terminal 관측의 원 key/BOOT/TX/raw/참조 종료 여부를 확인];
+    [INPUT 기존 진단16/loss latch에 보호한 뒤 FLOW 후속으로 연결];
+    [공간 부족/미방문/바인딩 미확인은 원 관측과 후속 의무 유지; 성공 처리 없음];
+    /* 통신 실패를 음향 Fault로 만들거나 옛 보고/One-shot을 재실행하지 않음.
+       실제 sink/drain 바인딩은 A2 E-S04이며 새 API/Queue를 추가하지 않음. */
     Input_Process(기존_INPUT_경계의_optional_보호_input_또는_NULL,
                   time, INPUT_발견진단의_기존_독립_OUT범위);
     /* TIME_CHECK/RX 없음도 호출. EVENT/CLEAR 합성 없음.
@@ -80,6 +92,12 @@ VssFlowProgress Flow_Process(
     /* F5: owner별 반영 완료 읽기. 여기에는 숨은 상태 적용/getter 변경 없음. */
     VssReadBasis basis;
     STORE_후보_PB_관측_HEALTH_제한_ASSET_device_cleanup을_읽기전용_수집;
+    if (현재_Stateful_Hold의_경계걸침_시간출처부족_UNCERTAIN_관측이_적용완료됨 &&
+        현재_종료대상_Session_귀속이_확인됨) {
+        Playback_RequestTransition(기존_terminationSession_lane과_원부족사유_최신_R6_실행조건);
+        /* 새 선택 basis의 시간 부족을 정상화하지 않고 보수적 종료/후속을 먼저 연결.
+           확정 만료·물리 STOP 완료를 합성하지 않음. 귀속 부족은 원 후속 의무 보호. */
+    }
     for (이번_평가에_필요한_각_owner_stamp) {
         owner_revision_appliedThrough와_필요_인과선행_사실을_확인;
         if (관련_사실_미반영_또는_notification_pending_시간비교_부족 ||
@@ -127,8 +145,13 @@ VssFlowProgress Flow_Process(
     reportBasis.time = 평가수명으로_보호한_이번_VssTimeEvidence_값;
     Health_BuildStatus(적용완료_R6_typed_관측들, &reportBasis, 기존_snapshot_OUT);
     if (HEALTH가_CREATED했고_유효한_snapshot_보호를_완료) {
-        기존_INPUT_보고연결로_불변_Status와_참조를_전달_보호;
-        /* 실제 통신 소비 종료까지 필요참조 유지. CAN 송신/Domain 수용 별도. */
+        [INPUT 기존 연결에서 A2 11필드를 한 번 변환, 원 key/두 Age 기준 보호];
+        [VssNet_PublishStatus 동기 반환까지 Snapshot/목록/basis 보호];
+        [OK는 Network 전체 사본만; INVALID는 진단/재수집];
+        [NOT_READY는 준비 변화 뒤, NO_CAPACITY는 다음 기회 최대1회 재검토];
+        [미접수 1건만 최신 coherent 보고로 교체 가능; accepted 사본 불변];
+        /* 이후 terminal 실패는 위 F3의 독립 drain에서 원 key로 관측한다. */
+        /* CAN 송신/peer RX/DOMAIN 반영·음향 성공은 별도. */
     } else {
         새_정상보고_합성없이_재평가_또는_미인계_후속을_유지;
     }
@@ -149,3 +172,9 @@ VssFlowProgress Flow_Process(
 현재 PB/POLICY/HEALTH의 상세 설명은 [Playback_RequestTransition](../../../02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md), [Playback_Advance](../../../02_SERVICE/PLAYBACK/functions/Playback_Advance.md), [Select_Choose](../../../02_SERVICE/POLICY/functions/Select_Choose.md), [Health_Evaluate](../../../02_SERVICE/HEALTH/functions/Health_Evaluate.md), [Health_BuildStatus](../../../02_SERVICE/HEALTH/functions/Health_BuildStatus.md)에서 읽고 각 문서의 의사코드 링크로 이어갑니다. 이 문서의 calls는 아래 동결 원문에 근거한 논리 의사 표기이며 실제 구현 착수·새 API 정의가 아니다. 초기 HW/IF 미정은 실제 adapter/물리 수행 검증만 차단한다. 위 문서들의 독립 SW 순서/거부/재수집/보호 논리를 `return TBD`로 대체하지 않는다.
 
 [INPUT 의사코드](../../../02_SERVICE/INPUT/pseudocode/Input_Process.md) · [STORE 사실](../../../02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) · [STORE 기한](../../../02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) · [R2](../../../../design/30_FUNCTIONS/10_FLOW_FUNCTIONS.md#flow-process) · [R3 basis](../../../../design/40_DATA/30_SELECTION_DATA.md#vssreadbasis) · [R4 coherent](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#coherent-read) · [R5 정규 순서](../../../../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#flow-process) · [R5 startup](../../../../design/60_PSEUDOCODE/10_STARTUP_FLOW.md#flow-startup) · [R5 복구](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#recovery-flow) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-flow-process)
+
+## A1 owner 적용 순서
+
+기존 FLOW owner에서 Network dispatcher callback을 동기 소비하여 Event1 또는 Warning최대4 입력을 처리한다. INPUT 변환→각 Store_ApplyInput→bundle 끝→하위 fact→Store_AdvanceDeadlines→HEALTH→한 번의 POLICY/PB 순서다. 별도 Queue/Task를 추가하지 않는다. TIME_CHECK는 10ms 이하 설계 예산(실측 미검증)이며 Input_Process(NULL)이 최대18 문맥을 종류별로 점검한다. 주기 Warning은 원 TTL/정상 증가 RX+150ms, 비주기 Event는 원 L과 별도 승인된 DOMAIN 감독·품질/세대/시간 근거를 사용하며 Event 무발생 timeout을 만들지 않는다. INPUT contextApplied와 STORE admission/진단은 개별 관측이다.
+
+QUALITY Event 상실은 replayAllowed=false; Stateful 최초 loss/Hold는 고정; Rear DISABLED/상실은 riskFence 보존·gate 차단이다. 신규 Event는 원 key/Meta/L/추적을 함께 예약하며 ledger128 full이면 REJECTED다. 현재 유효 또는 원 출처·시각·고정 Hold·Rear gate/fence가 입증된 Stateful은 old retirement 뒤 새 Session 재선택이 가능하다. Hold 경계 걸침/비교 부족은 UNCERTAIN·새 시작 차단·보수적 종료 요청이며 확정 만료가 아니다. 세부 분기와 Data는 [A1 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md)을 따른다.

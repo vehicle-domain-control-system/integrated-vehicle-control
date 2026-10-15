@@ -62,7 +62,7 @@ VssHealthAssessment Health_Evaluate(
 | Precondition | 관측 일관성과 필요한 반영이 확인되어야 한다. 확인되지 않은 경우 새 정상 보고를 만들지 않으며 재평가 필요를 보존한다. 보고 자료 참조/전달 기간은 기존 계약을 따른다. |
 | Postcondition | PLAYING은 적법한 actual start가 확인된 전체 Session으로 파생하며 cue 무음/반복 대기/시작 후 종료 진행을 포함한다. QUARANTINED는 기존 FAULT/UNAVAILABLE 연결을 유지한다. accepting은 개별 accepted 보장이 아니다. |
 | Side Effect | 파생 보고 자료 생성/보호. 원본 상태 변경·송신 실행·복구 허용/해제는 없다. |
-| Failure behavior | startup 미평가를 INITIALIZATION_FAILURE로 합성하지 않는다. 관측 부족/혼합이면 새 정상값을 확정하지 않는다. 전체 보고 조합/reduction·초기 Availability의 기존 미정 정책은 확정하지 않는다. |
+| Failure behavior | startup 미평가를 INITIALIZATION_FAILURE로 합성하지 않는다. 관측 부족/혼합이면 새 정상값을 확정하지 않는다. 전체 보고 조합/reduction·초기 Availability는 [A2 선택](../90_BINDING/93_NETWORK_STATUS_BINDING.md#reduction)을 적용하며 실제 source 바인딩은 E-S01~05다. |
 | Invariant | 보고는 원본의 두 번째 writer가 아니다. Audio Fault와 입력 수용 가능성은 별개이고 accepting=false여도 기존 duplicate/CLEAR·품질/기한의 안전 경로는 계속된다. WINDOW 보류만으로 Fault/DEGRADED를 만들지 않는다. |
 | Forbidden behavior | getter에서 결과/기한/Fault를 몰래 적용, HEALTH 해제 수행, PCM/Session 수정, 준비·요청 수용을 PLAYING으로 변경, 송신 Module이 보고값을 재계산하도록 위임 금지. |
 | 동기 / 비동기 | 동기 읽기 전용 파생 판단이다. 보고 자료 보호를 제외하면 authoritative 원본을 쓰지 않는다. 전송의 비동기 수명/실제 field 표현은 후속 단계다. |

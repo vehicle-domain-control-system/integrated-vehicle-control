@@ -1,5 +1,7 @@
 # AudioTx_Request — 한국어 C형 의사코드
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상세 설명](../functions/AudioTx_Request.md) · [AUDIO_TX](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md)
 
 > CORE-13. 아래 조건·서술형 연산은 논리 의사코드이며 새 public API·자료 타입·실제 C ABI가 아닙니다.
@@ -115,7 +117,7 @@ if (control != NULL) {
         원래 문맥의 새 START 권한/현재 gate를 효력 직전에 확인;
         if (최초 One-shot gate 필요) {
             보호할 원래 firstStartMeta와 time의 비교 가능한 연속성 확인;
-            원발생 age < 2초 [잠정] 검사; 정확히 2초/부족은 신규 거부;
+            원발생 age < L (A1 선택) 검사; 정확히 L/부족은 신규 거부;
         } else {
             원래 최초 Started 확인된 정상 후속 등 면제 문맥을 확인;
             firstStartMeta가 NULL인지 검사; 최초 age gate 재적용 없음;
@@ -125,7 +127,7 @@ if (control != NULL) {
 }
 ```
 
-Meta NULL만으로 최초 gate 면제를 만들지 않습니다. now로 원 age를 리셋하지 않습니다. 제출/수용 시각과 실제 활성화 activationAt, actual의 원 사건 시각은 다릅니다. Network USE_LIMIT 후보와 임의 timeout을 만들지 않습니다.
+Meta NULL만으로 최초 gate 면제를 만들지 않습니다. now로 원 age를 리셋하지 않습니다. 제출/수용 시각과 실제 활성화 activationAt, actual의 원 사건 시각은 다릅니다. 원 USE_LIMIT의 A1 L을 보존하며 별도 재시도 timeout은 만들지 않습니다.
 
 <a id="r5-stop"></a>
 ## R5. STOP targets·원 scope
@@ -234,7 +236,7 @@ VSS_COVERAGE_INSUFFICIENT(관측/상관 부족)와 VSS_COVERAGE_LOST(귀속·시
 
 유효 OUT는 전달한 개별 사실 수만 기록합니다. 미전달 사실과 남은 참조는 보호된 원 문맥으로 Advance 후속에 남습니다. 신규 거부는 해당 새 요구만 무효과이며 기존 작업의 보호는 유지됩니다. 부분효과/정리 대기는 실제 key와 원 범위를 보존합니다. 반환 scalar로 actual/no-start/전체 종료·무기한 CPU 쓰기 허가를 발급하지 않습니다.
 
-배타·bounds·중복·회차/late·군별 용량은 F1/F3 독립 구현/비구동 후보입니다. 원발생→최초 actual `<2초`는 F2 잠정값이며 현재 gate와 사실 적용을 분리합니다. 지속 raw 대응/PCM 재쓰기/STOP 잔류·반환 충분성은 F5 물리 Gate입니다. 구체 ABI·key/저장·직렬화는 기존 TBD, 실제 symbol 재사용은 미조사입니다. 후속 Host 후보와 team/HW 결정은 [설명 구현 가능성 표](../functions/AudioTx_Request.md#feasibility)에 남기며 실제 시험은 NOT_RUN입니다.
+배타·bounds·중복·회차/late·군별 용량은 F1/F3 독립 구현/비구동 후보입니다. 원발생→최초 actual `<L`은 F2 잠정값이며 현재 gate와 사실 적용을 분리합니다. 지속 raw 대응/PCM 재쓰기/STOP 잔류·반환 충분성은 F5 물리 Gate입니다. 구체 ABI·key/저장·직렬화는 기존 TBD, 실제 symbol 재사용은 미조사입니다. 후속 Host 후보와 team/HW 결정은 [설명 구현 가능성 표](../functions/AudioTx_Request.md#feasibility)에 남기며 실제 시험은 NOT_RUN입니다.
 
 <a id="references"></a>
 ## 4. 동결 원문과 승인 후속

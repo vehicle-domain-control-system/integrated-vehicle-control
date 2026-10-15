@@ -1,5 +1,7 @@
 # Playback_RequestTransition — 한국어 C 형태 의사코드
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상세 설명](../functions/Playback_RequestTransition.md) · [의사코드](../pseudocode/Playback_RequestTransition.md) · [PLAYBACK](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-07
 
 > GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
@@ -169,9 +171,12 @@ VssRequestDisposition Playback_RequestTransition(
         새_독립_identity_plan_Meta_각결과_보호공간이_부족) {
         return VSS_REQUEST_WAIT; /* old 기록 회수/eviction으로 공간을 만들지 않음. */
     }
+    if (!현재후보.newSessionAllowed) {
+        return VSS_REQUEST_WAIT; /* Event 원 L/replay 또는 Stateful 현재 유효/입증된 Hold·Rear 조건 필요. */
+    }
     if (원후보가_미시작_One_shot &&
-        conditionsBasis.time으로_원발생_age의_가능구간전체_2초미만_확인_불가) {
-        return VSS_REQUEST_WAIT; /* 정확히2초 미허용; 원 Meta reset 없음. */
+        conditionsBasis.time으로_원발생_age의_가능구간전체_L미만_또는_현재후보.newSessionAllowed_확인_불가) {
+        return VSS_REQUEST_WAIT; /* 정확히 L 미허용; 원 Meta reset 없음. */
     }
     if (원후보가_One_shot && 그_occurrence가_이미_Started_또는_uncertain_final_replay금지) {
         return VSS_REQUEST_REJECTED; /* Started One-shot 자동 resume 없음. */

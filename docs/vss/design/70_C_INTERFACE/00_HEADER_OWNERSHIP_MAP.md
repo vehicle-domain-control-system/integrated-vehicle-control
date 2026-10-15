@@ -1,12 +1,14 @@
 # Header Ownership / Typed C Interface — R6
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > 2026-10-08 · 최신 승인 기준 R5-C1 독립 PASS · **LOGICAL R6 CONTRACT / 후보 pseudo prototype**
 
-> 위 기준·아래 R6 자체 검수/중단 표현은 **R6 작업 당시 이력**이다. R6는 인계의 독립 PASS로 승인됐고 최신 작업은 [R7 통합 검수](../../../../R7_RESULT_SUMMARY.md)다. 이 문서의 선언·133 타입·18 후보·TBD-R6-01~08 본문은 보존하며 실제 Header/ABI/물리 충분성을 새로 확정하지 않았다.
+> 위 기준·아래 R6 자체 검수/중단 표현은 **R6 작업 당시 이력**이다. R6는 인계의 독립 PASS로 승인됐고 최신 작업은 [R7 통합 검수](../../../../R7_RESULT_SUMMARY.md)다. 이 문서의 선언·133 타입·18 후보·TBD-R6-01~08 이력은 보존하고 A1 입력 관련 필드·시간 소비를 본문과 R3에서 개정했다. 실제 Header/ABI/물리 충분성을 확정하지 않았다.
 
 [Document Map](../00_OVERVIEW/01_DOCUMENT_MAP.md) · [R3 전수 판정](../40_DATA/00_DATA_OVERVIEW.md#type-decisions) · [18 Core의 R3 대응](../40_DATA/00_DATA_OVERVIEW.md#function-data-map) · [R5-C1 Flow](../60_PSEUDOCODE/00_PSEUDOCODE_OVERVIEW.md) · [결과·자체 검수](../../../../R6_RESULT_SUMMARY.md)
 
-R6는 선언의 책임·가시성·typed 입력/결과·참조 보호와 include 방향을 정리한다. 기존 5 Layer / 10 Module / 18 Core, R3의 53 struct / 292 field / 42 enum / 38 의미 alias와 32 provisional 판정, R4 Contract 5종, R5-C1 Flow 및 Governance v1.1은 보존한다. 이 문서는 실제 C/H 파일, vendor ABI, 물리 Binding, Build/보드 PASS가 아니다.
+R6는 선언의 책임·가시성·typed 입력/결과·참조 보호와 include 방향을 정리한다. 기존 5 Layer / 10 Module / 18 Core, R3 당시 53 struct / 292 field / 42 enum / 38 의미 alias라는 이력와 32 provisional 판정, R4 Contract 5종, R5-C1 Flow 및 Governance v1.1은 보존한다. 이 문서는 실제 C/H 파일, vendor ABI, 물리 Binding, Build/보드 PASS가 아니다.
 
 <a id="provenance"></a>
 ## 1. 근거 수준과 기존 Header 재사용
@@ -56,7 +58,7 @@ Public은 **기존 허용 Caller가 사용하는 VSS 경계**라는 뜻이며 �
 <a id="type-map"></a>
 ## 3. R3 타입 → 의미 owner / producer·consumer / 선언 경계
 
-아래 53개 struct는 R3 원문의 필드·owner를 그대로 따른다. Header label은 선언 hosting 후보이며 의미 writer 이전이 아니다. 42 enum과 38 alias는 다음 표에서 전수 연결한다. cross-owner 자료를 큰 state/command/result로 재포장하지 않는다. 보호 상세는 [수명 표](#lifetime), complete type/forward declaration은 [include 규칙](#include-direction)을 따른다.
+아래 53개 struct의 owner는 R3를 따른다. A1 Meta/Context/Occurrence/Rear/Candidate 추가 필드는 각 R3 현재 선언을 따른다. Header label은 선언 hosting 후보이며 의미 writer 이전이 아니다. 42 enum과 38 alias는 다음 표에서 전수 연결한다. cross-owner 자료를 큰 state/command/result로 재포장하지 않는다. 보호 상세는 [수명 표](#lifetime), complete type/forward declaration은 [include 규칙](#include-direction)을 따른다.
 
 | R3 struct / 선언 role | 의미 owner / producer → consumer | visibility / Header 후보 / 사용권 |
 | --- | --- | --- |
@@ -603,11 +605,11 @@ Backend 출력 확정은 TX의 **각 원 범위** 과거 무출력·미래 차�
 
 | 원 사실과 원래 권한의 근거 | R5-C1 판정 / 경계 동작 |
 | --- | --- |
-| actual 충분 + 비교 가능 + 가능한 구간 전체가 원발생 이후, `[잠정] age < 2초` 및 원래 권한 안 | 적법 확인. 최초 Started를 한 번 통지. 종료 진행 중이면 Started/보고만 적용, STOPPING/ABORTING 유지 |
-| 충분한 실제 출력 + 비교/권한 근거로 구간 전체가 기한·권한 밖 (`=2초`도 미허용) | 확정 위반. 실제 출력/원 coverage·위반 진단·원 정리 보호. 적법 Started 없음 |
-| 시간/activation/당시 권한 비교 불가·coverage 부족/손실·2초 경계 걸침 | 적법 Started와 확정 위반을 모두 보류. 실제 확인된 물리 fact/충분 coverage는 그대로 보호하며 부족한 비교·권한 범위를 별도 진단 |
+| actual 충분 + 비교 가능 + 가능한 구간 전체가 원발생 이후, `A1 age < L` 및 원래 권한 안 | 적법 확인. 최초 Started를 한 번 통지. 종료 진행 중이면 Started/보고만 적용, STOPPING/ABORTING 유지 |
+| 충분한 실제 출력 + 비교/권한 근거로 구간 전체가 기한·권한 밖 (`=L`도 미허용) | 확정 위반. 실제 출력/원 coverage·위반 진단·원 정리 보호. 적법 Started 없음 |
+| 시간/activation/당시 권한 비교 불가·coverage 부족/손실·L 경계 걸침 | 적법 Started와 확정 위반을 모두 보류. 실제 확인된 물리 fact/충분 coverage는 그대로 보호하며 부족한 비교·권한 범위를 별도 진단 |
 
-actual의 충분성 또는 적법성 미확인은 전체 후속 권한 차단·원 STOP·안전 정리로 연결한다. 기존 적법 Started는 지우지 않고, 부족만으로 uncertain final/NO_START/출력 종료/retirement를 만들지 않는다. `occurredAt` 대신 `capturedAt`/처리 now를 쓰지 않는다. 이미 적법 Started된 같은 Session의 정상 후속 cue/반복에는 최초 age gate를 재적용하지 않는다. USE_LIMIT 관계/불명확 최종 조건은 미정이다. [R5-C1 원문](../60_PSEUDOCODE/30_PLAYBACK_FLOW.md#first-actual-gate) · [R4 시간 계약](../50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start).
+actual의 충분성 또는 적법성 미확인은 전체 후속 권한 차단·원 STOP·안전 정리로 연결한다. 기존 적법 Started는 지우지 않고, 부족만으로 uncertain final/NO_START/출력 종료/retirement를 만들지 않는다. `occurredAt` 대신 `capturedAt`/처리 now를 쓰지 않는다. 이미 적법 Started된 같은 Session의 정상 후속 cue/반복에는 최초 age gate를 재적용하지 않는다. USE_LIMIT 관계는 A1의 L을 적용하고 불명확 최종 조건의 물리 충분성은 미검증이다. [R5-C1 원문](../60_PSEUDOCODE/30_PLAYBACK_FLOW.md#first-actual-gate) · [R4 시간 계약](../50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start).
 
 <a id="lifetime"></a>
 ## 11. C 호출·포인터와 실제 자료 수명
@@ -646,15 +648,24 @@ Occurrence/Session/Attempt를 합치지 않는다. uncertain final 뒤 또는 re
 | TBD-R6-05 / STOP target와 물리 scope 상관 | 기존 원 operation key 범위+Attempt/scope를 명시. 같은 SEGMENT enum으로 구간 identity/whole을 추정하지 않음. 불명확이면 차단·retain·후속 | R5-C1 원 plan/요청/결과 연결을 실제 key·descriptor/active/대기/FIFO/frame 범위에 연결하는 근거, 제어 operation과 대상 작업의 결과 대응. B2-R |
 | TBD-R6-06 / 원 시각·권한 비교 | 세 갈래 판정. 실제 fact·충분 coverage와 비교 근거 부족을 구별. 현재 now/새 epoch로 원 발생 갱신 금지 | 원 input source/generation/order/시간 변환·Runtime epoch/wrap/reset, actual earliest/latest/activation·당시 권한 범위 입증. B2-R/정책 근거 |
 | TBD-R6-07 / HAL·DMA·출력/접근 물리 충분성 | vendor ABI/지속 raw→operation/cycle·no-start/termination/현재 쓰기 안전 미입증은 confirmed 생성 차단 | 최신 generated/RTD/IRQ/원 callback signature·등록/descriptor/abort/drain·관측 coverage, A/B actual mapping·cache/barrier/alignment·차기 방문/WCET/IRQ 지연. B2-R 및 보드 검증 |
-| TBD-R6-08 / Startup·Recovery·정책/보고 | Session 없는 진행; Permission→수행→별도 검증→HEALTH 현재 제한 해제. 미평가/부분 관측으로 정상 보고 합성 없음 | 기존 초기 control entry/순서, exact cause→기존 Fault 5종/Action·timeout/retry/불명확 final·Hold/USE_LIMIT·최초 <2초 제품값·Status reduction/초기 availability/accepting source 계약. 기존 정책 결정/B2-R |
+| TBD-R6-08 / Startup·Recovery·정책/보고 | Session 없는 진행; Permission→수행→별도 검증→HEALTH 현재 제한 해제. 미평가/부분 관측으로 정상 보고 합성 없음 | 기존 초기 control entry/순서, exact cause→기존 Fault 5종/Action·timeout/retry/불명확 final·Hold/USE_LIMIT·최초 <L 제품값·Status reduction/초기 availability/accepting source 계약. 기존 정책 결정/B2-R |
 
-R2 provisional 원형과 R3 SPLIT/INLINE, R5 logical CALL의 표기 차이는 이 문서에서 typed 전달로 해석했다. 승인된 상위 의미를 수정해야 하는 충돌은 확인하지 않았다. 원 C symbol/경계 후보가 typed 의미를 충족하지 못하는 gap은 위 TBD로 공개했으며 R2~R5를 고쳐 사실을 맞추지 않았다.
+**R6 작성 당시 이력:** R2 provisional 원형과 R3 SPLIT/INLINE, R5 logical CALL의 표기 차이는 이 문서에서 typed 전달로 해석했다. 승인된 상위 의미를 수정해야 하는 충돌은 확인하지 않았다. 원 C symbol/경계 후보가 typed 의미를 충족하지 못하는 gap은 위 TBD로 공개했으며 R2~R5를 고쳐 사실을 맞추지 않았다.
 
 <a id="scope-gate"></a>
 ## 13. 과설계·과압축 점검과 중단 Gate
 
-새 Core·Module·상태/필드·전송 PCM·Fault·Header 파일·범용 Command/Result union·getter/setter 계층·Framework·Task/Queue/Mutex를 만들지 않았다. 기존 symbol/private 처리 재사용 우선, FillBuffer/decoder/callback 등록 보호는 기존 내부 지위다. 배타 typed 입력·독립 결과군·원 STOP key·시간/권한 불확실성·참조 회수 조건을 생략하지 않았다. API 수와 typed 선언 위치는 실제 source 결합에서 중복 wrapper 없이 최소화해야 한다.
+**R6 작성 당시 이력:** 새 Core·Module·상태/필드·전송 PCM·Fault·Header 파일·범용 Command/Result union·getter/setter 계층·Framework·Task/Queue/Mutex를 만들지 않았다. 기존 symbol/private 처리 재사용 우선, FillBuffer/decoder/callback 등록 보호는 기존 내부 지위다. 배타 typed 입력·독립 결과군·원 STOP key·시간/권한 불확실성·참조 회수 조건을 생략하지 않았다. API 수와 typed 선언 위치는 실제 source 결합에서 중복 wrapper 없이 최소화해야 한다.
 
-Governance v1.1과 R2~R5-C1 원문, Layer/Module/Trace/Binding·참고 source는 불변이다. 기존 49 Trace의 End-to-End 검수는 R7 작업이며 여기서 수행하지 않았다. WINDOW **[구현 보류 — 설계 유지]**, Fault 5종, PCM A/B 2개, 모든 비동기 충분조건/TBD를 유지한다.
+**R6 작성 당시 보존 범위:** Governance v1.1과 R2~R5-C1 원문, Layer/Module/Trace/Binding·참고 source는 당시 불변이었다. A1에서는 상단 개정과 마지막 선언 hosting 절에 적힌 입력 Data·계약·함수쌍을 수정한다. 기존 49 Trace의 End-to-End 검수는 R7 작업이며 여기서 수행하지 않았다. WINDOW **[구현 보류 — 설계 유지]**, Fault 5종, PCM A/B 2개, 모든 비동기 충분조건/TBD를 유지한다.
 
 **R6 작성 당시 이력:** 본 문서의 자체 정합성 결과는 `R6 SELF-CHECK PASS`였고 당시 독립 검수 결과는 대기 상태였으며 [Summary](../../../../R6_RESULT_SUMMARY.md)의 실제 검사 결과를 기준으로 일반 채팅에 결과 ZIP을 넘긴 뒤 중단했다. **현재 R6는 독립 PASS다.** R6 작업 당시 R7·B2-R·GATE-C·실제 C/H 구현·Build/Flash·보드 테스트는 진행하지 않았다. 최신 Stage/게이트는 README를 따른다.
+
+
+## A1 선언 hosting 보완
+
+18 Core의 원형은 유지한다. H-INPUT의 VssInputMeta는 evidenceSource/Generation/Ordering, deliveryOrder, reason/availability, relatedCommand, originalAtLatest, useLimit을 [INPUT Data](../40_DATA/10_INPUT_DATA.md#vssinputmeta)대로 보존한다. Evidence의 optional occurrence 참조는 기존 H-STORE occurrence alias를 사용한다. H-INPUT context의 lastAdvancingRx/진단 손실 요약과 H-STORE record.replayAllowed/inputLossAt·rear.riskFence·candidate.newSessionAllowed는 해당 Data의 생성·수명을 따른다. 새 public Net 함수나 실제 C Header/ABI를 구현하지 않는다. PB→STREAM→TX의 firstStartMeta는 같은 원 시각구간/L을 보호하고 정상 후속 cue에서는 최초 gate를 재적용하지 않는다.
+
+## A2 Status Data 보완과 R6 보존
+
+[Status Binding](../90_BINDING/93_NETWORK_STATUS_BINDING.md)은 H-HEALTH 기존 FaultState/Snapshot의 원 발생/평가 근거를 보완한다. 기존 18 Core와 아래에 정의한 R6 원형/IN·OUT·OPTIONAL 계약은 그대로이며 새 Core/공개 converter/공유 C2 Header를 만들지 않는다. 실제 필드 ABI·storage·게시·Network/DOMAIN 연결은 E-S01~05의 증거로 확인한다.

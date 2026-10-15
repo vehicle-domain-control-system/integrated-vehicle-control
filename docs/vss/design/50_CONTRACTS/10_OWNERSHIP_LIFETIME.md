@@ -62,3 +62,7 @@ Session retirement, PCM usage 반환, provider/read 종료, HAL 귀속 기록 �
 [Occurrence/Stateful](../40_DATA/20_STORE_DATA.md#store) · [읽기 근거](../40_DATA/30_SELECTION_DATA.md#vssreadbasis) · [Session/Attempt/Fact](../40_DATA/40_PLAYBACK_DATA.md#playback) · [ASSET/provider](../40_DATA/50_AUDIO_STREAM_DATA.md#asset) · [TX/HAL](../40_DATA/60_AUDIO_TX_DATA.md#tx) · [Fault/보고](../40_DATA/70_DIAGNOSTIC_DATA.md#health) · [HAL Boundary](../10_LAYERS/details/40_HAL_BSP_BOUNDARY.md#lifetime)
 
 실제 storage·참조/복사·보호 예산·callback 귀속/물리 안전 보장·메모리 조건은 [Implementation TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md). 새 Header/ABI·Task/Queue·자원 수치를 이 계약에서 확정하지 않는다.
+
+## A2 Status에 적용하는 보호 종료
+
+[Status Binding §5](../90_BINDING/93_NETWORK_STATUS_BINDING.md#handoff)의 HEALTH 2슬롯·기존 INPUT 단일 변환·Network 동기 전체 복사를 선택했다. Snapshot/current/recent/basis의 보호는 복사 호출 반환까지 유지하며 미인계 1건은 후속까지 보존한다. Network는 외부 포인터를 보관하지 않는다. 일반 PCM/provider/복구 수명은 이 Status 선택으로 변경하지 않는다. 원기록 최근 보존은 같은 문서 §1, 실제 게시/참조 종료는 E-S01~04다.

@@ -1,5 +1,7 @@
 # Select_Choose — 상세 동작 설명
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [의사코드](../pseudocode/Select_Choose.md) · [POLICY](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-06
 
 > GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
@@ -66,7 +68,8 @@ Caller는 [FLOW](../../../01_APP/FLOW/functions/Flow_Process.md)입니다. 결�
 
 - 후보 없음/음원·plan 부적합은 WAIT 등 해당 원 근거를 유지하며 다른 의미 음원 fallback이 없습니다. 선택될 높은 후보를 단순 장치 제한 때문에 낮은 의미로 대체하지 않습니다.
 - 현재 Stateful CLEAR/DISABLED/만료·Rear 변화에 따른 종료 필요성은 관측에 남깁니다. POLICY가 직접 STOP하거나 STORE 값을 CLEAR로 쓰지 않고 PLAYBACK이 최신 실행 조건을 검사합니다. WAIT 자체는 유효 One-shot 중단 명령이 아닙니다.
-- 원 순서/identity 비교가 불확실하면 새 rank·epoch 변환·수신순서를 만들지 않습니다. 기한·원 age는 재평가/새 Session으로 갱신하지 않고 `USE_LIMIT`/Network 500ms 후보와 최초 actual `<2초`를 새 min/AND 규칙으로 결합하지 않습니다.
+- 새 Session 후보는 STORE의 newSessionAllowed를 확인합니다. 현재 유효 또는 입증된 Hold 내 Stateful은 true일 수 있어 재선택 후보로 비교합니다. UNCERTAIN은 현재 Session KEEP 근거로도 쓰지 않고 보수적 종료 필요를 PB에 연결합니다. private replay ledger를 직접 읽지 않습니다.
+- 원 순서/identity 비교가 불확실하면 새 rank·epoch 변환·수신순서를 만들지 않습니다. 기한·원 age는 재평가/새 Session으로 갱신하지 않고 A1의 L을 후보와 최초 actual까지 동일하게 보존합니다.
 - WINDOW 제품은 [구현 보류 — 설계 유지], 격리 TEST의 기존 의미만 검토합니다. 입력 품질 상실을 새 Fault로 합성하지 않습니다.
 
 <a id="feasibility"></a>

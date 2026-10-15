@@ -1,5 +1,7 @@
 # HAL/BSP·DRIVER·RTD — 원등록과 물리 근거의 연결
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [VSS 지도](../01_VSS_MAP.md) · [DRIVER](../03_DRIVER/00_LAYER_OVERVIEW.md) · [HAL/BSP Layer](00_LAYER_OVERVIEW.md)
 
 > GUIDE · 승인된 논리 계약을 실제 source-basis와 연결하는 설명. 현재 제품의 C ABI·DMA·출력 안전은 `BINDING_TBD / HW_UNVERIFIED`다.
@@ -90,7 +92,7 @@ TX는 실제 원 targetOperations/Attempt·SEGMENT/ATTEMPT와 active/pending des
 | TERMINATION | 해당 scope 실제/잔류 출력 끝 + 모든 관련 옛 미래 출력 불가 + 해당 scope 미래 PCM 차단 | termination으로 과거 NO_START를 소급 확정하지 않음 |
 | PB 전체 retirement | 모든 관련 Attempt/구간을 덮는 Backend 충분조건 + 상위 start/cue/repeat 차단 + late 귀속 보호 + 새 자원 실제 안전 | 한 cue/EOS/STOP/PCM 반환·cleanup 한 항목으로 whole 완료/모든 기록 폐기 없음 |
 
-[R4 출력 충분조건](../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#confirmed-outcomes)·[STREAM 결합](../02_SERVICE/AUDIO_STREAM/functions/AudioStream_Advance.md#outputs)·[R5 PB whole](../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#playback-stop-late)을 따른다. physical fact가 충분해도 권한/시간 비교만 부족하면 그 실제 fact는 보존하되 적법 Started를 합성하지 않는다. 최초 One-shot은 **원발생→원 actual 시각/가능 구간 전체 `<2초 [잠정]`**를 PB가 대조한다. capturedAt/now·Network 500ms 제안을 대입/통합하지 않고 정상 Started 후속 cue에 최초 gate를 재적용하지 않는다. [R6 세 갈래 시간 판정](../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#first-actual-time)을 확인한다.
+[R4 출력 충분조건](../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#confirmed-outcomes)·[STREAM 결합](../02_SERVICE/AUDIO_STREAM/functions/AudioStream_Advance.md#outputs)·[R5 PB whole](../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#playback-stop-late)을 따른다. physical fact가 충분해도 권한/시간 비교만 부족하면 그 실제 fact는 보존하되 적법 Started를 합성하지 않는다. 최초 One-shot은 **원발생→원 actual 시각/가능 구간 전체 `<L (A1 선택)`**를 PB가 대조한다. capturedAt/now를 원 실제 시각으로 대입하지 않고 A1의 L을 보존하며 정상 Started 후속 cue에 최초 gate를 재적용하지 않는다. [R6 세 갈래 시간 판정](../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#first-actual-time)을 확인한다.
 
 최종 전 같은 원 Attempt의 적법한 late actual은 원 사실로 적용해도 STOPPING/ABORTING을 유지한다. uncertain 최종 뒤/retired callback은 옛 정리·진단·참조 종료만 수행하며 정상 Pending/Started/Completed·새 Session/PCM/READY/Fault를 부활시키지 않는다. [R4 late](../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#late-results)를 따른다.
 

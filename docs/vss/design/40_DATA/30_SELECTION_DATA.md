@@ -166,8 +166,8 @@ STORE 후보의 현재 적용 가능 의미다. 출력 Fault·처리 성공 enum
 | `VSS_CANDIDATE_APPLICABLE` | 현재 원본 상태/품질·Hold와 기한 기준으로 검토 가능한 후보 |
 | `VSS_CANDIDATE_CLEARED` | 유효 CLEAR로 후보 제거 |
 | `VSS_CANDIDATE_DISABLED` | Rear DISABLED로 후보/Hold 제거 |
-| `VSS_CANDIDATE_EXPIRED` | 원본 기한/Hold로 후보 불가. in-flight/uncertain의 이력 Expired 확정과 동일시하지 않음 |
-| `VSS_CANDIDATE_UNCERTAIN` | 현재 적용 가능 근거 부족 |
+| `VSS_CANDIDATE_EXPIRED` | One-shot 원본 기한으로 후보 불가 또는 `earliestNow>=anchor+Hold`의 확정 Hold 만료. in-flight/uncertain의 이력 Expired 확정과 동일시하지 않음 |
+| `VSS_CANDIDATE_UNCERTAIN` | Hold 경계 걸침·시간/출처 등 현재 적용 근거 부족. newSessionAllowed=false, 보수적 종료·재확인 필요이며 확정 만료/CLEAR/물리 STOP 완료가 아님 |
 
 **Lifetime / Mutability:** 읽기 평가 기간. 새 기한/입력 변화 시 재평가.
 
@@ -208,8 +208,9 @@ POLICY/PLAYBACK이 필요한 후보 의미·원본 기한·identity만 보는 ST
 | `mode` | ONE_SHOT/STATEFUL을 구별한다. | STORE | key와 같은 원본 |
 | `signal` | 우선순위·음원 정책에 필요한 의미. | STORE | 원본 읽기 기간 |
 | `validity` | 현재 검토 가능한 후보인가. | STORE | 반영 완료 뒤; 정책 판단/start 직전 재확인 |
+| `newSessionAllowed` | 새 Session/최초 START를 검토할 수 있는가. Event는 replayAllowed·원 L·입력 신뢰, Stateful은 현재 유효 또는 [Hold 내 재선택 조건](../50_CONTRACTS/30_TIMING_FRESHNESS.md#hold-reselection)에서 STORE가 파생한다. 원 출처·시각·고정 anchor·Rear gate/fence가 충분하고 구간 전체가 Hold 안인 경고는 true일 수 있다. CLEAR/DISABLED/activation 상실·확정 만료·경계 걸침/근거 부족은 false다. | STORE → POLICY/PB | 현재 revision의 읽기 투영. false는 현재 정상 Started One-shot의 후속 cue 만료를 뜻하지 않음 |
 | `originalMeta` | One-shot 원본 발생 또는 Stateful 마지막 유효 판단 근거의 읽기 참조. | STORE 보호 원본 | 참조가 보호된 읽기 기간 |
-| `useLimit` | 원문 USE_LIMIT이 적용되는 경우의 별도 의미 조건. 새 min/AND 정책을 정하지 않는다. | 기존 정책 → STORE 읽기 | 조건이 있는 후보에만 존재; 미정이면 TBD 근거를 유지 |
+| `useLimit` | originalMeta.useLimit의 읽기 투영. One-shot에서는 A1의 L이며 별도 독립 timeout이 아니다. Stateful 원 TTL은 Hold 재선택의 마감으로 재사용하지 않는다. | 기존 정책 → STORE 읽기 | One-shot 최초 시작 후보는 원 Meta와 일치하는 L이 필요. Stateful은 원 Meta를 보존하고 고정 anchor/Hold와 현재 validity·newSessionAllowed를 함께 소비 |
 | `revision` | 후속 채택에서 같은 읽기 대상이 유지되는지 대조할 표지. | STORE | 해당 읽기 기간 |
 
 ### Lifetime / Mutability / 폐기
@@ -231,6 +232,7 @@ typedef struct
     VssPlaybackMode mode;
     VssInputSignal signal;
     VssCandidateValidity validity;
+    SemanticBool newSessionAllowed;
     const VssInputMeta * originalMeta;
     const VssUseLimitType * useLimit;
     VssRevisionType revision;
@@ -476,7 +478,7 @@ typedef struct
 | <a id="vssownerkeytype"></a>`VssOwnerKeyType` | 해당 근거 producer | 기존 FLOW/Module/Layer Boundary의 책임 식별. 새 계층 아님 |
 | <a id="vssfactwatermarktype"></a>`VssFactWatermarkType` | 각 사실 적용 owner | 필수 인과 사실의 반영 완료 범위. 저장/물리 counter 방식 미정 |
 | <a id="vsscandidatekeytype"></a>`VssCandidateKeyType` | STORE | mode와 함께 원래 occurrence 또는 Stateful key에 연결. identity 인코딩/별도 wrapper 강제하지 않음 |
-| <a id="vssuselimittype"></a>`VssUseLimitType` | 기존 중앙/요구사항 정책 | 원문 USE_LIMIT 조건. first-start age와 새 min/AND 정책을 만들지 않음 |
+| <a id="vssuselimittype"></a>`VssUseLimitType` | 기존 중앙/요구사항 정책 | A1 원 Meta의 L에 대한 불변 읽기 참조; 처음 시작 전까지 같은 한도 사용 |
 | <a id="vssplankeytype"></a>`VssPlanKeyType` | POLICY | 불변 전체 정책/패턴 문맥. 단순 평가마다 새 plan identity를 만들지 않음 |
 | <a id="vssrepeatruletype"></a>`VssRepeatRuleType` | POLICY | 기존 패턴 반복 규칙. 횟수/무음/조건의 [잠정/TBD] 유지 |
 | <a id="vssplanpositiontype"></a>`VssPlanPositionType` | PLAYBACK | 해당 plan의 의미 cue/반복 진행 위치. 표현·cue당 Attempt 수 미정 |

@@ -1,5 +1,7 @@
 # Store Data — R3
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > 2026-10-07 · 고정 Baseline / Execution Plan v1.1 · 논리 필드와 pseudo-C 상세
 
 [Data Overview](00_DATA_OVERVIEW.md) · [R2 타입 판정](00_DATA_OVERVIEW.md#type-decisions)
@@ -102,10 +104,12 @@ accepted 발생의 원본 identity·age·최초 시작·전체 최종·참조/re
 | `occurrence` | 동일 발생의 고정 식별. | INPUT 검증 → STORE | accepted 전 확보; ledger 수명 전체 |
 | `signal` | 수용한 One-shot 의미. | INPUT → STORE | accepted 뒤 불변 |
 | `originalMeta` | 원본 순서·시각/격리·연속성. | INPUT → STORE | accepted 뒤 불변. 수신/재시도로 재기산 금지 |
+| `replayAllowed` | 수용 때 true, 입력 신뢰/세대/시간 상실이면 단조 false. output-only Fault는 변경하지 않음 | STORE | false는 복구/NO_START_REEVALUATE로 true 복원 금지 |
+| `inputLossAt` | 최초 입력 신뢰 상실의 보호된 원 시각/구간. 늦은 actual이 상실 이전인지 대조할 근거 | INPUT quality basis → STORE | 상실 전 없음; 반복 상실로 갱신 금지. 시각 불충분도 원 부족 상태로 보호 |
 | `state` | Pending/Started/전체 final/replay 방어에 필요한 현재 이력. | STORE | 해당 사실 반영 완료 뒤 |
 | `firstStartFact` | 최초 적법한 actual의 보호된 불변 사실 참조. 상태만으로 시각/귀속을 잃지 않는다. | PLAYBACK 판정 → STORE 보호 | Started 이후. 그 전에는 없음 |
 | `finalFact` | 전체 최종/uncertain의 보호된 사실 참조. | PLAYBACK 판정 → STORE 보호 | 최종 사실 반영 이후; 정상 부활 금지 |
-| `tracking` | 참조·미반영 통지·replay 보호의 회수 가능 여부를 나타내는 STORE 판단. 실제 저장/용량 수단은 미정이다. | STORE | accepted 전 추적 확보 후; 회수 근거 확인 시만 변경 |
+| `tracking` | 참조·미반영 통지·replay 보호의 회수 가능 여부를 나타내는 STORE 판단. A1 ledger128 후보를 적용하며 실제 저장/자원 검증은 별도다. | STORE | accepted 전 추적 확보 후; 회수 근거 확인 시만 변경 |
 | `revision` | owner 반영 완료·읽기 변화 확인. | STORE | 수용/사실/기한 변경 완료 뒤 |
 
 ### Lifetime / Mutability / 폐기
@@ -127,6 +131,8 @@ typedef struct
     VssInputSignal signal;
     VssInputMeta originalMeta;
     VssOccurrenceState state;
+    SemanticBool replayAllowed;
+    const VssFactTime * inputLossAt;
     const VssPlaybackFact * firstStartFact;
     const VssPlaybackFact * finalFact;
     VssTrackingDisposition tracking;
@@ -141,7 +147,7 @@ typedef struct
 - 구조체 값: `originalMeta` → [VssInputMeta](10_INPUT_DATA.md#vssinputmeta).
 - 구조체 읽기 참조 (`const T *`): `firstStartFact`, `finalFact` → [VssPlaybackFact](40_PLAYBACK_DATA.md#vssplaybackfact).
 
-[잠정] 첫 실제 시작 age < 2초이며 정확히 2초는 불가다. USE_LIMIT은 별도 원문 조건으로 남기고 min/AND 정책을 만들지 않는다. Started Session의 정상 후속 cue/반복에 첫 시작 기한을 다시 적용하지 않는다.
+[잠정] 첫 실제 시작 age < L이며 정확히 L은 불가다. USE_LIMIT은 원 발생부터 최초 actual까지의 L로 보존한다. Started Session의 정상 후속 cue/반복에 첫 시작 기한을 다시 적용하지 않는다.
 
 <a id="vsstrackingdisposition"></a>
 ## VssTrackingDisposition — scalar enum
@@ -255,12 +261,13 @@ Rear Activation은 위험 판단과 별도 현재 상태다. 재활성화만으�
 | `activation` | ENABLED/DISABLED의 최신 적용 가능한 값. | INPUT → STORE | Activation의 최신 검증 후 |
 | `activationMeta` | Activation 출처·세대·순서 근거. | INPUT → STORE | 해당 activation 적용 수명 |
 | `riskState` | 별도 Rear 위험 상태를 연결하는 key. 위험 원본을 여기 복제하지 않는다. | STORE | 해당 Rear 위험 문맥 |
+| `riskFence` | DISABLED/activation 상실 때 마지막 위험 근거를 보호. 재활성화 후 이 근거보다 새로운 위험만 결합 | STORE | 보호 참조, 새 유효 위험 수용 전 유지 |
 | `riskApplicable` | 현재 activation에 적용 가능한 위험이 검증·반영됐는가. enable 자체는 true 근거가 아니다. | STORE | 최신 위험/activation 결합 검증 뒤 |
 | `revision` | 결합 관측의 반영 완료. | STORE | 변경 완료 뒤 |
 
 ### Lifetime / Mutability / 폐기
 
-STORE만 변경한다. DISABLED는 후보/Hold 제거 및 riskApplicable 차단이며 CLEAR와 다르다. 재활성화 뒤 적용 가능한 위험 근거를 확인하기 전 옛 EMERGENCY를 후보로 만들지 않는다. 정확한 source/ordering 비교 방식은 기존 Network 계약/TBD로 남긴다.
+STORE만 변경한다. DISABLED는 후보/Hold 제거 및 riskApplicable 차단이며 CLEAR와 다르다. 재활성화 뒤 적용 가능한 위험 근거를 확인하기 전 옛 EMERGENCY를 후보로 만들지 않는다. A1의 원 계보/evidenceOrdering 비교와 riskFence를 사용한다. 같은 위험 근거를 반복 전달하거나 ENABLED만 새로 받아 riskApplicable을 복원하지 않는다.
 
 **관련 Function:** [Store_ApplyInput](../30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyinput) · [Store_AdvanceDeadlines](../30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-advancedeadlines) · [Select_Choose](../30_FUNCTIONS/30_POLICY_PLAYBACK_FUNCTIONS.md#select-choose)
 
@@ -277,6 +284,7 @@ typedef struct
     VssInputMeta activationMeta;
     VssStatefulKeyType riskState;
     SemanticBool riskApplicable;
+    const VssInputMeta * riskFence;
     VssRevisionType revision;
 } VssRearGateState;
 ```
@@ -359,7 +367,7 @@ typedef enum
 
 | 표기 | Producer / 의미 owner | 목적 / validity |
 | --- | --- | --- |
-| <a id="vssoccurrencekeytype"></a>`VssOccurrenceKeyType` | 원래 의미 identity → INPUT 검증/STORE 보호 | 동일 One-shot 발생. 재전달마다 생성 금지; 생성/재부팅/회수 규칙 TBD |
+| <a id="vssoccurrencekeytype"></a>`VssOccurrenceKeyType` | 원래 의미 identity → INPUT 검증/STORE 보호 | 동일 One-shot 발생. 재전달마다 생성 금지; A1의 origin/DOMAIN Boot/occurrence key와 재기동 admission 규칙 적용; 실제 영속화/세대 승인은 외부 조건 |
 | <a id="vssstatefulkeytype"></a>`VssStatefulKeyType` | STORE 의미 대상 연결 | 현재 경고·PRODUCT/TEST 문맥. occurrence identity와 교환 금지 |
 
 ```c

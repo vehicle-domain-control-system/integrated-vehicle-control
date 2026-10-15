@@ -1,5 +1,7 @@
 # Asset_Read — 압축 범위 읽기와 실제 consumer 참조 종료
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [ASSET](../00_MODULE_OVERVIEW.md) / CORE-09 · [한국어 의사코드](../pseudocode/Asset_Read.md)
 
 > GUIDE · R6 논리 계약을 설명하며 실제 C ABI·제품 image 연결·Host/보드 시험은 미확정 또는 NOT_RUN이다.
@@ -93,7 +95,7 @@ STREAM만 실제 소비한 compressed bytes에 따라 sourcePosition을 변경�
 | F5_PHYSICAL_SAFETY_GATE | 실제 메모리 보호·DMA/SAI/STOP 충분성과 P2는 HW_UNVERIFIED/HOLD. 압축 참조 종료만으로 해제 불가 |
 | 인접 상세 | [STREAM RequestControl](../../AUDIO_STREAM/functions/AudioStream_RequestControl.md), [STREAM Advance](../../AUDIO_STREAM/functions/AudioStream_Advance.md), [TX Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md), [HEALTH Evaluate](../../HEALTH/functions/Health_Evaluate.md)·[BuildStatus](../../HEALTH/functions/Health_BuildStatus.md)에서 각각의 계약을 읽음 |
 
-F1~F3는 별도 코드/Host 검증의 착수 후보이며 실제 시험은 NOT_RUN이다. 실제 시험 방법·단일 잠정 정의·교체/철회 조건은 해당 별도 인계에서 추적한다. 원 [발생→최초 actual의 잠정 <2초](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)를 read 완료 시각으로 갱신하지 않는다. P1B_C1/Q/R6/외부 IF 미해결과 WINDOW PRODUCT 보류·TEST 격리를 보존한다.
+F1~F3는 별도 코드/Host 검증의 착수 후보이며 실제 시험은 NOT_RUN이다. 실제 시험 방법·단일 잠정 정의·교체/철회 조건은 해당 별도 인계에서 추적한다. 원 [발생→최초 actual의 잠정 <L](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)를 read 완료 시각으로 갱신하지 않는다. P1B_C1/Q/R6/외부 IF 미해결과 WINDOW PRODUCT 보류·TEST 격리를 보존한다.
 
 ## 정본으로 이어 읽기
 

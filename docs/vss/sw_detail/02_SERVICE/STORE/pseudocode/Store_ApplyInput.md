@@ -1,5 +1,7 @@
 # Store_ApplyInput — 한국어 C 형태 의사코드
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [STORE](../00_MODULE_OVERVIEW.md) / CORE-03 · [상세 설명](../functions/Store_ApplyInput.md)
 
 > GUIDE · 동결 설계 `0641b2c2268cf47450aeb50302638a45a7a3277f`의 적용 순서를 설명한다. 실제 C 구현·Host·보드 시험 NOT_RUN.
@@ -44,6 +46,7 @@ VssStoreAdmission Store_ApplyInput(
         // 동일성은 R3/R4의 원 key와 PRODUCT/TEST·source/generation 문맥을 따른다.
         // 저장 표현/alias·reboot·wrap은 B2-R TBD; requestId/signal 하나로 비교하지 않는다.
         for (각_기존_보존_occurrence_및_replay_기록에_대해) {
+            if (기존_key는_같지만_종류나_원본문이_충돌) return VSS_STORE_REJECTED;
             if (기존_기록이_동일_원발생임이_확인됨) {
                 return VSS_STORE_DUPLICATE;  // 원 age/state/facts 유지; 새 Pending 없음.
             }
@@ -61,9 +64,9 @@ VssStoreAdmission Store_ApplyInput(
         }
         /* [의사 연산] event.occurrence/signal/meta를 STORE 추적 수명으로 보호.
            originalMeta 내부 validUntil 참조도 보호; 임시 event 주소 영구 저장 없음.
-           새 record.state = VSS_OCCURRENCE_PENDING;
+           새 record.state = VSS_OCCURRENCE_PENDING; record.replayAllowed=true; inputLossAt=NULL;
            firstStartFact/finalFact는 아직 없음; tracking = VSS_TRACKING_PROTECTED.
-           원본 반영/revision 완료 후 후보 관측을 공개한다. */
+           원본 반영/revision 완료 후 newSessionAllowed를 원 replayAllowed·L·신뢰에서 파생해 후보를 공개한다. */
         return VSS_STORE_ACCEPTED;  // Session 생성/출력 요청 없음.
     }
 
@@ -80,7 +83,7 @@ VssStoreAdmission Store_ApplyInput(
             // S6 — Activation은 단독 음향 후보가 아니다.
             if (state->value == VSS_VALUE_DISABLED) {
                 /* [의사 연산] 검증된 activation/activationMeta 반영.
-                   riskApplicable=false; Rear 후보/Hold 제거.
+                   riskApplicable=false; 현재 위험 Meta를 riskFence에 보호; Rear 후보/Hold 제거.
                    실제 참조 종료 뒤 Hold 보호 회수. 위험을 CLEAR로 재작성하지 않음. */
             } else if (state->value == VSS_VALUE_ENABLED) {
                 /* [의사 연산] 최신 activation/Meta 반영.
@@ -105,7 +108,7 @@ VssStoreAdmission Store_ApplyInput(
             /* [의사 연산] 유효 위험 판단/Meta/VALID 품질 반영; 이전 Hold 안전 종료. */
             if (현재_Rear_Activation이_DISABLED) {
                 /* 후보 생성 없음; riskApplicable 차단 유지. */
-            } else if (최신_Activation과_원위험의_적용가능_결합이_확인됨) {
+            } else if (최신_fresh_Activation과_riskFence보다_새로운_원위험의_결합이_확인됨) {
                 /* riskApplicable=true; 확인된 현재 위험 후보만 노출.
                    EMERGENCY→CAUTION은 후속 교체 판단; TX/Session 직접 write 없음. */
             } else {
@@ -132,6 +135,18 @@ VssStoreAdmission Store_ApplyInput(
     }
     if (현재_품질과_필요한_최초근거의_보호를_확보할_수_없음) {
         return VSS_STORE_REJECTED;  // 기존 값/기산·INPUT 적용 문맥 불변.
+    }
+    if (quality의_대상이_Event_신뢰문맥) {
+        관련_Pending_record의_replayAllowed를_false로_고정;
+        최초_quality_lossAt_basis를_record.inputLossAt으로_보호하고_반복상실로_교체하지_않음;
+        충분한_미시도_또는_NO_START와_retirement에서만_Expired;
+        in_flight_unknown은_미래권한차단_종료요구와_원사실확인을_유지;
+        원_이력과_거부진단_반영완료; return VSS_STORE_UPDATED;
+    }
+    if (quality의_대상이_REAR_ACTIVATION) {
+        현재_위험_Meta를_riskFence에_보호;
+        gate와_riskApplicable을_false로_반영하고_후보_Hold_제거;
+        return VSS_STORE_UPDATED;
     }
     /* [의사 연산] 현재 quality만 반영; lastValidValue/lastValidMeta 유지.
        INVALID/STALE/UNASSESSED는 R3 의미; NO_DATA는 미수신 의미이고 새 enum 아님. */
@@ -174,9 +189,26 @@ VssStoreAdmission Store_ApplyInput(
 
 REJECTED/DUPLICATE에서 원 발생·원 시간·기존 상태/품질/Rear와 INPUT 문맥을 보존한다. ACCEPTED는 보호 확보와 반영 완료 이후에만 공개한다. UPDATED는 해당 상태 적용 완료이며 시간/Rear 결합 부족을 정상 후보로 숨기지 않는다. STORE는 출력 시작·종료·Fault를 생성하지 않는다.
 
-원발생→최초 actual `<2초`는 [잠정 Timing 조건](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)으로 후속 STORE/PLAYBACK에 인계한다. 이 함수에 2초/Network 500ms를 합친 수용 timeout을 만들지 않는다. identity/추적 용량·Hold 기간·epoch·직렬화의 미정은 해당 제품 연결만 제한한다. 입력 배타·동일/새 발생·거부 불변·품질/Hold·Rear fixture는 별도 SW/Host 구현 후보이며 이번 NOT_RUN이다.
+원발생→최초 actual `<L`은 [잠정 Timing 조건](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)으로 후속 STORE/PLAYBACK에 인계한다. 이 함수는 원 L을 보존하며 STORE 수용 자체를 실제 시작으로 인정하지 않는다. identity/추적 용량·Hold 기간·epoch·직렬화의 미정은 해당 제품 연결만 제한한다. 입력 배타·동일/새 발생·거부 불변·품질/Hold·Rear fixture는 별도 SW/Host 구현 후보이며 이번 NOT_RUN이다.
 
 <a id="references"></a>
 ## 상세·원문 연결
 
 [상세 설명·소스 근거](../functions/Store_ApplyInput.md#source) · [독립 SW 후보/국소 미정](../functions/Store_ApplyInput.md#feasibility) · [R2](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyinput) · [R3 입력](../../../../design/40_DATA/10_INPUT_DATA.md#vssqualitychange) · [R3 반환/원본](../../../../design/40_DATA/20_STORE_DATA.md#vssstoreadmission) · [R4 Ownership](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect) · [R4 Timing](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#stateful-hold) · [R5-C1 적용](../../../../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#store-applyinput) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-store-applyinput) · [R6 미정](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#tbd-register)
+
+## A1 적용 분기
+
+```text
+QUALITY lane: Event 신뢰 상실이면 관련 record.replayAllowed=false (단조 latch).
+  미시도/충분한 NO_START+retirement만 Expired; in-flight/unknown은 원 상태·추적 유지.
+  Stateful은 최초 loss/원 validUntil의 이른 anchor를 고정, 반복으로 연장하지 않음.
+  activation 상실은 gate/riskApplicable=false, 현재 위험 Meta를 riskFence에 보호.
+EVENT lane: 원 occurrence와 Meta/L 및 최초/최종/replay 자원 함께 예약(ledger128).
+  같은 key/내용은 duplicate; key 같고 종류·원 발생 정보 충돌이면 거부/진단.
+  full은 새 Event REJECTED; 기존 accepted/final/tombstone eviction 없음.
+  신규 accepted만 replayAllowed=true; 같은 key 재전달/복구는 false를 되돌리지 않음.
+STATE lane: DISABLED는 위험/Hold 제거와 riskFence 보호. ENABLED만으로 복원 없음.
+  현재 fresh 활성과 fence보다 새로운 위험 근거를 확인한 때만 riskApplicable=true.
+```
+
+원 구조/별도 필드의 정본은 [STORE Data](../../../../design/40_DATA/20_STORE_DATA.md)와 [A1](../../../../design/90_BINDING/92_NETWORK_BINDING.md)다. 품질/기한/기존 사실 적용은 Event 신규 슬롯을 요구하지 않는다. INPUT contextApplied=true/STORE REJECTED는 동시에 가능하다. 거부의 원 key/L/단계를 기존 INPUT 진단에 남기며 Network callback을 자동 재호출하지 않는다.

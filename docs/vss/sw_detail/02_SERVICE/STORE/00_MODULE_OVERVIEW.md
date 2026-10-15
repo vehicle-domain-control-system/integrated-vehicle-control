@@ -1,5 +1,7 @@
 # VSS / SERVICE / STORE
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
 > GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
@@ -38,7 +40,7 @@ CORE-03/04/05의 세 문서쌍과 아래 동결 Function 원문을 함께 읽습
 
 ## 후속 진행 후보와 미정
 
-중복·기존 결과 보존·quality/Hold 기산·원 시간 비교는 독립 SW/Host 후보입니다. [CORE-04 후보/Gate](functions/Store_ApplyPlaybackFact.md#feasibility)와 [CORE-05 후보/Gate](functions/Store_AdvanceDeadlines.md#feasibility)를 확인하세요. Hold 기간·추적 용량·실제 identity/ABI는 미정이고, 최초 actual age의 <2초는 잠정 조건입니다. Network 500ms 제안과 통합하지 않습니다.
+중복·기존 결과 보존·quality/Hold 기산·원 시간 비교는 독립 SW/Host 후보입니다. [CORE-04 후보/Gate](functions/Store_ApplyPlaybackFact.md#feasibility)와 [CORE-05 후보/Gate](functions/Store_AdvanceDeadlines.md#feasibility)를 확인하세요. Hold/ledger128 후보와 L은 A1에서 선택했습니다. 실제 identity lifecycle/ABI·자원/성능 검증은 남습니다.
 
 위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q/R6·외부 IF/HW에 종속된 제품 결합과 P2는 계속 HOLD입니다. 문서 관계 보정의 승인 범위를 원 G1-B 원본 복구나 실제 제품 C1 완료로 확대하지 않습니다.
 

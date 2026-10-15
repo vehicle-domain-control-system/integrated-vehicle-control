@@ -75,33 +75,33 @@ Caller는 [FLOW의 별도 보고 단계](../../../01_APP/FLOW/functions/Flow_Pro
 
 각 non-NULL 저장소·출처·scope·평가 수명은 먼저 확인한다. NULL을 false 또는 true로 쓰지 않는다. false는 unknown이 아니며 기존 accepting reduction에서 확인된 제한으로 소비한다. true도 개별 STORE accepted/출력 보장이 아니다. 현재 관측에 없는 성공을 fake true로 주입하지 않는다.
 
-accepting 파생에 필요한 근거가 NULL/불충분 또는 기존 조합 정책이 미정이면 REEVALUATE다. 두 bool의 임의 AND·전체 truth table을 새 정책으로 확정하지 않는다. INPUT 경로와 STORE 추적 준비는 원 owner 결정이며 HEALTH는 확인된 관측의 파생만 한다. accepting=false여도 정상인 duplicate 조회·유효 CLEAR·품질/기한·정리 경로는 계속된다. Audio Fault 자체를 입력 수용 불가로 치환하지 않는다.
+A2는 두 준비 근거의 결합을 선택했다: 둘 다 확인 true일 때 true, 확인 false가 하나라도 있으면 false, 나머지 NULL 조합은 REEVALUATE다. 각 non-NULL 포인터 안전/출처 검증은 먼저 수행하며 unknown을 false로 보완하지 않는다. [전체 표](../../../../design/90_BINDING/93_NETWORK_STATUS_BINDING.md#reduction). accepting=false여도 duplicate·유효 CLEAR·품질/기한·정리를 계속하고 Audio Fault만으로 accepting=false를 만들지 않는다.
 
 <a id="states"></a>
 ## 기존 state와 서비스 수준의 파생 순서
 
-아래는 [R5 Status 절차](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#health-buildstatus)의 이미 정해진 분기다. 미정 조합 전체를 확정하는 reduction 표가 아니다.
+아래는 [A2 조합표](../../../../design/90_BINDING/93_NETWORK_STATUS_BINDING.md#reduction)의 상태 분기다. 완전 current/history와 나머지 필드의 근거도 함께 충족해야 CREATED다.
 
 | 충분히 확인한 원 관측 | state 및 필요한 의미 |
 |---|---|
 | QUARANTINED/불명확 최종 또는 확인된 공통 정상 출력 불가·새 start 차단 제한 | VSS_REPORT_FAULT와 기존 UNAVAILABLE 연결 유지. PLAYBACK_STATE_FAILURE 불명확 최종을 normal로 바꾸지 않음 |
-| 적법 actual로 시작이 확인된 전체 Session이 아직 retirement 전 | VSS_REPORT_PLAYING. cue 사이 무음·반복 대기·시작 후 STOPPING/ABORTING도 포함 |
-| 초기 준비 미평가/진행이고 startup 보고 근거 충분 | VSS_REPORT_STARTUP. 미평가를 INITIALIZATION_FAILURE나 기본 가용성으로 채우지 않음 |
+| 정상 초기화 완료, 적법 actual로 시작이 확인된 전체 Session이 아직 retirement 전 | VSS_REPORT_PLAYING. cue 사이 무음·반복 대기·시작 후 STOPPING/ABORTING도 포함 |
+| 초기화 진행·출력 준비 전임이 확인되고 startup 보고 근거 충분 | VSS_REPORT_STARTUP. 미평가를 INITIALIZATION_FAILURE나 기본 가용성으로 채우지 않음 |
 | 정상 초기화/준비 및 기존 READY reduction 근거 충분 | VSS_REPORT_READY. 개별 START 허가·old 자원 정리 완료 보장은 별도 |
-| 위 근거가 부족하거나 필요한 조합 정책이 미정 | REEVALUATE / written0 |
+| 위 근거가 부족하거나 모순 | REEVALUATE / written0 |
 
 START/PREPARED/ADOPTED·TX ACK·DMA ISR·mute·Session 객체 존재만으로 PLAYING을 만들지 않는다. actual의 legal 판정은 [PB 원 관측](../../PLAYBACK/functions/Playback_Advance.md#actual)에 남기며 raw를 재해석하지 않는다. 충분 NO_START는 실제 Started로 보고하지 않고, 원 retirement/초기 준비·제한에 맞는 기존 분기로 평가한다. uncertain final은 late cleanup/안전 retirement가 나중에 와도 정상 이력으로 부활시키지 않는다.
 
-availability는 R3 opaque VssAvailabilityValueType의 기존 의미이며 새 enum/숫자 인코딩을 만들지 않는다. serviceLevel FULL/DEGRADED는 지원 서비스·실제 제한 근거에서 별도로 파생한다. WINDOW 보류만으로 DEGRADED/FAULT를 만들지 않는다. INPUT STALE/INVALID/NO_DATA와 current outputFault, recentFault, 서비스 가용성을 동일시하지 않는다.
+availability는 기존 opaque 의미를 유지한다. 정상 초기화 진행 중 아직 출력 준비 전이면 STARTUP/UNAVAILABLE, 완료 후 하나 이상 서비스 가능이면 READY 또는 적법 Started Session의 PLAYING이며 전체/부분 준비에 FULL/DEGRADED를 대응한다. 공통 실패/QUARANTINED는 FAULT/UNAVAILABLE/DEGRADED가 우선이다. 서비스 지원 수준과 accepting은 독립이며 WINDOW 보류·입력 품질 상실을 출력 Fault로 합성하지 않는다.
 
-state를 결정할 수 있어도 availability/serviceLevel/accepting/Fault projection 중 **필요한 reduction이 미정이면 전체 Snapshot을 공개하지 않는다**. 임의 기본 FULL/true·초기 모든 availability·Fault→상태 전체 matrix·새 timeout을 확정하지 않는다. FAULT/UNAVAILABLE의 고정 연결과 최근 Fault 보존은 그대로다.
+state를 결정할 수 있어도 availability/serviceLevel/accepting/완전 current·이력/원 시간 중 필수 근거가 부족하면 REEVALUATE다. A2 표로 확인 가능한 정상·오류 보고를 생성하며 정보 부족을 FULL/true/mask0으로 채우지 않는다.
 
 <a id="snapshot"></a>
 ## Snapshot 값·목록·basis와 소비 수명
 
-[VssStatusSnapshot](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssstatussnapshot)의 기존 9필드만 채운다: state/availability/serviceLevel/accepting/currentFaults/currentFaultCount/recentFaults/recentFaultCount/basis. currentFaults와 recentFaults는 각각 **const VssFaultKind 의미 값 목록**이다. mutable VssFaultState 포인터를 넣지 않고 실제 포함한 count·범위를 보호한다. 공간에 맞추려고 누락한 Fault를 완전한 집합으로 보고하지 않는다. current 해제는 recent 삭제가 아니다.
+[VssStatusSnapshot](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssstatussnapshot)은 기존 9필드와 A2의 reportGeneration/reportSequence/evaluatedAt/lastFaultPresent/lastFaultKind/lastFaultOccurrence/lastFaultAt을 함께 채운다. current/recent kind 집합은 각각 중복 제거 최대5종이다. 현재 전체 instance와 진단 반영/손실 상태를 확인한 완전 current만 사용하며 Health_Evaluate의 이번 부분 OUT를 재사용하지 않는다. 최근 선택은 HEALTH 원기록 firstOccurredAt/reportOccurrence를 사용한다. kind 목록 순서·TX 번호로 원 발생을 복원하지 않는다.
 
-basis 값 복사에는 내부 stamps 참조가 남는다. 목록과 stamps/time 및 필요한 모든 내부 참조는 보고 소유 불변 저장 또는 독립 불변 보호 자료로 유지한다. 포인터/struct의 얕은 복사는 보호 완료가 아니다. FLOW→INPUT→Node Communication이 실제로 복사하면 복사 완료와 관련 참조 종료까지, 참조 방식이면 최종 실제 소비 종료까지 보호한다. 방식·bounded storage·회수/직렬화 ABI는 미정이다.
+basis 값 복사에는 내부 stamps 참조가 남는다. [A2 인계](../../../../design/90_BINDING/93_NETWORK_STATUS_BINDING.md#handoff)의 보고 2슬롯과 불변 목록/basis 보호를 선택한다. 기존 INPUT 통신 연결에서 한 번 변환하고 Network가 전체 사본을 동기 복사한 반환까지 참조를 유지한다. 포인터 얕은 복사는 보호가 아니다. 실제 고정 stamp/pool 예산·직렬화/게시 수단은 E-S01이다.
 
 이미 소비 중인 이전 Snapshot을 새 계산/재평가로 덮어쓰지 않는다. caller가 지정한 OUT도 아직 다른 소비자가 참조 중이면 새 생성의 비간섭/보호 조건을 충족하지 못한다. HEADER·Domain DTO·Network payload·통신 ACK는 이 함수의 사후조건이 아니다.
 
@@ -110,12 +110,12 @@ basis 값 복사에는 내부 stamps 참조가 남는다. 목록과 stamps/time 
 
 주소·metadata/written 저장소·capacity·전체 범위/산술·비간섭을 먼저 검증하고 유효 군만 written=0으로 시작한다. capacity<1·보고 불변 storage 부족·목록/basis 보호 불가·파생 도중 원본 변경에서는 새 Snapshot 공개 없이 REEVALUATE다. 기존 caller 자료·원본/최근 이력·소비 중 자료를 유지한다.
 
-전체 field/목록·원 basis 보호와 최종 coherence를 확인한 **뒤** caller의 유효 영역에 한 결과를 공개하고 written=1/CREATED를 반환한다. 부분 쓰기·보호 실패를 CREATED로 세지 않는다. 실제 게시 실패 가능성과 동시 읽기 보호는 Binding에서 입증할 대상이며 확정 무손실·원자적 ABI를 주장하지 않는다. 새 framework·비상 슬롯·무한 재시도는 없다.
+전체 field/목록·원 basis 보호와 최종 coherence 뒤 caller 영역에 한 결과를 공개한다. 같은 직렬 경계에서 reportSequence 증가를 확정하고 원 evaluatedAt을 보호한 다음 written=1/CREATED를 반환한다. 공개 실패는 written0이며 counter/time 불변이다. source 원본 읽기 전용과 HEALTH 자체 보고 counter 갱신을 구분한다. 실제 게시 원자성은 E-S01에서 입증한다.
 
 <a id="limits"></a>
 ## 독립 후보와 남는 Gate
 
-F1/F3 후보는 mixed owner 관측→REEVALUATE, OPTIONAL NULL/false/true, legal actual/전체 Session 보고, 독립 current/recent projection, OUT bounds·비동기 수명 보호다. 향후 Host fixture 아이디어만 기술했고 실행하지 않았다. F4 Q08~10 DTO/Node 소비·source/image·C ABI/자료 보호·전체/초기 reduction, F5 실제 actual/NO_START/STOP/Recovery 효과·DMA/메모리/시간은 BINDING_TBD/HW_UNVERIFIED다. source 관측 없이 새 C 심볼/ABI를 확정하지 않는다.
+A2 문서 검수 대상은 ST01~ST12의 coherent 평가·조합·current/history·원 시각/번호·bounded handoff·부분 성공이다. 내부 정책은 [Status Binding](../../../../design/90_BINDING/93_NETWORK_STATUS_BINDING.md)에 선택했다. 실제 C ABI/시간·기동·복사/sink·DOMAIN 설치 source/consumer 근거는 E-S01~05, 물리 actual/STOP/Recovery·DMA는 기존 외부 Gate다. Host/제품 실행은 NOT_RUN이다.
 
 OPEN-009/010·Q01~14/R6-01~08·P2 HOLD·CR/과거 FAIL·WINDOW PRODUCT 보류/TEST 격리를 유지한다. 제품 C/H·Host/Firmware/Build/Flash/Board는 착수하지 않았다.
 

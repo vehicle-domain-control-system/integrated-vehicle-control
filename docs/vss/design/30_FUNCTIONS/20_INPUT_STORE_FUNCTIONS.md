@@ -1,5 +1,7 @@
 # INPUT / STORE Core Functions — R2
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > 2026-10-07 · Baseline / Execution Plan v1.1 · Function 상세 설계만 수행
 
 [최종 Core 색인·후보 판정](00_FUNCTION_OVERVIEW.md) · [provisional type 기준](00_FUNCTION_OVERVIEW.md#provisional-types)
@@ -130,8 +132,8 @@ VssFactApplication Store_ApplyPlaybackFact(
 | Postcondition | Hold 만료는 후보 제거이며 품질 정상화가 아니다. 확정 미시작·시작 여부가 불확실한 최종 없음·원본 기한 도달의 One-shot만 Expired로 확정한다. in-flight/불명확 시도와 Started Session은 age만으로 만료시키지 않는다. |
 | Side Effect | STORE 기한·현재 후보를 변경하고 재평가 필요성을 반환한다. 입력/재생 사실을 대신 생성하지 않는다. |
 | Failure behavior | 시간 비교/연속성이나 최신 사실이 부족하면 해당 불확실성을 보존한다. 기한을 새 현재 시각으로 재기산하거나 정상 만료를 추정하지 않는다. |
-| Invariant | 원본 age와 Hold는 재전달·선점·복구·새 Attempt로 초기화하지 않는다. 기존 [잠정] 새 실제 시작 age < 2초와 정확히 2초 불가, USE_LIMIT 별도 조건을 유지한다. |
-| Forbidden behavior | timeout만으로 no-start 확정, INPUT의 source authority 재생산, Started 이후 정상 정책을 2초 경과만으로 중단, 참조/재실행 근거 없는 이력 회수 금지. |
+| Invariant | 원본 age와 Hold는 재전달·선점·복구·새 Attempt로 초기화하지 않는다. 기존 [잠정] 새 실제 시작 age < L과 정확히 L 불가, A1 USE_LIMIT 결합 조건을 유지한다. |
+| Forbidden behavior | timeout만으로 no-start 확정, INPUT의 source authority 재생산, Started 이후 정상 정책을 L 경과만으로 중단, 참조/재실행 근거 없는 이력 회수 금지. |
 | 동기 / 비동기 | 동기 기한 적용 경계. 비동기 시작 사실과의 경합은 최신 관측 재확인으로 처리하며 실행 보호 수단은 정하지 않는다. |
 | 관련 Data | [발생 이력·현재 후보](../40_DATA/20_STORE_DATA.md#store) · [Session·Attempt 문맥](../40_DATA/40_PLAYBACK_DATA.md#playback) · [Runtime 시간·알림·손실](../10_LAYERS/details/50_TIMEBASE_RUNTIME_BOUNDARY.md) |
 | 관련 Contract | [시간·신뢰성](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#timing) · [소유·수명](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#ownership) · [비동기 결과·근거](../50_CONTRACTS/00_CONTRACT_OVERVIEW.md#async) — 기존 원문 연결이며 R4 통합은 수행하지 않는다. |

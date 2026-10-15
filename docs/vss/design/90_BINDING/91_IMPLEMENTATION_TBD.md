@@ -1,5 +1,7 @@
 # Implementation TBD
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 R2~R6의 논리 설계와 R7 뒤 B2-R의 실제 C Mapping에서 확인할 기존 값·근거를 한 곳에 모았다. Module의 TBD는 여기로 연결한다. [82 Data Model](../40_DATA/00_DATA_OVERVIEW.md)은 의미·owner·lifetime 기준이고 [80 API 후보](../30_FUNCTIONS/00_FUNCTION_OVERVIEW.md)는 논리 호출 경계다. 실제 C 표현·signature·자료 복사/참조와 저장 방식은 여기의 근거를 확인해 다음 Mapping에서 결정한다. 미확인 값은 임의로 채우지 않는다.
 
 <a id="identity"></a>
@@ -46,7 +48,7 @@ current board/source/generated의 Clock/PinMux/IRQ·SAI/SGTL5000/CS2100/Referenc
 <a id="policy"></a>
 ## 6. 미정 정책과 후보값
 
-Hold 상세값·미정 cue/반복/무음/출력 수준, start/정리 timeout·retry, exact cause→기존 Fault/DIA-017/Recovery Action·해제 조건·초기 Availability/전체 reduction은 기존 잠정/TBD를 유지한다. 수치가 없다고 새 정책/복구 framework를 만들지 않는다. One-shot의 기존 **[잠정] 실제 새 시작 age < 2초** 및 기존 PER-001~010의 후보 상태는 바꾸지 않는다.
+A1의 Hold 후보와 Event L은 92_NETWORK_BINDING에서 선택했다. 실제 자원/생산/시간 검증 및 미정 cue/반복/무음/출력 수준, start/정리 timeout·retry, exact cause→기존 Fault/DIA-017/Recovery Action·해제 조건은 기존 잠정/TBD를 유지한다. 초기 Availability/전체 reduction·Status 원기록/변환/부분 성공은 [A2 선택](93_NETWORK_STATUS_BINDING.md)이며 실제 적용 조건은 E-S01~05다. 수치가 없다고 새 정책/복구 framework를 만들지 않는다. A1은 최초 시작 L의 결합 의미를 개정한다. 기존 요구/PER 후보 이력은 보존하며 500ms 달성·기동 지연은 별도 검증한다.
 
 
 

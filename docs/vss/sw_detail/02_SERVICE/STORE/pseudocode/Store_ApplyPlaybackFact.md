@@ -1,5 +1,7 @@
 # Store_ApplyPlaybackFact — 한국어 C 형태 의사코드
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상세 설명](../functions/Store_ApplyPlaybackFact.md) · [STORE](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-04
 
 > GUIDE · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
@@ -52,10 +54,10 @@ VssFactApplication Store_ApplyPlaybackFact(/* IN */ const VssPlaybackFact *fact)
     switch (fact->kind) {
     case VSS_FACT_FIRST_ACTUAL_START:
         if (!원_최초_적법_actual_PLAYBACK_판정근거가_충분 ||
-            !원발생부터_원actual_가능구간_전체의_age가_잠정_2초_미만 ||
+            !원발생부터_원actual_가능구간_전체의_age가_잠정_L_미만 ||
             record.firstStartFact != NULL ||
             record.state != VSS_OCCURRENCE_PENDING) {
-            /* 동일 적용 증명 없는 다른 first fact, 정확히 2초, 시간부족은 미적용. */
+            /* 동일 적용 증명 없는 다른 first fact, 정확히 L, 시간부족은 미적용. */
             return VSS_FACT_NOT_APPLIED;
         }
         break;
@@ -112,7 +114,7 @@ VssFactApplication Store_ApplyPlaybackFact(/* IN */ const VssPlaybackFact *fact)
         /* 기존 firstStartFact 유지, 정상 부활/재실행 금지. cleanup 완료 아님. */
         break;
     case VSS_FACT_NO_START_REEVALUATE:
-        원_통지_적용과_Pending_Expiry_재확인_가능성을_보호;
+        원_통지_적용과_replayAllowed가_참인_Pending_Expiry_재확인_가능성만_보호;
         /* originalMeta/state를 새 Pending/age로 초기화하지 않음.
            만료 자체는 CORE-05의 최신 pb/time 검사 뒤 판단. */
         break;
@@ -136,3 +138,9 @@ VssFactApplication Store_ApplyPlaybackFact(/* IN */ const VssPlaybackFact *fact)
 NOT_APPLIED이면 PLAYBACK이 기존 통지 내부 단계를 후속 진행한다. CORE-05는 [최신 관측과 미반영 통지를 먼저 확인](Store_AdvanceDeadlines.md#procedure)한다. 보관 raw 소스는 최종 제품 binding 근거가 아니며 미정 필드를 임의 true로 채워 이 switch를 통과시키지 않는다.
 
 [R2](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyplaybackfact) · [R3 Fact](../../../../design/40_DATA/40_PLAYBACK_DATA.md#vssplaybackfact) · [R3 ledger](../../../../design/40_DATA/20_STORE_DATA.md#vssoccurrencerecord) · [R4 late](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#late-results) · [R5 멱등 적용](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#store-applyplaybackfact) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-store-applyplaybackfact)
+
+## A1 입력 상실과 시간 경계
+
+원 L과 원 시각 구간은 [Timing](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)을 따른다. 입력 신뢰 상실의 replayAllowed=false는 NO_START_REEVALUATE/복구로 복원하지 않는다. in-flight/unknown의 만료는 미래 시작 차단·종료 요구이며 NO_START/Expired 합성이 아니다. 충분한 미시도/NO_START 및 retirement에서만 기한 종결을 확정한다. 늦게 도착한 적법 actual은 실제 상실 이전 권한/원 시각이 입증된 경우 원 occurrence에만 반영하고 종료를 취소하지 않는다.
+
+Warning의 원 TTL 도달/첫 loss/고정 Hold는 별개다. no-RX에도 후보 제거와 재평가를 진행하며 lossAt을 점검 now로 바꾸지 않는다. 마지막 유효 Stateful의 Hold 내 재선택은 원 출처·시각·고정 anchor·Rear gate/fence와 old retirement 조건에서 허용한다. 확정 만료는 earliestNow>=anchor+Hold이며 경계 걸침/비교 부족은 UNCERTAIN·보수적 종료·재확인으로 구별한다.

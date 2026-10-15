@@ -1,5 +1,7 @@
 # AudioTx_Request — 원래 작업을 보호한 PCM 인계·출력 제어 요청
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [AUDIO_TX](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · [한국어 의사코드](../pseudocode/AudioTx_Request.md)
 
 > CORE-13. R2~R6 논리 계약의 상세 설명이며 실제 C ABI·물리 안전의 확정본은 아닙니다.
@@ -72,7 +74,7 @@ AUDIO_TX는 해당 장치 접근을 보호하고 AUDIO_STREAM의 usage를 직접
 <a id="start"></a>
 ## 6. START와 최초 One-shot gate
 
-START에는 targetOperations count=0, handoff=NULL을 적용합니다. 아직 Started가 아닌 최초 One-shot은 원래 firstStartMeta와 현재 time의 비교 가능성·권한/현재 gate를 하위 효력 직전에 확인합니다. `[잠정] 원발생 age < 2초`이며 정확히 2초는 허용되지 않습니다. 재시도·준비·now로 원 age를 갱신하지 않습니다. 원래 기한과 Network USE_LIMIT 후보를 임의 통합하지 않습니다.
+START에는 targetOperations count=0, handoff=NULL을 적용합니다. 아직 Started가 아닌 최초 One-shot은 원래 firstStartMeta와 현재 time의 비교 가능성·권한/현재 gate를 하위 효력 직전에 확인합니다. `[잠정] 원발생 age < L`이며 정확히 L은 허용되지 않습니다. 재시도·준비·now로 원 age를 갱신하지 않습니다. A1에서 선택한 원 firstStartMeta.useLimit=L을 그대로 사용합니다.
 
 이미 최초 Started가 확인된 정상 같은 Session의 후속 cue에서는 firstStartMeta=NULL이며 최초 age gate를 다시 적용하지 않습니다. STOP도 NULL입니다. NULL 자체가 최초 gate 면제 증거는 아닙니다. 원래 요구 문맥에서 최초/정상 후속 구분을 확인할 수 없으면 새 START를 승인하지 않습니다. STOPPING/ABORTING·uncertain 최종/retired 문맥에 새 START 권한을 부여하지 않습니다.
 
@@ -141,7 +143,7 @@ VSS_COVERAGE_INSUFFICIENT는 필요한 관측/상관 근거 부족, VSS_COVERAGE
 | 대상·근거 | 분류 | 지금 작성 가능한 논리·후속 비구동 후보 | 차단된 종속 부분·필요 결정 |
 |---|---|---|---|
 | R6 typed 입력/OUT·R3 identity | F1_LOCKED_SEMANTIC / F3_PARTIAL_INDEPENDENT | 배타·범위·실제 key 조회·독립 OUT·중복/부분효과/late 보호. 후속 Host 후보: 0/2 입력·overflow·같은 A 새 회차·용량별 분기 | 실제 Header/ABI·key lookup/alias·bounded storage·직렬화는 owner/Binding 결정 |
-| R4 최초 One-shot 시간 | F2_PROVISIONAL_TESTABLE | 원발생→현재 제출 gate와 원발생→actual을 분리. 후속 경계 후보: <2/정확히2/시간 연속성 부족, 정상 cue 재gate 없음 | 잠정 2초의 제품값·원 source 시간/actual 관측 상관 입증 |
+| R4 최초 One-shot 시간 | F2_PROVISIONAL_TESTABLE | 원발생→현재 제출 gate와 원발생→actual을 분리. 후속 경계 후보: <L/정확히L/시간 연속성 부족, 정상 cue 재gate 없음 | 잠정 L의 제품값·원 source 시간/actual 관측 상관 입증 |
 | R4 Buffer·R5 STOP/return | F1 / F3 / F5_PHYSICAL_SAFETY_GATE | 원 targets·STREAM 선차단·safe-return 불충분/손실·정리 후속 분기. 후속 비구동 후보: subset STOP·즉시 raw·OUT full | 지속 vendor와 개별 operation 대응, FIFO/frame 잔류·no-output/종료·현재 DMA safe-write/WCET·메모리 조건은 실제 source/image 및 보드 근거 필요 |
 
 후보를 전면 HOLD로 덮지 않으며 실제 코드 재사용 symbol은 미조사/미확정입니다. 잠정값 변경 위치는 기존 Timing/제품 owner, 구체 API·저장 수단은 Binding입니다. 후속 코딩 트랙은 위 독립 논리를 우선 후보로 삼되 별도 지시·범위·Gate 이후에만 착수합니다. 제품·Host/보드 시험 성공을 주장하지 않습니다.

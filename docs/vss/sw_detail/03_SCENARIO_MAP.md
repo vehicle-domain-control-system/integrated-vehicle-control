@@ -1,5 +1,7 @@
 # VSS 시나리오 지도 — 기존 6 Flow와 원 사실의 연결
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [처음 읽기](00_START_HERE.md) · [VSS 지도](01_VSS_MAP.md) · [양단 인터페이스·18 Core 색인](02_INTERFACE_MAP.md#core-call-return)
 
 이 지도는 기존 R5-C1의 6 실행 Flow를 입력 조건·호출/결과·상태 writer·예외·종료와 연결한다. **GUIDE / LOGICAL_APPROVED**인 문서상 연결이며 실행 로그·새 정책·추가 Core·실제 C call graph가 아니다. 기준 `VSS@d8a2220ffc1e9c701bbec505e5b101790d3bfc50`, 기존 5 Layer/10 Module/18 Core·49 Trace·Fault 5종·PCM A/B를 보존한다. 양단 IF는 PROPOSED_IF/BINDING_TBD, 실제 C ABI·RTD/SAI/DMA·STOP/actual·source/image·복구 효과는 HW_UNVERIFIED다.
@@ -31,8 +33,8 @@
 | authoritative state / 동기·후속 | INPUT 문맥 반영과 STORE 개별 수용은 독립. STORE는 Occurrence/Stateful/Hold/Rear writer, POLICY는 read-only 판단, PLAYBACK은 채택/실행 owner, FLOW는 조율만. CHOOSE ≠ ADOPTED ≠ PREPARED ≠ actual |
 | 경합·실패·끝 | STORE 거부에도 INPUT contextApplied를 rollback하지 않음. 동일 발생 재전달은 새 발생이 아님. 원 fact/통지 미반영 또는 startKnowledge pending/unknown이면 age만으로 Expired 없음. owner 적용·시간/인과 부족/변경은 재수집. INVALID/STALE/SNA/누락은 CLEAR가 아니며 Rear 활성과 위험 근거를 별도로 검사 |
 | 승인 원문·함수 연결 | [R5 정규 기회](../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#flow-process) · [INPUT 품질](02_SERVICE/INPUT/functions/Input_Process.md#quality) · [STORE 수용](02_SERVICE/STORE/functions/Store_ApplyInput.md#admission) · [STORE 기한](02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md#ownership) · [POLICY 판단](02_SERVICE/POLICY/functions/Select_Choose.md#return) · [양단 입력](02_INTERFACE_MAP.md#ingress) |
-| 독립 구현 후보 | 배타 typed 입력·원 identity/age·중복/replay·품질/Hold 기산·Rear 결합·coherence·원 사실/expiry 순서. `<2초`는 원문 잠정값이고 Host fixture도 원 시간 문맥을 구분 |
-| 종속 HOLD | 실제 producer/변환/복사·Wake/기동/wrap·양단 Codec/Meta·후방 활성 format·입력별 시간/USE_LIMIT 관계·직렬화/원 근거·제품 TEST/WINDOW 연결. Q01~07/Q11~14를 임의 해결하지 않음 |
+| 독립 구현 후보 | 배타 typed 입력·원 identity/age·중복/replay·품질/Hold 기산·Rear 결합·coherence·원 사실/expiry 순서. `<L`은 A1 선택값이고 Host fixture도 원 시간 문맥을 구분 |
+| 종속 HOLD | 실제 producer/변환/복사·Wake/기동/wrap·양단 Codec/Meta·후방 활성 format·입력별 시간 실제 바인딩·직렬화/원 근거·제품 TEST/WINDOW 연결. Q01~07/Q11~14의 A1 결정과 외부 조건은 92_NETWORK_BINDING에 구분 |
 
 <a id="flow30"></a>
 ## 30_PLAYBACK_FLOW — 채택·최초 actual·정상 후속 cue
@@ -43,11 +45,11 @@
 | 기존 Trace | `VSS-TR-PLAY-IDENTITY`, `VSS-TR-PLAY-OWNER`, `VSS-TR-PLAY-CUES`, `VSS-TR-PLAY-QUARANTINE`, `VSS-TR-BE-PREPARED`, `VSS-TR-BE-ACCEPTED`, `VSS-TR-BE-START`, `VSS-TR-OS-STARTED`, `VSS-TR-OS-FINAL` |
 | CALL / RETURN | FLOW → `Playback_RequestTransition` → `AudioStream_Prepare` 또는 원 playback lane `AudioStream_RequestControl`. 원 결과 → `Playback_Advance` → 필요한 STREAM 후속·`Store_ApplyPlaybackFact`. ADOPTED는 PB 의도 반영, requests/outputs/facts/진단은 별도 원 결과 |
 | authoritative state / 동기·후속 | PLAYBACK만 단일 전체 Session·Attempt·plan position·start/cue/repeat 권한·actual 지식·최종/통지 의무 writer. STORE는 원 Occurrence 이력. winner ≠ prepared ≠ accepted/enabled ≠ actual. actual과 acceptance가 역순 도착해도 이미 반영한 사실/종료를 되돌리지 않음 |
-| 최초 actual 경계 | 원 output 충분성·원 occurredAt 구간·activation 인과·당시 권한을 대조. 구간 전체가 원 발생 이후이고 `[잠정] age < 2초` 및 원 권한 안이면 적법 최초 Started. 구간 전체가 밖이면 확정 출력 위반(정확히 2초도 미허용). 비교 불가/경계 걸침이면 정상 Started와 확정 위반 모두 보류하며 확인된 물리 fact/coverage는 그대로 보호 |
+| 최초 actual 경계 | 원 output 충분성·원 occurredAt 구간·activation 인과·당시 권한을 대조. 구간 전체가 원 발생 이후이고 `A1 age < L` 및 원 권한 안이면 적법 최초 Started. 구간 전체가 밖이면 확정 출력 위반(정확히 L도 미허용). 비교 불가/경계 걸침이면 정상 Started와 확정 위반 모두 보류하며 확인된 물리 fact/coverage는 그대로 보호 |
 | 정상 후속·실패·끝 | 이미 적법 Started된 같은 Session의 정상 다음 cue/반복 대기에는 최초 age gate 재적용 없음. cue gap은 owner 해제가 아님. Started One-shot은 선점·복구 뒤 자동 재실행하지 않음. EOF/lastForSegment/SEGMENT end는 whole final이 아니며 전체 종료는 Flow50의 범위/권한/late/자원 조건으로 확인 |
 | 승인 원문·함수 연결 | [R5 재생](../design/60_PSEUDOCODE/30_PLAYBACK_FLOW.md#playback-advance) · [최초 actual 세 갈래](../design/60_PSEUDOCODE/30_PLAYBACK_FLOW.md#first-actual-gate) · [PB 채택](02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md#return) · [PB actual](02_SERVICE/PLAYBACK/functions/Playback_Advance.md#actual) · [원 시간](../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start) |
 | 독립 구현 후보 | 원 identity·plan/permission 재확인·동기/후속 결과 분리·최초 구간 비교·정상 후속·반영 멱등/통지 보호. 잠정 경계 fixture는 제품 시간 승인과 구분 |
-| 종속 HOLD | 원 actual 시각/activation·당시 권한 물리 근거·epoch 변환, USE_LIMIT 관계, source/image/음원·실제 ABI·uncertain 최종화 정책/TBD-FINAL. now/capturedAt로 원 발생이나 actual 대체 없음 |
+| 종속 HOLD | 원 actual 시각/activation·당시 권한 물리 근거·epoch 변환, USE_LIMIT 실제 생산·시간 입증, source/image/음원·실제 ABI·uncertain 최종화 정책/TBD-FINAL. now/capturedAt로 원 발생이나 actual 대체 없음 |
 
 <a id="flow40"></a>
 ## 40_AUDIO_PREPARE_TX_FLOW — bounded 음원·PCM A/B·원 raw
@@ -93,7 +95,7 @@
 | authoritative state / 동기·후속 | HEALTH 허용 → FLOW 안전 연결 → Backend/Driver 실제 performed → **별도 verified** → HEALTH 현재 해당 제한 해제. 6필드 permission/faultInstance/faultRevision/target/configuration/action과 수행 operation을 모두 원 문맥에 연결. 요청 수용·ready·performed 성공 하나는 효과 검증/Fault clear가 아님 |
 | Fault 기존 5종 | `SOUND_ASSET_UNAVAILABLE`, `PLAYBACK_START_FAILURE`, `AUDIO_OUTPUT_FAILURE`, `PLAYBACK_STATE_FAILURE`, `INITIALIZATION_FAILURE`. 미평가·입력 품질 상실·WINDOW 보류를 새 Fault로 만들지 않음. exact raw cause→종류/action/효과 충분조건은 기존 TBD |
 | 경합·실패·끝 | 허용 철회/새 instance/구성/target 변경은 새 수행 전 재검사. 같은 원 수행 후속을 새 요청으로 재발행하지 않음. old 성공·검증은 old 정리/진단만. performed 또는 verified 한쪽 없음/불일치·손실은 현재 제한 유지. 현재 해당 한 대상 해제는 다른 Fault/최근 이력 삭제가 아님 |
-| 복구 뒤 입력·재생 | 원 age/Hold/replay 보존. Started One-shot·uncertain final 부활 없음. 미시작 One-shot은 충분 NO_START·안전 retirement·기존 replay 조건과 원 freshness에서만 재평가 가능. Stateful은 현재 유효/Hold 내·Rear 결합과 old retirement 뒤 새 Session 정책 시작점. 입력/통신 복구의 pre-Pending 폐기 제안과 출력 Fault 복구를 같은 scope로 합치지 않음 |
+| 복구 뒤 입력·재생 | 원 age/Hold/replay 보존. Started One-shot·uncertain final 부활 없음. 미시작 One-shot은 충분 NO_START·안전 retirement·기존 replay 조건과 원 freshness에서만 재평가 가능. Stateful은 현재 유효 또는 원 출처·시각·고정 Hold 내·Rear gate/fence 조건을 충족한 경고를 old retirement 뒤 재선택하여 새 Session 정책 시작점. 입력/통신 복구의 pre-Pending 폐기 제안과 출력 Fault 복구를 같은 scope로 합치지 않음 |
 | 보고 | 보고용 basis 재수집 → `Health_BuildStatus` CREATED → FLOW→INPUT→Node Communication. REEVALUATE·Status 변환/송신/Domain 소비는 [양단 Status 경계](02_INTERFACE_MAP.md#status-path)와 같으며 Recovery 허용·수행 결과와 합치지 않음 |
 | 승인 원문·함수 연결 | [R5 안전 연결](../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#recovery-flow) · [Session 없는 STREAM 복구](../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#stream-recovery) · [수행/검증](../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#device-recovery) · [HEALTH 한 대상 해제](02_SERVICE/HEALTH/functions/Health_Evaluate.md#pair) · [기존 Fault 계약](../design/50_CONTRACTS/40_FAULT_RECOVERY.md#recovery-flow) |
 | 독립 구현 후보 | 허용 현재성/철회·same operation 멱등·performed/verified pair·한 대상 제한/최근 기록 분리·coherent Status와 원 수명 보호의 Software-only/Host-only fixture |
@@ -126,3 +128,11 @@
 Q01~Q14·R6-01~08과 [인터페이스 미결](02_INTERFACE_MAP.md#external-open)은 OPEN이며 외부 누락 참조15건/7대상·원 G1-B 최종 결과 SOURCE_NOT_RECOVERED를 보존한다. 문서 추적 보정 PASS는 양단 채택·제품 source/ABI·물리 충분성의 해소가 아니다. WINDOW/Anti-Pinch **[구현 보류 — 설계 유지]**, TEST 제품 격리, P2 HOLD를 유지한다.
 
 각 Flow의 독립 후보는 원 자료·owner·단계·원 시간/귀속·보호 실패 조건을 사용하는 정적/Software-only/Host-only 작업 후보다. 실제 코드·Host/Firmware/Build/Flash/보드 시험을 수행한 결과가 아니다. 실제 양단 결합·출력 성공·복구 효과·실측 성능의 확인은 해당 owner·source/채택 기록과 별도 시험이 필요하다. 미결의 영향을 받지 않는 논리까지 일괄 HOLD하거나 근거 없는 기본 정상값·새 정책으로 빈칸을 채우지 않는다.
+
+## A1 현재 입력 기준과 이력
+
+현재 입력 연결은 [92_NETWORK_BINDING](../design/90_BINDING/92_NETWORK_BINDING.md)과 A1으로 개정한 Data/계약/의사코드다. Network 고정 원문은 `70028972ec713a3ec6b5f0a419e0dc89fd963844`이다. 과거 SHA·Q01~Q14·PASS·P1B HOLD 기록은 당시 검토 이력이며 현재 미결 전체가 아니다. D01 WARNING60, D04 L, D05 RX Age, D06 Hold/활성 후보, D07 owner/용량, D08 복구 분리는 설계 반영했다. Q 관련 DOMAIN 판단 순서/생산·계보·Boot·실제 시간/ABI/HW는 E01~E05로 구체화했다. Status 관련 Q/D09~D11은 A2 미착수다.
+
+## A2 Status 정상·오류·부분 실패 추적
+
+[Status Binding](../design/90_BINDING/93_NETWORK_STATUS_BINDING.md)의 §2 STARTUP/READY/PLAYING/FAULT, §1 current 완전성·동일 kind 여러 instance·clear 후 이력, §3 REEVALUATE 번호/시각 불변, §5 submit 거부/후발 실패, §6 State 수용 뒤 Fault 실패를 ST01~ST12로 대조했다. A1-C1 WARNING60/Event L/Hold/Rear/복구는 ST13에서 보존 확인한다. 문서 분기 검수이며 Host/Board PASS가 아니다.

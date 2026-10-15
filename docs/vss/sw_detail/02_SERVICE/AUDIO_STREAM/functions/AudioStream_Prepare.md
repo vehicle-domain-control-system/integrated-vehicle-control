@@ -1,5 +1,7 @@
 # AudioStream_Prepare — 원 준비 수용과 안전한 초기 PCM
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [AUDIO_STREAM](../00_MODULE_OVERVIEW.md) / CORE-10 · [한국어 의사코드](../pseudocode/AudioStream_Prepare.md)
 
 > GUIDE · 원 준비·CPU prime의 논리 설명이며 R6 실제 ABI와 제품/HW 안전성은 미확정이다. 실제 C·Host·보드 시험 NOT_RUN.
@@ -119,6 +121,6 @@ ASSET lookup/metadata/bounds/read 오류, STREAM corrupt/unsupported/decoder 오
 
 ## 구현 후보·미정과 연결 근거
 
-F1은 identity/단일 writer/분리된 stage·OUT·취소 불변조건, F2는 출처 있는 bounded fixture·safe-write 조건의 시험 주입, F3는 short-tail·OUT 부족·read/decode 실패·취소 경합의 stub 검증 후보다. 실제 Host/ASan/Build 시험은 NOT_RUN이다. F4 제품 source/image·C ABI/보호 저장/직렬화, F5 현재 DMA 방문 안전/WCET·SAI/STOP/actual·메모리 조건은 BINDING_TBD/HW_UNVERIFIED로 해당 연결만 보류한다. 인접 계약은 [RequestControl](AudioStream_RequestControl.md)·[Advance](AudioStream_Advance.md), [AudioTx_Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md), [Health_Evaluate](../../HEALTH/functions/Health_Evaluate.md)·[Health_BuildStatus](../../HEALTH/functions/Health_BuildStatus.md)에서 읽는다. P1B_C1/Q/R6/외부 IF 미해결·P2 HOLD·WINDOW PRODUCT 보류/TEST 격리 및 원 [최초 actual <2초 잠정 조건](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)을 유지한다.
+F1은 identity/단일 writer/분리된 stage·OUT·취소 불변조건, F2는 출처 있는 bounded fixture·safe-write 조건의 시험 주입, F3는 short-tail·OUT 부족·read/decode 실패·취소 경합의 stub 검증 후보다. 실제 Host/ASan/Build 시험은 NOT_RUN이다. F4 제품 source/image·C ABI/보호 저장/직렬화, F5 현재 DMA 방문 안전/WCET·SAI/STOP/actual·메모리 조건은 BINDING_TBD/HW_UNVERIFIED로 해당 연결만 보류한다. 인접 계약은 [RequestControl](AudioStream_RequestControl.md)·[Advance](AudioStream_Advance.md), [AudioTx_Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md), [Health_Evaluate](../../HEALTH/functions/Health_Evaluate.md)·[Health_BuildStatus](../../HEALTH/functions/Health_BuildStatus.md)에서 읽는다. P1B_C1/Q/R6/외부 IF 미해결·P2 HOLD·WINDOW PRODUCT 보류/TEST 격리 및 원 [최초 actual <L 잠정 조건](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)을 유지한다.
 
 [의사코드 분기](../pseudocode/AudioStream_Prepare.md#procedure) · [R2 Prepare](../../../../design/30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-prepare) · [R3 준비](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssaudiopreparation) · [R3 provider](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssprovidercontext) · [R4 현재 쓰기 안전](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#safe-write) · [R4 유효 PCM/무음](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#valid-and-silence) · [R5 Prepare](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#audiostream-prepare) · [R5 내부 prime](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#fill-buffer) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-audiostream-prepare)

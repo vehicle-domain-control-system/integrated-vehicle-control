@@ -1,5 +1,7 @@
 # Contract Overview — R4 Cross Contract
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > 2026-10-08 · **R4 작성 당시 이력** · R3-C1 및 잔여 함수 독립 국소 PASS 기준 · 당시 일반 채팅의 독립 검수 결과 대기. 현재 R4는 독립 PASS이며 최신 Stage/게이트는 README를 따른다.
 
 여러 owner에 반복된 공통 불변조건은 아래 다섯 계약에서 읽는다. Module의 책임·실패/예외, Function의 owner/Caller/Callee, Data의 필드·writer·수명은 각 local 문서에서 읽는다. 계약 링크는 상태 owner를 옮기거나 실제 C/RTD Binding을 확정하지 않는다. 기존 다섯 탐색 anchor는 유지했다.
@@ -31,7 +33,7 @@
 
 [발생/포착/처리 시간](30_TIMING_FRESHNESS.md#time-context) · [원 발생 age](30_TIMING_FRESHNESS.md#source-age) · [최초 시작과 정상 후속 cue](30_TIMING_FRESHNESS.md#first-start) · [Stateful Hold/Rear](30_TIMING_FRESHNESS.md#stateful-hold) · [반영 완료 관측](30_TIMING_FRESHNESS.md#coherent-read)
 
-원본 첫 시작 `< 2초`는 잠정이고 Hold/UseLimit 및 그 관계는 [정책 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy)로 남긴다.
+원본 첫 시작 L과 입력별 Hold 후보는 A1에서 선택했다. 실제 시간/성능·자원은 [Binding 외부 조건](../90_BINDING/92_NETWORK_BINDING.md#external)으로 남긴다.
 
 <a id="fault"></a>
 ## Fault / Recovery 탐색

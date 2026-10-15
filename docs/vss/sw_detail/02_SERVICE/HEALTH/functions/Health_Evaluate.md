@@ -69,7 +69,7 @@ Caller는 [FLOW](../../../01_APP/FLOW/functions/Flow_Process.md#startup-recovery
 | PLAYBACK_STATE_FAILURE | 재생 상태·출력 소유권 정합성 이상 |
 | INITIALIZATION_FAILURE | 확인된 초기화 실패 |
 
-원 instance/kind/target/configuration/diagnosis/restriction을 보호한 뒤 CURRENT와 실제 revision 반영 완료를 공개한다. 다른 current와 recent는 유지한다. 숫자 코드·발생 key 생성/폭·증가폭/회수 정책을 새로 정하지 않는다.
+원 instance/kind/target/configuration/diagnosis/restriction을 보호한 뒤 CURRENT와 실제 revision 반영 완료를 공개한다. A2는 동일 원기록에 reportOccurrence(기동 내1..UINT32_MAX)와 firstOccurredAt(원 diagnosis/PB final 시각)을 최초 한 번 보호한다. 반복 진단·revision·복구는 둘을 갱신하지 않고 재발은 새 instance다. 전체 current 완전성·최신 원기록 기동 내 보존·시간 부족/공간 손실 제한은 [A2 §1](../../../../design/90_BINDING/93_NETWORK_STATUS_BINDING.md#producer)을 따른다. 복구 허용/수행/별도 검증 계약은 그대로다.
 
 <a id="uncertain"></a>
 ## PLAYBACK 불명확 최종과 현재 제한

@@ -1,5 +1,7 @@
 # Playback — 채택, 최초 실제 시작과 정상 정책 진행
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > R5 · R4 독립 PASS 기준 · 전체 Session 전이의 writer는 PLAYBACK이다.
 
 [표기 규칙](00_PSEUDOCODE_OVERVIEW.md#notation) · [읽기 선택](20_INPUT_TO_SELECTION.md#select-choose) · [Audio 실행](40_AUDIO_PREPARE_TX_FLOW.md) · [종료/late/uncertain](50_STOP_LATE_UNCERTAIN_FLOW.md)
@@ -28,7 +30,7 @@ INPUT VssSelectionDecision decision OR 원 Session의 종료 의도/이유;
 OUTPUT VssRequestDisposition
 OWNER PLAYBACK; own VssSessionContext session; VssAttemptContext attempt
 
-if 현재 Session의 유효 CLEAR/선점/고장/정책 끝/실행 조건 상실 또는 종료 의도:
+if 현재 Session의 유효 CLEAR/선점/고장/정책 끝/실행 조건 상실 또는 종료 의도(Hold 불확실에 따른 보수적 종료 포함):
     STEP 원 Session/의도 연결을 검증한다; 다른 old Session 요구는 원정리로 격리.
     if 현재 Session에 적용 가능한 종료:
         session.startAllowed = false; session.cueAllowed = false; session.repeatAllowed = false
@@ -63,8 +65,10 @@ if candidate.validity != VSS_CANDIDATE_APPLICABLE 또는 최신 후보/제한 �
     return VSS_REQUEST_WAIT
 if old 전체 retirement/실제 provider·PCM 안전/독립 귀속 보호 공간 불충분:
     return VSS_REQUEST_WAIT
-if 미시작 One-shot의 원본 시간 비교 불가 또는 age < 2초 [잠정] 확인 불가:
-    return VSS_REQUEST_WAIT // age/UseLimit 관계 미정도 임의 합성 없음.
+if 새 Session 후보의 newSessionAllowed가 false 또는 현재 revision 확인 불가:
+    return VSS_REQUEST_WAIT // Stateful은 원 출처·시각·Hold·Rear 조건이 입증된 경우만 새 Session 검토.
+if 미시작 One-shot의 원본 시간 비교 불가 또는 age < L (A1 선택) 확인 불가:
+    return VSS_REQUEST_WAIT // 원 L/시각 근거를 임의 합성하지 않음.
 STEP Session/Attempt key·전체 plan·원본 Meta를 PLAYBACK 수명으로 먼저 보호한다.
 session.candidate = candidate.key; session.mode = candidate.mode
 session.plan = decision.plan의 보호 참조; session.firstStartMeta = 원본 Meta
@@ -189,24 +193,24 @@ INPUT 원 VssInputMeta meta; actual의 VssFactTime occurredAt;
       원래 Session/Attempt 권한 문맥과 기존 최초 적법 Started 기록
 
 if 이미 적법 Started된 같은 Session의 정상 후속 cue:
-    STEP 원 Session/권한/정책 유효성 확인; 최초 age<2초 규칙 재적용 없음.
+    STEP 원 Session/권한/정책 유효성 확인; 최초 age<L 규칙 재적용 없음.
 else if 최초 One-shot actual:
     if meta.timeDomain/timeEpoch와 occurredAt.domain/epoch 비교 근거 없음,
        continuity가 COMPARABLE 아님, 원래 activation/권한 대응 불충분:
         결과 = 근거 부족 // now나 capturedAt으로 대체 금지.
-    else if occurredAt.earliest >= meta.originalAt 이고
-            occurredAt.latest - meta.originalAt < 2초 [잠정]이며
+    else if occurredAt.earliest >= meta.originalAtLatest 이고
+            occurredAt.latest - meta.originalAt < L (A1 선택)이며
             구간 전체가 원래 실제 시작 권한 범위 안:
         결과 = 적법 최초 actual
     else if 구간 전체가 기한/권한 밖:
-        결과 = 물리 출력 위반 // 정확히 2초도 미허용.
+        결과 = 물리 출력 위반 // 정확히 L도 미허용.
     else:
-        결과 = 적법 여부 불확실 // 일부 구간만 2초 안이어도 충분하지 않음.
+        결과 = 적법 여부 불확실 // 일부 구간만 L 안이어도 충분하지 않음.
 else:
     STEP Stateful 현재 정책/권한·원출력 범위 확인; 새 One-shot gate 신설 없음.
 ```
 
-시각 비교는 실제 숫자 타입/epoch 변환 확정이 아니다. 적법 확인 / 구간 전체의 기한·권한 위반 확정 / 시간·권한 근거 부족 또는 경계 걸침을 호출부에서도 구별한다. 충분한 물리 출력 fact가 있어도 적법성 근거가 부족할 수 있으며, 그 fact의 충분한 coverage를 임의로 부족으로 바꾸지 않고 비교·권한 등 부족한 범위를 따로 보존한다. 불확실하면 정상 Started와 확정 위반을 모두 보류하고 원 차단·안전 정리·불확실 지식을 유지한다. `USE_LIMIT` 관계, actual 시각의 물리 확보·최종화 조건은 TBD다. 허용되었을 처리 now와 과거 실제 occurredAt을 혼동하지 않는다.
+시각 비교는 실제 숫자 타입/epoch 변환 확정이 아니다. 적법 확인 / 구간 전체의 기한·권한 위반 확정 / 시간·권한 근거 부족 또는 경계 걸침을 호출부에서도 구별한다. 충분한 물리 출력 fact가 있어도 적법성 근거가 부족할 수 있으며, 그 fact의 충분한 coverage를 임의로 부족으로 바꾸지 않고 비교·권한 등 부족한 범위를 따로 보존한다. 불확실하면 정상 Started와 확정 위반을 모두 보류하고 원 차단·안전 정리·불확실 지식을 유지한다. USE_LIMIT 관계는 A1의 L로 결정했다. actual 시각의 물리 확보·최종화 충분성은 미검증이다. 허용되었을 처리 now와 과거 실제 occurredAt을 혼동하지 않는다.
 
 ## 실패·자원·종료와 원문 추적
 

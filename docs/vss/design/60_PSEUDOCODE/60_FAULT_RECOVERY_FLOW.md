@@ -1,5 +1,7 @@
 # Fault / Recovery — 현재 허용, 안전 연결, 수행과 별도 검증
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > R5 · R4 독립 PASS 기준 · Fault 정확히 기존 5종. HEALTH는 HW를 수행하지 않는다.
 
 [표기 규칙](00_PSEUDOCODE_OVERVIEW.md#notation) · [Startup CONTROL](10_STARTUP_FLOW.md#audiocontrol-service) · [전체 STOP/retirement](50_STOP_LATE_UNCERTAIN_FLOW.md#playback-stop-late)
@@ -181,21 +183,24 @@ snapshot.basis = 보호된 이번 평가 근거
 if QUARANTINED 또는 확인된 공통 정상 출력 불가/새 start 차단 제한:
     snapshot.state = VSS_REPORT_FAULT
     STEP snapshot.availability는 기존 UNAVAILABLE 의미를 적용한다; 새 enum 값 선언 없음.
-else if 적법 actual 확인된 전체 Session이 아직 retirement 전:
+else if 정상 초기화 완료, 적법 actual 확인된 전체 Session이 아직 retirement 전:
     snapshot.state = VSS_REPORT_PLAYING // cue gap/반복 대기/시작 후 stop 진행 포함.
-else if 초기 준비 미평가/진행이며 startup 보고 근거 충분:
+else if 초기화 진행·출력 준비 전이 확인되고 startup 보고 근거 충분:
     snapshot.state = VSS_REPORT_STARTUP
 else if 정상 초기화/준비와 기존 READY reduction 근거 충분:
     snapshot.state = VSS_REPORT_READY
 else:
     return VSS_STATUS_REEVALUATE // 미정 조합으로 새 정상값 없음.
-STEP 지원 서비스 관측에서 serviceLevel=FULL 또는 DEGRADED를 기존 정책으로 파생한다.
+STEP A2 조합표: 공통실패는 FAULT/UNAVAILABLE/DEGRADED; 초기화 진행은 STARTUP/UNAVAILABLE.
+STEP 초기화 완료의 전체/부분 서비스 준비로 FULL/DEGRADED; 적법 Started Session은 PLAYING, 그 외 READY.
 STEP WINDOW 보류만으로 DEGRADED/Fault 생성 없음.
-STEP accepting은 입력 검증/저장 자원·시간/source/replay 준비의 반영 완료 근거로 파생한다.
-if availability/serviceLevel/accepting 또는 Fault reduction 기준이 필요한데 미정:
+STEP accepting: INPUT/STORE 둘 다 확인 true→true, 확인 false 하나 이상→false, 나머지 unknown→REEVALUATE.
+if availability/serviceLevel/accepting 또는 완전 current/history/원 시간 근거 부족:
     return VSS_STATUS_REEVALUATE // 임의 기본 FULL/true 없음.
-STEP currentFaults/currentFaultCount와 recentFaults/recentFaultCount를 각각 보호된 투영으로 연결.
-STEP snapshot 전체 참조/자료를 실제 보고 consumer 수명으로 보호한다.
+STEP 전체 current instance의 kind 집합과 최근 kind 집합을 각각 보호(최대5종).
+STEP HEALTH 최초 원기록의 시간으로 최신 선택; lastFaultPresent/Kind/Occurrence/At와 reportGeneration/evaluatedAt 보호.
+STEP snapshot 전체 참조/자료를 INPUT 변환·Network 동기 전체 복사 반환까지 보호한다.
+STEP 최종 coherence/전체 공개 성공 경계에서만 reportSequence 증가 확정; 실패 written0에서는 번호/시각 불변.
 return VSS_STATUS_CREATED
 ```
 
@@ -203,8 +208,8 @@ return VSS_STATUS_CREATED
 
 ## 실패·재평가·자원·미정과 추적
 
-미시작 One-shot은 충분한 NO_START/안전 retirement·기존 replay 조건 및 아직 유효한 원본 freshness에서만 재평가한다. Started/uncertain final은 자동 resume하지 않는다. Stateful은 현재 유효/Hold 내·Rear 결합을 다시 판단하고 old retirement 뒤 새 Session의 정책 시작점에서 재생한다. 복구 성공으로 age/Hold/연속성/replay를 리셋하지 않는다.
+입력 상실은 replayAllowed=false로 옛 Pending을 차단한다. 출력 Fault만 복구한 미시작 One-shot은 입력 신뢰/replayAllowed=true 및 충분한 NO_START/안전 retirement·기존 replay 조건 및 아직 유효한 원본 freshness에서만 재평가한다. Started/uncertain final은 자동 resume하지 않는다. Stateful은 현재 유효 또는 원 출처·시각·고정 Hold 내·Rear gate/fence 조건을 충족한 경고를 다시 판단하고 old retirement 뒤 새 Session의 정책 시작점에서 재생한다. 복구 성공으로 age/Hold/연속성/replay를 리셋하지 않는다.
 
-`[TBD-RECOVERY]`는 exact cause→Fault/action/대상/효과 충분성·retry/timeout·가용성 상세다. 수행/검증·현재 revision 및 key alias/보호 용량·직렬화의 실제 수단, Status reduction/초기 Availability는 [기존 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy). 미정이면 해당 수행/해제/새 보고를 막고 원제한/진단을 유지한다.
+`[TBD-RECOVERY]`는 exact cause→Fault/action/대상/효과 충분성·retry/timeout·가용성 상세다. 수행/검증·현재 revision 및 key alias/보호 용량·직렬화의 실제 수단, Status reduction/초기 Availability는 [A2 선택](../90_BINDING/93_NETWORK_STATUS_BINDING.md#reduction)이며 실제 바인딩 조건은 E-S01~05다. 미정이면 해당 수행/해제/새 보고를 막고 원제한/진단을 유지한다.
 
 [HEALTH R2 두 Core](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-evaluate) · [Status R2](../30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus) · [STREAM typed R2](../30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-requestcontrol) · [CONTROL R2](../30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiocontrol-service) · [Fault/Permission R3](../40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoverypermission) · [수행 R3](../40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryperformedevidence) · [검증 R3](../40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryverificationevidence) · [Status R3](../40_DATA/70_DIAGNOSTIC_DATA.md#vssstatussnapshot) · [Fault R4](../50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [소유 R4](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#late-attribution) · [HEALTH local](../20_MODULES/26_HEALTH_MODULE.md#recovery)

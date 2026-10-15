@@ -64,6 +64,8 @@ VssHealthChange Health_Evaluate(
             continue;
         }
         [기존 Fault5 중 근거 있는 kind와 instance/target/configuration 보호];
+        [새 instance의 reportOccurrence/firstOccurredAt를 원 진단에서 최초 보호];
+        [중복 진단은 번호/최초시각 불변; 공간/시간 부족은 완전성 미확인 기록];
         [diagnosis/restriction을 보호해 CURRENT·실제 revision 반영 완료];
         [다른 current/recent 그대로; 실제 변경과 남은 미결을 독립 관측];
     }
@@ -73,6 +75,8 @@ VssHealthChange Health_Evaluate(
     // H3: 원 PLAYBACK 불명확 최종은 diagnostics 수신 유무와 독립.
     if (안전한_playback의_반영완료_원귀속_불명확최종이_확인됨) {
         [기존 PLAYBACK_STATE_FAILURE + FAULT + UNAVAILABLE 제한 보호·반영];
+        [해당 새 Fault의 reportOccurrence 및 PB 원 final 시각을 firstOccurredAt로 보호];
+        [처리 now 보충 금지; 원시각 부족은 제한 유지/새 Status 이력 투영 제한];
         [다른 current/recent 보존; timeout/일반 START 대기를 최종으로 판정 없음];
     } else if (필수_playback_저장소_관측_원인과가_부족) {
         [기존 제한과 부족 유지; 정상 PB·새 final 합성 없음];

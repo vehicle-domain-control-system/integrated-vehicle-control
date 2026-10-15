@@ -1,5 +1,7 @@
 # Playback_RequestTransition — 상세 동작 설명
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상세 설명](../functions/Playback_RequestTransition.md) · [의사코드](../pseudocode/Playback_RequestTransition.md) · [PLAYBACK](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-07
 
 > GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
@@ -79,7 +81,7 @@ Caller는 [FLOW](../../../01_APP/FLOW/functions/Flow_Process.md), 단일 writer�
 | `CHOOSE` + old 전체 retirement/실제 자원 안전·최신 원 후보/plan 부족 | WAIT/REJECTED. old 참조/사실 보호, 새 준비 없음 |
 | `CHOOSE` + 모든 선결조건·독립 보호 자원 충분 | 원 identity/전체 plan/Meta를 **효력 전 보호**, PREPARING·원 Prepare 요청, PB ADOPTED |
 
-새 채택은 원 후보의 현재 적용 가능성·revision, 의미 plan/image·제한·장치 구성·읽기 basis를 부수효력 직전에 재검사합니다. 미시작 One-shot의 원 timebase/epoch/연속성과 `[잠정] 원 age <2초`가 부족/만료하면 WAIT이며 `conditionsBasis.time`을 원 발생 시각으로 덮지 않습니다. Network 500ms/USE_LIMIT과 새 기한을 결합하지 않습니다. 정상 Started One-shot은 재채택/자동 resume하지 않으며 유효 Stateful은 old retirement 뒤 **새 Session의 정책 시작점**부터 가능합니다.
+새 채택은 원 후보의 현재 적용 가능성·revision·newSessionAllowed, 의미 plan/image·제한·장치 구성·읽기 basis를 부수효력 직전에 재검사합니다. 미시작 One-shot의 원 timebase/epoch/연속성과 `A1 원 age <L`가 부족/만료하면 WAIT이며 `conditionsBasis.time`을 원 발생 시각으로 덮지 않습니다. 원 Meta.useLimit=L을 처음 실제 시작까지 보존합니다. 정상 Started One-shot은 재채택/자동 resume하지 않으며 현재 유효 또는 [입증된 Hold 내 Stateful](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#hold-reselection)은 old retirement 뒤 **새 Session의 정책 시작점**부터 가능합니다. Hold 경계 걸침/근거 부족은 기존 종료 lane으로 보수적 종료를 요청하며 확정 만료나 물리 STOP 완료로 취급하지 않습니다.
 
 하위 호출 이전에 Session/Attempt 원귀속·첫 Meta/전체 plan·결과 보호를 확보합니다. PCM/Provider는 각 owner의 안전 근거를 확인할 뿐 직접 재사용/반환하지 않습니다. 하위 prepare가 WAIT/실패/부분 효력을 반환하면 원 채택 문맥과 후속 정리/결과 추적을 보존합니다. PB가 이미 채택한 의도는 하위 실패를 단순 신규 거부로 rollback하지 않습니다. 준비 직후 CLEAR·기한/권한 상실은 Advance의 **실제 START 직전** 재검사로 차단합니다.
 

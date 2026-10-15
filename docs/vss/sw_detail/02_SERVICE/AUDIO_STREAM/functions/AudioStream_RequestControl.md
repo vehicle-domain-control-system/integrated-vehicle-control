@@ -1,5 +1,7 @@
 # AudioStream_RequestControl — 상세 동작 설명
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [AUDIO_STREAM](../00_MODULE_OVERVIEW.md) / CORE-11 · [한국어 C 의사코드](../pseudocode/AudioStream_RequestControl.md)
 
 > GUIDE · LOGICAL R6 CONTRACT · 실제 C ABI/동기화 수단 BINDING_TBD.
@@ -53,7 +55,7 @@ VssRequestDisposition AudioStream_RequestControl(
 
 원 command의 Session/Attempt가 보호된 PREPARED provider 및 원 preparation의 plan/position/asset와 일치해야 한다. 다른 Session/Attempt·asset/config로 현재 provider를 덮지 않는다. 준비 전, CLOSING/취소/STOP 차단, 제한 또는 현재 장치/config 불충분이면 새 START를 발행하지 않는다. 부적합한 새 요구는 REJECTED, 미확인 조건/자원은 WAIT이며 유효 원 귀속이 있을 때만 해당 단계 사실을 보호한다.
 
-미시작 One-shot의 최초 시도는 preparation의 원 `firstStartMeta`를 보호해 TX에 연결한다. 이미 적법 Started된 같은 Session의 정상 후속 cue에는 `firstStartMeta=NULL`이고 최초 age gate를 재적용하지 않는다. 원발생→최초 actual `<2초 [잠정]` 적법성은 PLAYBACK 소유다. 처리 now로 원 age를 재기산하거나 Network 500ms 제안과 min/AND를 만들지 않는다.
+미시작 One-shot의 최초 시도는 preparation의 원 `firstStartMeta`를 보호해 TX에 연결한다. 이미 적법 Started된 같은 Session의 정상 후속 cue에는 `firstStartMeta=NULL`이고 최초 age gate를 재적용하지 않는다. 원발생→최초 actual `<L (A1 선택)` 적법성은 PLAYBACK 소유다. 처리 now로 원 age를 재기산하지 않으며 원 firstStartMeta.useLimit=L을 TX까지 보호한다.
 
 원 요구와 실제 scope·필요한 Meta·operation 결과 보존을 먼저 확보하고 최신 권한/자원을 효과 직전에 재확인한다. `VssTxControlCommand`의 **기존 4필드** `attempt/action/scope/firstStartMeta`를 `action=VSS_TX_START`로 전달한다. PCM 주소 없는 control lane이며 준비된 PCM의 새 handoff를 START 대신 만들지 않는다. 새 START의 `targetOperations`는 count=0, `continuingOperation=NULL`이다. 이미 제출된 동일 **원 요구**는 확인된 원 operation으로만 이어가며, key 전달/수용이 미확인인 경우 새 동작을 재발행하지 않는다. Attempt/action/scope tuple만으로 서로 다른 구간을 동일 operation으로 판단하지 않는다.
 

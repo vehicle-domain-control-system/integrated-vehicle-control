@@ -1,5 +1,7 @@
 # POLICY / PLAYBACK Core Functions — R2
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > 2026-10-07 · Baseline / Execution Plan v1.1 · Function 상세 설계만 수행
 
 [최종 Core 색인·후보 판정](00_FUNCTION_OVERVIEW.md) · [provisional type 기준](00_FUNCTION_OVERVIEW.md#provisional-types)
@@ -94,7 +96,7 @@ VssRequestDisposition Playback_RequestTransition(
 | Reads | PLAYBACK의 Session/Attempt·종료 의도/권한·최종/통지 의무, 해당 Backend 결과·최신 조건·원본 시간 근거. |
 | Writes | PLAYBACK의 진행·실제 시작 적용·후속 권한·시작 여부가 불확실한 최종/출력 정리와 사용권 종료·통지 의무만 쓴다. STORE의 이력은 [Store_ApplyPlaybackFact](20_INPUT_STORE_FUNCTIONS.md#store-applyplaybackfact)가 변경한다. |
 | Precondition | 처리할 결과를 원래 문맥에 연결하거나 귀속 부족으로 구별할 수 있어야 한다. 늦은/중복/최종 뒤 결과도 버릴 전제조건이 아니라 격리해야 할 입력이다. 새 start 직전에는 최신 조건을 다시 확인한다. |
-| Postcondition | 준비 완료 뒤 최신 CLEAR/owner/Fault·첫 시작 기한을 재검사하고 START_IN_FLIGHT에서 하위 start를 연결한다. 적법한 OUTPUT_START_CONFIRMED만 최초 Started로 통지한다. 정상 다음 cue는 해당 구간 안전 끝/현재 계획을 확인하며 새 occurrence로 만들지 않는다. 첫 실제 시작 전에는 원본 기한을 적용하지만 Started 정상 Session의 후속 cue/반복에 첫 시작 2초 조건을 다시 적용해 중단하지 않는다. |
+| Postcondition | 준비 완료 뒤 최신 CLEAR/owner/Fault·첫 시작 기한을 재검사하고 START_IN_FLIGHT에서 하위 start를 연결한다. 적법한 OUTPUT_START_CONFIRMED만 최초 Started로 통지한다. 정상 다음 cue는 해당 구간 안전 끝/현재 계획을 확인하며 새 occurrence로 만들지 않는다. 첫 실제 시작 전에는 원본 기한을 적용하지만 Started 정상 Session의 후속 cue/반복에 첫 시작 L 조건을 다시 적용해 중단하지 않는다. |
 | Side Effect | 하위 start/정리·정상 후속 준비를 발행하고 STORE에 확정 사실을 적용한다. 시작 여부가 불확실한 최종은 QUARANTINED와 전체 권한 차단·재실행 금지 및 기존 PLAYBACK_STATE_FAILURE/FAULT/UNAVAILABLE 근거를 남기며 이전 출력 정리는 계속한다. |
 | Failure behavior | 최종 전 같은 Attempt의 적법한 늦게 도착한 실제 출력 사실은 Started/보고 사실만 적용하고 STOPPING/ABORTING을 유지한다. 시작 여부가 불확실한 최종 뒤/출력 정리와 사용권 종료 뒤의 결과는 옛 정리·진단만 한다. 늦은 수락으로 actual/종료를 되돌리지 않는다. 통지 미반영은 보호된 의무로 남긴다. 기한/권한 밖 실제 출력은 물리 사실과 위반 근거로 보존해 정리하며 적법한 최초 Started로 합성하지 않는다. |
 | Invariant | NO_START_CONFIRMED는 충분한 Backend 무출력/미래 PCM 차단과 모든 상위 권한 차단이 필요하다. OUTPUT_TERMINATION_CONFIRMED도 전체 출력 종료·상위 차단·late 보호 뒤만 retire한다. 불확실 최종 기록은 출력 정리와 사용권 종료보다 먼저 가능하다. |

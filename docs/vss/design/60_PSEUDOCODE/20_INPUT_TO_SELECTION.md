@@ -1,5 +1,7 @@
 # Input → Selection — 입력 적용, 원본 기한과 읽기 판단
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 > R5 · R4 독립 PASS 기준. FLOW 조율 / INPUT 검증 / STORE 수용·기한 / POLICY 읽기 판단을 분리한다.
 
 [표기 규칙](00_PSEUDOCODE_OVERVIEW.md#notation) · [Startup](10_STARTUP_FLOW.md) · [실행 전이](30_PLAYBACK_FLOW.md#playback-requesttransition)
@@ -26,7 +28,11 @@ CORE Flow_Process / INPUT_OR_FOLLOW_UP 또는 TIME_CHECK slice
 INPUT VssProcessingOpportunity opportunity; VssTimeEvidence now
 OUTPUT VssFlowProgress
 
-CALL Input_Process(optional INPUT 도착 자료, now)
+STEP 기존 FLOW owner의 Network dispatcher가 callback에서 Event1/Warning최대4를 동기 소비한다.
+STEP RX 유무·새 CREATED와 독립적으로 기존 INPUT 연결에서 Network terminal 관측을 bounded drain한다.
+     // 원 key/BOOT/TX/raw/참조 종료를 진단16/loss latch에 보호; 공간 부족·미방문은 원 owner 후속으로 유지.
+     // 뒤의 선택/보고 재수집 반환 전에 연결하며 통신 실패를 음향 Fault나 재실행 허가로 바꾸지 않는다.
+CALL Input_Process(NULL, now) // 18 문맥 no-RX 점검; bundle 뒤 한 번 중재
 CALL AudioStream_Advance(now) // raw 알림을 사실로 해석하지 않음.
 CALL Playback_Advance(보호된 typed Backend 사실, 최신 실행 조건, now)
      // [30/50] 최초/최종 사실을 Store_ApplyPlaybackFact로 연결하고 미반영을 보호.
@@ -36,7 +42,11 @@ CALL Health_Evaluate(원진단/복구 수행/별도 검증, 적용 근거)
 STEP [60 recovery-flow]의 현재 허용과 old 안전 종료를 조율한다.
 
 VssReadBasis basis // 각 owner가 적용 완료 뒤 제공한 stamp만 연결.
+STEP Event 원 L/replayAllowed와 Stateful 현재 유효 또는 입증된 Hold 내 재선택 조건을 확인한다.
 STEP STORE 후보, PLAYBACK 관측, HEALTH 제한, Backend/ASSET 가용 관측을 읽는다.
+STEP Stateful Hold 경계 걸침/시간·출처 부족의 현재 UNCERTAIN 관측이면,
+     귀속이 확인된 현재 Session의 보수적 종료를 기존 Playback_RequestTransition 종료 lane에 연결한다.
+     // 새 선택 basis의 시간 부족을 정상화하지 않고 old 종료/후속을 먼저 보호; STOP 완료 합성 없음.
 STEP basis.stamps[0..basis.stampCount)의 owner/revision/appliedThrough를 대조한다.
 if 관련 사실 미반영, 인과 선행 fact 미충족, 비교 시간 부족:
     basis.validity = VSS_READ_INCOMPLETE
@@ -58,7 +68,9 @@ if 보고 근거 미반영/변경/부족:
     STEP 새 정상 보고 없이 재수집 필요성을 보존; return VSS_FLOW_RECOLLECT_OBSERVATIONS
 reportBasis.validity = VSS_READ_VALID; reportBasis.time = now
 CALL Health_BuildStatus(적용 완료 관측, reportBasis)
-STEP CREATED인 보고만 기존 INPUT 보고 연결로 전달/참조 보호한다.
+STEP CREATED인 보고만 기존 INPUT 연결 한 곳에서 A2 11필드로 변환, Network 전체 동기 복사 반환까지 참조 보호한다.
+STEP INVALID는 진단/재수집, NOT_READY는 준비 변화, NO_CAPACITY는 다음 기회 최대1회 재검토; 원 평가/발생 번호·시각 불변.
+STEP localOK 뒤 실패는 위 정규 기회의 독립 drain으로 관측한다; 새 보고 생성이 관측의 선행조건은 아니다.
 if 원결과 적용/정리/보고 전달/재수집이 남음: return VSS_FLOW_FOLLOW_UP_REQUIRED
 return VSS_FLOW_SETTLED
 ```
@@ -78,11 +90,20 @@ application.validation = VSS_VALIDATION_NO_CHANGE
 application.contextApplied = false
 application.storeAdmission = VSS_STORE_NOT_SUBMITTED
 if evidence absent:
-    STEP INPUT의 현재 context.appliedMeta/quality와 now로 품질/연속성 변화만 평가한다.
+    STEP 최대18 문맥을 입력 종류별로 점검한다.
+    if 주기 Warning 문맥:
+        STEP 해당 원 validUntil 및 승인된 Warning monitor의 구조정상 증가TX RX+150ms를 검사한다.
+    else if 비주기 Event 문맥:
+        STEP 마지막 Event RX+150ms로 상실을 만들지 않는다. 원 L 만료는 STORE의 시작 기회 종료 조건이다.
+        STEP 신뢰 상실은 승인된 DOMAIN Warning/Permission 감독·명시 품질·세대·시간 근거로만 검사한다.
+        STEP Permission의 감시 주기는 원 계약을 사용하고 150ms로 대체하지 않는다.
+    STEP 최초 lossAt은 원 경계로 고정하고 점검 now로 연장하지 않는다.
     if 최신 적용 가능한 신뢰 상실 없음: return application
     STEP 아래 QUALITY_CHANGE 경로로 진행; RX 없음에서 EVENT/CLEAR 합성 금지.
 else:
-    STEP evidence.meta.origin/source/generation/ordering을 해당 PRODUCT/TEST context와 대조한다.
+    STEP origin/DOMAIN generation 및 deliveryOrder를 먼저 대조; 과거 TX는 거부한다.
+    STEP evidence 계보와 DOMAIN 판단 ordering은 분리; 같은 source 순번의 최신 제한은 QUALITY_CHANGE.
+    STEP 같은 source에서 정상값 변경/승격은 E01 미입증 제한이며 새 판단으로 채택하지 않는다.
     STEP signal/value 조합, quality, timeDomain/timeEpoch/continuity를 검증한다.
     if PRODUCT의 VSS_SIGNAL_ANTI_PINCH 제품 source 연결:
         STEP WINDOW [구현 보류 — 설계 유지] 경로를 유지; 제품 경고 신규 활성화 없음.
@@ -100,7 +121,7 @@ else:
         application.validation = VSS_VALIDATION_APPLICABLE
         if 검증된 One-shot 의미 EVENT:
             VssOneShotEvent event
-            STEP event.occurrence를 원본 identity로 연결한다. [TBD-IDENTITY]
+            STEP event.occurrence=*evidence.occurrence (origin/DOMAIN/Boot/원 ID); 실제 lifecycle은 E05.
             event.signal = evidence.signal; event.meta = evidence.meta
             CALL Store_ApplyInput(event) -> application.storeAdmission
         else:
@@ -138,15 +159,16 @@ EVENT lane:
     STEP 불변 event.meta와 발생 추적·통지 보호를 먼저 확보한다.
     record.occurrence = event.occurrence; record.signal = event.signal
     record.originalMeta = event.meta; record.state = VSS_OCCURRENCE_PENDING
-    record.firstStartFact = null; record.finalFact = null
+    record.firstStartFact = null; record.finalFact = null; record.replayAllowed = true; record.inputLossAt = null
     record.tracking = VSS_TRACKING_PROTECTED
-    STEP record.revision 반영 완료; 후보 관측 공개 뒤 return VSS_STORE_ACCEPTED
+    STEP record.revision 반영 완료; newSessionAllowed는 원 replayAllowed·L·신뢰/freshness에서 파생; 후보 관측 공개 뒤 return VSS_STORE_ACCEPTED
 
 STATE lane:
     if update.signal == VSS_SIGNAL_REAR_ACTIVATION:
         rear.activation = update.value; rear.activationMeta = update.meta
         if update.value == VSS_VALUE_DISABLED:
             rear.riskApplicable = false
+            STEP 당시 위험 Meta를 rear.riskFence에 보호한다.
             STEP Rear 후보/Hold를 제거하고 실제 참조 종료 뒤 Hold 보호를 회수한다.
         else if update.value == VSS_VALUE_ENABLED:
             STEP 적용 가능한 위험 근거가 확인되기 전 riskApplicable를 true로 바꾸지 않는다.
@@ -158,13 +180,20 @@ STATE lane:
     if update.value == VSS_VALUE_CLEAR:
         STEP 해당 후보 제거; 다른 Stateful과 One-shot ledger 보존.
     else if update.signal == VSS_SIGNAL_REAR_RISK:
-        STEP 최신 Activation과 위험 source/order 결합이 확인된 경우만 rear.riskApplicable=true.
+        STEP 최신 fresh Activation과 riskFence보다 새 위험 source/order 결합이 확인된 경우만 rear.riskApplicable=true.
         STEP DISABLED이면 후보 생성 금지; Emergency→Caution은 old 실행 교체 판단에 노출.
     else:
         STEP 검증된 ACTIVE를 후보에 반영; 반복 ACTIVE는 새 Session 요청 아님.
     STEP state/rear의 변경 revision 반영 완료; return VSS_STORE_UPDATED
 
 QUALITY lane:
+    if Event 신뢰 문맥 상실:
+        STEP 관련 Pending replayAllowed=false, 최초 lossAt/basis를 inputLossAt으로 보호; 미시도/NO_START+retirement만 Expired.
+        STEP in-flight/unknown은 차단·종료요구·원 사실 확인; 이력 삭제 없음.
+        return VSS_STORE_UPDATED
+    if Rear Activation 상실:
+        STEP riskFence 보호, gate/riskApplicable=false, 해당 후보/Hold 제거.
+        return VSS_STORE_UPDATED
     state.quality = change.quality // lastValidValue/lastValidMeta는 그대로.
     if 기존 유효 경고 없음: STEP 새 후보 생성 없음; return VSS_STORE_UPDATED
     if state.firstLossAt == null:
@@ -192,27 +221,38 @@ OWNER STORE; own VssOccurrenceRecord record; VssStatefulState state
 if 관련 pb.stamp 인과/최신 근거 부족 또는 pb.notificationPending:
     return VSS_STORE_RECONFIRM_REQUIRED // FLOW→PLAYBACK 통지 적용/재수집을 먼저.
 if now.continuity != VSS_CONTINUITY_COMPARABLE 또는 원 domain/epoch 비교 불가:
-    STEP 해당 freshness/Hold 불확실성 유지; return VSS_STORE_RECONFIRM_REQUIRED
+    STEP 해당 Stateful Hold는 UNCERTAIN/newSessionAllowed=false 및 보수적 종료·재확인 필요로 관측; 원 근거 보존.
+    STEP 해당 Event freshness 불확실성 유지; 변경 반영이면 CHANGED, 그 외 RECONFIRM_REQUIRED 반환.
+    // 어느 반환이든 시간 부족/종료 후속은 owner 관측에 보존.
 for 이번 budget 안의 해당 원발생 record:
     if record.state != VSS_OCCURRENCE_PENDING: continue
     if 연결된 원시도 pb.startKnowledge == VSS_START_PENDING_OR_UNKNOWN:
-        STEP age가 2초여도 Expired 생성 금지; continue
+        STEP L 도달/비교 부족이면 미래 시작 차단·종료 요구; Expired/NO_START 생성 금지; continue
     if 원 uncertain 최종 또는 실제/통지 추적 근거 부족: continue
     if 확정 미시도 또는 전체 NO_START/retirement 뒤 확정 미시작:
-        if 원본 age의 가능한 구간 전체가 >= 2초 [잠정]:
+        if replayAllowed=false 또는 원본 age의 가능한 구간 전체가 >= L:
             record.state = VSS_OCCURRENCE_EXPIRED
             STEP replay/이력 보호 유지; revision 반영 완료.
         else if age가 경계를 걸침: STEP 후보 freshness 미확정; 재확인 필요.
 for 해당 Stateful state:
-    if 기존 경고의 holdAnchor 있고 기존 Hold 정책에 따른 만료가 확인됨:
-        STEP 후보만 제거; lastValidValue/quality를 CLEAR/VALID로 변경하지 않는다.
-    else if Hold 값/시간 근거 미정:
-        STEP [TBD-HOLD] 보존; 임의 시간값으로 후보 연장/정상화 없음.
+    if 유효 CLEAR/Rear DISABLED·activation 상실/riskFence 위반/이미 확정 만료: STEP 후보 부활 없음; continue
+    if 기존 유효 경고의 Hold 대상 아님: continue
+    if 원 출처/승인 세대/고정 anchor 또는 단위/domain/epoch/wrap/구간 비교 부족:
+        STEP UNCERTAIN/newSessionAllowed=false, 원 부족 사유와 보수적 종료·재확인 필요를 관측.
+    else if now.earliestNow >= anchor+A1입력별Hold:
+        STEP 확정 Hold 만료: EXPIRED/newSessionAllowed=false, 후보만 제거·종료 요청.
+    else if now.latestNow < anchor+A1입력별Hold:
+        STEP 현재 Rear 결합 등 재선택 조건도 충분하면 APPLICABLE/newSessionAllowed=true.
+        STEP 그 조건이 미입증이면 UNCERTAIN/newSessionAllowed=false 및 보수적 종료·재확인 필요.
+    else:
+        STEP 경계 걸침: UNCERTAIN/newSessionAllowed=false, 보수적 종료·재확인 필요; 확정 만료 아님.
+    STEP 변경 revision/반영완료·부족 사유 보호; 원 Meta/품질/anchor·이력 불변.
+    STEP CLEAR/VALID·물리 STOP 완료를 합성하지 않는다.
 return 변경 있으면 VSS_STORE_CHANGED, 부족하면 VSS_STORE_RECONFIRM_REQUIRED,
        그 외 VSS_STORE_STABLE
 ```
 
-`USE_LIMIT`은 별도 기존 조건이다. `<2s`와 임의 min/AND를 만들지 않는다. 관계가 필요한 결정의 미정은 재확인/TBD로 남긴다. Started Session의 정상 후속 cue는 이 원발생 Expired 경로 대상이 아니다.
+`USE_LIMIT` 관계는 A1에서 L=min(양수 USE_LIMIT,500ms,2000ms)로 결정했다. 원 기한과 replay 차단을 함께 검사한다. Started Session의 정상 후속 cue는 이 원발생 Expired 경로 대상이 아니다.
 
 <a id="select-choose"></a>
 ## Select_Choose — read-only keep / replace / wait
@@ -229,6 +269,7 @@ decision.candidate = null; decision.plan = null
 if basis.validity != VSS_READ_VALID:
     decision.action = VSS_SELECTION_RECOLLECT; return decision
 STEP validity==VSS_CANDIDATE_APPLICABLE인 후보만 비교한다.
+STEP newSessionAllowed=false인 후보는 현재 같은 Session 유지에만 사용; 새 선택에서는 제외한다.
 STEP Emergency > Warning/Caution > Feedback 순서 적용;
      Class 내부 [잠정] 순위는 POLICY 원표 사용. 값/Asset/pattern 신설 없음.
 STEP 같은 의미 미시작 One-shot은 originalMeta의 원발생 순서, 동률이면 key 고정 순서.
@@ -236,7 +277,7 @@ STEP 같은 의미 미시작 One-shot은 originalMeta의 원발생 순서, 동�
 if 유효 현재 One-shot이며 낮은 후보/새 후보 없음/같은 의미의 늦은 옛 발생만 있음:
     decision.action = VSS_SELECTION_KEEP
     STEP current 후보/현 전체 plan 보호 참조 연결; return decision
-if 현재 Stateful의 유효 CLEAR/DISABLED/만료 또는 Rear Emergency→Caution:
+if 현재 Stateful의 유효 CLEAR/DISABLED/확정 만료 또는 Hold 불확실에 따른 보수적 종료 또는 Rear Emergency→Caution:
     STEP 현재 판단에 종료/교체 필요성을 드러낸다; PB 필드 직접 변경 없음.
 if winner 없음 또는 winner의 전체 plan/필수 음원·제한 근거 부족:
     decision.action = VSS_SELECTION_WAIT; return decision // 의미 다른 fallback 금지.
@@ -254,6 +295,14 @@ WAIT 판단 자체로 현재 One-shot 종료를 만들지 않는다. CLEAR·교�
 
 입력 거부와 STORE 신규 공간 부족은 개별 수용 결과다. 기존 duplicate·유효 CLEAR·품질/기한 및 미반영 사실은 계속 처리한다. 미반영 PLAYBACK 사실의 확인은 [통지 및 STORE 적용](50_STOP_LATE_UNCERTAIN_FLOW.md#store-applyplaybackfact)으로 연결하며 STORE가 PLAYBACK을 역호출하지 않는다. 선택 결과 참조는 평가기간만 유효하고 PB가 채택할 자료는 자기 수명으로 보호한다.
 
-`[TBD-IDENTITY/TIME]`: source·세대/순서·reboot/wrap alias 방지·시간 변환/신뢰. `[TBD-HOLD]`: 입력별 Hold 값·UseLimit 관계. 보호 예산·직렬화·정책 내부 순위/패턴 확정은 [기존 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy). 미정 조건은 true로 대체하지 않는다.
+`[TBD-IDENTITY/TIME]`: source·세대/순서·reboot/wrap alias 방지·시간 변환/신뢰. `[A1-D04/D06]`: L·입력별 Hold 후보 선택 완료; 실제 시간/성능 확인은 외부 조건. 보호 예산·직렬화·정책 내부 순위/패턴 확정은 [기존 TBD](../90_BINDING/91_IMPLEMENTATION_TBD.md#policy). 미정 조건은 true로 대체하지 않는다.
 
 [INPUT/STORE R2](../30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md) · [POLICY R2](../30_FUNCTIONS/30_POLICY_PLAYBACK_FUNCTIONS.md#select-choose) · [INPUT R3](../40_DATA/10_INPUT_DATA.md#vssinputapplication) · [STORE R3](../40_DATA/20_STORE_DATA.md#vssstatefulstate) · [Rear R3](../40_DATA/20_STORE_DATA.md#vssreargatestate) · [읽기/선택 R3](../40_DATA/30_SELECTION_DATA.md#vssreadbasis) · [Timing R4](../50_CONTRACTS/30_TIMING_FRESHNESS.md#coherent-read) · [보호 R4](../50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect) · [POLICY local 순위](../20_MODULES/22_POLICY_MODULE.md) · [STORE local](../20_MODULES/21_STORE_MODULE.md#stateful)
+
+## A1 owner 적용 순서
+
+기존 FLOW owner에서 Network dispatcher callback을 동기 소비하여 Event1 또는 Warning최대4 입력을 처리한다. INPUT 변환→각 Store_ApplyInput→bundle 끝→하위 fact→Store_AdvanceDeadlines→HEALTH→한 번의 POLICY/PB 순서다. 별도 Queue/Task를 추가하지 않는다. TIME_CHECK는 10ms 이하 설계 예산(실측 미검증)이며 Input_Process(NULL)이 최대18 문맥을 종류별로 점검한다. 주기 Warning은 원 TTL/정상 증가 RX+150ms, 비주기 Event는 원 L과 별도 승인된 DOMAIN 감독·품질/세대/시간 근거를 사용하며 Event 무발생 timeout을 만들지 않는다. INPUT contextApplied와 STORE admission/진단은 개별 관측이다.
+
+QUALITY Event 상실은 replayAllowed=false; Stateful 최초 loss/Hold는 고정; Rear DISABLED/상실은 riskFence 보존·gate 차단이다. 신규 Event는 원 key/Meta/L/추적을 함께 예약하며 ledger128 full이면 REJECTED다. 현재 유효 또는 원 출처·시각·고정 Hold·Rear gate/fence가 입증된 Stateful은 old retirement 뒤 새 Session 재선택이 가능하다. Hold 경계 걸침/비교 부족은 UNCERTAIN·새 시작 차단·보수적 종료 요청이며 확정 만료가 아니다. 세부 분기와 Data는 [A1 연결](../90_BINDING/92_NETWORK_BINDING.md)을 따른다.
+
+A1 no-RX 구분: 150ms RX 감시는 주기 Warning의 승인된 monitor에만 적용한다. 비주기 Event 자체의 마지막 RX+150ms를 timeout으로 쓰지 않는다. Event는 원 L 만료를 기회 종료로 처리하고, 입력 신뢰 상실은 별도 DOMAIN Warning/Permission 감독·명시 품질/세대/시간 근거에서 판단한다. Permission의 감시 주기는 그 원 계약을 유지한다.

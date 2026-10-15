@@ -1,5 +1,7 @@
 # Playback_Advance — 한국어 C 형태 의사코드
 
+> A1 입력 개정 2026-10-15 · [현재 Network 연결](../../../../design/90_BINDING/92_NETWORK_BINDING.md). `L=min(양수 USE_LIMIT,500ms,2000ms)`; 최초 actual에만 적용. 과거 동결/PASS는 당시 범위의 이력이며 본문 변경은 이번 A1 결정이다. 구현·시험 NOT_RUN.
+
 [상세 설명](../functions/Playback_Advance.md) · [의사코드](../pseudocode/Playback_Advance.md) · [PLAYBACK](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-08
 
 > GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
@@ -119,12 +121,12 @@ void Playback_Advance(
                 if (!원Meta와_occurredAt의_domain_epoch_continuity_비교가능 ||
                     원_당시activation_권한_대응을_입증하지_못함) {
                     적법성_근거부족으로_분류;
-                } else if (occurredAt.earliest >= 원Meta.originalAt &&
-                           occurredAt.latest - 원Meta.originalAt < 2초_잠정 &&
+                } else if (occurredAt.earliest >= 원Meta.originalAtLatest &&
+                           occurredAt.latest - 원Meta.originalAt < 원Meta.useLimit &&
                            가능한_구간전체가_원_당시권한_범위안) {
                     적법한_최초_actual로_분류;
                 } else if (가능한_구간전체가_기한이나_권한밖임이_입증됨) {
-                    확정된_물리_출력위반으로_분류; /* 정확히2초 미허용. */
+                    확정된_물리_출력위반으로_분류; /* 정확히 L 미허용. */
                 } else {
                     경계걸침_등_적법성_불확실로_분류;
                 }
@@ -214,6 +216,7 @@ void Playback_Advance(
                 이미_실제단계_또는_종료차단이_진행) {
                 늦은_준비사실만_보호; /* actual/phase/권한 rollback 없음. */
             } else if (실제_START_직전_최신_CLEAR_후보_기한_제한_장치_자원_basis_충분 &&
+                       (이미_적법Started된_동일Session의_정상후속START || 현재후보.newSessionAllowed) &&
                        session.startAllowed && 아직_이_원START를_발행하지_않음) {
                 if (!원START_문맥과_독립_결과보호를_효력전_실제로_확보_성공) {
                     원prepared_근거_보호와_새START_대기_후속을_유지;
@@ -274,7 +277,7 @@ void Playback_Advance(
         } else {
             원_후속권한_차단과_정리의무를_유지;
         }
-        /* 같은 Session. 최초2초 gate 재적용/새 occurrence/offset resume 없음. */
+        /* 같은 Session. 최초 L gate 재적용/새 occurrence/offset resume 없음. */
     }
 
     /* B6: uncertain final과 whole retirement는 각기 별도 충분조건. */

@@ -21,7 +21,7 @@ VssStatusBuildResult Health_BuildStatus(
     OUT VssStatusSnapshot snapshot[capacity -> written]);
 ```
 
-[R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-buildstatus)의 모든 인자를 아래 C형 본문에도 유지한다. 배열 count·OUT capacity/written은 군별 논리 범위로 실제 C 파라미터/필드가 아니다. 한글 조건·대괄호 문장은 **의사 연산**이며 새 helper·enum·DTO·manager/Queue/Task를 선언하지 않는다. 계산용 지역 Snapshot은 기존 R3 타입의 설명이며 보호/게시 ABI는 TBD다.
+[R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-buildstatus)의 모든 인자를 아래 C형 본문에도 유지한다. 배열 count·OUT capacity/written은 군별 논리 범위로 실제 C 파라미터/필드가 아니다. 한글 조건·대괄호 문장은 **의사 연산**이며 새 helper·enum·DTO·manager/Queue/Task를 선언하지 않는다. 계산용 지역 Snapshot은 기존 R3 타입의 설명이며 보호/게시 실제 ABI는 E-S01이며 A2 내부 의미는 선택 완료다.
 
 <a id="ownership"></a>
 ## Caller와 읽기 전용 범위
@@ -76,27 +76,13 @@ VssStatusBuildResult Health_BuildStatus(
         // 서로 다른 owner revision 숫자를 같게 맞추지 않는다.
     }
 
-    // S3: 두 OPTIONAL을 각각 검사. NULL을 false/true로 채우지 않는다.
-    if (inputAcceptingBasis == NULL) {
-        [INPUT 준비 미확인 그대로; 필요 accepting 파생 근거 부족];
-    } else if (!이_포인터의_안전읽기_owner출처_scope_수명_유효) {
-        return VSS_STATUS_REEVALUATE;
-    } else if (*inputAcceptingBasis == false) {
-        [확인된 INPUT 경로 제한으로 기존 reduction에 연결];
+    // S3: A2 §2; non-NULL 주소/owner/scope를 모두 먼저 검증.
+    if (!두_OPTIONAL의_nonNULL_안전검증) return VSS_STATUS_REEVALUATE;
+    if (확인된_false가_하나이상) {
+        [accepting=false; 다른 NULL의 값은 unknown 그대로];
+    } else if (두_근거가_확인된_true) {
+        [accepting=true; 개별 Event 수용/재생 보장은 아님];
     } else {
-        [INPUT이 실제 확인한 이번 true 조건만 소비; 개별 accepted 보장 없음];
-    }
-    if (storeTrackingBasis == NULL) {
-        [STORE 추적/replay 준비 미확인 그대로];
-    } else if (!이_포인터의_안전읽기_owner출처_scope_수명_유효) {
-        return VSS_STATUS_REEVALUATE;
-    } else if (*storeTrackingBasis == false) {
-        [확인된 STORE 추적 제한으로 기존 reduction에 연결];
-    } else {
-        [STORE가 실제 확인한 이번 true 조건만 소비];
-    }
-    // fake true·새 manager·임의 AND/전체 truth table 없음.
-    if (accepting에_필요한_근거NULL_또는_부족_또는_기존조합정책_미정) {
         return VSS_STATUS_REEVALUATE;
     }
 
@@ -107,13 +93,13 @@ VssStatusBuildResult Health_BuildStatus(
         derived.state = VSS_REPORT_FAULT;
         [derived.availability에 기존 UNAVAILABLE 의미 연결; 새 enum 없음];
         [불명확 최종 PLAYBACK_STATE_FAILURE + FAULT + UNAVAILABLE 보존];
-    } else if (legal_actual확인된_전체Session이_아직_retirement전) {
+    } else if (정상초기화완료 && legal_actual확인된_전체Session이_아직_retirement전) {
         derived.state = VSS_REPORT_PLAYING;
         // cue 무음/반복 대기/시작 후 STOPPING·ABORTING도 전체 Session 진행.
-    } else if (초기준비_UNASSESSED_또는_진행이며_startup보고_근거충분) {
+    } else if (초기화진행_출력준비전이_확인되고_startup보고_근거충분) {
         derived.state = VSS_REPORT_STARTUP;
         // INITIALIZATION_FAILURE·초기 기본 availability 합성 없음.
-    } else if (정상초기화_준비와_기존READY_reduction_근거충분) {
+    } else if (정상초기화_준비와_A2_READY_가용서비스_근거충분) {
         derived.state = VSS_REPORT_READY;
     } else {
         return VSS_STATUS_REEVALUATE;
@@ -121,19 +107,24 @@ VssStatusBuildResult Health_BuildStatus(
     // START 수락/PREPARED/ACK/ISR/mute/객체 존재만으로 PLAYING 없음.
     // NO_START는 Started 아님; uncertain final을 late cleanup으로 normal 부활 없음.
 
-    // S5: state 이외 독립 의미도 전부 결정할 근거가 있어야 한다.
-    [기존 지원서비스·현재 제한 근거로 serviceLevel FULL/DEGRADED 파생];
-    [availability는 opaque VssAvailabilityValueType의 기존 의미로만 파생];
-    [INPUT/STORE 자원·시간/source/replay 준비의 기존 기준으로 accepting 파생];
-    if (필요_availability_serviceLevel_accepting_Fault투영_전체조합이_미정_또는_부족) {
-        return VSS_STATUS_REEVALUATE; // 기본 FULL/true·임의 정책표 없음.
+    // S5: A2 §2 우선순위와 독립 가용성/지원 수준.
+    [공통실패/QUARANTINED는 FAULT/UNAVAILABLE/DEGRADED];
+    [확인된 초기화진행은 STARTUP/UNAVAILABLE, 지원집합 근거로 FULL/DEGRADED];
+    [초기화완료 후 전체/부분서비스 준비를 FULL/DEGRADED로 대응];
+    [derived.accepting은 S3의 확인된 결과];
+    if (!모든_서비스_current_history_필수근거_충분_일관) {
+        return VSS_STATUS_REEVALUATE;
     }
-    // WINDOW 보류만으로 DEGRADED/FAULT 없음. INPUT STALE/INVALID/NO_DATA≠outputFault.
-    // Audio Fault≠accepting false. false도 duplicate/CLEAR/품질/기한/정리 계속.
+    // WINDOW 보류/입력 INVALID≠출력Fault. Audio Fault≠accepting false.
 
     // S6: FaultState 포인터가 아닌 const FaultKind 의미값 목록 각각 보호.
-    [derived.currentFaults/currentFaultCount를 실제 현재 의미 목록으로 보호];
-    [derived.recentFaults/recentFaultCount를 실제 최근 의미 목록으로 독립 보호];
+    [누락/손실/미반영 없는 전체 current instance에서 kind 집합 최대5개 보호];
+    [derived.currentFaults/currentFaultCount에 그 완전 집합만 연결];
+    [derived.recentFaults/recentFaultCount는 최대5종 이력 집합으로 독립 보호];
+    [현재/최근 원기록의 firstOccurredAt 순서로 최신 선택, 정확한 동시는 reportOccurrence];
+    if (!최신선택_또는_확인된기록부재_원시간_세대_충분) return VSS_STATUS_REEVALUATE;
+    [lastFaultPresent/Kind/Occurrence/At를 같은 원기록에서 값복사; 없음은 의미 무효];
+    [reportGeneration과 이번 evaluatedAt을 보호; 다음 reportSequence는 아직 후보];
     [derived.basis에 이번 불변 ReadBasis 값과 내부 stamps/time 참조 보호];
     if (!전체목록의_실제count범위_보호가능 ||
         !FLOW_INPUT_NodeCommunication_소비수명까지_모든참조_보호가능) {
@@ -143,6 +134,8 @@ VssStatusBuildResult Health_BuildStatus(
     // 구조체/포인터 얕은 복사는 보호가 아니다. current 해제도 recent 삭제 아님.
 
     // S7: 공개 직전 coherence/보호를 다시 검사한다. 새로운 framework 아님.
+    if (!원_VSS_generation_평가시각_유효 || 다음_reportSequence가_u32범위밖)
+        return VSS_STATUS_REEVALUATE; // 같은 세대 wrap 재사용 없음.
     if (관련_owner_변경_또는_시간인과부족_또는_OUT비간섭_참조보호_불충족) {
         [이번 계산자료는 새 보고로 공개하지 않고 기존 소비 자료 보존];
         return VSS_STATUS_REEVALUATE;
@@ -152,6 +145,7 @@ VssStatusBuildResult Health_BuildStatus(
         [부분기록 유효 공개 없음; written0·원본/이전 소비자료 보존];
         return VSS_STATUS_REEVALUATE;
     }
+    [같은 공개 직렬경계에서 reportSequence 확정; 실패/재인계는 증가 없음];
     snapshot.written = 1;
     return VSS_STATUS_CREATED; // 생성·보호 한 건. 통신 송신/Domain ACK 아님.
 }
@@ -162,8 +156,8 @@ VssStatusBuildResult Health_BuildStatus(
 
 유효 OUT에서 CREATED만 written1, 모든 REEVALUATE 경로는 written0이다. 무효 저장소는 무접근이다. 새 Snapshot 미생성은 원 Fault/최근 이력·INPUT/STORE/PB/PCM/device 원본 변화가 아니다. 원본 자료에 숨은 Evaluate/Recovery를 실행하지 않는다.
 
-Fault kind 목록과 basis 내부 stamps는 불변 보고 소유/독립 보호 자료다. FLOW→INPUT→Node Communication이 복사하면 실제 복사 완료와 참조 종료까지, 참조하면 실제 최종 소비 종료까지 유지한다. 이전 소비 중 Snapshot을 다음 생성/재평가로 덮지 않는다. Node 복사/참조 방식·직렬화·storage/게시 원자성·key/시간 ABI는 TBD다. 실제 송신/Domain 수용 성공이나 무손실을 확정하지 않는다.
+Fault kind 목록과 basis 내부 stamps는 불변 보호한다. [A2 인계](../../../../design/90_BINDING/93_NETWORK_STATUS_BINDING.md#handoff)의 HEALTH 2슬롯 → INPUT 단일 동기 변환 → Network 전체 복사 반환까지 참조를 유지한다. 이전 소비 중 Snapshot을 덮지 않는다. 실제 ABI/직렬화/게시/고정 용량 입증은 E-S01이며 counter/원 평가시각은 REEVALUATE에서 불변이다.
 
-F1/F3 후보는 관측 변경·OPTIONAL·legal actual/whole Session·현재/최근 분리·OUT0/1·수명이다. F4 전체/초기 reduction·Q08~10 DTO·source/image/C ABI, F5 물리 actual/STOP/Recovery·DMA/시간/메모리는 미검증이다. P2 HOLD·OPEN/FAIL/CR 보존, Host/Firmware/Build/Flash/Board NOT_RUN이다.
+A2 내부 reduction·원기록·DTO 변환·bounded handoff는 설계 선택 완료다. ST01~ST12 문서 분기를 검수하며 실제 clock/Boot/ABI/sink/DOMAIN 설치 source는 E-S01~05다. P2/물리 Gate·기존 CR은 유지하며 Host/Firmware/Build/Flash/Board NOT_RUN이다.
 
 [설명 인자·반환](../functions/Health_BuildStatus.md#contract) · [두 OPTIONAL](../functions/Health_BuildStatus.md#optional) · [state 근거](../functions/Health_BuildStatus.md#states) · [Snapshot 수명](../functions/Health_BuildStatus.md#snapshot) · [R2](../../../../design/30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus) · [R3](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssstatussnapshot) · [R4](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md) · [R5](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#health-buildstatus) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-buildstatus) · [Fault writer 설명](../functions/Health_Evaluate.md#ownership)
