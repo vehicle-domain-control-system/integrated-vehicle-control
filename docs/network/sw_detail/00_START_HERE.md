@@ -1,52 +1,20 @@
-# Network SW 탐색 시작 — U1 지도 / U2 상세 후보
+# Network 상세설계 읽기
 
-이 지도는 기존 Network 문서를 **Network → Layer → Module → Function** 순서로 찾는 입구다. 함수 이름·Data·Wire의 정본은 연결된 기존 문서이며, 여기의 FN-ID는 탐색용 식별자다.
+이 문서는 차량 노드 사이에서 의미 데이터가 전송 바이트로 바뀌고, 수신 노드의 타입 기반 API에 전달되는 과정을 설명한다. 현재 상세화한 범위는 **CAN FD 22 Wire·25 수신 경계, UART-M 23 Wire·23 수신 경계와 UART-C 3 Wire·3 수신 경계**다. DOMAIN Adapter와 Network 공통 Service는 이 메시지 정본을 기존 C2의 등록·수신·송신·조회·후발 관측 경계에 연결한다. CIS의 후방 관측 → DOMAIN 입력은 기존 대표 수직 흐름을 그대로 사용하며, 나머지 CAN 경로는 고유 자료·함수·미결 분기를 추가했다. 실제 양단 채택·Driver/보드 실행은 별도 확인 대상이다.
 
-| 현재 지위 | 값 |
-|---|---|
-| 단계 / 문서 | `U2_DOCUMENT_BEHAVIOR_PSEUDOCODE / DESIGN_CANDIDATE` |
-| 이전 판정 | `G0=CONDITIONAL_PASS`, `G1_INDEPENDENT=PASS` (DOCUMENT_MAP 범위) |
-| 이번 검수 | `U2_SELF_CHECK` 대상, `G2_INDEPENDENT=PENDING` |
-| 기존 Source 기준 | `docs/network@c60dcf65de52b7fb28e0464d616ba00d350890bb` |
-| G1 지도 인수 SHA | `ad934964618c7f11260ed58dcbd86f881cb99086` |
-| 새 문서 반영 SHA | `target_sha=PENDING_USER_PUSH` |
-| 구현·계약 | 기존 `DECLARED_SOURCE / PROPOSED_DESIGN / WIRE_PROPOSED / BINDING_OPEN` 유지 |
+1. [Network 전체 개요](01_NETWORK_OVERVIEW.md)에서 역할과 처리 순서를 확인한다.
+2. [노드·링크 지도](02_NODE_LINK_MAP.md)에서 담당 보드와 통신 구간을 찾는다.
+3. [Layer·Module 색인](03_LAYER_MODULE_INDEX.md)에서 책임을 따라 하위 문서로 이동한다.
+4. [CAN FD 전체 상세](04_CAN_FD_OVERVIEW.md)에서 22종의 양단 함수·Data·흐름을 찾는다.
+5. [UART-M 전체 상세](05_UART_M_OVERVIEW.md)에서 상향4·하향17·private2와 공통 Stream, Query, 원 CAN 투영을 따라간다.
+6. [UART-C 전체 상세](06_UART_C_OVERVIEW.md)에서 Pi 비전·상태와 CIS Permission 중계의 25필드·양방향 흐름을 확인한다.
+7. [DOMAIN Adapter·공통 Service](07_DOMAIN_ADAPTER_SERVICE.md)에서 공개72·TxPort26·Observer11의 소유권과 등록·수신·송신·수명을 확인한다.
+8. [노드별 Network 경계](08_NODE_BOUNDARIES.md)에서 8개 노드의 생산자·소비자·실패·수명과 17개 링크를 연결한다.
+9. [종단 기능·오류·복구](09_E2E_FAILURE_RECOVERY.md)에서 SC01~SC18의 생산자·소비 Owner·정상/실패/복구와 실제 완료 경계를 따른다.
+10. [CIS_REAR Data 정본](data/CIS_REAR_DATA.md)과 [전체 송수신 흐름](flows/CIS_REAR_144_TO_344.md)에서 양단 의미를 연결한다.
 
-## 원하는 자료로 이동
+함수 문서는 원형, 매개변수와 수명, 정상·실패 동작, 한국어 C형 의사코드를 함께 제공한다. 기존 공개 선언과 새 내부 책임 후보는 구분한다. 내부 후보 원형은 제품 헤더나 실제 SDK API가 아니다.
 
-- [Layer 지도](01_LAYER_MAP.md): 기존 7계층과 Common Infra의 책임.
-- [Node 지도](02_NODE_MAP.md): DOMAIN/CIS/BCM/VSS/WINDOW 및 외부 ESP32/Pi 자료.
-- [Function 색인](03_FUNCTION_INDEX.md): 원형 출처와 Module 복귀 경로.
-- [Flow 색인](04_FLOW_INDEX.md): `CIS_REAR`, `DOMAIN_PERMISSION`의 논리 출처.
-- U2 양단 상세 후보: [CIS_REAR](flows/10_CIS_REAR_FLOW.md), [DOMAIN_PERMISSION](flows/20_DOMAIN_PERMISSION_FLOW.md).
-- [최소 CAN LinkPort 의미](layers/06_DRIVER_PORT/10_CAN_LINKPORT_SEMANTICS.md): 능력·소유·accept/terminal/RX/health/time 경계.
+CAN 필드 배치와 시간 수치에는 아직 양단 채택이 필요한 항목이 있다. 원 생산 기동·세대와 품질을 C2로 연결할 근거가 없으면 해당 인계를 진행하지 않는다. 문서를 작성했다는 사실은 실제 Driver·ABI·보드 동작이 검증됐다는 뜻이 아니다. 기존 [Interface 문서](../interface/00_START_HERE.md)의 C2 v0.6/Vehicle v0.3도 미승인 후보다.
 
-Function 색인은 U0의 `DOCUMENTED_API 116 + DOCUMENTED_PRIVATE_API 27` **143개 목록 행**을 인수하고, 기존 Source에서 확인한 `DomainNet_PublishPermission` 1행을 별도 출처로 더한 **144개 선언 탐색 항목**을 제공한다. 구현 함수 수 또는 신규 API 수가 아니다. Header 메타데이터·실제 구헤더·첨부 I1 함수는 [별도 선언 근거](03_FUNCTION_INDEX.md#source-evidence)로 구분한다.
-
-## 기존 정본과 전체 Source
-
-[SW Architecture](../network_sw_architecture.md)와 [Network 설계 배경](../network_design_draft_v0.1.md)은 원래 책임·토폴로지를 설명한다. Interface 39개 문서는 아래 공통 입구와 [Node별 원문](02_NODE_MAP.md#source-coverage)에서 직접 찾을 수 있다.
-
-| 자료 | 기존 Source |
-|---|---|
-| Interface 읽기·지위 | [시작](../interface/00_START_HERE.md), [전체 연결·책임](../interface/01_NETWORK_OVERVIEW.md) |
-| CAN 계약 후보 | [공유 CAN FD](../interface/03_COMMUNICATION/10_CAN_FD.md) |
-| 제품 UART 계약 후보 | [ESP32↔DOMAIN UART-M](../interface/03_COMMUNICATION/20_UART_M.md), [Pi↔CIS UART-C](../interface/03_COMMUNICATION/30_UART_C.md) |
-| 외부 Peer 계약 | [MOBILE↔ESP32 BLE 경계](../interface/03_COMMUNICATION/40_BLE.md) |
-| 공통 의미·수명 | [Data·ID·AGE](../interface/04_COMMON/10_DATA_AND_ID_RULES.md), [API 사용·실패](../interface/04_COMMON/20_API_USAGE_AND_FAILURE.md), [Enum↔Wire](../interface/04_COMMON/30_ENUM_WIRE_MAPPING.md) |
-| 상대 메시지·미합의 | [48 메시지 색인](../interface/05_MESSAGE_INDEX.md), [팀 OPEN](../interface/06_OPEN_FOR_TEAM.md) |
-
-## 사용 범위와 다음 문서
-
-S32K144/344 측 Network가 개발 범위이며 ESP32 Gateway 내부·Pi Application·기능 정책은 해당 Owner의 책임이다. WINDOW는 **[구현 보류 — 설계 유지]**, BCM `INTERIOR_LIGHT`는 유지, `EXTERIOR_LIGHT`는 제외다. 공유 하위 계층의 현 Source는 설계 문서이며 현재 Network 트리에 실행 구현이 없다(`SOURCE_ONLY / IMPLEMENTATION_NOT_PRESENT`).
-
-U2 ACTIVE 7개 함수의 `10_BEHAVIOR.md`와 `20_PSEUDOCODE.md`를 5개 Module에 분리 작성했다. [활성 함수별 왕복 링크](03_FUNCTION_INDEX.md#u2-active-detail)에서 찾는다. 나머지 137개 선언은 상세 `PLANNED_ONLY / BEHAVIOR_NOT_DESIGNED`이며, 구현·Header·Wire 채택을 승인한 것이 아니다. 후속 U3/U4D는 G2 독립 판정과 별도 사용자 허용 범위에 따른다.
-
-`NET_SUBMIT_OK`는 로컬 안정 인계만 의미한다. Wire 채택·mm↔cm·enum/raw·Permission 원 Producer와 **150 ms `SOURCE_LIMIT_NOT_AGREED`**·SDK/HW/시간 능력은 OPEN이다. [원본 부재 C2 Header 3개](03_FUNCTION_INDEX.md#missing-source)는 `MISSING_SOURCE / OPEN-C2-SOURCE`로 유지한다. 추가로 발견한 `Gateway_Types.h` 선언 Snapshot 부재는 [별도 OPEN](02_NODE_MAP.md#missing-source)인 `KNOWN_PREEXISTING / OPEN-GW-TYPES-SOURCE`이며 기존 세 경로와 구분한다. 새 Host/Firmware/Board 시험 결과가 이 지도에 추가된 것은 아니다.
-
-
-## U4D CAN common detailed design navigation
-
-2026-10-12 사용자 직접지시에 따른 문서 상세설계 후보. G3 독립/로컬인수 PASS 유지; 기준 `9e0b1e5d97d32971bb0863e144dd2ef515f2ccf4`. U4D_PROPOSED_PRIVATE / DESIGN_ONLY, G4D 독립검수 PENDING, U4C NOT_STARTED, target PENDING_USER_PUSH.
-
-[CAN 16개 private 후보 함수](05_CAN_COMMON_FUNCTION_INDEX.md) · [CAN TX/RX Flow와 22개 후속시험 설계](flows/30_CAN_COMMON_TX_RX_FLOW.md). 기존본문·144FN·U2계약은보존한다.
+요구103·Owner 미결35·Wire48/Rx51·시나리오18과 G6 당시 Interface39 봉인본을 보존한다. 기존 S6/B20/G6 PASS는 당시 기준선의 판정이며, 현재 별도 SW 후보126개는 PR #68 Commit `4b7fc906efb601901f4d5859ffd47817cd780fe8`의 r1 Interface40개에 문서 동기화된 상태다. 후보 profile, 원 기동/세대, CIS Environment, 실제 Driver·Clock·수명·same-observation·App/BLE 연결은 확인된 근거 범위에서만 사용한다. WINDOW 실행·표시·감시와 공식 게시의 기존 HOLD를 유지한다. 본문의 S6 이후 협의·승인 안내는 남은 미결과 후속 공식·제품 채택에 적용하며, 이미 완료한 r1 후보 동기화를 대기 상태로 되돌리는 의미가 아니다. 추가 협의 반영은 별도 근거·승인 범위를 따른다.
