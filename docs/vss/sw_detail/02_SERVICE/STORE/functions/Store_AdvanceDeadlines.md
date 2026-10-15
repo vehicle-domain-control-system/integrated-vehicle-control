@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [STORE](../00_MODULE_OVERVIEW.md) · CORE-05 · [한국어 의사코드](../pseudocode/Store_AdvanceDeadlines.md)
 
-> GUIDE · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 시작 `VSS@7bb5859b6aef909ed80f527c477280b09df50568`; 동결 의미 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
+> GUIDE · 동결 의미 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
 
 RX 없는 시간 기회에도 accepted occurrence의 원 age와 기존 Stateful Hold/Rear 후보를 진행한다. **먼저 PLAYBACK 통지 반영·관측 최신성·시작 지식, 다음 원 시간 비교, 마지막 만료**다. 현재 idle나 처리 now만으로 과거 무출력을 만들지 않는다.
 
@@ -65,10 +65,8 @@ Rear Activation/위험 결합은 CORE-03이 반영한 현재 적용 가능한 �
 | F3_PARTIAL_INDEPENDENT / [D2 quality/Hold](Store_ApplyInput.md#quality-hold) | ACTIVE→INVALID 반복/validUntil 없음·선행/후행·Rear disable·보호 부족. 최초 loss 고정·후보 제거만·now 합성 없음 검사 |
 | F4_EXTERNAL_GATE / [Time/실행 TBD](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#execution) | 실제 timebase/wrap/정밀도·owner 직렬화·추적 표현과 Hold 정책 확정만 미정. 논리 분기 작성 가능 |
 | F5_PHYSICAL_SAFETY_GATE / [HW](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#hardware) | PB가 제공할 과거 무출력/actual/전체 retirement의 실제 충분성 검증만 HW_UNVERIFIED. 현재 idle를 물리 증명으로 쓰지 않음 |
-| F6_DEFERRED_SCOPE / [Binding](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md) | D3-2 PB 상세·펌웨어/Host/보드 실행·WINDOW 제품 연동은 별도 범위 |
+| F6_DEFERRED_SCOPE / [Binding](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md) | 펌웨어/Host/보드 실행·WINDOW 제품 연동은 별도 범위 |
 
-브링업 원본 108개 중 C/H 검색 범위에서 이 논리 심볼과 제품 deadline ledger 대응은 확인되지 않았다. `VssAudioSession.c:248`의 pending-slot 구현 존재가 원 occurrence/통지/expiry 충분성의 증거는 아니다. 실제 대응은 BINDING_TBD다. 제품 채택 시 기존 STORE의 시간 비교/관측 adapter·정책 값 바인딩만 최소 변경하고 후보가 틀리면 그 부분을 재검토한다. 동결 `<2초`/Hold 의미·D2를 바꾸려면 별도 CR이다.
-
-위 single-pending 코드 조각의 정적 관측만 SOURCE_CONFIRMED, 동결 의미 근거는 LOGICAL_APPROVED, 외부 IF는 PROPOSED_IF다. Git 제외 보관 위치 `.vss_work/reference/bringup_20261007/`와 읽은 소스 SHA는 로컬 `evidence/VSD_D3_1_SOURCE_MAP.json`/검수 ZIP에서 추적하며 실제 GitHub 제품 소스 링크로 제시하지 않는다.
+현재 PLAYBACK 관측의 적용·통지는 [Playback_Advance 상세 설명](../../PLAYBACK/functions/Playback_Advance.md#pairing)에서 읽는다. 보관 C/H 범위에서 `Store_AdvanceDeadlines` 심볼과 제품 deadline ledger 대응은 미확인이며 BINDING_TBD다. 보관 pending-slot 구현의 정적 관측만 SOURCE_CONFIRMED이고, 그 존재가 원 occurrence/통지/expiry 충분성의 증거는 아니다. 동결 의미 근거는 LOGICAL_APPROVED, 외부 IF는 PROPOSED_IF다. 제품 채택 시 기존 STORE의 시간 비교/관측 adapter·정책 값 바인딩만 최소 변경하고 후보가 틀리면 그 부분을 재검토한다. 동결 `<2초`/Hold 의미·D2를 바꾸려면 별도 CR이다.
 
 [R2](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-advancedeadlines) · [R3 Store](../../../../design/40_DATA/20_STORE_DATA.md#vssstatefulstate) · [R3 PB](../../../../design/40_DATA/40_PLAYBACK_DATA.md#vssplaybackobservation) · [R4 coherent read](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#coherent-read) · [R5](../../../../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#store-advancedeadlines) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-store-advancedeadlines)

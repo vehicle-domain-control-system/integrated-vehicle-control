@@ -7,7 +7,7 @@
 <a id="scope"></a>
 ## 책임과 읽는 순서
 
-HAL/BSP는 5 Layer 중 하나이며 AUDIOHAL_BOUNDARY는 그 **내부 Boundary**다. 10 Module·18 Core 정의와 기존 16 Core 문서쌍은 그대로다. BSP의 정적 보드/generated·이미지 배치 근거와 HAL의 진행 중 원등록·raw 수명은 합치지 않는다.
+HAL/BSP는 5 Layer 중 하나이며 AUDIOHAL_BOUNDARY는 그 **내부 Boundary**다. 10 Module·18 Core 정의와 18 Core의 설명·의사코드 쌍을 따른다. BSP의 정적 보드/generated·이미지 배치 근거와 HAL의 진행 중 원등록·raw 수명은 합치지 않는다.
 
 | 연결 | 원본 writer와 후속 소비 | 실제 결합의 위치 |
 |---|---|---|
@@ -21,9 +21,9 @@ R6의 [TX Request](../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-aud
 <a id="source-basis"></a>
 ## 지금 있는 근거와 다음에 필요한 근거
 
-`VSS@f5d7361f42c4f7340a5411560f47e5d0ac504382`의 추적 파일과 현 작업본에는 제품 C/H 및 ELF/map/bin/hex가 없다(`SOURCE_NOT_PRESENT_AT_TARGET`). 따라서 아래 모든 경계의 **현재 제품 source/image·ABI 대조는 `SOURCE_NOT_VERIFIED / BINDING_TBD`**, 물리 충분성은 `HW_UNVERIFIED`다.
+아래 모든 경계의 **현재 제품 source/image·ABI 대조는 `SOURCE_NOT_VERIFIED / BINDING_TBD`**, 물리 충분성은 `HW_UNVERIFIED`다.
 
-설치된 **2026-10-07 S32K344 bring-up 참고 108파일의 출처·SHA를 대조**한 뒤 아래 원문을 읽었다. 확인 수준은 `REFERENCE_SOURCE_OBSERVED`이며 과거 재생 기록·파일 이름·debug flag는 현재 제품/보드 완료 근거가 아니다. 행별 SHA·symbol·정확한 행 범위는 검토 증거에 보존한다. 이 표는 재사용 후보의 위치를 보여 준다.
+아래는 **2026-10-07 S32K344 bring-up 참고 소스**의 정적 관측이다. 확인 수준은 `REFERENCE_SOURCE_OBSERVED`이며 과거 재생 기록·파일 이름·debug flag는 현재 제품/보드 완료 근거가 아니다. 이 표는 재사용 후보의 위치를 보여 준다.
 
 | 경계 / 기존 Core·동결 계약 | 실제 참고에서 읽은 사실 | 추가로 필요한 원등록·회차·시간/충분조건 | 차단 효과 / 결정 owner·Gate |
 |---|---|---|---|
@@ -36,7 +36,7 @@ R6의 [TX Request](../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-aud
 | Recovery / CORE-11/12/15, [R4 현재 허용](../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) | 참고의 초기 제어 함수·flag를 읽음. 승인 6필드 permission와 독립 performed/verified의 현재 제품 구현 근거는 미제공 | 원 현재 허용·old 실제 안전화, action 매핑, 수행 operation/occurredAt와 별도 효과/verifiedAt·HEALTH current pair | 미확인 수행·성공 verified·Fault clear 차단. HEALTH/FLOW/STREAM/CONTROL·정책/F4/F5; 허용·pair 논리는 F1/F3 후보 |
 | 실행 이미지·RTD/메모리·시간 / [R6 TBD](../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#tbd-register) | 참고 RTD header/API 및 generated·linker를 정적 열람. 현 VSS 대응 ELF/map·MPU 실적용/계측은 미제공 | 정확한 현재 source/RTD revision·config→image hash·symbol/section·실제 메모리/시간 domain/epoch/연속성·WCET·전원/아날로그 계측 | 관련 물리 효과만 활성화 보류. 제품/HAL/BSP/보드 owner·F4/F5; 독립 논리 후보는 유지 |
 
-R6 작성 당시에는 Codec/Clock Header 본문이 미제공이었다. 이번 설치 참고본에는 해당 `.h`가 실제 있고 vendor 중립 선언을 관측했다. **그 날짜의 참고 선언 확인**이며 현재 R3/R6 typed 계약 구현·transitive ABI/현재 제품 결합 확인은 아니다. 동결 R6의 과거 출처 설명을 소급 수정하지 않는다.
+2026-10-07 참고본의 Codec/Clock `.h`에서 vendor 중립 선언을 관측했다. **그 날짜의 참고 선언 확인**이며 현재 R3/R6 typed 계약 구현·transitive ABI/현재 제품 결합 확인은 아니다. 동결 R6의 과거 출처 설명을 소급 수정하지 않는다.
 
 <a id="registration"></a>
 ## 원등록은 효력 전에 보호하고 독립 회수한다
@@ -131,4 +131,4 @@ TX Request의 3 OUT, TX Advance의 5 OUT, CONTROL의 5 OUT, STREAM Advance의 7 
 | F4_SOURCE_IMAGE_GATE | 현재 source/generated/RTD revision→실행 image·symbol/section·Header/include·ABI·등록/저장/직렬화·외부 IF | 필요한 제품 결합만 BINDING_TBD |
 | F5_PHYSICAL_SAFETY_GATE | 현재 DMA/descriptor·다음 방문/IRQ/WCET·cache/MPU·원시각/coverage·STOP/actual·Codec/Clock/전원/아날로그 효과 | 입증되지 않은 해당 물리 효과만 HW_UNVERIFIED |
 
-P1B_C1 REQUIRED_NOT_RUN(9 Core/16 Q), Q01~14/R6-01~08·외부 IF/source-image·TBD-FINAL·PCM/STOP/출력/Recovery 미결과 P2 HOLD는 그대로다. OPEN-009/010과 과거 FAIL도 로컬 원장에 보존한다. 이 문서의 정적 검토는 제품 안전 승인·실제 Host/Firmware/Build/Flash/보드 시험·GD5 전체 검수 또는 D6 착수가 아니다.
+Q01~14/R6-01~08·외부 IF/source-image·TBD-FINAL·PCM/STOP/출력/Recovery 미결과 P2 HOLD는 그대로다. 정적 근거는 제품 안전 승인이나 실제 Host/Firmware/Build/Flash/보드 시험을 대신하지 않는다.

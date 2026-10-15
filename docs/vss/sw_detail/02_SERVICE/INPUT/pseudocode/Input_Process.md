@@ -2,7 +2,7 @@
 
 [상세 설명](../functions/Input_Process.md) · [INPUT](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-02
 
-> GUIDE · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED. 실제 C/Host 실행 결과가 아니다.
+> GUIDE · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED. 실제 C/Host 실행 결과가 아니다.
 
 <a id="contract"></a>
 ## 최신 논리 계약

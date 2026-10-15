@@ -2,7 +2,7 @@
 
 [AUDIO_TX](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · [한국어 의사코드](../pseudocode/AudioTx_Request.md)
 
-> CORE-13 · D5-1 SELF_CHECKED / 독립 부분 검수 대기. R2~R6 논리 계약의 상세 설명이며 실제 C ABI·물리 안전의 확정본은 아닙니다.
+> CORE-13. R2~R6 논리 계약의 상세 설명이며 실제 C ABI·물리 안전의 확정본은 아닙니다.
 
 <a id="contract"></a>
 ## 1. 공개 경계와 목적
@@ -115,7 +115,7 @@ vendor 지속 DMA/SAI 스트림은 Attempt 경계를 넘을 수 있습니다. �
 | returned | 실제 PCM operation의 operation/key/noFutureAccess/basis인 VssPcmReturnEvidence. 아래 충분조건 충족 때만 생성. STREAM이 정확한 회차에 적용. |
 | diagnostics | 원 producer/stage/cause/target/configuration/operation(확인 때만)/occurredAt. HEALTH 반영/보호 추적까지 유지. Fault 분류·회복 허용·Network 송신은 하지 않음. |
 
-각 OUT의 storage 유효성을 **capacity/written을 읽거나 쓰기 전에** 검증합니다. 유효한 군만 written=0으로 시작하고 유효 범위 안에서 개별 count를 증가시킵니다. 요청군이 무효여도 진단군이 유효하면 전달 가능하고, returned가 가득 차도 다른 군을 일괄 중지하지 않습니다. 한 군의 마지막 슬롯로 다른 종류 사실을 덮지 않습니다. count=0은 그 호출에서 전달된 사실 없음이지 작업·정리 완료가 아닙니다.
+각 OUT의 storage 유효성을 **capacity/written을 읽거나 쓰기 전에** 검증합니다. 유효한 군만 written=0으로 시작하고 유효 범위 안에서 개별 count를 증가시킵니다. 요청군이 무효여도 진단군이 유효하면 전달 가능하고, returned가 가득 차도 다른 군을 일괄 중지하지 않습니다. 한 군의 마지막 슬롯으로 다른 종류 사실을 덮지 않습니다. count=0은 그 호출에서 전달된 사실 없음이지 작업·정리 완료가 아닙니다.
 
 불가/가득 찬 군의 미전달 사실과 참조는 owner의 제한된 보호 공간에 남겨 Advance 후속으로 전달합니다. 새 효력 전에 필요한 보호 공간이 없으면 신규 수용을 제한합니다. 기존 사실을 임의 폐기/eviction하거나 무제한 pool을 가정하지 않습니다. 이미 받은 사실의 부족/손실은 진단·불확실성으로 보존하며 성공을 합성하지 않습니다. 전달 written은 소비자 반영 ACK가 아니며, 실제 반영 또는 보호된 추적 종료까지 수명을 유지합니다.
 
@@ -144,7 +144,7 @@ VSS_COVERAGE_INSUFFICIENT는 필요한 관측/상관 근거 부족, VSS_COVERAGE
 | R4 최초 One-shot 시간 | F2_PROVISIONAL_TESTABLE | 원발생→현재 제출 gate와 원발생→actual을 분리. 후속 경계 후보: <2/정확히2/시간 연속성 부족, 정상 cue 재gate 없음 | 잠정 2초의 제품값·원 source 시간/actual 관측 상관 입증 |
 | R4 Buffer·R5 STOP/return | F1 / F3 / F5_PHYSICAL_SAFETY_GATE | 원 targets·STREAM 선차단·safe-return 불충분/손실·정리 후속 분기. 후속 비구동 후보: subset STOP·즉시 raw·OUT full | 지속 vendor와 개별 operation 대응, FIFO/frame 잔류·no-output/종료·현재 DMA safe-write/WCET·메모리 조건은 실제 source/image 및 보드 근거 필요 |
 
-지금은 문서 정적 검토만 수행합니다. 후보를 전면 HOLD로 덮지 않으며 실제 코드 재사용 symbol은 이번에 조사/확정하지 않았습니다. 잠정값 변경 위치는 기존 Timing/제품 owner, 구체 API·저장 수단은 Binding입니다. 후속 코딩 트랙은 위 독립 논리를 우선 후보로 삼되 별도 지시·범위·Gate 이후에만 착수합니다. 제품·Host/보드 시험 성공을 주장하지 않습니다.
+후보를 전면 HOLD로 덮지 않으며 실제 코드 재사용 symbol은 미조사/미확정입니다. 잠정값 변경 위치는 기존 Timing/제품 owner, 구체 API·저장 수단은 Binding입니다. 후속 코딩 트랙은 위 독립 논리를 우선 후보로 삼되 별도 지시·범위·Gate 이후에만 착수합니다. 제품·Host/보드 시험 성공을 주장하지 않습니다.
 
 <a id="references"></a>
 ## 13. 원문과 연결

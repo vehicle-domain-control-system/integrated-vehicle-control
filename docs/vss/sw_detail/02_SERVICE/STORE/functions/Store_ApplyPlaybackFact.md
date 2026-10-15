@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [STORE](../00_MODULE_OVERVIEW.md) · CORE-04 · [한국어 의사코드](../pseudocode/Store_ApplyPlaybackFact.md)
 
-> GUIDE · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 시작 `VSS@7bb5859b6aef909ed80f527c477280b09df50568`; 동결 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
+> GUIDE · 동결 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
 
 PLAYBACK이 정규화한 원 One-shot 발생의 최초 actual/전체 최종 사실 하나를 STORE 이력에 적용한다. raw IRQ·HAL 수락·cue 종료를 STORE가 actual 또는 전체 성공으로 재판정하지 않는다. 적용 완료 증명이 없는 통지는 완료로 응답하지 않는다.
 
@@ -28,7 +28,7 @@ VssFactApplication Store_ApplyPlaybackFact(
 <a id="ownership"></a>
 ## 호출·상태 변경·수명
 
-Caller는 기존 [Playback_Advance/통지 내부 단계](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#fact-notification)다. 해당 D3-2 상세 문서쌍은 PLANNED_NOT_WRITTEN이므로 동결 원문만 링크한다. STORE는 [VssOccurrenceRecord](../../../../design/40_DATA/20_STORE_DATA.md#vssoccurrencerecord)의 firstStartFact/finalFact/state/tracking/revision과 필요한 적용 흔적만 쓴다. PLAYBACK Session/Attempt/phase·INPUT authority·Stateful ACTIVE/CLEAR/quality/Hold·HEALTH Fault·PCM 회차는 변경하지 않는다. Callee는 필요한 기존 Runtime/보호 경계이며 PLAYBACK 역호출이 아니다.
+Caller는 기존 [Playback_Advance/통지 내부 단계](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#fact-notification)다. 현재 [Playback_Advance 상세 설명](../../PLAYBACK/functions/Playback_Advance.md#pairing)과 [의사코드](../../PLAYBACK/pseudocode/Playback_Advance.md)에서 통지 문맥을 함께 읽는다. STORE는 [VssOccurrenceRecord](../../../../design/40_DATA/20_STORE_DATA.md#vssoccurrencerecord)의 firstStartFact/finalFact/state/tracking/revision과 필요한 적용 흔적만 쓴다. PLAYBACK Session/Attempt/phase·INPUT authority·Stateful ACTIVE/CLEAR/quality/Hold·HEALTH Fault·PCM 회차는 변경하지 않는다. Callee는 필요한 기존 Runtime/보호 경계이며 PLAYBACK 역호출이 아니다.
 
 정규화 fact는 ledger 수명으로 보호한다. PLAYBACK의 임시 반환 포인터를 얕게 보관하고 APPLIED라 할 수 없다. raw HAL record 전체를 replay 수명까지 강제로 보관하지도 않는다. accepted 때 확보한 추적에 필요한 불변 사실/적용 증명이 맞는지 확인하며 표현·용량·직렬화 수단은 TBD다. 기존 accepted/final eviction으로 공간을 만들지 않는다.
 
@@ -68,10 +68,8 @@ UncertainFinal 또는 기존 whole final 뒤 새로운 정상 actual/final이 �
 | F3_PARTIAL_INDEPENDENT / [R4 async](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#late-results) | 추적/참조 보호 실패·cue scope·no-start 후 재확인 분기 검사. 실제 lower 증거 대신 **명시적으로 충분/부족인 typed fixture**를 사용하며 실제 출력 근거를 생성했다고 주장하지 않음 |
 | F4_EXTERNAL_GATE / [Identity TBD](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#identity) | 제품 identity·reboot/wrap·bounded 추적/복사·실제 API 연결만 미확정. 내부 멱등/거부 논리 전체 HOLD 아님 |
 | F5_PHYSICAL_SAFETY_GATE / [HW TBD](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#hardware) | PLAYBACK이 소비하는 실제 fresh actual·과거 no-output coverage·전체 종료/차단 충분성의 물리 증명만 미확정. STORE가 raw 사실을 대체 판정하지 않음 |
-| F6_DEFERRED_SCOPE / [Mapping](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md) | D3-2 PLAYBACK 쌍·펌웨어/Host/보드 실행 별도. 이 Core는 WINDOW 제품 연결을 추가하지 않음 |
+| F6_DEFERRED_SCOPE / [Mapping](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md) | 펌웨어/Host/보드 실행은 별도 범위. 이 Core는 WINDOW 제품 연결을 추가하지 않음 |
 
-2026-10-07 보관 원본의 C/H 검색 범위에 `Store_ApplyPlaybackFact` 심볼은 없고 `VssAudioSession.c:248`의 단일 pending request 경계는 확인했다. 이 구현이 최종 fact/ledger 계약을 충족한다는 증거는 아니다. BINDING_TBD/HW_UNVERIFIED를 유지한다. 실제 채택 때 기존 STORE owner의 identity/보호 adapter만 최소 대응하고, 후보 부적합은 그 대응부를 재검토한다. 동결 의미 변경은 별도 CR이다.
-
-이 single-pending 코드 조각의 정적 관측만 SOURCE_CONFIRMED, 동결 의미 근거는 LOGICAL_APPROVED다. Git 제외 보관 위치 `.vss_work/reference/bringup_20261007/`와 읽은 소스 SHA는 로컬 `evidence/VSD_D3_1_SOURCE_MAP.json`/검수 ZIP에서 추적하며 실제 GitHub 제품 소스 링크로 제시하지 않는다.
+보관 C/H 범위에 `Store_ApplyPlaybackFact` 심볼은 미확인이며, 보관 Session의 단일 pending request 경계에 대한 정적 관측만 SOURCE_CONFIRMED다. 이 구현이 최종 fact/ledger 계약을 충족한다는 증거는 아니다. BINDING_TBD/HW_UNVERIFIED를 유지한다. 실제 채택 때 기존 STORE owner의 identity/보호 adapter만 최소 대응하고, 후보 부적합은 그 대응부를 재검토한다. 동결 의미 근거는 LOGICAL_APPROVED이며 그 의미 변경은 별도 CR이다.
 
 [R2](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyplaybackfact) · [R3 fact](../../../../design/40_DATA/40_PLAYBACK_DATA.md#vssplaybackfact) · [R3 record](../../../../design/40_DATA/20_STORE_DATA.md#vssoccurrencerecord) · [R4 async](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md) · [R5 통지](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#fact-notification) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-store-applyplaybackfact)

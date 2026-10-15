@@ -2,7 +2,7 @@
 
 [상세 설명](../functions/Flow_Process.md) · [FLOW](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-01
 
-> GUIDE · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
+> GUIDE · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
 
 <a id="contract"></a>
 ## 최신 논리 계약
@@ -144,8 +144,8 @@ VssFlowProgress Flow_Process(
 <a id="postconditions"></a>
 ## 사후조건과 문서 경계
 
-재수집 반환 전 이미 안전하게 완료한 INPUT/STORE 사실을 되돌리지 않는다. old pending notification과 인과 부족이 풀리기 전 새 Session/START·정상 보고 확정은 없다. Rx 없다고 결과/시간/품질 진행을 생략하지 않는다. settled는 이번 조율 완료이며 실제 출력 성공 아님이다.
+재수집 반환 전 이미 안전하게 완료한 INPUT/STORE 사실을 되돌리지 않는다. old pending notification과 인과 부족이 풀리기 전 새 Session/START·정상 보고 확정은 없다. Rx 없다고 결과/시간/품질 진행을 생략하지 않는다. settled는 이번 조율 완료이며 실제 출력 성공을 뜻하지 않는다.
 
-상세한 PB/POLICY/HEALTH 쌍은 PLANNED_NOT_WRITTEN이다. 이 문서의 calls는 아래 동결 원문에 근거하며 D3-2/3 구현 착수·새 API 정의가 아니다. 초기 HW/IF 미정은 실제 adapter/물리 수행 검증만 차단한다. 네 문서쌍의 독립 SW 순서/거부/재수집/보호 논리를 `return TBD`로 대체하지 않는다.
+현재 PB/POLICY/HEALTH의 상세 설명은 [Playback_RequestTransition](../../../02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md), [Playback_Advance](../../../02_SERVICE/PLAYBACK/functions/Playback_Advance.md), [Select_Choose](../../../02_SERVICE/POLICY/functions/Select_Choose.md), [Health_Evaluate](../../../02_SERVICE/HEALTH/functions/Health_Evaluate.md), [Health_BuildStatus](../../../02_SERVICE/HEALTH/functions/Health_BuildStatus.md)에서 읽고 각 문서의 의사코드 링크로 이어갑니다. 이 문서의 calls는 아래 동결 원문에 근거한 논리 의사 표기이며 실제 구현 착수·새 API 정의가 아니다. 초기 HW/IF 미정은 실제 adapter/물리 수행 검증만 차단한다. 위 문서들의 독립 SW 순서/거부/재수집/보호 논리를 `return TBD`로 대체하지 않는다.
 
 [INPUT 의사코드](../../../02_SERVICE/INPUT/pseudocode/Input_Process.md) · [STORE 사실](../../../02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) · [STORE 기한](../../../02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) · [R2](../../../../design/30_FUNCTIONS/10_FLOW_FUNCTIONS.md#flow-process) · [R3 basis](../../../../design/40_DATA/30_SELECTION_DATA.md#vssreadbasis) · [R4 coherent](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#coherent-read) · [R5 정규 순서](../../../../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#flow-process) · [R5 startup](../../../../design/60_PSEUDOCODE/10_STARTUP_FLOW.md#flow-startup) · [R5 복구](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#recovery-flow) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-flow-process)

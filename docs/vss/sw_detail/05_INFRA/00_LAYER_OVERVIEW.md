@@ -2,7 +2,7 @@
 
 [상위 VSS 지도](../01_VSS_MAP.md) · [APP](../01_APP/00_LAYER_OVERVIEW.md) · [HAL/BSP](../04_HAL_BSP/00_LAYER_OVERVIEW.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 검수 대기. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 INFRA의 RUNTIME은 비교 가능한 시간·연속성과 후속 처리/손실 근거를 제공합니다. 시간 도구의 유효성과 전달 손실을 소유하고, age·Hold·출력·복구의 의미 판단은 각 owner에 남깁니다. **공통 Boundary이며 별도 Module·Core가 없습니다.**
 
@@ -35,4 +35,4 @@ INFRA의 RUNTIME은 비교 가능한 시간·연속성과 후속 처리/손실 �
 
 [R1 INFRA](../../design/10_LAYERS/50_INFRA_LAYER.md) · [RUNTIME 시간·알림·marker](../../design/10_LAYERS/details/50_TIMEBASE_RUNTIME_BOUNDARY.md) · [R4 Timing/Freshness](../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md)
 
-D6 공통 Boundary 연결에서 이 역할을 재사용합니다. 함수쌍 예정 목록에 INFRA 함수를 추가하지 않고 [FLOW](../01_APP/FLOW/00_MODULE_OVERVIEW.md)와 각 소비 Module에서 필요한 시간 근거를 따라갑니다.
+INFRA는 별도 함수쌍을 추가하지 않습니다. [FLOW](../01_APP/FLOW/00_MODULE_OVERVIEW.md)와 각 소비 Module에서 공통 Boundary의 시간 근거를 따라 읽습니다.

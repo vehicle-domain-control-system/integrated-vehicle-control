@@ -2,7 +2,7 @@
 
 [상세 설명](../functions/Store_AdvanceDeadlines.md) · [STORE](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-05
 
-> GUIDE · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
+> GUIDE · TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
 
 <a id="contract"></a>
 ## singular 관측의 R6 계약

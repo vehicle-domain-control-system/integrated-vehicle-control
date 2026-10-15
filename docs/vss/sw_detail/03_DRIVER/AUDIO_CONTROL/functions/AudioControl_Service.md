@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [DRIVER Layer](../../00_LAYER_OVERVIEW.md) · [AUDIO_CONTROL](../00_MODULE_OVERVIEW.md) · [한국어 의사코드](../pseudocode/AudioControl_Service.md)
 
-> CORE-15 · D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING · GD5 전체 NOT_RUN. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> CORE-15. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 Codec·Clock Generator·Clock Reference의 원 제어를 구성별로 진행합니다. AUDIO_CONTROL이 자신의 readiness와 원 제어 결과를 쓰고, HAL의 보호된 raw를 후속 처리에서 대조합니다. 요청 접수와 실제 준비·제어 완료를 구분합니다.
 
@@ -116,13 +116,17 @@ HAL 원등록은 HW·대기·처리 중 SW·late 대응 참조가 모두 끝났�
 | F3_PARTIAL_INDEPENDENT | 3장치 부분 완료·old config·중복충돌·군별 full/invalid·독립 복구 전달 후보 | 실제 Host/제품 시험 TEST_NOT_RUN |
 | F4_SOURCE_IMAGE_GATE | 기존 제어 경계 재사용 후보 | 실제 Header/ABI·원등록/결과 저장·key alias/직렬화·최신 source/image |
 | F5_PHYSICAL_SAFETY_GATE | 미확인/LOST에서 READY·확정 회수 차단 | Codec/Clock 순서·ratio·register·실제 효과/검증·IRQ/시각·현재 DMA safe-write/WCET/cache |
-| F6_DEPENDENT_FOLLOWUP | STREAM/TX 승인 계약과 HEALTH 소비 연결 | D5-3/GD5·D6 및 실제 결합은 별도 지시/검수 |
+| F6_DEPENDENT_FOLLOWUP | STREAM/TX 승인 계약과 HEALTH 소비 연결 | 실제 결합은 별도 지시/검수 |
 
-P1B_C1 REQUIRED_NOT_RUN(9 Core/16 Q), P2 HOLD·Q01~14/R6-01~08·외부 IF·SOURCE_IMAGE·TBD-FINAL·WINDOW PRODUCT 보류/TEST 격리를 유지합니다. Firmware/Host/Build/Flash/Board는 NOT_RUN이며 독립 검수는 대기입니다.
+P2 HOLD·Q01~14/R6-01~08·외부 IF·SOURCE_IMAGE·TBD-FINAL·WINDOW PRODUCT 보류/TEST 격리를 유지합니다. Firmware/Host/Build/Flash/Board는 NOT_RUN입니다.
 
 <a id="references"></a>
 ## 10. 고정 정본과 왕복 경로
 
-출처는 VSS@ccab866eaf6b98cfd2f80e92ed4cc198c021f4c4, design tree 28628b353618047512cc645459f3c6fe66c1200c의 읽기 전용 R2~R6입니다. Master v1.1 CORE-15 정의를 따릅니다. 파일별 Git Blob/raw/LF SHA는 결과 ZIP 출처핀에 고정합니다.
+출처는 VSS@ccab866eaf6b98cfd2f80e92ed4cc198c021f4c4, design tree 28628b353618047512cc645459f3c6fe66c1200c의 읽기 전용 R2~R6입니다. Master v1.1 CORE-15 정의를 따릅니다.
 
-[R2 역할/provisional](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiocontrol-service) · [R3 Intent](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicecontrolintent) · [Readiness](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicereadinessstate) · [Result](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicecontrolresult) · [장치 등록](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vsshaldeviceregistration) · [진단/복구](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoverypermission) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 Async](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#partial-and-uncertain) · [R4 복구](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [R5 Startup](../../../../design/60_PSEUDOCODE/10_STARTUP_FLOW.md#audiocontrol-service) · [R5 복구](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#device-recovery) · [R6 수명](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#lifetime) · [R6 미정](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#tbd-register) · [의사코드 분기](../pseudocode/AudioControl_Service.md#procedure)
+- [R2 역할/provisional](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiocontrol-service) · [R3 Intent](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicecontrolintent) · [Readiness](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicereadinessstate) · [Result](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicecontrolresult) · [장치 등록](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vsshaldeviceregistration) · [진단/복구](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoverypermission)
+
+- [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 Async](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#partial-and-uncertain) · [R4 복구](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [R5 Startup](../../../../design/60_PSEUDOCODE/10_STARTUP_FLOW.md#audiocontrol-service) · [R5 복구](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#device-recovery)
+
+- [R6 수명](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#lifetime) · [R6 미정](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#tbd-register) · [의사코드 분기](../pseudocode/AudioControl_Service.md#procedure)

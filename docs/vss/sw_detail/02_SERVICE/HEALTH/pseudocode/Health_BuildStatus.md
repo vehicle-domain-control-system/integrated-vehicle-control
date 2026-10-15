@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [SERVICE](../../00_LAYER_OVERVIEW.md) · [HEALTH](../00_MODULE_OVERVIEW.md) · CORE-18 · [상세 설명](../functions/Health_BuildStatus.md)
 
-> GUIDE · D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING. R6 논리 계약 / 실제 C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> GUIDE · CORE-18 · R6 논리 계약 / 실제 C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 <a id="contract"></a>
 ## R6 논리 원형
@@ -160,10 +160,10 @@ VssStatusBuildResult Health_BuildStatus(
 <a id="postconditions"></a>
 ## 반환·소비 수명과 확인 한계
 
-유효 OUT에서 CREATED만 written1, 모든 REEVALUATE 경로는 written0이다. 무효 저장소는 무접근이다. 새 Snapshot 미생성은 원 Fault/최근 이력·INPUT/STORE/PB/PCM/device 원본 변화가 아니다. ROOT 자료에 숨은 Evaluate/Recovery를 실행하지 않는다.
+유효 OUT에서 CREATED만 written1, 모든 REEVALUATE 경로는 written0이다. 무효 저장소는 무접근이다. 새 Snapshot 미생성은 원 Fault/최근 이력·INPUT/STORE/PB/PCM/device 원본 변화가 아니다. 원본 자료에 숨은 Evaluate/Recovery를 실행하지 않는다.
 
 Fault kind 목록과 basis 내부 stamps는 불변 보고 소유/독립 보호 자료다. FLOW→INPUT→Node Communication이 복사하면 실제 복사 완료와 참조 종료까지, 참조하면 실제 최종 소비 종료까지 유지한다. 이전 소비 중 Snapshot을 다음 생성/재평가로 덮지 않는다. Node 복사/참조 방식·직렬화·storage/게시 원자성·key/시간 ABI는 TBD다. 실제 송신/Domain 수용 성공이나 무손실을 확정하지 않는다.
 
-F1/F3 후보는 관측 변경·OPTIONAL·legal actual/whole Session·현재/최근 분리·OUT0/1·수명이다. F4 전체/초기 reduction·Q08~10 DTO·source/image/C ABI, F5 물리 actual/STOP/Recovery·DMA/시간/메모리는 미검증이다. P1B_C1 REQUIRED_NOT_RUN/P2 HOLD·OPEN/FAIL/CR 보존, D6-2/GD6 미착수, Host/Firmware/Build/Flash/Board NOT_RUN이다.
+F1/F3 후보는 관측 변경·OPTIONAL·legal actual/whole Session·현재/최근 분리·OUT0/1·수명이다. F4 전체/초기 reduction·Q08~10 DTO·source/image/C ABI, F5 물리 actual/STOP/Recovery·DMA/시간/메모리는 미검증이다. P2 HOLD·OPEN/FAIL/CR 보존, Host/Firmware/Build/Flash/Board NOT_RUN이다.
 
 [설명 인자·반환](../functions/Health_BuildStatus.md#contract) · [두 OPTIONAL](../functions/Health_BuildStatus.md#optional) · [state 근거](../functions/Health_BuildStatus.md#states) · [Snapshot 수명](../functions/Health_BuildStatus.md#snapshot) · [R2](../../../../design/30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus) · [R3](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssstatussnapshot) · [R4](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md) · [R5](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#health-buildstatus) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-buildstatus) · [Fault writer 설명](../functions/Health_Evaluate.md#ownership)

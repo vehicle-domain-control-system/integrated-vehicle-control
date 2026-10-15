@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [AUDIO_STREAM](../00_MODULE_OVERVIEW.md) / CORE-10 · [상세 설명](../functions/AudioStream_Prepare.md)
 
-> GUIDE · SELF_CHECKED / GD4_1_PENDING. 한국어 조건·대괄호 절차는 설명용 추상 연산이다. 새 helper/API·Task·전송 버퍼를 선언하지 않으며 실제 C·Host·보드 시험 NOT_RUN이다.
+> GUIDE · 한국어 조건·대괄호 절차는 설명용 추상 연산이다. 새 helper/API·Task·전송 버퍼를 선언하지 않으며 실제 C·Host·보드 시험 NOT_RUN이다.
 
 <a id="contract"></a>
 ## R6 논리 계약
@@ -278,7 +278,7 @@ publish:
 
 `CALL`의 capacity/count/OPTIONAL은 [R6 논리 표기](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#prototype-notation)다. lower OUT과 원 의도·시간은 기존 owner에 보호된 설명용 자료이며 새 Prep 입력 인자를 추가한 것이 아니다. CTRL의 performed/verified는 별도 typed 사실이고 새 RecoveryPermission을 생성하거나 복구를 이 함수에서 허가하지 않는다.
 
-[CONTROL 경계](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-audiocontrol-service)는 현재 config만 준비한다. [TX PCM lane](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-audiotx-request)은 필요 초기 인계만 연결하며 START/STOP·operation 충분성 상세는 D4-2/D5로 남긴다. 하위 void/scalar·빈 OUT·IRQ를 READY/actual로 합성하지 않는다.
+[CONTROL 경계](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-audiocontrol-service)는 현재 config만 준비한다. [TX PCM lane](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-audiotx-request)은 필요 초기 인계만 연결하며 START/STOP·operation 충분성 상세는 [RequestControl](../functions/AudioStream_RequestControl.md)·[Advance](../functions/AudioStream_Advance.md) 및 [AudioTx_Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md)에서 읽는다. 하위 void/scalar·빈 OUT·IRQ를 READY/actual로 합성하지 않는다.
 
 <a id="safe-write-and-tail"></a>
 ## PCM 유효 범위·현재 안전·STOP
@@ -290,7 +290,7 @@ CPU_WRITABLE은 옛 회차 종료만으로 무기한 쓰기를 허가하지 않�
 <a id="gates"></a>
 ## 미확인과 후속 범위
 
-PREPARED 충분성의 실제 format/초기 TX/장치 조건과 source/image·보호 저장소·직렬화는 BINDING_TBD다. 현재 DMA safe-write·메모리/기한·SAI/STOP/actual은 HW_UNVERIFIED/P2 HOLD이며 충분하지 않으면 보호된 PENDING/후속으로 남긴다. F1 identity·OUT·분리 단계, F2 출처 있는 시험 fixture, F3 short tail·decode/read 실패·차단 경합은 독립 Host 후보이며 실제 실행 NOT_RUN이다. D4-2 RequestControl/Advance 및 D5/D6 상세를 새 문서/코드로 추가하지 않는다.
+PREPARED 충분성의 실제 format/초기 TX/장치 조건과 source/image·보호 저장소·직렬화는 BINDING_TBD다. 현재 DMA safe-write·메모리/기한·SAI/STOP/actual은 HW_UNVERIFIED/P2 HOLD이며 충분하지 않으면 보호된 PENDING/후속으로 남긴다. F1 identity·OUT·분리 단계, F2 출처 있는 시험 fixture, F3 short tail·decode/read 실패·차단 경합은 독립 Host 후보이며 실제 실행 NOT_RUN이다. 장치와 진단·보고의 인접 계약은 [AudioControl_Service](../../../03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md)와 [Health_Evaluate](../../HEALTH/functions/Health_Evaluate.md)·[Health_BuildStatus](../../HEALTH/functions/Health_BuildStatus.md)에서 읽는다.
 
 ## 연결 근거
 

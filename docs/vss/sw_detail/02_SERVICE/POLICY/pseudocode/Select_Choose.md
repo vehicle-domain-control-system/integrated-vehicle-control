@@ -1,8 +1,8 @@
 # Select_Choose — 한국어 C 형태 의사코드
 
-[상세 설명](../functions/Select_Choose.md) · [의사코드](../pseudocode/Select_Choose.md) · [POLICY](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-06
+[상세 설명](../functions/Select_Choose.md) · [POLICY](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-06
 
-> GUIDE · SELF_CHECKED / D3_2_REVIEW_PENDING · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
+> GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
 
 <a id="contract"></a>
 ## 목적과 최신 논리 원형
@@ -22,7 +22,7 @@ VssSelectionDecision Select_Choose(
 
 [R6 계약](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-select-choose)과 [인자·결과 표기](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#prototype-notation)를 그대로 읽습니다. 각 count/capacity/written은 독립 논리 범위입니다. 배열 저장 방식·수치·동기 보호·enum 폭·Header는 실제 ABI로 확정하지 않습니다. 과거 R2 provisional 묶음을 새 public DTO로 선언하지 않습니다.
 
-아래 한글 조건/문장은 기존 owner의 검사·보호·반영을 뜻하는 **설명용 의사 연산**이며 새 함수/API/자료 구조가 아닙니다. `[]`와 각 군의 `.written`/`.capacity`는 R6 범위의 의사 접근이고 실제 구조체 필드 선언이 아닙니다. 반복은 전달된 유효 범위와 기존 처리 예산 안에서 끝나며 완료까지 무한 재시도하지 않습니다. Callee의 한글 OUT 인자는 해당 R6 typed 결과군별 공간을 줄여 쓴 표기입니다.
+아래 한글 조건/문장은 입력 관측의 검증과 읽기 전용 비교·판단을 뜻하는 **설명용 의사 연산**이며 새 함수/API/자료 구조가 아닙니다. `[]`는 각 입력군의 독립 count 범위를 나타내며 실제 구조체 필드 선언이 아닙니다. 입력과 반환 참조는 해당 평가 수명 동안 보호합니다. 반복은 전달된 유효 범위와 기존 처리 예산 안에서 끝나며 완료까지 무한 재시도하지 않습니다.
 
 <a id="procedure"></a>
 ## S1~S5 — 관측 검증·원 정책 비교·판단 반환

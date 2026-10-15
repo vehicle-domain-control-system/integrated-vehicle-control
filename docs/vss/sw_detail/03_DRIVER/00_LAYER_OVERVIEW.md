@@ -2,7 +2,7 @@
 
 [상위 VSS 지도](../01_VSS_MAP.md) · [처음 읽기](../00_START_HERE.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 검수 대기. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 DRIVER는 AUDIO_STREAM의 중립 요청을 장치 사용과 원래 요청에 귀속된 결과로 연결합니다. PCM 전송과 현재 장치 구성 준비는 다른 책임입니다. 장치 근거가 상위 Session·Fault의 최종 판단을 대신하지 않습니다.
 
@@ -23,7 +23,7 @@ AUDIO_STREAM → DRIVER → [HAL/BSP](../04_HAL_BSP/00_LAYER_OVERVIEW.md) 및 �
 
 [R1 DRIVER](../../design/10_LAYERS/30_DRIVER_LAYER.md) · [R4 비동기 결과](../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md) · [R4 PCM/Transport](../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md)
 
-D2는 `AudioTx_Advance` 시범, D5는 나머지 TX/CONTROL과 HAL callback 연결입니다. 두 Module의 함수 표에서 예정 설명·의사코드 위치를 확인합니다.
+`AudioTx_Advance` 등 AUDIO_TX·AUDIO_CONTROL 함수의 설명·의사코드는 각 Module의 함수 표에서 읽습니다. [HAL/BSP의 CORE-16 문서쌍](../04_HAL_BSP/00_LAYER_OVERVIEW.md#core-16의-문서쌍)으로 callback 경계를 확인합니다.
 
 
 ## HAL/BSP·RTD 연결 근거 읽기

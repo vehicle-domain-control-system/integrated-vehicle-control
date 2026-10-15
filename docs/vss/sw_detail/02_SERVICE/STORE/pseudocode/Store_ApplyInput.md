@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [STORE](../00_MODULE_OVERVIEW.md) / CORE-03 · [상세 설명](../functions/Store_ApplyInput.md)
 
-> GUIDE · D2_SELF_CHECKED / GD2_PENDING. 동결 설계 `0641b2c2268cf47450aeb50302638a45a7a3277f`의 적용 순서를 설명한다. 실제 C 구현·Host·보드 시험 NOT_RUN.
+> GUIDE · 동결 설계 `0641b2c2268cf47450aeb50302638a45a7a3277f`의 적용 순서를 설명한다. 실제 C 구현·Host·보드 시험 NOT_RUN.
 
 STORE가 검증된 입력 하나를 동기 적용하고 `VssStoreAdmission`을 반환한다. accepted는 최종까지의 추적 확보이고 actual 시작은 별도다. 한국어 조건·순회·대괄호 절차는 **설명용 의사 연산**이며 실제 변수/컨테이너/API가 아니다.
 

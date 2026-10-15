@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [HAL/BSP Layer·내부 Boundary](../../00_LAYER_OVERVIEW.md) · [한국어 의사코드](../pseudocode/AudioHAL_Callback.md)
 
-> CORE-16 · D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING · GD5 전체 NOT_RUN. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> CORE-16. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 vendor callback/IRQ에서 실제 원등록과 raw 사실·원 시각/coverage·손실을 짧게 보호하고 기존 후속 처리 기회를 알립니다. AUDIOHAL_BOUNDARY는 HAL/BSP **내부 Boundary이며 별도 Module이 아닙니다**. Boundary 개요/public wrapper를 추가하지 않습니다.
 
@@ -101,13 +101,17 @@ HALF/MAJOR/complete·abort/ack·IRQ disable·현재 idle/mute는 source consumed
 | F3_PARTIAL_INDEPENDENT | 없음/한쪽/양쪽·즉시/late·불일치·overflow/병합 알림·접근 불가 후보 | Host/Firmware/Board TEST_NOT_RUN |
 | F4_SOURCE_IMAGE_GATE | 기존 BSP/transport 내부 callback 재사용 후보 | 실제 RTD/generated signature·dispatch·key/보호 저장/원자성·source/image |
 | F5_PHYSICAL_SAFETY_GATE | 부족/LOST에서 물리 확정 소비 차단 | persistent 대응·원 시각/coverage·ISR WCET/IRQ·DMA/cache/STOP/실제 출력·손실 신호 수단 |
-| F6_DEPENDENT_FOLLOWUP | TX/CONTROL 후속 소비·STREAM/HEALTH 연결 | D5-3/GD5/D6·실제 결합은 별도 지시 |
+| F6_DEPENDENT_FOLLOWUP | TX/CONTROL 후속 소비·STREAM/HEALTH 연결 | 실제 결합은 별도 지시 |
 
-Q01~14/R6-01~08·P1B_C1 REQUIRED_NOT_RUN(9 Core/16 Q)·P2 HOLD·TBD-FINAL·WINDOW PRODUCT 보류/TEST 격리를 유지합니다. 실제 ABI/HW PASS를 주장하지 않습니다.
+Q01~14/R6-01~08·P2 HOLD·TBD-FINAL·WINDOW PRODUCT 보류/TEST 격리를 유지합니다. 실제 ABI/HW PASS를 주장하지 않습니다.
 
 <a id="references"></a>
 ## 10. 고정 정본과 왕복 경로
 
-출처는 VSS@ccab866eaf6b98cfd2f80e92ed4cc198c021f4c4 / design tree 28628b353618047512cc645459f3c6fe66c1200c의 R2~R6입니다. Master v1.1 CORE-16은 HAL/BSP 내부 Boundary입니다. 원 파일별 Git Blob/raw/LF SHA는 결과 ZIP 출처핀에 고정합니다.
+출처는 VSS@ccab866eaf6b98cfd2f80e92ed4cc198c021f4c4 / design tree 28628b353618047512cc645459f3c6fe66c1200c의 R2~R6입니다. Master v1.1 CORE-16은 HAL/BSP 내부 Boundary입니다.
 
-[R2 callback](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiohal-callback) · [R3 Tx 등록](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vsshaltxregistration) · [Device 등록](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vsshaldeviceregistration) · [Raw](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssrawobservation) · [Coverage](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssobservationcoverage) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 원 근거](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#evidence-basis) · [R4 지속 스트림](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#continuous-stream) · [R5 HAL](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#audiohal-callback) · [R5 STOP/late](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#tx-safe-return) · [R6 수명](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#lifetime) · [R6 미정](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#tbd-register) · [Runtime 경계](../../../../design/10_LAYERS/details/50_TIMEBASE_RUNTIME_BOUNDARY.md) · [의사코드](../pseudocode/AudioHAL_Callback.md#procedure)
+- [R2 callback](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiohal-callback) · [R3 Tx 등록](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vsshaltxregistration) · [Device 등록](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vsshaldeviceregistration) · [Raw](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssrawobservation) · [Coverage](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssobservationcoverage)
+
+- [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 원 근거](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#evidence-basis) · [R4 지속 스트림](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#continuous-stream) · [R5 HAL](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#audiohal-callback) · [R5 STOP/late](../../../../design/60_PSEUDOCODE/50_STOP_LATE_UNCERTAIN_FLOW.md#tx-safe-return) · [R6 수명](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#lifetime) · [R6 미정](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#tbd-register)
+
+- [Runtime 경계](../../../../design/10_LAYERS/details/50_TIMEBASE_RUNTIME_BOUNDARY.md) · [의사코드](../pseudocode/AudioHAL_Callback.md#procedure)

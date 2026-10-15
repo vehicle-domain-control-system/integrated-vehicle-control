@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [DRIVER](../../00_LAYER_OVERVIEW.md) · [AUDIO_CONTROL](../00_MODULE_OVERVIEW.md) · [상세 설명](../functions/AudioControl_Service.md)
 
-> CORE-15 · D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING · GD5 전체 NOT_RUN. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> CORE-15. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 <a id="contract"></a>
 ## R6 논리 원형
@@ -240,4 +240,8 @@ publish:
 
 유효한 각 군만 0≤written≤capacity를 만족합니다. NULL·신규 거부도 기존 수용 작업과 원 facts 보호를 유지합니다. 현재 config와 old 결과, 세 장치, 수행/검증과 전달 count를 분리합니다. HAL 원등록 수명은 readiness 무효화·PCM 반환·PB retirement와 다릅니다. 실제 C/물리 구현과 Firmware/Host/Board 시험은 수행하지 않습니다.
 
-[설명 원형/수명](../functions/AudioControl_Service.md#contract) · [구성 전환](../functions/AudioControl_Service.md#configuration) · [복구](../functions/AudioControl_Service.md#recovery) · [OUT](../functions/AudioControl_Service.md#publish) · [F1~F6/미결](../functions/AudioControl_Service.md#feasibility) · [R2](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiocontrol-service) · [R3 Intent/결과](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicecontrolintent) · [R3 수행](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryperformedevidence) · [R3 검증](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryverificationevidence) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 복구](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [R5 Startup](../../../../design/60_PSEUDOCODE/10_STARTUP_FLOW.md#audiocontrol-service) · [R5 복구](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#device-recovery) · [R6 표기](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#prototype-notation) · [HAL 의사코드](../../../04_HAL_BSP/AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md#procedure)
+- [설명 원형/수명](../functions/AudioControl_Service.md#contract) · [구성 전환](../functions/AudioControl_Service.md#configuration) · [복구](../functions/AudioControl_Service.md#recovery) · [OUT](../functions/AudioControl_Service.md#publish) · [F1~F6/미결](../functions/AudioControl_Service.md#feasibility)
+
+- [R2](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiocontrol-service) · [R3 Intent/결과](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssdevicecontrolintent) · [R3 수행](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryperformedevidence) · [R3 검증](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryverificationevidence) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 복구](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [R5 Startup](../../../../design/60_PSEUDOCODE/10_STARTUP_FLOW.md#audiocontrol-service) · [R5 복구](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#device-recovery) · [R6 표기](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#prototype-notation)
+
+- [HAL 의사코드](../../../04_HAL_BSP/AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md#procedure)

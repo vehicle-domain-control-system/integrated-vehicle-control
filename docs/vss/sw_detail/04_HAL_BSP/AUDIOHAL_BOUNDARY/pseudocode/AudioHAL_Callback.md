@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [HAL/BSP 내부 Boundary](../../00_LAYER_OVERVIEW.md) · [상세 설명](../functions/AudioHAL_Callback.md)
 
-> CORE-16 · D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING · GD5 전체 NOT_RUN. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> CORE-16. LOGICAL_R6 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 <a id="contract"></a>
 ## R6 논리 원형
@@ -146,4 +146,8 @@ HALF/MAJOR/abort ACK/현재 idle·mute는 source consumption/safe return/noFutur
 
 원 key/시간·실제 raw를 합성하지 않고 실제 부족과 손실을 구분합니다. 접근 불가/공간 부족에도 확인된 원 facts·등록/후속 의무를 유지합니다. CONTROL/TX의 의미 분석은 ISR 이후 기존 Driver 경계에 남습니다. HAL Boundary는 Module 수를 늘리지 않습니다.
 
-[설명 계약](../functions/AudioHAL_Callback.md#contract) · [등록 대응](../functions/AudioHAL_Callback.md#registration) · [접근 불가](../functions/AudioHAL_Callback.md#invalid-input) · [손실](../functions/AudioHAL_Callback.md#loss) · [수명](../functions/AudioHAL_Callback.md#lifetime) · [F1~F6/미결](../functions/AudioHAL_Callback.md#feasibility) · [R2](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiohal-callback) · [R3 raw](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssrawobservation) · [R4 원근거](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#evidence-basis) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 지속 stream](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#continuous-stream) · [R5 HAL](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#audiohal-callback) · [R6 수명](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#lifetime) · [승인 TX Advance](../../../03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md#procedure) · [CONTROL 후속](../../../03_DRIVER/AUDIO_CONTROL/pseudocode/AudioControl_Service.md#followup)
+- [설명 계약](../functions/AudioHAL_Callback.md#contract) · [등록 대응](../functions/AudioHAL_Callback.md#registration) · [접근 불가](../functions/AudioHAL_Callback.md#invalid-input) · [손실](../functions/AudioHAL_Callback.md#loss) · [수명](../functions/AudioHAL_Callback.md#lifetime) · [F1~F6/미결](../functions/AudioHAL_Callback.md#feasibility)
+
+- [R2](../../../../design/30_FUNCTIONS/50_DRIVER_HAL_FUNCTIONS.md#audiohal-callback) · [R3 raw](../../../../design/40_DATA/60_AUDIO_TX_DATA.md#vssrawobservation) · [R4 원근거](../../../../design/50_CONTRACTS/20_ASYNC_RESULT_EVIDENCE.md#evidence-basis) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#references-and-release) · [R4 지속 stream](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#continuous-stream) · [R5 HAL](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#audiohal-callback) · [R6 수명](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#lifetime)
+
+- [승인 TX Advance](../../../03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md#procedure) · [CONTROL 후속](../../../03_DRIVER/AUDIO_CONTROL/pseudocode/AudioControl_Service.md#followup)

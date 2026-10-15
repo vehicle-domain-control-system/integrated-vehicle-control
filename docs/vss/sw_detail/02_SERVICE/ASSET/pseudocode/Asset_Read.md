@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [ASSET](../00_MODULE_OVERVIEW.md) / CORE-09 · [상세 설명](../functions/Asset_Read.md)
 
-> GUIDE · SELF_CHECKED / GD4_1_PENDING. 설명용 조건·대괄호 절차는 구현 helper/API가 아니다. 실제 C·Host·보드 시험 NOT_RUN.
+> GUIDE · 설명용 조건·대괄호 절차는 구현 helper/API가 아니다. 실제 C·Host·보드 시험 NOT_RUN.
 
 <a id="contract"></a>
 ## R6 논리 계약
@@ -145,7 +145,7 @@ RELEASE에서 true는 실제 reader 종료 근거이며 ASSET의 원 span 참조
 <a id="gates"></a>
 ## 구현 가능한 논리와 미정
 
-ONE_OF·bounds·무효 OUT/short read·원 span 종료는 F1/F3 독립 정적·Host 후보다. 출처 있는 bounded 예산 주입은 F2 시험 후보이며 이번 시험은 실행하지 않았다. 제품 image/주소·정수 폭·참조 저장·직렬화·direct/staging은 F4 BINDING_TBD, 물리 메모리/SAI·DMA 안전은 F5 HW_UNVERIFIED다. reader 종료를 실제 출력 종료로 확대하지 않는다. 다른 Core의 D4-2/D5/D6 상세는 F6 별도 범위다.
+ONE_OF·bounds·무효 OUT/short read·원 span 종료는 F1/F3 독립 정적·Host 후보다. 출처 있는 bounded 예산 주입은 F2 시험 후보이며 이번 시험은 실행하지 않았다. 제품 image/주소·정수 폭·참조 저장·직렬화·direct/staging은 F4 BINDING_TBD, 물리 메모리/SAI·DMA 안전은 F5 HW_UNVERIFIED다. reader 종료를 실제 출력 종료로 확대하지 않는다. 인접 계약은 [STREAM RequestControl](../../AUDIO_STREAM/functions/AudioStream_RequestControl.md), [STREAM Advance](../../AUDIO_STREAM/functions/AudioStream_Advance.md), [TX Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md), [HEALTH Evaluate](../../HEALTH/functions/Health_Evaluate.md)·[BuildStatus](../../HEALTH/functions/Health_BuildStatus.md)에서 읽는다.
 
 ## 연결 근거
 

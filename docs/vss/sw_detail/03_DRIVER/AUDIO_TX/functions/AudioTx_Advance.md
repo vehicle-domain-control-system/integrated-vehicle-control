@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [DRIVER Layer](../../00_LAYER_OVERVIEW.md) · [AUDIO_TX Module](../00_MODULE_OVERVIEW.md) · [한국어 의사코드](../pseudocode/AudioTx_Advance.md)
 
-> GUIDE · CORE-14 · VSD-D2 `SELF_CHECKED` / `GD2_PENDING`. 의미 정본 `0641b2c2268cf47450aeb50302638a45a7a3277f`, 작성 출발 `VSS@48bb000456fb529ca04ab34b05cdcb1ebdda759c`. Host/Build/Flash/Board `NOT_RUN`.
+> GUIDE · CORE-14. 의미 정본 `0641b2c2268cf47450aeb50302638a45a7a3277f`. 실제 ABI·HW binding 미확정. Host/Build/Flash/Board `NOT_RUN`.
 
 HAL이 사전 귀속으로 보존한 raw 사실을 원 TX operation·Attempt·PCM 회차에 적용하고, AUDIO_STREAM에 **요청 결과·출력 근거·소비·안전 반환·진단**을 독립 전달합니다. 장치 진행 사실의 해석과 보호가 목적이며, callback 횟수를 스피커 출력이나 Session 완료로 바꾸는 함수가 아닙니다.
 
@@ -94,12 +94,12 @@ OUT에 기록한 사실도 **소비 완료 ack가 아닙니다**. requests/outpu
 <a id="source"></a>
 ## 실제 소스 근거 — 2026-10-07 브링업 참고
 
-정적 참조일은 **2026-10-12 KST**, 원본 스냅샷은 2026-10-07입니다. 설치 출처는 ignored 로컬 `.vss_work/reference/bringup_20261007/`의 `03_EVIDENCE_MANIFEST.json`, `04_SELECTED_FILES.csv`, `SELECTED_SHA256SUMS.txt`입니다. 아래 path는 **코드 표기**이며 GitHub에서 접근 불가능한 Markdown 링크가 아닙니다. D2에서 108개 원본의 출처 SHA를 대조하고 다음 행을 정적으로 읽었습니다. 설치 PASS와 과거 5분 보드 기록은 현재 물리 PASS가 아닙니다.
+정적 참조일은 **2026-10-12 KST**, 원본 스냅샷은 2026-10-07입니다. 아래 파일·행과 SHA는 이 참고 소스의 정적 관측을 식별하며 현재 제품의 source/image·ABI·물리 PASS를 증명하지 않습니다.
 
 | 실제 파일·행 / SHA-256 | 읽어 확인한 내용 | 재사용 후보와 추가 확인 지점 |
 |---|---|---|
 | `src/AudioDmaTransport.c:196–239,272–379,389–488` / `469122809530bea8cd0018e8a7f32c1860399e36a64a00628b453b12bbc9a76e` | Start의 지속 `Sai_Ip_Send` 한 경로·started flag, Service의 A/B free/active 재확인·refill, DMA IRQ의 software phase와 HALF/MAJOR counter, SAI event/error 기록 | TX/짧은 raw 경계 우선 후보. 최종 operation/Attempt/cycle·불변 원시각·물리 coverage 기록은 여기서 확인되지 않음 |
-| `src/AudioDmaTransport.h:25–34` / `92a60d223356ec924dfff5d04be0efb8e5f199a3347491a4bd768710` | Prime/Init/Start/Service와 boolean readiness/error 공개 경계 | vendor 중립 기존 경계 재사용. R6 typed OUT ABI가 구현됐다는 근거 아님 |
+| `src/AudioDmaTransport.h:25–34` / `92a60d223356ec924dfff5d04be0efb8e5f199a3347491a85173a1a4bd768710` | Prime/Init/Start/Service와 boolean readiness/error 공개 경계 | vendor 중립 기존 경계 재사용. R6 typed OUT ABI가 구현됐다는 근거 아님 |
 | `src/AudioPlayer.c:142–179,359–415` / `14a6d36dc160351cdec1a573ae785ec61a2f5cdd5a098cd7da3fa7bb112aeed5` | Begin/Stop flag, terminal/silent buffer의 OnBufferComplete/Start에 따른 완료·audibly-stopped flag | STREAM PCM lifecycle 참고. 단일 software flag는 물리 종료·새 회차 쓰기 근거 아님 |
 | `RTD/src/Sai_Ip.c:4205–4258` / `321c8aa4776eeef397d55ec4696b7433ce444471f0440bfb86bfd653bcce5ca8` | `void Sai_Ip_Send`가 DMA/interrupt 경로를 선택하고 TxEnable의 TE를 활성화 | 반환 성공 boolean이 없음. 함수 호출/TE enable과 원 작업의 실제 출력 관측은 다름 |
 | `generate/src/Dma_Ip_Sa_VS_0_PBcfg.c:182`, `generate/src/Sai_Ip_Sa_VS_0_PBcfg.c:183` / 각각 `48337239694c6563fb170f8e60c92849449f5cffc7323ae2611fb43c92e24fe0`, `d8796cdb8ccac3166734d810e557d8c42b363e61595503c89f848a814f956ccd` | 기존 DMA/SAI callback symbol의 생성 설정 연결 | 등록 ABI·IRQ acknowledge·descriptor postcondition·원키 상관은 RTD/config/HW 추가 확인; 생성 파일 수정 없음 |
@@ -119,9 +119,9 @@ OUT에 기록한 사실도 **소비 완료 ack가 아닙니다**. requests/outpu
 | F1/F3 PCM old 회차 | old A 소비만/충분한 old 반환/새 A key → 소비·반환·현재 쓰기 구별, 반환으로 생산 재개 없음 | STREAM 현재 쓰기 구간·WCET·IRQ/cache·다음 방문은 F5 실증 |
 | F1/F3 STOP·uncertain | 일부 옛 범위만 차단, late 뒤 원 최종 → cleanup/retain/diagnostic, 새 Session 복원 없음 | PLAYBACK/STREAM whole 결합과 실제 FIFO/frame 종료는 F5 실증 |
 
-위 내용은 **구체적 SW/Host 검증 후보이며 `NOT_RUN`**입니다. 부족한 HW 근거는 해당 물리 확정/제품 활성화에 한정합니다. 원키 분류·5군 보호·loss/late 논리까지 전체 HOLD하지 않습니다. 후보가 원 계약과 불일치하거나 출처/구성이 개정되면 해당 채택만 중단하고 기존 operation/cycle·미인계 결과·late/장치 보호를 유지합니다. TX/HAL/STREAM owner의 새 근거와 별도 구현 승인으로 재채택하며 임의 대체 수치로 안전 조건을 우회하지 않습니다. 이번 작업은 문서 2쌍 시범이며 fixture 실행/실제 코드 Mapping은 별도 사용자 지시 대상입니다.
+위 내용은 **구체적 SW/Host 검증 후보이며 `NOT_RUN`**입니다. 부족한 HW 근거는 해당 물리 확정/제품 활성화에 한정합니다. 원키 분류·5군 보호·loss/late 논리까지 전체 HOLD하지 않습니다. 후보가 원 계약과 불일치하거나 출처/구성이 개정되면 해당 채택만 중단하고 기존 operation/cycle·미인계 결과·late/장치 보호를 유지합니다. TX/HAL/STREAM owner의 새 근거와 별도 구현 승인으로 재채택하며 임의 대체 수치로 안전 조건을 우회하지 않습니다. fixture 실행/실제 코드 Mapping은 별도 사용자 지시 대상입니다.
 
-R6 TBD-01~08, Q01~14, P1B_C1의 9 Core/16 연결 미완료, 외부 Network IF/source/image/실제 PCM DMA·STOP·출력 Gate, WINDOW/Anti-Pinch `[구현 보류 — 설계 유지]`, P2 HOLD를 보존합니다. 실제 용량·binding·성능 숫자·새 Task/Queue/API/Flag/Fault·세 번째 PCM buffer를 확정하지 않습니다.
+R6 TBD-01~08, Q01~14, 외부 Network IF/source/image/실제 PCM DMA·STOP·출력 Gate, WINDOW/Anti-Pinch `[구현 보류 — 설계 유지]`, P2 HOLD를 보존합니다. 실제 용량·binding·성능 숫자·새 Task/Queue/API/Flag/Fault·세 번째 PCM buffer를 확정하지 않습니다.
 
 <a id="references"></a>
 ## 정본과 왕복 경로

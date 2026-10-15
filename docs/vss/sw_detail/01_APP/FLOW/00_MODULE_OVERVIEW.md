@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · GD1 독립 PASS 인수 · D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 각 owner의 처리를 연결해 입력이 없는 동안에도 기한·출력 결과·정리·선택/실행·보고가 진행되게 합니다. 선택은 POLICY, 전체 실행은 PLAYBACK이 맡고 FLOW는 공개 의미 경계와 반영 완료 관측을 조율합니다.
 
@@ -28,17 +28,17 @@ FLOW가 쓰는 것은 조율 단계·재평가 필요성과 임시 일관된 읽
 
 ## 담당 Core의 문서쌍
 
-| Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
-|---|---|---|---|---|
-| CORE-01 | `Flow_Process` — 동기 조율·후속 처리 연결 | [상세 설명](functions/Flow_Process.md) | [한국어 의사코드](pseudocode/Flow_Process.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
+| Core | 함수 / 역할 | 상세 설명 | 한국어 의사코드 |
+|---|---|---|---|
+| CORE-01 | `Flow_Process` — 동기 조율·후속 처리 연결 | [상세 설명](functions/Flow_Process.md) | [한국어 의사코드](pseudocode/Flow_Process.md) |
 
-CORE-01 두 본문은 D3-1 부분 독립 PASS 인수 완료입니다. 아래 동결 원문과 함께 읽으며 전체 GD3는 아직 미완료입니다.
+CORE-01의 상세 설명과 의사코드는 아래 동결 원문과 함께 읽습니다.
 
 ## 후속 진행 후보와 미정
 
 coherent 관측 재평가·RX 없는 기한/후속 진행·복구 순서 연결은 [작성한 함수 설명](functions/Flow_Process.md#feasibility)의 독립 SW/Host 후보입니다. 실제 호출 주기·직렬화·처리 예산은 미정입니다. 새 Scheduler/Task/Queue를 도입하지 않습니다.
 
-위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q↔Core 관계는 P1B_C1 독립 검수 전 최종 차단 지도로 채택하지 않습니다.
+위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q/R6·외부 IF/HW에 종속된 제품 결합과 P2는 계속 HOLD입니다. 문서 관계 보정의 승인 범위를 원 G1-B 원본 복구나 실제 제품 C1 완료로 확대하지 않습니다.
 
 ## 현재 상세 근거
 

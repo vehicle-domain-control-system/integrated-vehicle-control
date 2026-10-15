@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [SERVICE](../../00_LAYER_OVERVIEW.md) · [HEALTH](../00_MODULE_OVERVIEW.md) · CORE-17 · [상세 설명](../functions/Health_Evaluate.md)
 
-> GUIDE · D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING. R6 논리 계약 / 실제 C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> GUIDE · CORE-17 · R6 논리 계약 / 실제 C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 <a id="contract"></a>
 ## R6 논리 원형
@@ -186,6 +186,6 @@ for (faults와 permissions의_각_군을_독립적으로) {
 
 현재/최근 Fault의 diagnosis와 허용 원자료는 소비자 반영/독립 보호 추적 종료까지 유지한다. OUT의 얕은 복사·written·반환은 ACK가 아니다. 독립 OUT 일부를 전체 current 집합·clear 완료로 쓰지 않는다. 보호 공간 부족을 기존 기록 eviction·무한 pool로 해결하지 않는다. 실제 storage/직렬화·key alias·원자성은 TBD이며 손실을 충분/성공으로 숨기지 않는다.
 
-단독 performed/verified는 제한 유지, 둘이 있어도 현재 instance/revision/대상·operation·원 시간 인과·효과 충분성을 전부 확인한다. Fault5·불명확 최종 제한은 유지하고 다른 owner를 쓰지 않는다. F1/F3 논리 후보만 기술했으며 Host/Firmware/Build/Flash/Board NOT_RUN, D6-2/GD6 미착수, P1B_C1 REQUIRED_NOT_RUN/P2 HOLD다.
+단독 performed/verified는 제한 유지, 둘이 있어도 현재 instance/revision/대상·operation·원 시간 인과·효과 충분성을 전부 확인한다. Fault5·불명확 최종 제한은 유지하고 다른 owner를 쓰지 않는다. F1/F3 논리 후보만 기술했으며 Host/Firmware/Build/Flash/Board NOT_RUN, P2 HOLD다.
 
 [반환·인자 수명](../functions/Health_Evaluate.md#contract) · [원진단/Fault5](../functions/Health_Evaluate.md#diagnostics) · [현재 pair](../functions/Health_Evaluate.md#pair) · [독립 OUT](../functions/Health_Evaluate.md#outputs) · [R2](../../../../design/30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-evaluate) · [R3](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoverypermission) · [R4](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [R5](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#health-evaluate) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-evaluate) · [보고의 읽기 전용 경계](Health_BuildStatus.md#ownership)

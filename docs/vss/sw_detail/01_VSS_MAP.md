@@ -2,13 +2,13 @@
 
 [처음 읽기](00_START_HERE.md)
 
-> GUIDE · GD1/GD2 독립 PASS 인수 · D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합니다. FLOW가 owner의 반영 완료 관측을 연결하면 POLICY가 읽기 전용으로 선택하고 PLAYBACK이 단일 전체 Session을 진행합니다. AUDIO STREAM은 저장 MP3를 PCM으로 준비하고 DRIVER/HAL의 귀속된 근거를 결합합니다. HEALTH는 현재 제한·복구 판단과 파생 보고를 담당합니다.
 
 연결 지도: [입력·Status의 Owner/Converter/Consumer와 18 Core CALL/RETURN](02_INTERFACE_MAP.md) · [기존 6 Flow·49 Trace 및 경합·오류](03_SCENARIO_MAP.md).
 
-두 지도는 GD6 및 G1-B-C1 문서·인수 독립 PASS를 입력으로 한 초안이며 Q01~14·R6-01~08·외부 미결15와 P2 HOLD를 유지합니다. 아래 기존 작성 당시의 승인·대기·미착수 표기는 이 탐색 보완에서 소급 수정하지 않습니다.
+Q01~14·R6-01~08·외부 미결15는 미해결이며 P2는 HOLD입니다. 문서의 호출·반환 연결은 실제 ABI·양단 채택·HW 검증을 뜻하지 않습니다.
 
 ## Layer와 Module 바로가기
 
@@ -38,33 +38,33 @@ VSS는 Domain이 확정한 사건·현재 경고를 검증해 STORE에 반영합
 
 ## 18 Core의 문서쌍
 
-아래 경로는 `docs/vss/sw_detail/` 기준입니다. D2 CORE-03/14는 GD2 독립 PASS, D3-1 CORE-01/02/04/05와 D3-2 CORE-06/07/08은 각각 부분 독립 PASS 인수 완료입니다. 기존 16쌍과 D6-1 HEALTH CORE-17/18 신규 2쌍, 총 18쌍은 실링크입니다. HEALTH 두 쌍은 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING이며 기존 작성 당시 승인 표시는 보존합니다. 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따르며 기존 승인 본문은 보존합니다. D3 전체 GD3는 INDEPENDENT_PASS 인수 완료입니다. D4-1은 GD4_1 부분 독립 PASS 인수 완료이며 CORE-09/10 행의 기존 작성 당시 표시는 보존합니다. D4-2 부분 독립 PASS와 D4 전체 GD4 독립 PASS(C1 불필요)는 인수 완료이며 CORE-09~12 행의 작성 당시 표시는 보존합니다. D5-1 CORE-13은 SELF_CHECKED / 독립 부분 검수 대기입니다.
+아래는 18 Core의 설명·의사코드 18쌍(36개 문서)입니다. 경로는 `docs/vss/sw_detail/` 기준이며, 함수 이름·논리 owner·경로는 승인 Master의 Core 색인을 따릅니다.
 
-| Core | 함수 | 논리 Owner / Layer | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
-|---|---|---|---|---|---|
-| CORE-01 | `Flow_Process` | FLOW / 01_APP | [상세 설명](01_APP/FLOW/functions/Flow_Process.md) | [한국어 의사코드](01_APP/FLOW/pseudocode/Flow_Process.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
-| CORE-02 | `Input_Process` | INPUT / 02_SERVICE | [상세 설명](02_SERVICE/INPUT/functions/Input_Process.md) | [한국어 의사코드](02_SERVICE/INPUT/pseudocode/Input_Process.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
-| CORE-03 | `Store_ApplyInput` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyInput.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyInput.md) | GD2 INDEPENDENT_PASS / COMPLETED |
-| CORE-04 | `Store_ApplyPlaybackFact` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
-| CORE-05 | `Store_AdvanceDeadlines` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) | D3-1 PARTIAL_INDEPENDENT_PASS / COMPLETED |
-| CORE-06 | `Select_Choose` | POLICY / 02_SERVICE | [상세 설명](02_SERVICE/POLICY/functions/Select_Choose.md) | [한국어 의사코드](02_SERVICE/POLICY/pseudocode/Select_Choose.md) | D3-2 PARTIAL_INDEPENDENT_PASS / COMPLETED |
-| CORE-07 | `Playback_RequestTransition` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md) | D3-2 PARTIAL_INDEPENDENT_PASS / COMPLETED |
-| CORE-08 | `Playback_Advance` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_Advance.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md) | D3-2 PARTIAL_INDEPENDENT_PASS / COMPLETED |
-| CORE-09 | `Asset_Read` | ASSET / 02_SERVICE | [상세 설명](02_SERVICE/ASSET/functions/Asset_Read.md) | [한국어 의사코드](02_SERVICE/ASSET/pseudocode/Asset_Read.md) | SELF_CHECKED / GD4_1_PENDING |
-| CORE-10 | `AudioStream_Prepare` | AUDIO_STREAM / 02_SERVICE | [상세 설명](02_SERVICE/AUDIO_STREAM/functions/AudioStream_Prepare.md) | [한국어 의사코드](02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Prepare.md) | SELF_CHECKED / GD4_1_PENDING |
-| CORE-11 | `AudioStream_RequestControl` | AUDIO_STREAM / 02_SERVICE | [상세 설명](02_SERVICE/AUDIO_STREAM/functions/AudioStream_RequestControl.md) | [한국어 의사코드](02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_RequestControl.md) | SELF_CHECKED / GD4_2_PENDING |
-| CORE-12 | `AudioStream_Advance` | AUDIO_STREAM / 02_SERVICE | [상세 설명](02_SERVICE/AUDIO_STREAM/functions/AudioStream_Advance.md) | [한국어 의사코드](02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Advance.md) | SELF_CHECKED / GD4_2_PENDING |
-| CORE-13 | `AudioTx_Request` | AUDIO_TX / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md) | [한국어 의사코드](03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Request.md) | D5-1 SELF_CHECKED / 독립 부분 검수 대기 |
-| CORE-14 | `AudioTx_Advance` | AUDIO_TX / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_TX/functions/AudioTx_Advance.md) | [한국어 의사코드](03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md) | GD2 INDEPENDENT_PASS / COMPLETED |
-| CORE-15 | `AudioControl_Service` | AUDIO_CONTROL / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md) | [한국어 의사코드](03_DRIVER/AUDIO_CONTROL/pseudocode/AudioControl_Service.md) | D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
-| CORE-16 | `AudioHAL_Callback` | AUDIOHAL_BOUNDARY / 04_HAL_BSP | [상세 설명](04_HAL_BSP/AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md) | [한국어 의사코드](04_HAL_BSP/AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md) | D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
-| CORE-17 | `Health_Evaluate` | HEALTH / 02_SERVICE | [상세 설명](02_SERVICE/HEALTH/functions/Health_Evaluate.md) | [한국어 의사코드](02_SERVICE/HEALTH/pseudocode/Health_Evaluate.md) | D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
-| CORE-18 | `Health_BuildStatus` | HEALTH / 02_SERVICE | [상세 설명](02_SERVICE/HEALTH/functions/Health_BuildStatus.md) | [한국어 의사코드](02_SERVICE/HEALTH/pseudocode/Health_BuildStatus.md) | D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
+| Core | 함수 | 논리 Owner / Layer | 설명 경로 | 의사코드 경로 |
+|---|---|---|---|---|
+| CORE-01 | `Flow_Process` | FLOW / 01_APP | [상세 설명](01_APP/FLOW/functions/Flow_Process.md) | [한국어 의사코드](01_APP/FLOW/pseudocode/Flow_Process.md) |
+| CORE-02 | `Input_Process` | INPUT / 02_SERVICE | [상세 설명](02_SERVICE/INPUT/functions/Input_Process.md) | [한국어 의사코드](02_SERVICE/INPUT/pseudocode/Input_Process.md) |
+| CORE-03 | `Store_ApplyInput` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyInput.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyInput.md) |
+| CORE-04 | `Store_ApplyPlaybackFact` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_ApplyPlaybackFact.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_ApplyPlaybackFact.md) |
+| CORE-05 | `Store_AdvanceDeadlines` | STORE / 02_SERVICE | [상세 설명](02_SERVICE/STORE/functions/Store_AdvanceDeadlines.md) | [한국어 의사코드](02_SERVICE/STORE/pseudocode/Store_AdvanceDeadlines.md) |
+| CORE-06 | `Select_Choose` | POLICY / 02_SERVICE | [상세 설명](02_SERVICE/POLICY/functions/Select_Choose.md) | [한국어 의사코드](02_SERVICE/POLICY/pseudocode/Select_Choose.md) |
+| CORE-07 | `Playback_RequestTransition` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_RequestTransition.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_RequestTransition.md) |
+| CORE-08 | `Playback_Advance` | PLAYBACK / 02_SERVICE | [상세 설명](02_SERVICE/PLAYBACK/functions/Playback_Advance.md) | [한국어 의사코드](02_SERVICE/PLAYBACK/pseudocode/Playback_Advance.md) |
+| CORE-09 | `Asset_Read` | ASSET / 02_SERVICE | [상세 설명](02_SERVICE/ASSET/functions/Asset_Read.md) | [한국어 의사코드](02_SERVICE/ASSET/pseudocode/Asset_Read.md) |
+| CORE-10 | `AudioStream_Prepare` | AUDIO_STREAM / 02_SERVICE | [상세 설명](02_SERVICE/AUDIO_STREAM/functions/AudioStream_Prepare.md) | [한국어 의사코드](02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Prepare.md) |
+| CORE-11 | `AudioStream_RequestControl` | AUDIO_STREAM / 02_SERVICE | [상세 설명](02_SERVICE/AUDIO_STREAM/functions/AudioStream_RequestControl.md) | [한국어 의사코드](02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_RequestControl.md) |
+| CORE-12 | `AudioStream_Advance` | AUDIO_STREAM / 02_SERVICE | [상세 설명](02_SERVICE/AUDIO_STREAM/functions/AudioStream_Advance.md) | [한국어 의사코드](02_SERVICE/AUDIO_STREAM/pseudocode/AudioStream_Advance.md) |
+| CORE-13 | `AudioTx_Request` | AUDIO_TX / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md) | [한국어 의사코드](03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Request.md) |
+| CORE-14 | `AudioTx_Advance` | AUDIO_TX / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_TX/functions/AudioTx_Advance.md) | [한국어 의사코드](03_DRIVER/AUDIO_TX/pseudocode/AudioTx_Advance.md) |
+| CORE-15 | `AudioControl_Service` | AUDIO_CONTROL / 03_DRIVER | [상세 설명](03_DRIVER/AUDIO_CONTROL/functions/AudioControl_Service.md) | [한국어 의사코드](03_DRIVER/AUDIO_CONTROL/pseudocode/AudioControl_Service.md) |
+| CORE-16 | `AudioHAL_Callback` | AUDIOHAL_BOUNDARY / 04_HAL_BSP | [상세 설명](04_HAL_BSP/AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md) | [한국어 의사코드](04_HAL_BSP/AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md) |
+| CORE-17 | `Health_Evaluate` | HEALTH / 02_SERVICE | [상세 설명](02_SERVICE/HEALTH/functions/Health_Evaluate.md) | [한국어 의사코드](02_SERVICE/HEALTH/pseudocode/Health_Evaluate.md) |
+| CORE-18 | `Health_BuildStatus` | HEALTH / 02_SERVICE | [상세 설명](02_SERVICE/HEALTH/functions/Health_BuildStatus.md) | [한국어 의사코드](02_SERVICE/HEALTH/pseudocode/Health_BuildStatus.md) |
 
 ## 근거와 미결 범위
 
 현재 상세 동작은 [R2 함수 원문](../design/30_FUNCTIONS/00_FUNCTION_OVERVIEW.md)에서, writer·자료 수명은 [R3](../design/40_DATA/00_DATA_OVERVIEW.md)에서, `winner ≠ prepared ≠ accepted/enabled ≠ actual start`와 STOP·late·PCM 회차는 [R4 공통 계약](../design/50_CONTRACTS/00_CONTRACT_OVERVIEW.md)에서 확인합니다. 이 지도는 기존 49 Trace를 재정의하지 않습니다.
 
-P1B_C1의 **9 Core/16 Q↔Core 연결**은 REQUIRED_NOT_RUN입니다. Q01~14와 Network PR #68은 당시 미합의 제안이며, R6-01~08·제품 source/image·실제 출력/STOP·DMA 안전은 미확정입니다. [Binding·정책 미정 원문](../design/90_BINDING/91_IMPLEMENTATION_TBD.md)을 따르고 최종 Q 차단 지도를 채택하지 않습니다. P2는 HOLD입니다.
+P1B_C1의 **9 Core/16 Q↔Core 연결**에 대한 문서 보정과 제품 C1 검증은 별개입니다. Q01~14와 Network PR #68은 당시 미합의 제안이며, R6-01~08·실제 C ABI·제품 source/image·실제 출력/STOP·DMA 안전은 미확정입니다. [Binding·정책 미정 원문](../design/90_BINDING/91_IMPLEMENTATION_TBD.md)을 따르고 최종 Q 차단 지도를 채택하지 않습니다. 원 G1-B 판정 원본은 SOURCE_NOT_RECOVERED이며, P2는 HOLD입니다.
 
 중복·품질/Hold 기산·읽기 전용 선택·bounded Asset read·PCM 회차/late·Unknown/Status는 독립 SW/Host 후보로 남습니다. `<2초`는 [원 발생→최초 actual의 잠정 조건](../design/50_CONTRACTS/30_TIMING_FRESHNESS.md)이고 Network `500ms` 제안과 별개입니다. WINDOW/Anti-Pinch 제품 연결은 [구현 보류 — 설계 유지]이며 격리 TEST 의미는 유지합니다. 관련 Module의 후속 후보·제품 Gate를 함께 읽으세요.

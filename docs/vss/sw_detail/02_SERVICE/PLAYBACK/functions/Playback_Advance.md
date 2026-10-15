@@ -2,7 +2,7 @@
 
 [상세 설명](../functions/Playback_Advance.md) · [의사코드](../pseudocode/Playback_Advance.md) · [PLAYBACK](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-08
 
-> GUIDE · SELF_CHECKED / D3_2_REVIEW_PENDING · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
+> GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
 
 <a id="contract"></a>
 ## 목적과 최신 논리 원형
@@ -93,7 +93,7 @@ actual/종료 사실을 요청 acceptance보다 우선 보존합니다. 원 귀�
 
 모든 관련 원 Attempt/segment scope **각각**에서 `(필요한 과거 전체 범위의 실제 무출력 충분 입증 AND 해당 옛 작업의 미래 출력 불가 충분 입증)` 또는 `(실제/잔류 출력 종료 충분 입증 AND 해당 옛 작업의 미래 출력 불가 충분 입증)`을 확인합니다. scope A는 TERMINATION, scope B는 NO_START로 충족할 수 있지만, 각 원 scope의 근거를 서로 대신 사용하지 않습니다.
 
-이는 B2에서 원 identity/operation/scope·시각·coverage를 확인·보호한 `NO_START_CONFIRMED` 또는 `OUTPUT_TERMINATION_CONFIRMED`의 충분 근거만 사용합니다. 현재 idle/STOP ack/zero-fill/IRQ 결과를 충분 근거로 승격하지 않으며, 관련 scope 하나라도 미처리·부족·손실이면 전체 final/retirement를 만들지 않고 원 보호·정리를 유지합니다.
+이는 [의사코드의 원 출력 근거 적용 단계(B2)](../pseudocode/Playback_Advance.md#procedure)에서 원 identity/operation/scope·시각·coverage를 확인·보호한 `NO_START_CONFIRMED` 또는 `OUTPUT_TERMINATION_CONFIRMED`의 충분 근거만 사용합니다. 현재 idle/STOP ack/zero-fill/IRQ 결과를 충분 근거로 승격하지 않으며, 관련 scope 하나라도 미처리·부족·손실이면 전체 final/retirement를 만들지 않고 원 보호·정리를 유지합니다.
 
 위 하위 근거에 **더해**, 각 관련 scope의 미래 PCM 제출 차단, PB 전체 start/cue/repeat 차단, provider/read/PCM·새 owner 자원의 실제 안전 조건, late 원귀속 보호가 **각각 모두** 필요합니다. 한 scope/cleanup/STOP 수락을 다른 구간/전체 Session으로 확대하지 않습니다.
 

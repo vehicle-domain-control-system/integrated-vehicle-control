@@ -2,7 +2,7 @@
 
 [상위 VSS 지도](../01_VSS_MAP.md) · [처음 읽기](../00_START_HERE.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 PASS 인수. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 APP는 각 Service의 진행과 선택·실행·보고·복구 순서를 연결합니다. 상태를 변경하는 책임은 해당 owner에 남기고, FLOW는 반영 완료 관측의 일관성을 확인해 POLICY 판단과 PLAYBACK 요구를 조율합니다.
 
@@ -26,4 +26,4 @@ startup·제품/TEST 입력·시간/후속 처리 기회와 Service 결과를 �
 
 [R1 APP 책임](../../design/10_LAYERS/10_APP_LAYER.md) · [R4 Ownership](../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md) · [R4 복구 순서](../../design/50_CONTRACTS/40_FAULT_RECOVERY.md)
 
-`Flow_Process`의 기존 설명/의사코드는 D3-1 부분 독립 PASS 인수 완료입니다. [FLOW 함수 표](FLOW/00_MODULE_OVERVIEW.md)에서 정확한 두 경로를 찾을 수 있습니다.
+[FLOW 함수 표](FLOW/00_MODULE_OVERVIEW.md)에서 `Flow_Process`의 설명과 의사코드를 함께 읽습니다.

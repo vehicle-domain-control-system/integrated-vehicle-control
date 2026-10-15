@@ -2,7 +2,7 @@
 
 [상위 Layer](../00_LAYER_OVERVIEW.md) · [VSS 지도](../../01_VSS_MAP.md) · [문서 양식·확인 수준](../../00_START_HERE.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 검수 대기. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE. 기능 탐색 안내. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 현재 출력 제한과 대상별 복구 판단을 유지하고 반영 완료된 owner 관측에서 일관된 VSS_STATUS를 파생합니다. 입력 품질 상실과 출력 Fault, 초기 미평가와 확인 실패를 구분합니다.
 
@@ -42,18 +42,18 @@ VSS_STATUS_CREATED는 일관된 관측의 새 보고 생성입니다. VSS_STATUS
 
 ## 담당 Core의 문서쌍
 
-| Core | 함수 / 역할 | 설명 예정 경로 | 의사코드 예정 경로 | 작성 상태 |
-|---|---|---|---|---|
-| CORE-17 | `Health_Evaluate` — 동기 진단·현재 대상의 복구 허용/해제 적용 | [상세 설명](functions/Health_Evaluate.md) | [한국어 의사코드](pseudocode/Health_Evaluate.md) | D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
-| CORE-18 | `Health_BuildStatus` — 동기 원본 읽기 전용 파생 보고 | [상세 설명](functions/Health_BuildStatus.md) | [한국어 의사코드](pseudocode/Health_BuildStatus.md) | D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
+| Core | 함수 / 역할 | 상세 설명 | 한국어 의사코드 |
+|---|---|---|---|
+| CORE-17 | `Health_Evaluate` — 동기 진단·현재 대상의 복구 허용/해제 적용 | [상세 설명](functions/Health_Evaluate.md) | [한국어 의사코드](pseudocode/Health_Evaluate.md) |
+| CORE-18 | `Health_BuildStatus` — 동기 원본 읽기 전용 파생 보고 | [상세 설명](functions/Health_BuildStatus.md) | [한국어 의사코드](pseudocode/Health_BuildStatus.md) |
 
-CORE-17/18 설명·의사코드는 위 링크로 왕복합니다. D6-1 자체검수·독립 검수 대기이며 실제 동작의 정본은 아래 동결 Function 원문입니다.
+CORE-17/18 설명·의사코드는 위 링크로 왕복합니다. 실제 동작의 정본은 아래 동결 Function 원문입니다.
 
 ## 후속 진행 후보와 미정
 
-current/recent 구분·현재 대상/permission 검사·coherent CREATED/REEVALUATE는 독립 SW/Host 후보입니다. Q08~10의 실제 DTO·Domain 소비·초기 전체 reduction, exact cause/action와 물리 효과 검증은 미정입니다. HEALTH가 새 CAN 송신 API를 만들지 않습니다. 두 함수쌍은 D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING입니다.
+current/recent 구분·현재 대상/permission 검사·coherent CREATED/REEVALUATE는 독립 SW/Host 후보입니다. Q08~10의 실제 DTO·Domain 소비·초기 전체 reduction, exact cause/action와 물리 효과 검증은 미정입니다. HEALTH가 새 CAN 송신 API를 만들지 않습니다.
 
-위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. 미해결 Q↔Core 관계는 P1B_C1 독립 검수 전 최종 차단 지도로 채택하지 않습니다.
+위 후보는 `TEST_NOT_RUN`이며 실제 코드/Host 실행은 별도 지시·범위·Gate가 필요합니다. Q·R6 미합의와 외부 IF/HW·제품 결합 제한은 유지합니다.
 
 ## 현재 상세 근거
 

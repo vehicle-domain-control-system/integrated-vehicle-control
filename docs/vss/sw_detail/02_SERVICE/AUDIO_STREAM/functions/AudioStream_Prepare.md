@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [AUDIO_STREAM](../00_MODULE_OVERVIEW.md) / CORE-10 · [한국어 의사코드](../pseudocode/AudioStream_Prepare.md)
 
-> GUIDE · SELF_CHECKED / GD4_1_PENDING. 원 준비·CPU prime의 논리 설명이며 R6 실제 ABI와 제품/HW 안전성은 미확정이다. 실제 C·Host·보드 시험 NOT_RUN.
+> GUIDE · 원 준비·CPU prime의 논리 설명이며 R6 실제 ABI와 제품/HW 안전성은 미확정이다. 실제 C·Host·보드 시험 NOT_RUN.
 
 <a id="contract"></a>
 ## 반환·인자와 R6 논리 계약
@@ -26,7 +26,7 @@ VssRequestDisposition AudioStream_Prepare(
 <a id="ownership"></a>
 ## Owner·Caller/Callee와 원 자료
 
-AUDIO_STREAM은 [provider](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssprovidercontext)의 소비 진행/phase/productionAllowed와 [정확히 A/B 두 PCM 상태](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vsspcmbufferstate)의 내용/usage를 쓴다. PLAYBACK의 [RequestTransition](../../PLAYBACK/functions/Playback_RequestTransition.md)·[Advance](../../PLAYBACK/functions/Playback_Advance.md)가 준비 의도를 전달하며 같은 준비의 후속은 기존 [AudioStream_Advance 경계](../../../../design/30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-advance)가 진행한다.
+AUDIO_STREAM은 [provider](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssprovidercontext)의 소비 진행/phase/productionAllowed와 [정확히 A/B 두 PCM 상태](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vsspcmbufferstate)의 내용/usage를 쓴다. PLAYBACK의 [RequestTransition](../../PLAYBACK/functions/Playback_RequestTransition.md)·[Advance](../../PLAYBACK/functions/Playback_Advance.md)가 준비 의도를 전달하며 같은 준비의 후속은 기존 [AudioStream_Advance 경계](../../../../design/30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-advance)가 진행한다. 현재 [Advance 상세의 준비 후속·생산](AudioStream_Advance.md#production)에서 같은 준비의 후속을 확인한다.
 
 | 자료/경계 | 반드시 보존할 원본 |
 |---|---|
@@ -44,7 +44,15 @@ plan/Meta/span/samples의 포인터를 얕게 복사한 것만으로 후속 수�
 
 preparation 외피를 읽기 전에 주소/범위를 확인하고, 내부 plan/Meta 등 실제 참조의 접근 가능성·귀속·수명을 차례로 검증한다. 원 session/attempt/plan/position/asset 연결이 부적합하면 새 의도를 REJECTED로 거부한다. 새로 이용할 provider/PCM 자원의 실제 안전 종료와 새 보호 예산이 미충족이면 WAIT이며 새 위험 있는 prime을 실행하지 않는다. 옛 불변 callback 귀속 기록은 alias 없는 별도 보호로 남을 수 있으며, 모든 기록의 동시 폐기를 강제하지 않는다.
 
-동일 preparation이 이미 수용됐으면 원 identity/시간·decoder/plan을 유지한 채 pending 부분만 제한적으로 진행한다. 동일 Attempt에 의미가 다른 plan/asset/position을 덮지 않는다. 이미 PREPARED인 동일 문맥의 최신 준비가 여전히 유효하면 기존 상태를 KEPT로 유지한다. 취소/STOP·CLOSING 또는 productionAllowed 차단된 동일 원 preparation의 재호출은 동기 KEPT로 기존 차단·정리를 유지한다. 이와 별개로 적법한 원 Session/Attempt의 `VSS_AUDIO_REQUEST_REJECTED` stage를 독립 보호·인계하며 새 준비/생산/제출이나 새 age/Attempt를 만들지 않는다. KEPT는 기존 차단 유지이지 준비 성공이 아니다. 별도의 부적합한 신규 의도는 동기 REJECTED로 거부하며, 원 귀속이 없는 입력에 가짜 stage를 생성하지 않는다. 이번 재요구에 옛 PREPARED를 준비 성공으로 재발행하지 않고 기존 원 사실/미인계·정리 의무는 계속 보호한다.
+- 동일 preparation이 이미 수용됐으면 원 identity/시간·decoder/plan을 유지한 채 pending 부분만 제한적으로 진행한다. 동일 Attempt에 의미가 다른 plan/asset/position을 덮지 않는다.
+
+- 이미 PREPARED인 동일 문맥의 최신 준비가 여전히 유효하면 기존 상태를 KEPT로 유지한다.
+
+- 취소/STOP·CLOSING 또는 productionAllowed 차단된 동일 원 preparation의 재호출은 동기 KEPT로 기존 차단·정리를 유지한다. 이와 별개로 적법한 원 Session/Attempt의 `VSS_AUDIO_REQUEST_REJECTED` stage를 독립 보호·인계하며 새 준비/생산/제출이나 새 age/Attempt를 만들지 않는다. KEPT는 기존 차단 유지이지 준비 성공이 아니다.
+
+- 별도의 부적합한 신규 의도는 동기 REJECTED로 거부하며, 원 귀속이 없는 입력에 가짜 stage를 생성하지 않는다.
+
+이번 재요구에 옛 PREPARED를 준비 성공으로 재발행하지 않고 기존 원 사실/미인계·정리 의무는 계속 보호한다.
 
 새 요구를 적법하게 수용할 때만 하위 호출 전에 원 preparation·provider·후속 참조/사실의 보호를 확보한다. 그 뒤 provider의 원 session/attempt/asset·PREPARING·productionAllowed를 원 근거로 반영하고 ADOPTED와 PREPARE_RECEIVED를 별개로 보호한다. 최초 Meta·원 age를 재시도 시각으로 갱신하지 않는다. 정상 Started Session의 후속 cue에는 새로운 최초 firstStartMeta를 생성하지 않는다.
 
@@ -77,7 +85,13 @@ A와 B 각각의 원 attempt/buffer/cycle을 확인하여, 아래 조건을 **�
 | 마지막 short tail·빈 B | 실제 유효 수만 유지. full 용량 padding·반복·두 sound block 강제 없음 |
 | 물리 zero-fill | 현재 쓰기 안전이 확인된 기존 A/B 범위의 정리만. validFrameCount/재생횟수를 늘리지 않음 |
 
-초기 준비에 실제 PCM 하위 인계가 필요하면, validFrameCount>0인 안정된 samples/유효범위/format/key와 원 handoff 참조를 먼저 보호한다. **그 보호를 마친 뒤 DRIVER 부수효력 직전**, 원 Session/Attempt/A 또는 B/cycle·productionAllowed·STOP/취소·현재 CPU 쓰기 안전 및 다음 DMA 방문 전 안정성을 다시 확인한다. 부족·변화·안전구간 만료이면 TX를 호출하지 않고 새 sound handoff를 중단하며, 원 PCM/cycle·이미 확보한 부분 참조·해당 usage의 보호/정리 후속을 유지한다. 이 경로를 하위 무효력 거부/no-access·출력 종료로 꾸미거나 CPU 쓰기 권한을 임의 회수하지 않는다. 조건을 통과할 때만 DRIVER 호출 **전에 HANDOFF_PENDING**으로 보호한다. 최종 확인부터 하위 효력까지 근거를 유효하게 유지하는 직렬화·원자성·메모리 장벽/실물 타이밍 수단은 BINDING_TBD/HW_UNVERIFIED이며 여기서 확정하지 않는다. 정확한 R6 PCM lane만 연결하며 START 제어를 생성하지 않는다. 새 무효력 거부/안전 반환은 원 operation/cycle의 충분 근거와 현재 쓰기 조건을 각각 확인하고 보호한다. 수용·소비·반환은 prepared/actual을 자동 증명하지 않는다. 상세 제어/Advance는 D4-2·D5 범위다.
+초기 준비에 실제 PCM 하위 인계가 필요하면, validFrameCount>0인 안정된 samples/유효범위/format/key와 원 handoff 참조를 먼저 보호한다. **그 보호를 마친 뒤 DRIVER 부수효력 직전**, 원 Session/Attempt/A 또는 B/cycle·productionAllowed·STOP/취소·현재 CPU 쓰기 안전 및 다음 DMA 방문 전 안정성을 다시 확인한다.
+
+부족·변화·안전구간 만료이면 TX를 호출하지 않고 새 sound handoff를 중단하며, 원 PCM/cycle·이미 확보한 부분 참조·해당 usage의 보호/정리 후속을 유지한다. 이 경로를 하위 무효력 거부/no-access·출력 종료로 꾸미거나 CPU 쓰기 권한을 임의 회수하지 않는다.
+
+조건을 통과할 때만 DRIVER 호출 **전에 HANDOFF_PENDING**으로 보호한다. 정확한 R6 PCM lane만 연결하며 START 제어를 생성하지 않는다. 새 무효력 거부/안전 반환은 원 operation/cycle의 충분 근거와 현재 쓰기 조건을 각각 확인하고 보호한다.
+
+최종 확인부터 하위 효력까지 근거를 유효하게 유지하는 직렬화·원자성·메모리 장벽/실물 타이밍 수단은 BINDING_TBD/HW_UNVERIFIED이며 여기서 확정하지 않는다. 수용·소비·반환은 prepared/actual을 자동 증명하지 않는다. 상세 제어·후속은 [RequestControl](AudioStream_RequestControl.md)·[Advance](AudioStream_Advance.md) 및 [AudioTx_Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md)에서 읽는다.
 
 <a id="stages"></a>
 ## 동기 disposition과 보호된 준비 단계
@@ -105,6 +119,6 @@ ASSET lookup/metadata/bounds/read 오류, STREAM corrupt/unsupported/decoder 오
 
 ## 구현 후보·미정과 연결 근거
 
-F1은 identity/단일 writer/분리된 stage·OUT·취소 불변조건, F2는 출처 있는 bounded fixture·safe-write 조건의 시험 주입, F3는 short-tail·OUT 부족·read/decode 실패·취소 경합의 stub 검증 후보다. 실제 Host/ASan/Build 시험은 NOT_RUN이다. F4 제품 source/image·C ABI/보호 저장/직렬화, F5 현재 DMA 방문 안전/WCET·SAI/STOP/actual·메모리 조건은 BINDING_TBD/HW_UNVERIFIED로 해당 연결만 보류한다. F6 D4-2 RequestControl/Advance·D5 TX·D6 HEALTH는 별도 범위다. P1B_C1/Q/R6/외부 IF 미해결·P2 HOLD·WINDOW PRODUCT 보류/TEST 격리 및 원 [최초 actual <2초 잠정 조건](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)을 유지한다.
+F1은 identity/단일 writer/분리된 stage·OUT·취소 불변조건, F2는 출처 있는 bounded fixture·safe-write 조건의 시험 주입, F3는 short-tail·OUT 부족·read/decode 실패·취소 경합의 stub 검증 후보다. 실제 Host/ASan/Build 시험은 NOT_RUN이다. F4 제품 source/image·C ABI/보호 저장/직렬화, F5 현재 DMA 방문 안전/WCET·SAI/STOP/actual·메모리 조건은 BINDING_TBD/HW_UNVERIFIED로 해당 연결만 보류한다. 인접 계약은 [RequestControl](AudioStream_RequestControl.md)·[Advance](AudioStream_Advance.md), [AudioTx_Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md), [Health_Evaluate](../../HEALTH/functions/Health_Evaluate.md)·[Health_BuildStatus](../../HEALTH/functions/Health_BuildStatus.md)에서 읽는다. P1B_C1/Q/R6/외부 IF 미해결·P2 HOLD·WINDOW PRODUCT 보류/TEST 격리 및 원 [최초 actual <2초 잠정 조건](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)을 유지한다.
 
 [의사코드 분기](../pseudocode/AudioStream_Prepare.md#procedure) · [R2 Prepare](../../../../design/30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-prepare) · [R3 준비](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssaudiopreparation) · [R3 provider](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssprovidercontext) · [R4 현재 쓰기 안전](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#safe-write) · [R4 유효 PCM/무음](../../../../design/50_CONTRACTS/50_AUDIO_BUFFER_TRANSPORT.md#valid-and-silence) · [R5 Prepare](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#audiostream-prepare) · [R5 내부 prime](../../../../design/60_PSEUDOCODE/40_AUDIO_PREPARE_TX_FLOW.md#fill-buffer) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-audiostream-prepare)

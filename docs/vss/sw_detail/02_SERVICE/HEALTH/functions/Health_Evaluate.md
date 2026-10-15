@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [SERVICE](../../00_LAYER_OVERVIEW.md) · [HEALTH](../00_MODULE_OVERVIEW.md) · CORE-17 · [한국어 C형 의사코드](../pseudocode/Health_Evaluate.md)
 
-> GUIDE · D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING. 기준 VSS@5a17e22, Master v1.1, GD5 INDEPENDENT_PASS. R6 논리 계약 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> GUIDE · CORE-17 · Master v1.1. R6 논리 계약 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 <a id="contract"></a>
 ## R6 논리 원형과 반환
@@ -57,7 +57,7 @@ Caller는 [FLOW](../../../01_APP/FLOW/functions/Flow_Process.md#startup-recovery
 <a id="diagnostics"></a>
 ## 원진단 보호와 Fault 5종
 
-1. 기존 bounded 기회 안에서 원진단을 독립 보호한다. 마지막 한 슬롯로 다른 진단/수행/검증을 덮지 않고, 처리 now로 발생 시각을 다시 찍지 않는다.
+1. 기존 bounded 기회 안에서 원진단을 독립 보호한다. 마지막 한 슬롯으로 다른 진단/수행/검증을 덮지 않고, 처리 now로 발생 시각을 다시 찍지 않는다.
 2. INPUT INVALID/STALE/NO_DATA 의미, startup/device UNASSESSED, 단순 WINDOW 제품 보류는 출력 Fault·DEGRADED·UNAVAILABLE로 자동 변환하지 않는다. 확인된 초기화 실패와 아직 평가하지 않은 상태를 구분한다.
 3. 확인된 실패이고 승인된 기존 분류 근거가 있는 범위만 아래 5종으로 연결한다. exact cause→Fault/restriction/action이 미정이면 원진단과 필요한 제한 판단 미결을 보존한다. 임의 reset/retry·새 Fault를 만들지 않는다.
 
@@ -109,8 +109,12 @@ capacity=0/full·부분 기록·참조 보호 실패는 인계 완료가 아니�
 <a id="limits"></a>
 ## 구현 후보·확인 한계와 정본
 
-F1/F3 독립 후보는 count/독립 OUT, 원 identity·revision·operation pair, 단독/실패/역순 사실 보존, 미평가 제외, 현재 한 대상 해제다. 명시적 충분/부족 관측을 주입하는 향후 Host 후보이며 이번 실행은 문서 정적검수뿐이다. F2 원 시간 표현은 근거 있는 시험 가정으로만 다루고 제품 수치로 확정하지 않는다.
+F1/F3 독립 후보는 count/독립 OUT, 원 identity·revision·operation pair, 단독/실패/역순 사실 보존, 미평가 제외, 현재 한 대상 해제다. 명시적 충분/부족 관측을 주입하는 향후 Host 후보이며 실제 시험은 NOT_RUN이다. F2 원 시간 표현은 근거 있는 시험 가정으로만 다루고 제품 수치로 확정하지 않는다.
 
-F4 실제 C ABI·key/storage/직렬화·source→image·cause/action 매핑, F5 실제 수행/별도 효과·DMA/STOP/actual·cache/MPU/WCET는 BINDING_TBD/HW_UNVERIFIED다. 현재 target에 제품 C/H 근거가 없으며 SOURCE_NOT_VERIFIED다. 미정은 관련 제품 효과만 제한한다. Q01~14/R6-01~08·OPEN-009/010·P1B_C1 REQUIRED_NOT_RUN·P2 HOLD·과거 FAIL/CR·WINDOW PRODUCT 보류/TEST 격리를 보존한다. D6-2/GD6·Host/Firmware/Build/Flash/Board는 착수하지 않았다.
+F4 실제 C ABI·key/storage/직렬화·source→image·cause/action 매핑, F5 실제 수행/별도 효과·DMA/STOP/actual·cache/MPU/WCET는 BINDING_TBD/HW_UNVERIFIED다. 현재 target에 제품 C/H 근거가 없으며 SOURCE_NOT_VERIFIED다. 미정은 관련 제품 효과만 제한한다. Q01~14/R6-01~08·OPEN-009/010·P2 HOLD·과거 FAIL/CR·WINDOW PRODUCT 보류/TEST 격리를 보존한다. Host/Firmware/Build/Flash/Board는 착수하지 않았다.
 
-[R2 역할](../../../../design/30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-evaluate) · [R3 Fault](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssfaultstate) · [R3 허용](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoverypermission) · [R3 수행](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryperformedevidence) · [R3 검증](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryverificationevidence) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect) · [R4 복구](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [R5 절차](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#health-evaluate) · [R6 원형](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-evaluate) · [의사코드 분기](../pseudocode/Health_Evaluate.md#procedure) · [Status 읽기 전용 파생](Health_BuildStatus.md#ownership)
+- [R2 역할](../../../../design/30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-evaluate) · [R3 Fault](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssfaultstate) · [R3 허용](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoverypermission) · [R3 수행](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryperformedevidence) · [R3 검증](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssrecoveryverificationevidence)
+
+- [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect) · [R4 복구](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md#current-target) · [R5 절차](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#health-evaluate)
+
+- [R6 원형](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-evaluate) · [의사코드 분기](../pseudocode/Health_Evaluate.md#procedure) · [Status 읽기 전용 파생](Health_BuildStatus.md#ownership)

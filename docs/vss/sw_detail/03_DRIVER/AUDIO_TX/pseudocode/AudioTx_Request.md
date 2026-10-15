@@ -2,7 +2,7 @@
 
 [상세 설명](../functions/AudioTx_Request.md) · [AUDIO_TX](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md)
 
-> CORE-13 · D5-1 SELF_CHECKED / 독립 부분 검수 대기. 아래 조건·서술형 연산은 논리 의사코드이며 새 public API·자료 타입·실제 C ABI가 아닙니다.
+> CORE-13. 아래 조건·서술형 연산은 논리 의사코드이며 새 public API·자료 타입·실제 C ABI가 아닙니다.
 
 <a id="contract"></a>
 ## 1. R6 공개 경계
@@ -220,7 +220,7 @@ for (각 군을 독립적으로) {
 return 원래 요구/후속의 requestState;
 ```
 
-returned full이어도 requests/diagnostics는 진행합니다. requests invalid이어도 diagnostics valid이면 진단 전달 가능합니다. 여러 요청/반환/진단의 각 count는 독립이며 union·마지막 슬롯로 합치지 않습니다. count=0과 written 전달은 완료/반영 ACK가 아닙니다. 이미 전달·보호 추적 중인 동일 사실은 Advance가 중복 새 사실로 만들지 않고, 후속 새 변화는 별도 보호합니다. 저장/반영 추적 방법은 Binding TBD입니다.
+returned full이어도 requests/diagnostics는 진행합니다. requests invalid이어도 diagnostics valid이면 진단 전달 가능합니다. 여러 요청/반환/진단의 각 count는 독립이며 union·마지막 슬롯으로 합치지 않습니다. count=0과 written 전달은 완료/반영 ACK가 아닙니다. 이미 전달·보호 추적 중인 동일 사실은 Advance가 중복 새 사실로 만들지 않고, 후속 새 변화는 별도 보호합니다. 저장/반영 추적 방법은 Binding TBD입니다.
 
 <a id="r9-followup"></a>
 ## R9. late·부족·손실과 종료 후 보호
@@ -234,7 +234,7 @@ VSS_COVERAGE_INSUFFICIENT(관측/상관 부족)와 VSS_COVERAGE_LOST(귀속·시
 
 유효 OUT는 전달한 개별 사실 수만 기록합니다. 미전달 사실과 남은 참조는 보호된 원 문맥으로 Advance 후속에 남습니다. 신규 거부는 해당 새 요구만 무효과이며 기존 작업의 보호는 유지됩니다. 부분효과/정리 대기는 실제 key와 원 범위를 보존합니다. 반환 scalar로 actual/no-start/전체 종료·무기한 CPU 쓰기 허가를 발급하지 않습니다.
 
-배타·bounds·중복·회차/late·군별 용량은 F1/F3 독립 구현/비구동 후보입니다. 원발생→최초 actual `<2초`는 F2 잠정값이며 현재 gate와 사실 적용을 분리합니다. 지속 raw 대응/PCM 재쓰기/STOP 잔류·반환 충분성은 F5 물리 Gate입니다. 구체 ABI·key/저장·직렬화는 기존 TBD, 실제 symbol 재사용은 미조사입니다. 후속 Host 후보와 team/HW 결정은 [설명 구현 가능성 표](../functions/AudioTx_Request.md#feasibility)에 남기며 이번 실제 시험은 NOT_RUN입니다.
+배타·bounds·중복·회차/late·군별 용량은 F1/F3 독립 구현/비구동 후보입니다. 원발생→최초 actual `<2초`는 F2 잠정값이며 현재 gate와 사실 적용을 분리합니다. 지속 raw 대응/PCM 재쓰기/STOP 잔류·반환 충분성은 F5 물리 Gate입니다. 구체 ABI·key/저장·직렬화는 기존 TBD, 실제 symbol 재사용은 미조사입니다. 후속 Host 후보와 team/HW 결정은 [설명 구현 가능성 표](../functions/AudioTx_Request.md#feasibility)에 남기며 실제 시험은 NOT_RUN입니다.
 
 <a id="references"></a>
 ## 4. 동결 원문과 승인 후속

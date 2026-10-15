@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [FLOW](../00_MODULE_OVERVIEW.md) · CORE-01 · [한국어 의사코드](../pseudocode/Flow_Process.md)
 
-> GUIDE · D3-1 SELF_CHECKED / D3_1_REVIEW_PENDING. 시작 `VSS@7bb5859b6aef909ed80f527c477280b09df50568`; 동결 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
+> GUIDE · 동결 `0641b2c2268cf47450aeb50302638a45a7a3277f`. TEST_NOT_RUN / BINDING_TBD / HW_UNVERIFIED.
 
 기존 app 처리 기회 안에서 INPUT 검증, 비동기 원사실 적용, STORE 기한, HEALTH/복구, POLICY 선택, PLAYBACK 요구와 보고를 연결한다. FLOW는 각 owner의 공개 의미 경계를 조율하며 재생 성공·새 authority·상태 원본을 생성하지 않는다.
 
@@ -70,10 +70,8 @@ INITIAL 기회는 기존 모듈 초기화/자원 근거에서 중립 ASSET 가�
 | F3_PARTIAL_INDEPENDENT / [복구](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#recovery-flow) | permission 변경·old 위험 참조/독립 old 기록·진단/보고 공간 부족·동시 facts 검사. 실행 물리 증거 대신 owner 충분/부족 관측을 명시 주입 |
 | F4_EXTERNAL_GATE / [실행 Binding](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#execution) | 기존 app entry/직렬화/처리 예산 및 Node Communication Status 소비자 실제 연결만 미확정 |
 | F5_PHYSICAL_SAFETY_GATE / [HW TBD](../../../../design/90_BINDING/91_IMPLEMENTATION_TBD.md#hardware) | old device/provider/PCM 접근 종료, 실제 복구 수행/검증·actual/whole 종료 충분성의 물리 확인만 미확정. FLOW의 순서/재수집 논리는 작성 가능 |
-| F6_DEFERRED_SCOPE / [Mapping](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md) | D3-2/3 함수쌍·실제 구현/Host/Build/Flash/보드·WINDOW 제품 연결은 별도 범위 |
+| F6_DEFERRED_SCOPE / [Mapping](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md) | 실제 구현/Host/Build/Flash/보드·WINDOW 제품 연결은 별도 범위 |
 
-보관 `src/AudioAppControl.c:255`는 VSS_DEMO에서 Session_Process 후 Arbitrator_Process를 호출한다. `VssAudioSession.c:248`은 single-pending slot/overwrite counter를 사용한다. 이 두 정적 관측만 SOURCE_CONFIRMED이며 최종 FLOW 순서·통지/Status 계약을 구현했다는 의미는 아니다. 논리 `Flow_Process` 심볼은 보관 C/H에서 미확인, BINDING_TBD/HW_UNVERIFIED다. 동결 의미 근거는 LOGICAL_APPROVED이며 새 가이드의 지위는 SELF_CHECKED다. 실제 채택 시 기존 entry/owner 읽기 adapter만 최소 대응하고 부적합 후보는 그 adapter·예산 가정만 재검토한다. 동결 R2~R6/D2 의미 변경은 별도 CR이다.
-
-보관 위치는 Git 제외 `.vss_work/reference/bringup_20261007/`이며 실제 읽은 소스의 SHA는 로컬 `evidence/VSD_D3_1_SOURCE_MAP.json`과 검수 ZIP에 있다. 이 자료를 GitHub에서 열리는 실제 제품 소스 링크로 위장하지 않는다.
+보관 코드의 VSS_DEMO에서 Session_Process 후 Arbitrator_Process를 호출하는 순서와 single-pending slot/overwrite counter에 대한 정적 관측만 SOURCE_CONFIRMED이며 최종 FLOW 순서·통지/Status 계약을 구현했다는 의미는 아니다. 논리 `Flow_Process` 심볼은 보관 C/H에서 미확인, BINDING_TBD/HW_UNVERIFIED다. 동결 의미 근거는 LOGICAL_APPROVED다. 실제 채택 시 기존 entry/owner 읽기 adapter만 최소 대응하고 부적합 후보는 그 adapter·예산 가정만 재검토한다. 동결 R2~R6/D2 의미 변경은 별도 CR이다.
 
 [R2](../../../../design/30_FUNCTIONS/10_FLOW_FUNCTIONS.md#flow-process) · [R3 basis](../../../../design/40_DATA/30_SELECTION_DATA.md#vssreadbasis) · [R4 Ownership](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect) · [R5 순서](../../../../design/60_PSEUDOCODE/20_INPUT_TO_SELECTION.md#flow-process) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-flow-process)

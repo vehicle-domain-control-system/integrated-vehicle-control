@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [ASSET](../00_MODULE_OVERVIEW.md) / CORE-09 · [한국어 의사코드](../pseudocode/Asset_Read.md)
 
-> GUIDE · SELF_CHECKED / GD4_1_PENDING. R6 논리 계약을 설명하며 실제 C ABI·제품 image 연결·Host/보드 시험은 미확정 또는 NOT_RUN이다.
+> GUIDE · R6 논리 계약을 설명하며 실제 C ABI·제품 image 연결·Host/보드 시험은 미확정 또는 NOT_RUN이다.
 
 <a id="contract"></a>
 ## 반환·인자와 R6 논리 계약
@@ -32,7 +32,7 @@ VssAssetReadDisposition Asset_Read(
 <a id="ownership"></a>
 ## Owner·Caller/Callee와 보호 자료
 
-ASSET은 현재 image/build의 [descriptor·metadata](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssassetdescriptor), 실제 공급 범위와 consumer 참조의 단일 writer다. AUDIO_STREAM의 [Prepare](../../AUDIO_STREAM/functions/AudioStream_Prepare.md) 및 [후속 Advance 경계](../../../../design/30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-advance)가 호출한다. callee는 read-only image와 기존 Runtime 경계이며 runtime Flash erase/program이나 새 Storage Driver를 호출하지 않는다.
+ASSET은 현재 image/build의 [descriptor·metadata](../../../../design/40_DATA/50_AUDIO_STREAM_DATA.md#vssassetdescriptor), 실제 공급 범위와 consumer 참조의 단일 writer다. AUDIO_STREAM의 [Prepare](../../AUDIO_STREAM/functions/AudioStream_Prepare.md) 및 [후속 Advance 경계](../../../../design/30_FUNCTIONS/40_AUDIO_STREAM_ASSET_FUNCTIONS.md#audiostream-advance)가 호출한다. 현재 [Advance 상세의 참조 수명](../../AUDIO_STREAM/functions/AudioStream_Advance.md#references)에서 후속을 확인한다. callee는 read-only image와 기존 Runtime 경계이며 runtime Flash erase/program이나 새 Storage Driver를 호출하지 않는다.
 
 | 원 자료 | 사용하는 핵심 필드·수명 |
 |---|---|
@@ -91,9 +91,9 @@ STREAM만 실제 소비한 compressed bytes에 따라 sourcePosition을 변경�
 | F3_PARTIAL_INDEPENDENT | short span, 무효/부족 OUT, read 실패·중복/late release를 stub 사실로 검증하는 후보 |
 | F4_EXTERNAL_GATE | 현재 제품 table/image/source 매핑, C ABI·주소/길이 타입·보호 저장소·직렬화·direct/staging은 BINDING_TBD |
 | F5_PHYSICAL_SAFETY_GATE | 실제 메모리 보호·DMA/SAI/STOP 충분성과 P2는 HW_UNVERIFIED/HOLD. 압축 참조 종료만으로 해제 불가 |
-| F6_DEFERRED_SCOPE | D4-2 STREAM 제어/Advance, D5 TX, D6 HEALTH 상세를 이 함수로 확장하지 않음 |
+| 인접 상세 | [STREAM RequestControl](../../AUDIO_STREAM/functions/AudioStream_RequestControl.md), [STREAM Advance](../../AUDIO_STREAM/functions/AudioStream_Advance.md), [TX Request](../../../03_DRIVER/AUDIO_TX/functions/AudioTx_Request.md), [HEALTH Evaluate](../../HEALTH/functions/Health_Evaluate.md)·[BuildStatus](../../HEALTH/functions/Health_BuildStatus.md)에서 각각의 계약을 읽음 |
 
-F1~F3는 별도 코드/Host 검증의 착수 후보이며 이번 실행은 문서 검수뿐이다. 실제 시험 방법·단일 잠정 정의·교체/철회 조건은 해당 별도 인계에서 추적한다. 원 [발생→최초 actual의 잠정 <2초](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)를 read 완료 시각으로 갱신하지 않는다. P1B_C1/Q/R6/외부 IF 미해결과 WINDOW PRODUCT 보류·TEST 격리를 보존한다.
+F1~F3는 별도 코드/Host 검증의 착수 후보이며 실제 시험은 NOT_RUN이다. 실제 시험 방법·단일 잠정 정의·교체/철회 조건은 해당 별도 인계에서 추적한다. 원 [발생→최초 actual의 잠정 <2초](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)를 read 완료 시각으로 갱신하지 않는다. P1B_C1/Q/R6/외부 IF 미해결과 WINDOW PRODUCT 보류·TEST 격리를 보존한다.
 
 ## 정본으로 이어 읽기
 

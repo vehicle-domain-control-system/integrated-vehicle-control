@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [DRIVER Layer](../../00_LAYER_OVERVIEW.md) · [AUDIO_TX Module](../00_MODULE_OVERVIEW.md) · [상세 설명](../functions/AudioTx_Advance.md)
 
-> GUIDE · CORE-14 · VSD-D2 `SELF_CHECKED` / `GD2_PENDING`. 의미 정본 `0641b2c2268cf47450aeb50302638a45a7a3277f`, 작성 출발 `VSS@48bb000456fb529ca04ab34b05cdcb1ebdda759c`. 실제 ABI·HW binding 미확정. Host/Build/Flash/Board `NOT_RUN`.
+> GUIDE · CORE-14. 의미 정본 `0641b2c2268cf47450aeb50302638a45a7a3277f`. 실제 ABI·HW binding 미확정. Host/Build/Flash/Board `NOT_RUN`.
 
 <a id="contract"></a>
 ## 읽기 전용 R6 논리 원형
@@ -204,7 +204,7 @@ return;  /* void/어느 군의 0 count도 완료·성공·보호 해제 근거�
 
 5군의 `0 <= written <= capacity`를 각자 지키고 기록한 사실은 원 operation/Attempt/PCM 회차·원 시각/coverage에만 귀속합니다. 반환군이 0이면 실제 안전 반환이 없거나 미인계일 수 있으며 보호가 계속됩니다. 어느 군의 부족으로 다른 군의 확인 사실을 지우지 않습니다. 모든 사용/참조 수명은 원 owner가 끝낼 때까지 보호합니다.
 
-`OUTPUT_START_CONFIRMED`/`NO_START_CONFIRMED`/`OUTPUT_TERMINATION_CONFIRMED`는 상위 STREAM/PLAYBACK의 별도 충분조건 결합이며 여기서 TX enum을 대체하지 않습니다. CPU 쓰기 안전·provider 재개·whole retirement도 별도 owner 판단입니다. R6-01~08, Q01~14, P1B_C1 16건, 외부 IF/HW, WINDOW 제품 보류·격리 TEST, P2 HOLD를 유지합니다. 논리 fixture 후보는 실행하지 않았고 물리 충분조건·RTD Binding을 확정하지 않았습니다.
+`OUTPUT_START_CONFIRMED`/`NO_START_CONFIRMED`/`OUTPUT_TERMINATION_CONFIRMED`는 상위 STREAM/PLAYBACK의 별도 충분조건 결합이며 여기서 TX enum을 대체하지 않습니다. CPU 쓰기 안전·provider 재개·whole retirement도 별도 owner 판단입니다. R6-01~08, Q01~14, 외부 IF/HW, WINDOW 제품 보류·격리 TEST, P2 HOLD를 유지합니다. 논리 fixture 후보는 실행하지 않았고 물리 충분조건·RTD Binding을 확정하지 않았습니다.
 
 <a id="references"></a>
 ## 분기별 정본

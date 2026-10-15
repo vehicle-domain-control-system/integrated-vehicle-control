@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) / [SERVICE](../../00_LAYER_OVERVIEW.md) / [STORE](../00_MODULE_OVERVIEW.md) / CORE-03 · [한국어 의사코드](../pseudocode/Store_ApplyInput.md)
 
-> GUIDE · D2_SELF_CHECKED / GD2_PENDING. 의미 기준: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`; D2 시작: `48bb000456fb529ca04ab34b05cdcb1ebdda759c`. 실제 C 구현·Host·보드 시험은 NOT_RUN.
+> GUIDE · 의미 기준: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`. 실제 C 구현·Host·보드 시험은 NOT_RUN.
 
 INPUT이 검증한 사건·상태·품질 중 하나를 STORE 원본에 적용하고, **신규 수용·동일 발생·갱신·거부**를 동기 반환한다.
 
@@ -83,19 +83,14 @@ INVALID/STALE/미수신(NO_DATA 의미)은 유효 CLEAR가 아니다. R3 품질 
 
 [Timing의 잠정 최초 actual age <2초](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#first-start)는 수용 성공 자체의 판정이나 이 함수의 새 timeout이 아니다. 원발생 기준 최초 실제 시작에만 적용하며 정확히 2초는 미허용이다. 이미 Started된 같은 Session의 정상 후속 cue에는 재적용하지 않는다. Network PR #68의 `USE_LIMIT 500ms` 제안과 min/AND로 통합하지 않는다.
 
-이 함수 후 FLOW는 반영 완료 STORE 관측을 연결한다. 실제 시작·전체 최종 fact 적용은 [Store_ApplyPlaybackFact의 동결 설명](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyplaybackfact), RX 없는 age/Hold 진행은 [Store_AdvanceDeadlines의 동결 설명](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-advancedeadlines) 책임이다. 두 함수의 새 상세 문서는 아직 PLANNED_NOT_WRITTEN이다.
+이 함수 후 FLOW는 반영 완료 STORE 관측을 연결한다. 실제 시작·전체 최종 fact 적용은 [Store_ApplyPlaybackFact 상세 설명](Store_ApplyPlaybackFact.md), RX 없는 age/Hold 진행은 [Store_AdvanceDeadlines 상세 설명](Store_AdvanceDeadlines.md)에서 읽는다. 각각의 책임에 대한 정본은 [Store_ApplyPlaybackFact의 동결 설명](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-applyplaybackfact)과 [Store_AdvanceDeadlines의 동결 설명](../../../../design/30_FUNCTIONS/20_INPUT_STORE_FUNCTIONS.md#store-advancedeadlines)이다.
 
 <a id="source"></a>
 ## 실제 소스 근거와 확인 한계
 
-정적 참조일: **2026-10-12 KST**. 위치는 로컬 `.vss_work/reference/bringup_20261007/`, 원본은 2026-10-07 스냅샷이다. ignored 파일은 GitHub 클릭 링크로 만들지 않는다. 설치 108개 무결성 PASS는 제품 구현 PASS가 아니다.
+보관 Arbitrator의 반복 WARNING_ACTIVE 무재시작·CLEAR 처리 경계만 SOURCE_CONFIRMED인 정적 관측이다. occurrence·Meta·최초 loss/Hold·Rear 전체 계약의 완성을 뜻하지 않는다. 보관 Session의 single pending overwrite와 수용 count 역시 최종/replay 추적 ledger의 대체 근거로 사용할 수 없다.
 
-| 실제 참고 경로·행 | SHA-256 | 확인한 내용 / 충족하지 못하는 계약 |
-|---|---|---|
-| `src/VssAudioArbitrator.c:174–286` | `473d519961b8cd08ef23e646fa3cca19f21ebdfa42307938181e767727010f52` | 반복 WARNING_ACTIVE 무재시작과 CLEAR 처리 경계 존재(SOURCE_CONFIRMED, 정적). occurrence·Meta·최초 loss/Hold·Rear 전체 계약 완성 아님 |
-| `src/VssAudioSession.c:248–287` | `facdb9e1d69a30f156e8830b5f384a76037222ae29c0098860ca1e8e61cfef1e` | single pending overwrite와 수용 count 존재. 최종/replay 추적 ledger의 대체 근거로 사용 불가 |
-
-설치된 `src` C/H 범위에서 `Store_ApplyInput` 실물 symbol은 NOT_FOUND_IN_INSPECTED_SCOPE다. 기존 Arbitrator/Session 내부 책임의 재사용·최소 보정 후보로 연결하며 새 Store 파일·pool·public API를 선결정하지 않는다. [과거 Binding](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md)은 당시 13개 후보 이력이고 최신 Core18/R6를 대체하지 않는다.
+보관 C/H 범위에서 `Store_ApplyInput` 실물 symbol은 NOT_FOUND_IN_INSPECTED_SCOPE이며 실제 binding은 BINDING_TBD다. 기존 Arbitrator/Session 내부 책임의 재사용·최소 보정 후보로 연결하며 새 Store 파일·pool·public API를 선결정하지 않는다. [과거 Binding](../../../../design/90_BINDING/90_C_FILE_API_MAPPING.md)은 당시 13개 후보 이력이고 최신 Core18/R6를 대체하지 않는다.
 
 <a id="feasibility"></a>
 ## 독립 SW 후보와 국소 미정
@@ -106,7 +101,7 @@ INVALID/STALE/미수신(NO_DATA 의미)은 유효 CLEAR가 아니다. R3 품질 
 | F1/F3 상태/품질/Hold·Rear | ACTIVE→INVALID→반복→유효 CLEAR; 정의된/없는 validUntil; 비교 불가; DISABLED→ENABLED 후 옛 위험 부활 금지 | Hold 기간은 VSS 정책, 원 시간/ordering은 INPUT/Runtime/Network. 기산 불변식부터 독립 검증 가능 |
 | F2 원 최초 actual <2초 잠정 조건의 인계 | 원 fact 구간이 경계 앞/정확히/뒤/걸침인지 비교하는 후속 STORE/PLAYBACK fixture | 기존 시간 gate/설정 위치에서 최종 값 교체. 실제 actual 생산은 HAL/보드 Gate; 이 함수에 임의 기한 검사 추가 없음 |
 
-후보가 원 계약과 불일치하거나 출처가 개정되면 해당 채택만 중단하고 기존 accepted/final·원 age·replay·품질 보호를 유지한다. 새 대체 수치 없이 owner 근거와 별도 구현 승인으로 재채택한다. Q01~14·R6-01~08·P1B_C1 9 Core/16 edge REQUIRED_NOT_RUN, 외부 IF/source-image/HW 미확정·P2 HOLD는 유지한다. WINDOW/Anti-Pinch PRODUCT는 [구현 보류 — 설계 유지], 격리 TEST 의미만 유지한다.
+후보가 원 계약과 불일치하거나 출처가 개정되면 해당 채택만 중단하고 기존 accepted/final·원 age·replay·품질 보호를 유지한다. 새 대체 수치 없이 owner 근거와 별도 구현 승인으로 재채택한다. Q01~14·R6-01~08 미결, 외부 IF/source-image/HW 미확정·P2 HOLD는 유지한다. 문서 관계 보정의 승인을 제품 ABI·실제 구현·보드 검증으로 확대하지 않는다. WINDOW/Anti-Pinch PRODUCT는 [구현 보류 — 설계 유지], 격리 TEST 의미만 유지한다.
 
 <a id="references"></a>
 ## 원문으로 확인하기

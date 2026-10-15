@@ -1,8 +1,8 @@
 # Select_Choose — 상세 동작 설명
 
-[상세 설명](../functions/Select_Choose.md) · [의사코드](../pseudocode/Select_Choose.md) · [POLICY](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-06
+[의사코드](../pseudocode/Select_Choose.md) · [POLICY](../00_MODULE_OVERVIEW.md) · [VSS 지도](../../../01_VSS_MAP.md) · CORE-06
 
-> GUIDE · SELF_CHECKED / D3_2_REVIEW_PENDING · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
+> GUIDE · LOGICAL_APPROVED / 실제 C ABI BINDING_TBD · TEST_NOT_RUN / HW_UNVERIFIED.
 
 <a id="contract"></a>
 ## 목적과 최신 논리 원형

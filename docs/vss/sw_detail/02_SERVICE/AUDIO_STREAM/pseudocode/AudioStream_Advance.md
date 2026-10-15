@@ -409,7 +409,7 @@ STREAM은 자기 provider/PCM A/B usage·미래 생산 권한·Backend 결합만
 <a id="gates"></a>
 ## 미정과 독립 구현 후보
 
-정확한 C ABI·저장 예산/직렬화·효력 직전 검사와 실제 하위 효과의 원자성·decoder/image/PCM format·DMA next-visit/WCET·cache/barrier·물리 actual/NO_START/STOP/TERMINATION fence·복구 action map/효과 검증은 BINDING_TBD/HW_UNVERIFIED다. 그 미정은 필요한 제품 효과만 막고 identity/7 OUT/STOP 차단/old cycle/충분조건/cleanup/복구 분리의 독립 Host 후보는 유지한다. 이번 Firmware/Host/Build/Flash/Board NOT_RUN, P1B_C1 REQUIRED_NOT_RUN/P2 HOLD다.
+정확한 C ABI·저장 예산/직렬화·효력 직전 검사와 실제 하위 효과의 원자성·decoder/image/PCM format·DMA next-visit/WCET·cache/barrier·물리 actual/NO_START/STOP/TERMINATION fence·복구 action map/효과 검증은 BINDING_TBD/HW_UNVERIFIED다. 그 미정은 필요한 제품 효과만 막고 identity/7 OUT/STOP 차단/old cycle/충분조건/cleanup/복구 분리의 독립 Host 후보는 유지한다. 이번 Firmware/Host/Build/Flash/Board NOT_RUN, P2 HOLD다.
 
 ## 정본·인접 문서
 

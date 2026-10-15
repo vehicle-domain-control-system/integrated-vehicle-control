@@ -2,7 +2,7 @@
 
 [상위 VSS 지도](../01_VSS_MAP.md) · [DRIVER](../03_DRIVER/00_LAYER_OVERVIEW.md)
 
-> GUIDE · VSD-D1 탐색 문서 · GD1 독립 검수 대기. 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
+> GUIDE · 설계 정본: `VSS@0641b2c2268cf47450aeb50302638a45a7a3277f`.
 
 HAL은 vendor 요청·IRQ의 raw capture 경계이고 BSP는 보드/generated·이미지/메모리 배치 근거입니다. 같은 Layer에서 읽지만 raw 등록과 정적 구성의 owner·수명을 합치지 않습니다. **독립 Module을 추가하지 않습니다.**
 
@@ -17,11 +17,11 @@ DRIVER → HAL → 현 vendor/HW 및 BSP/RUNTIME이 허용 방향입니다. ISR�
 
 ## CORE-16의 문서쌍
 
-`AudioHAL_Callback`은 R2 Core이지만 10 Module 밖 **HAL/BSP 내부 AUDIOHAL_BOUNDARY**가 논리 owner입니다. D5-2에서 아래 두 함수 문서만 작성하며 별도 Boundary 개요나 Module을 추가하지 않습니다.
+`AudioHAL_Callback`은 R2 Core이지만 10 Module 밖 **HAL/BSP 내부 AUDIOHAL_BOUNDARY**가 논리 owner입니다. 아래 두 문서에서 설명과 의사코드를 함께 읽으며, 별도 Module을 추가하지 않습니다.
 
-| Core | 함수 | 상세 설명 | 한국어 의사코드 | 작성 상태 |
-|---|---|---|---|---|
-| CORE-16 | `AudioHAL_Callback` | [상세 설명](AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md) | [한국어 의사코드](AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md) | D5-2 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING |
+| Core | 함수 | 상세 설명 | 한국어 의사코드 |
+|---|---|---|---|
+| CORE-16 | `AudioHAL_Callback` | [상세 설명](AUDIOHAL_BOUNDARY/functions/AudioHAL_Callback.md) | [한국어 의사코드](AUDIOHAL_BOUNDARY/pseudocode/AudioHAL_Callback.md) |
 
 위 링크는 HAL/BSP 내부 Boundary의 CORE-16 문서쌍입니다. callback 기록의 수명은 Session retirement·PCM 반환과 같다고 가정하지 않습니다. 원귀속·late/손실의 독립 논리 후보는 유지하되 실제 callback ABI·지속 DMA와 개별 회차의 상관·출력/STOP 충분성은 `BINDING_TBD / HW_UNVERIFIED`입니다. 과거 bring-up 설치 PASS가 현 제품/보드 PASS를 뜻하지 않습니다.
 

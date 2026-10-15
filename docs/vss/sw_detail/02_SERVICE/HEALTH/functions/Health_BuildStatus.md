@@ -2,7 +2,7 @@
 
 [VSS 지도](../../../01_VSS_MAP.md) · [SERVICE](../../00_LAYER_OVERVIEW.md) · [HEALTH](../00_MODULE_OVERVIEW.md) · CORE-18 · [한국어 C형 의사코드](../pseudocode/Health_BuildStatus.md)
 
-> GUIDE · D6-1 SELF_CHECKED / INDEPENDENT_REVIEW_PENDING. 기준 VSS@5a17e22, Master v1.1, GD5 INDEPENDENT_PASS. R6 논리 계약 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
+> GUIDE · CORE-18 · Master v1.1. R6 논리 계약 / C ABI BINDING_TBD / HW_UNVERIFIED / TEST_NOT_RUN.
 
 <a id="contract"></a>
 ## R6 논리 원형과 두 반환
@@ -117,6 +117,6 @@ basis 값 복사에는 내부 stamps 참조가 남는다. 목록과 stamps/time 
 
 F1/F3 후보는 mixed owner 관측→REEVALUATE, OPTIONAL NULL/false/true, legal actual/전체 Session 보고, 독립 current/recent projection, OUT bounds·비동기 수명 보호다. 향후 Host fixture 아이디어만 기술했고 실행하지 않았다. F4 Q08~10 DTO/Node 소비·source/image·C ABI/자료 보호·전체/초기 reduction, F5 실제 actual/NO_START/STOP/Recovery 효과·DMA/메모리/시간은 BINDING_TBD/HW_UNVERIFIED다. source 관측 없이 새 C 심볼/ABI를 확정하지 않는다.
 
-OPEN-009/010·Q01~14/R6-01~08·P1B_C1 REQUIRED_NOT_RUN·P2 HOLD·CR/과거 FAIL·WINDOW PRODUCT 보류/TEST 격리를 유지한다. GD5 승인과 D5-1~3 독립 PASS는 기존 근거로 보존한다. D6-2/GD6/D7 및 제품 C/H·Host/Firmware/Build/Flash/Board는 착수하지 않았다.
+OPEN-009/010·Q01~14/R6-01~08·P2 HOLD·CR/과거 FAIL·WINDOW PRODUCT 보류/TEST 격리를 유지한다. 제품 C/H·Host/Firmware/Build/Flash/Board는 착수하지 않았다.
 
 [R2](../../../../design/30_FUNCTIONS/60_HEALTH_RUNTIME_FUNCTIONS.md#health-buildstatus) · [R3 Snapshot](../../../../design/40_DATA/70_DIAGNOSTIC_DATA.md#vssstatussnapshot) · [R3 ReadBasis](../../../../design/40_DATA/30_SELECTION_DATA.md#vssreadbasis) · [R4 복구/보고](../../../../design/50_CONTRACTS/40_FAULT_RECOVERY.md) · [R4 수명](../../../../design/50_CONTRACTS/10_OWNERSHIP_LIFETIME.md#borrow-and-protect) · [R4 coherent](../../../../design/50_CONTRACTS/30_TIMING_FRESHNESS.md#coherent-read) · [R5](../../../../design/60_PSEUDOCODE/60_FAULT_RECOVERY_FLOW.md#health-buildstatus) · [R6](../../../../design/70_C_INTERFACE/00_HEADER_OWNERSHIP_MAP.md#r6-health-buildstatus) · [의사코드 분기](../pseudocode/Health_BuildStatus.md#procedure)
