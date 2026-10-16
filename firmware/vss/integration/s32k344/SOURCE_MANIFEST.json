@@ -1,0 +1,20 @@
+{
+  "archive_sha256": "27a5cae866bc3a3a187db570b2d18501bcada57fb0b41d1fe7086068a3849836",
+  "files": {
+    "AudioClock.h": {
+      "source": "S32K344_AUDIO_BRINGUP_STUDY_TRACKER_v1.4/S32K344_WB_Audio_Bringup/src/AudioClock.h",
+      "sha256": "d9c1c066e6403904152d6951af2b99d97722cab5808a2887a85ca81c56ab087c",
+      "change": "byte-identical public header copy"
+    },
+    "AudioCodec.h": {
+      "source": "S32K344_AUDIO_BRINGUP_STUDY_TRACKER_v1.4/S32K344_WB_Audio_Bringup/src/AudioCodec.h",
+      "sha256": "69e3ab76139bab5a73fe10608dfd5df31964bf92816e572901ba37af4b327e8c",
+      "change": "byte-identical public header copy"
+    },
+    "AudioDmaTransport.h": {
+      "source": "S32K344_AUDIO_BRINGUP_STUDY_TRACKER_v1.4/S32K344_WB_Audio_Bringup/src/AudioDmaTransport.h",
+      "sha256": "92a60d223356ec924dfff5d04be0efb8e5f199a3347491a85173a1a4bd768710",
+      "change": "byte-identical public header copy"
+    }
+  }
+}
