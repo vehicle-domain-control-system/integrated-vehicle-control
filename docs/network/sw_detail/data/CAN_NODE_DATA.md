@@ -915,7 +915,7 @@ event_kind1..5, value_quality0..3, input_availability0..2를 보존한다. 관�
 
 C2 VSS_EVENT_VEHICLE_WELCOME/GOODBYE/DOOR_LOCK_COMPLETE/DOOR_UNLOCK_COMPLETE/DOOR_LOCK_ERROR0..4를 Net 대응 이름1..5로 바꾼다. occurrenceId는 보존하고 meta.quality와 meta.ageMs만 원 품질/AGE로 연결한다. meta.updateSequence는 이 Wire와 중복 판정에 사용하지 않으며 원 DTO 값을0으로 강제하지 않는다. availability3 UNSUPPORTED는 HOLD다. hasRelatedCommand=true일 때 실제 relatedCommandId 연결을 보존한다.
 
-**적용 제약:** IF-O02, IF-O16, D-03, D-05, IF-O09, IF-O12: use-limit/실제 시작 기준과 필수 후발 실패 sink 바인딩이 미합의다. C2 UNSUPPORTED 가용성에는 동등 raw가 없다.
+**적용 제약:** A1 최초 actual 기한은 원 발생부터 `L=min(검증된 양의 USE_LIMIT,500ms,2000ms)`이며 L 도달 시 만료, USE_LIMIT0은 사용 불가다. 의미 Key는 수용된 DOMAIN Boot+occurrence(필요한 PRODUCT/TEST 문맥 포함)이고 event_kind는 같은 Key의 내용 충돌 검사다. 실제 clock/first actual·필수 후발 실패 sink·기동 수명은 E01~05 확인 대기다. C2 Event UNSUPPORTED 가용성에는 동등 raw가 없다.
 
 [함수와 양단 API](../functions/can/VSS_EVENT.md) · [흐름](../flows/CAN_CIS_WINDOW_VSS.md#VSS_EVENT)
 
@@ -1072,28 +1072,28 @@ typedef struct
 |---|---|
 | `DomainIf_VssWarningState_t.windowAntiPinchState` / `AntiPinchState_t` | ANTIPINCH_STATE; WINDOW 실행 보류 |
 | `DomainIf_VssWarningState_t.antiPinchEvidence` / `DomainIf_WarningInputEvidence_t` | ANTIPINCH_SOURCE_BOOT/SEQUENCE/ORIGINAL_AGE/QUALITY/REASON/AVAILABILITY; 독립 근거 |
-| `DomainIf_VssWarningState_t.occupantHazardState` / `OccupantHazardState_t` | OCCUPANT_HAZARD_STATE; C2 UNCONFIRMED에 동등 raw 없음, HOLD |
+| `DomainIf_VssWarningState_t.occupantHazardState` / `OccupantHazardState_t` | OCCUPANT_HAZARD_STATE; UNCONFIRMED는 VSS 전용 제한 투영으로 원 근거와 함께 보존하며 정상 CLEAR로 소비하지 않음 |
 | `DomainIf_VssWarningState_t.occupantEvidence` / `DomainIf_WarningInputEvidence_t` | OCCUPANT_HAZARD_*의 독립 원 판단 근거 |
 | `DomainIf_VssWarningState_t.rearObstacleState` / `RearObstacleState_t` | REAR_OBSTACLE_STATE; 이름 대응 |
 | `DomainIf_VssWarningState_t.rearEvidence` / `DomainIf_WarningInputEvidence_t` | REAR_OBSTACLE_*의 독립 원 판단 근거 |
 | `DomainIf_VssWarningState_t.rearDetectionActivation` / `RearDetectionActivation_t` | REAR_DETECTION_ACTIVATION; 이름 대응 |
-| `DomainIf_VssWarningState_t.rearActivationMeta` / `SignalMeta_t` | B52 quality/B54..57 sequence/B58..59 age의 확장 후보; CF02 미채택 |
-| `DomainIf_VssWarningState_t.rearActivationReason` / `QualityReason_t` | B53 REAR_ACTIVATION_REASON 확장 후보; CF02 미채택 |
+| `DomainIf_VssWarningState_t.rearActivationMeta` / `SignalMeta_t` | 선택된 WARNING60의 B52 quality/B54..57 sequence/B58..59 age; 실제 양단 지원 검증 대기 |
+| `DomainIf_VssWarningState_t.rearActivationReason` / `QualityReason_t` | 선택된 WARNING60의 B53 REAR_ACTIVATION_REASON; 실제 DOMAIN 평가 Binding 대기 |
 
-세 DomainIf_WarningInputEvidence_t의 source.generation/sequence/ageMs, quality/reason/availability를 각 독립 Wire 묶음으로 연결한다. C2 UNCONFIRMED·UNSUPPORTED는 동등 raw가 없어 CLEAR/UNAVAILABLE로 바꾸지 않는다. rearDetectionActivation과 rearActivationMeta/reason은 독립 DOMAIN 평가다. C2에는 activation_meta_format 멤버가 없고 확장 marker는 채택 profile의 Codec 책임 후보다.
+세 DomainIf_WarningInputEvidence_t의 source.generation/sequence/ageMs, quality/reason/availability를 각 독립 Wire 묶음으로 연결한다. VSS 전용 제한 투영은 [정본](../../interface/04_COMMON/30_ENUM_WIRE_MAPPING.md)을 따른다. UNCONFIRMED의 비정상 품질은 state0 placeholder와 원 품질/근거를 유지하고 정상 CLEAR로 소비하지 않는다. UNCONFIRMED+OK 또는 지원 UNSUPPORTED는 INVALID2/DATA_INVALID9/UNAVAILABLE2/state0으로 제한하며 원 진단을 남긴다. WINDOW 미지원 정규 부재는 state0/quality3/reason6/availability2/sourceBoot0/seq0/AGE65535이며 다른 노드의 일반 무손실 대응을 바꾸지 않는다. rearDetectionActivation과 rearActivationMeta/reason은 독립 DOMAIN 평가다.
 
-**적용 제약:** CF02, IF-O01, IF-O02, IF-O06, IF-O17, WINDOW_ANTIPINCH_HOLD: used51/60 양단 선택 전 정상 encode/decode/typed 소비 HOLD. profile enum 값 자체는 팀 채택 증거가 아니다.
+**적용 제약:** A1 WARNING60(used60/frame64/DLC15)을 선택했다. 실제 DOMAIN producer/VSS receiver·clock/owner 지원은 CF02/E01~05 확인 대기이고 WINDOW 실행 HOLD는 유지한다. profile enum 선택만으로 실행 채택을 주장하지 않는다.
 
 [함수와 양단 API](../functions/can/VSS_WARNING_STATE.md) · [흐름](../flows/CAN_CIS_WINDOW_VSS.md#VSS_WARNING_STATE)
 
-### CF02의 두 후보를 구별하는 조건
+### 선택한 WARNING60과 이전 WARNING51의 구분
 
-| 후보 | used/frame/DLC | B51..59 | padding |
+| 지위 | used/frame/DLC | B51..59 | padding |
 |---|---|---|---|
-| T02:656..686 | 51/64/15 | 의미 없는 바이트 | B51..63=0 |
-| T33:530..569 | 60/64/15 | B51 format, B52 품질, B53 사유, B54..57 활성 평가번호, B58..59 AGE | B60..63=0 |
+| WARNING51 / T02 이력 | 51/64/15 | 의미 없는 바이트 | B51..63=0 |
+| WARNING60 / A1 선택 | 60/64/15 | B51 format, B52 품질, B53 사유, B54..57 활성 평가번호, B58..59 AGE | B60..63=0 |
 
-B0..50은 같은 위치지만 전체 호환을 증명하지 않는다. 현재 `NetVssWarningState` 선언은 확장 메타까지 갖는다. used51에서 빠진 메타를0이나OK로 채워 이 DTO를 완성하지 않는다. 선택 증거가 없으면 양 후보 모두 정상 encode/decode/소비를 막는다. 향후 used51을 채택하더라도 현재 DTO의 부재 표현과 소비 규칙을 함께 합의·반영하기 전에는 정상 typed 출력이 없다. used60에서도 format0은 활성 근거 부재이며 정상 활성 허가를 만들지 않는다.
+현재 `NetVssWarningState`와 Wire offset은 그대로다. WARNING51은 정상 수용 후보에서 제외하며 DLC/길이/marker로 자동 인식·fallback하지 않는다. WARNING60 format1은 독립 activation meta 검증이 필요하고 format0은 B50=0·B52..59=0인 정규 근거 부재다. 부재를 활성 OK나 위험 CLEAR로 합성하지 않으며 나머지 유효 위험 항목은 독립 보존한다. 실제 양단 지원 확인 전 encode/decode/typed 실행은 HOLD다.
 
 <a id="VSS_STATUS"></a>
 ## VSS_STATUS: 음향 서비스와 고장 이력
@@ -1159,11 +1159,11 @@ typedef struct NetVssStatus
 | 22 / 4 | `UPDATE_SEQUENCE` → `update_sequence` (`uint32_t`) | u32 / unsigned / LE | 이번 상태 평가; 단위=NOT_SPECIFIED | NOT_SPECIFIED | 596 |
 | 26 / 2 | `SOURCE_AGE` → `source_age_ms` (`uint16_t`) | u16 / unsigned / LE | 평가 후 ms; 단위=ms | 65535 포화 하한; 정확한 경과 상한 또는 fresh의 증거 아님 | 597 |
 
-vss_state0..3, availability0..2, 두flag0/1, fault_mask bit0..4, last_fault0..5, last_fault_quality는0 또는3만 허용한다. 일반 ValueQuality1/2는 이 필드에서 거부한다.
+vss_state0..3, availability0..2, 두flag0/1, fault_mask bit0..4, last_fault0..5, last_fault_quality는0 또는3만 허용한다. 일반 ValueQuality1/2는 이 필드에서 거부한다. 확인된 부재3은 code/occurrence/historyAGE 모두0이며 actual 이력0은 code1..5와 원 occurrence1..UINT32_MAX를 가진다. 부재 이력 AGE는 누적하지 않고 source AGE는 독립 누적한다.
 
-DomainNetPriv_OnVssStatus가 service.state/availability/acceptingEvents/faultActive를 의미 이름으로 구성하고 service.meta에 원 update/소비 AGE를 연결한다. faultMask/lastFaultCode/lastFaultOccurrenceId/lastFaultAgeMs와 sourceGeneration은 원 VSS 보고의 근거로만 연결한다. LAST_FAULT_QUALITY0/3은 최근 기록 존재의 뜻이며 C2 faultQuality 전체 의미와 동등하지 않다. FaultInfo 선택·현재 고장 우선순위는 원문만으로 확정할 수 없다.
+기존 VSS INPUT 한 곳이 HEALTH의 완전 current/history·원 평가/발생 시각을 11필드로 변환하는 A2 생산 경계다. DOMAIN Network는 같은 원 DTO/meta를 보존하고 service.state/availability/acceptingEvents/faultActive와 원 update/소비 AGE를 명시 투영한다. LAST_FAULT_QUALITY0/3은 기록 존재이며 service/faultQuality 전체와 동등하지 않다. 완전 current mask의 가장 작은 정의 code1..5를 현재 Fault 대표로 선택하고 공집합은 code0/INACTIVE로 표현한다. 이력 code나 링크 상실로 현재 고장을 만들지 않는다.
 
-**적용 제약:** IF-O06, IF-O15, IF-O17, IF-O09, IF-O24, VSS_STATUS_PROJECTION: R4/R6 원 Snapshot→DTO, C2 서비스/고장 품질·세대 및 두 소비 경계의 부분 성공 집계가 미합의다.
+**적용 제약:** A2 producer·State/Fault 독립 수용은 내부 선택이다. 같은 K 반복은 두 Rx 호출0이며 State 수용 뒤 Fault 실패로 State를 재실행하지 않는다. CALLING/UNKNOWN_FAILED와 old K 후속 쓰기 미확인은 해당 경계 HOLD다. 설치 profile·원 보고 완전성·세대/시간·Getter association·후발 sink는 E-S01~05 확인 대기([A2 정본](../functions/can/VSS_STATUS.md#a2-domain-contract)).
 
 [함수와 양단 API](../functions/can/VSS_STATUS.md) · [흐름](../flows/CAN_CIS_WINDOW_VSS.md#VSS_STATUS)
 
@@ -1292,7 +1292,7 @@ typedef struct
 
 | 필드 | C 타입·폭 | 값·단위·유효 조건 | 생성·관리 주체 |
 |---|---|---|---|
-| `service` | `VssServiceState_t`; 중첩 타입 참조; sizeof 미검증 | VSS 실제 음향 서비스 상태. R4/R6→이 DTO 변환 담당자 미정. | VSS 음향 서비스 담당자 |
+| `service` | `VssServiceState_t`; 중첩 타입 참조; sizeof 미검증 | VSS 실제 음향 서비스 상태. 완전 Snapshot→Net DTO는 기존 INPUT 한 곳(A2 선택); DOMAIN 설치 profile별 C2/Getter association은 E-S05 확인 대기. | VSS 음향 서비스 담당자 |
 | `faultMask` | `uint8_t`; 8비트 부호 없음 | 활성/종합 fault bitmask. 노드별 bit 계약 및 활성 code와 구분. | VSS 음향 서비스 담당자 |
 | `lastFaultCode` | `uint16_t`; 16비트 부호 없음 | 원 ECU 최근 고장 code u16. 활성 고장 여부가 아니다. | VSS 음향 서비스 담당자 |
 | `lastFaultOccurrenceId` | `OccurrenceId_t`; 32비트 부호 없음 | 최근 고장 발생 식별, 코드·원 세대·AGE와 함께 소비. | VSS 음향 서비스 담당자 |
@@ -1879,14 +1879,14 @@ typedef enum
 
 | `FaultInfo_t` 실제 멤버 | WINDOW_FAULT 후보 대응 | VSS_STATUS 후보 대응 |
 |---|---|---|
-| category | raw SENSOR1→C2 SENSOR0, FUNCTION2→FUNCTION2, COMM3→COMM1을 이름으로 대응. raw NONE0의 동등 category 없음 | 현재 활성 고장 분류와 대표 고장 선택 근거가 필요. 최근 last_fault나 CAN 통신 상실로 결정하지 않음 |
-| state | raw NONE0/ACTIVE1/RECOVERING2→INACTIVE/ACTIVE/RECOVERING 이름 대응 | 현재 고장 근거가 필요. fault_active=false가 과거 기록 삭제를 뜻하지 않음 |
-| faultCode | 원 fault_code와 C2 코드 채택 바인딩이 확인되어야 보존 | 선택한 현재 고장의 실제 code. 최근 last_fault를 자동 대입하지 않음 |
+| category | raw SENSOR1→C2 SENSOR0, FUNCTION2→FUNCTION2, COMM3→COMM1을 이름으로 대응. raw NONE0의 동등 category 없음 | 완전 current mask 대표의 FUNCTION; 최근 last_fault나 CAN 통신 상실로 결정하지 않음 |
+| state | raw NONE0/ACTIVE1/RECOVERING2→INACTIVE/ACTIVE/RECOVERING 이름 대응 | current mask 비공집합 ACTIVE, 공집합 INACTIVE; 과거 기록 삭제 아님 |
+| faultCode | 원 fault_code와 C2 코드 채택 바인딩이 확인되어야 보존 | 완전 current mask의 최소 정의 code1..5, 공집합0; 위험 우선순위 아님 |
 | quality | Wire에 독립 품질 필드가 없어 투영 근거 HOLD | LAST_FAULT_QUALITY는 이력 존재 품질이므로 현재 FaultInfo 품질과 자동 동치가 아님 |
 
 `FaultInfo_t`에는 meta·occurrence·generation 멤버가 없다. 새 멤버를 만들거나 원 식별·AGE를 버린 채 성공 처리하지 않는다. 전체 원 수신 사본과 좁은 C2 입력의 동일성 및 실제 반영 연결을 확인하기 전에는 두 private 수신 경로의 투영을 보류한다.
 
-`DomainIf_VssStateReport_t.service`의 state/availability/acceptingEvents/faultActive는 NetVssStatus 대응 필드, service.meta는 원 update/source_age와 확인된 품질 투영이다. faultMask/lastFaultCode/lastFaultOccurrenceId/lastFaultAgeMs는 각각 fault_mask/vss_last_fault/last_fault_occurrence/누적 last_fault_age_ms다. faultQuality와 sourceGeneration은 보고 완전성·원 세대의 Owner 바인딩 없이는 채우지 않는다. 현재 고장 `FaultInfo_t`의 category/faultCode/state/quality는 최근 고장 기록 한 개나 링크 상실만으로 결정할 수 없다. 두 C2 입력의 원자성·부분 성공 정책도 호출 전에 확인해야 한다.
+`DomainIf_VssStateReport_t.service`는 NetVssStatus의 대응 상태/원 update/source AGE를 명시 투영한다. faultMask/lastFaultCode/lastFaultOccurrenceId/lastFaultAgeMs와 sourceGeneration은 완전 보고·원 세대 근거에서 보존하며 이력 품질0/3만으로 전체 faultQuality를 만들지 않는다. 두 C2 경계는 [A2 per-K 계약](../functions/can/VSS_STATUS.md#a2-domain-contract)으로 독립 수용한다. State는 Fault 미등록/실패로 취소하지 않으며 같은 K 반복·불명 결과에는 재호출하지 않는다. 참고 v0.5 service-only/observer-only와 확장 C2를 구분하고 E-S05 실제 지원·같은 입력·old K fence가 없는 해당 투영만 HOLD한다.
 
 <a id="type-NetCanOccupantRestrictionEvidence"></a>
 ## PG6-SW01 private — 같은 Pi 관측의 현재 제한 근거
@@ -1944,8 +1944,8 @@ M09는 동일 로컬 clock에서 검증한 경과와 해당 CIS_ENVIRONMENT의 �
 <a id="environment-event-observations"></a>
 ### PG6-SW02 — 환경 사건과 실제 저장 관측의 연결
 
-`NetCisEnvironmentLocalEvent` 선언은 그대로다. `recordRevision`은 제한할 A 원 DTO/meta/C2 사본, `eventRevision`은 검증된 A→B 전이/제한 사건을 가리킨다. M01은 종료 A와 수용 B 및 B의 실제 원 DTO/meta를 기존 원본 저장소에서 구분한다. 이 로컬 식별은 공개 generation·새 seq·Wire가 아니다.
+`NetCisEnvironmentLocalEvent` 선언은 그대로다. `recordRevision`은 제한할 A 원 DTO/meta/C2 사본, `eventRevision`은 검증된 A→B 전이/제한 사건을 가리킨다. M01은 종료 A와 수용 B 및 B의 실제 원 DTO/meta를 기존 원본 저장소에서 구분한다. `transitionEpoch`는 이 두 revision·CIS BOOT_ID·센서 원 Sequence·CAN TX_SEQUENCE와 다른 로컬 전환 순서의 제안이며 실제 private 선언 확인 전 struct 필드·폭·enum·영속 저장을 추가하지 않는다. 발급/수용 범위는 [발송된 Epoch 운영 제안](../functions/can/CIS_ENVIRONMENT.md#sw-b-epoch-proposal)의 DOMAIN 회신 대기다.
 
-기존 M09 항목은 같은 eventRevision에 대해 ① 구 미실행 입력 차단, ② 실행 중 A 및 후속 DOMAIN 비동기 쓰기의 종료/향후 commit 불가 실제 관측, ③ NO_DATA C2 호출 입력·원 반환, ④ 해당 VSM·독립 Meta 무효화의 실제 저장 관측, ⑤ 이후 B 입력과 Getter 관계를 각각 보존한다. 이는 새 상태 enum/완료 bool을 만든 것이 아니라 기존 원 사실을 구별한 기록 항목이다. 각 관측은 실제 Owner 처리·저장 위치와 원 record를 연결해야 하며 근거가 없으면 미확인으로 남긴다. callback 반환·빈 Queue·임의 nonzero 사건번호를②/④의 증거로 쓰지 않는다.
+기존 M09 항목은 같은 원 record/event에 대해 ① Network 소유 구 환경 대기·미실행 callback·미시작 Query 응답 차단 및 실행 중 자체 callback 직렬화, ② 고정한 BOOT 전환 요청의 한 번 제출과 실제 DOMAIN private 원 응답, ③ 현재 요청 내용/수용 BOOT/적용 Epoch/명확한 완료의 대조, ④ DOMAIN 구 작업 후속 commit 차단·VSM/독립 Meta·순서 문맥 무효화·Query 구 GOOD 방지, ⑤ 이후 B 입력의 실제 공개 Rx 반영과 Getter 관계를 구분한다. BOOT 전환용 공개 Rx NO_DATA 호출 기록을 완료 근거로 만들지 않는다. 일반 ORIGIN_EXPIRED/RX_STOPPED는 기존 공개 Rx 입력·원 반환·Core/Observer 관측을 유지한다. 이는 기존 원 사실의 구별이며 새 상태 enum/완료 bool을 추가하지 않는다. 구 작업 객체가 남아도 이후 commit이 확실히 봉쇄되고 무효화/완료가 확인되면 조건 충족 가능하다. callback 반환·빈 Queue·임의 nonzero 사건번호는 증거가 아니며 미제공 private ABI/실제 Binding은 OPEN이다.
 
 `observedAtMs/elapsedSinceRxMs`는 원 제한 사건의 고정 시간 근거다. 이후 대기는 기존 owner의 실제 로컬 시각 관측에서 별도로 계산해 원 raw AGE에 한 번 누적한다. 사건 시각이나 retainedMeta를 나중 수신시각으로 덮지 않는다. B는 실제 B 원 기록의 시각·seq를 사용하며 A900→B0을901로 잇지 않는다. 기존 사본은 호출·비동기 관측 연결에 필요한 동안 보존하며 실제 참조 종료 전 재사용하지 않는다. 실제 DOMAIN 완료 공급 경로가 없다는 [BG-R05-BOOT](../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)는 유지한다.

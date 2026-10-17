@@ -44,7 +44,7 @@ CAN은 DOMAIN·BCM·CIS·VSS·WINDOW가 공유하는 물리 버스다. Network�
 | [VSS_WARNING_STATE](functions/can/VSS_WARNING_STATE.md) | DOMAIN→VSS | 0x0C0 | 60/64/15 | [CAN_NODE_DATA](data/CAN_NODE_DATA.md) | [양단](flows/CAN_CIS_WINDOW_VSS.md) |
 | [VSS_STATUS](functions/can/VSS_STATUS.md) | VSS→DOMAIN | 0x340 | 28/32/13 | [CAN_NODE_DATA](data/CAN_NODE_DATA.md) | [양단](flows/CAN_CIS_WINDOW_VSS.md) |
 
-VSS_WARNING_STATE는 표의 60/64/DLC15 외에 used51/64/DLC15 후보가 남아 있다. B51..59를 보고 profile을 추측하지 않는다. 원 선언 없는 활성 근거·Generation 필드를 추가하지 않는다.
+VSS_WARNING_STATE는 A1 WARNING60(used60/frame64/DLC15) 단일 설계다. WARNING51(used51/frame64/DLC15)은 이력이며 B51..59·길이·DLC로 profile을 추측하거나 구형을 수용하지 않는다. format0은 B50=0/B52..59=0 정규 부재이며 실제 양단 producer/지원·시간 검증은 CF02 HOLD다. 원 선언 없는 활성 근거·Generation 필드는 추가하지 않는다.
 
 ## 공유 Permission의 네 수신 의무
 

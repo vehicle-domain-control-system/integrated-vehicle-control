@@ -2,7 +2,7 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**[구현 보류 — 설계 유지]**. 아래 원형은 DEFERRED / PROPOSED_DESIGN이며 WINDOW firmware 구현과 통합 동작은 보류한다.
+**[구현 보류 — 설계 유지]**. 아래 원형은 DEFERRED / PROPOSED_DESIGN이며 WINDOW 펌웨어 구현과 통합 동작은 보류한다.
 
 [노드 개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md) · [전체 시작](../../00_START_HERE.md) · [공통 의미·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md) · [CAN FD](../../03_COMMUNICATION/10_CAN_FD.md)
 
@@ -28,7 +28,7 @@ NetSubmitResult WindowNet_PublishFault(const NetWindowFault *message);
 
 ## 공통 호출·반환 계약
 
-송신은 기다리지 않는 로컬 제출이다. `NET_SUBMIT_OK`는 Network가 caller와 독립인 bounded handoff를 확보해 복사·접수한 상태다. 실제 CAN 송신·ACK·상대 RX·ECU 실행 DONE은 별도다. 포인터는 호출 동안만 빌려 읽으며 OK 반환 후 caller가 저장소를 재사용할 수 있다. `NO_CAPACITY`에서 discrete Event/Result를 조용히 버리지 않고 원 identity·Age를 유지한 처리/진단 방침을 적용한다.
+송신은 기다리지 않는 로컬 제출이다. `NET_SUBMIT_OK`는 Network가 호출자 저장소와 독립된 크기 제한형 인계 사본를 확보해 복사·접수한 상태다. 실제 CAN 송신·ACK·상대 RX·ECU 실행 DONE은 별도다. 포인터는 호출 동안만 빌려 읽으며 OK 반환 후 호출자가 원본 저장소를 재사용할 수 있다. `NO_CAPACITY`에서 discrete Event/Result를 조용히 버리지 않고 원 identity·Age를 유지한 처리/진단 방침을 적용한다.
 
 | 반환 | 정확한 범위·처리 |
 |---|---|
@@ -38,7 +38,7 @@ NetSubmitResult WindowNet_PublishFault(const NetWindowFault *message);
 | `NET_SUBMIT_NO_CAPACITY` | bounded 제출 저장소 부족; 원 identity·Age·순서/유효기한을 지킨 처리 필요 |
 | RX `void` | 검증된 typed 자료의 local 전달 callback이며 접수 성공·저장성공·물리 동작 결과를 반환하지 않음 |
 
-RX callback은 Node owner 처리 문맥에서 호출하고 ISR 직접 호출을 하지 않는다. `message/meta`는 NULL이 아니고 호출 중 읽기 전용이며 반환 뒤 필요 값은 consumer가 복사한다. 실제 callback/poll/queue 바인딩·bounded 소비 보장·수용 후 실패 sink는 BINDING_OPEN이다. `void`를 사용할 때 실제 sink가 전달을 처리할 수 있어야 하며 누락을 성공으로 간주하지 않는다. [공통 호출·비동기 실패](../../04_COMMON/20_API_USAGE_AND_FAILURE.md).
+RX callback은 노드 담당자의 처리 문맥에서 호출하고 ISR 직접 호출을 하지 않는다. `message/meta`는 NULL이 아니고 호출 중 읽기 전용이며 반환 뒤 필요 값은 consumer가 복사한다. 실제 콜백·폴링·큐 연결과 처리량 한도 보장·접수 후 실패 보고 경로는 BINDING_OPEN이다. `void`를 사용할 때 실제 sink가 전달을 처리할 수 있어야 하며 누락을 성공으로 간주하지 않는다. [공통 호출·비동기 실패](../../04_COMMON/20_API_USAGE_AND_FAILURE.md).
 
 <a id="api-windowapp_ondomainpermission"></a>
 ## `WindowApp_OnDomainPermission()`
@@ -54,7 +54,7 @@ void WindowApp_OnDomainPermission(const NetDomainPermission *message, const NetC
 | `message` | `const NetDomainPermission *` · IN/borrowed; [전체 Data](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission) | 수신 Network가 길이/enum/기동/순서 검증 후 제공; WINDOW 기능 입력 연결이 소비; NULL 금지, 호출 반환까지 유효 |
 | `meta` | `const NetCanRxMeta *` · IN/borrowed; [전체 메타](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcanrxmeta) | Network 기동/프레임 전송순번·로컬 RX 시간. 원 관측 source sequence/Age와 별개; NULL 금지, 호출 동안 읽기 전용 |
 
-**언제·어떻게 사용:**원 허용과 수신 생존을 분리한다. 최초 NO_DATA/INVALID/STALE을 새 이동허용으로 만들지 않으며 permission 복구로 과거 이동 재개 금지.
+**언제·어떻게 사용:** 원본 허용과 수신 생존을 분리한다. 최초 NO_DATA/INVALID/STALE을 새 이동허용으로 만들지 않으며 permission 복구로 과거 이동 재개 금지.
 
 **반환·실패:** `void`이며 local 전달 callback 호출은 기능적 수용·실제 이동·정지·보호 완료를 증명하지 않는다. 의미상 무효/만료 근거를 typed 상태로 전달할 수 있지만 CRC·length·unsupported code 등 구조 오류는 Network가 구분한다. 실패를 CLEAR/DONE으로 합성하지 않는다.
 
@@ -80,7 +80,7 @@ void WindowApp_OnDomainCommand(const NetWindowCommand *message, const NetCanRxMe
 | `message` | `const NetWindowCommand *` · IN/borrowed; [전체 Data](10_DATA.md#type-netwindowcommand) | 수신 Network가 길이/enum/기동/순서 검증 후 제공; WINDOW 기능 입력 연결이 소비; NULL 금지, 호출 반환까지 유효 |
 | `meta` | `const NetCanRxMeta *` · IN/borrowed; [전체 메타](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcanrxmeta) | Network 기동/프레임 전송순번·로컬 RX 시간. 원 관측 source sequence/Age와 별개; NULL 금지, 호출 동안 읽기 전용 |
 
-**언제·어떻게 사용:** 새 이동은 유효한 permission이 필요하다. 정당한 DOMAIN STOP은 이동허용 상실만으로 전달 거부하지 않는다. 출처·대상기동·ID·Age·채널·형식 검증은 유지한다. 로컬 STOP·끼임 보호는 이 호출·DOMAIN 응답과 독립.
+**언제·어떻게 사용:** 새 이동은 유효한 permission이 필요하다. 정당한 DOMAIN STOP은 이동허용 상실만으로 전달 거부하지 않는다. 출처·대상 기동·ID·AGE·채널·형식 검증은 유지한다. 로컬 STOP·끼임 보호는 이 호출·DOMAIN 응답과 독립.
 
 **반환·실패:** `void`이며 local 전달 callback 호출은 기능적 수용·실제 이동·정지·보호 완료를 증명하지 않는다. 의미상 무효/만료 근거를 typed 상태로 전달할 수 있지만 CRC·length·unsupported code 등 구조 오류는 Network가 구분한다. 실패를 CLEAR/DONE으로 합성하지 않는다.
 

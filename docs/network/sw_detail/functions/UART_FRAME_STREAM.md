@@ -1,6 +1,6 @@
 # UART-M Frame·CRC·Stream 함수
 
-L04/M06의 F16은 byte stream 조립, F17은 수신 필드 검증, F18은 송신 Frame 생성을 맡는다. 여기의 모든 함수는 `PROPOSED_PRIVATE_FUNCTION`이며 실제 SDK/공개 API가 아니다. DOMAIN에서는 Network Task, ESP32에서는 담당자가 확인한 소유자 문맥에서 호출한다. ISR은 raw byte와 실제 수신/오류 근거를 짧게 인계하며 parser/CRC/의미 판정·C2를 실행하지 않는다.
+L04/M06의 F16은 byte stream 조립, F17은 수신 필드 검증, F18은 송신 Frame 생성을 맡는다. 여기의 모든 함수는 `PROPOSED_PRIVATE_FUNCTION`이며 실제 SDK/공개 API가 아니다. DOMAIN에서는 ISR 밖의 Network 단일 담당 실행 문맥에서, ESP32에서는 담당자가 확인한 소유자 문맥에서 호출한다. ISR은 raw byte와 실제 수신/오류 근거를 짧게 인계하며 parser/CRC/의미 판정·C2를 실행하지 않는다.
 
 [UART-M](../05_UART_M_OVERVIEW.md) · [M06](../modules/M06_UART_CODEC.md) · [Frame Data](../data/UART_FRAME_DATA.md) · [기존 typed 자료](../data/UART_M_DATA.md) · [Router](UART_M_ROUTER.md) · [전송 수명](UART_M_TX_RX_CONTROL.md)
 

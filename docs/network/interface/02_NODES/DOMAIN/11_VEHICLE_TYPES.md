@@ -5,7 +5,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 <a id="production-compatibility"></a>
 ## Production 참고 타입과 후보의 호환 조건
 
-담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며 아래 전체 C 선언은 **Vehicle Types v0.3 후보**다. Production 참고 경로 `docs/Domain/architecture/1_Vehicle_Types/Vehicle_Types_v0.2.h`와 실제 ECU 빌드 입력의 동일성은 확인 대기다. 다음 차이는 참고 v0.2와 후보 v0.3의 선언 차이이며, 이행 승인이나 실제 ABI 검증 결과가 아니다.
+담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며 아래 전체 C 선언은 **Vehicle Types v0.3 후보**다. Production 기준 참고 경로 `docs/Domain/architecture/1_Vehicle_Types/Vehicle_Types_v0.2.h`와 실제 ECU 빌드 입력의 동일성은 확인 대기다. 다음 차이는 참고 v0.2와 후보 v0.3의 선언 차이이며, 이행 승인이나 실제 ABI 검증 결과가 아니다.
 
 | 대상 | v0.2 참고 → v0.3 후보의 차이 | 연결 전 확인 |
 |---|---|---|
@@ -20,14 +20,14 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 | enum·원 출처 타입 | QualityReason/RearMeasurementState/ResultReason 확장; CisFunctionStatus·CommandOrigin·InteriorLightApplyState·SourceEvidence 추가 | C enum을 기존 Wire raw로 직접 복사하지 않음. 미지원 의미의 기존 차단 규칙 유지 |
 | 별칭·include 경계 | SourceGeneration 추가, DeviceContextId/DomainCommandId 정의 위치 이동, include guard·version 매크로 변경 | 헤더 혼용·동명 타입 중복·잘못된 include 방지 |
 
-변경 타입을 포함하는 상위 구조체와 모든 API 인자에도 크기·정렬 차이가 전파된다. 실제 ARM 컴파일러 옵션, sizeof/offset/alignment, enum 표현, 포인터·호출 ABI, Getter/TxPort 복사 및 단위 변환은 **BINDING_NOT_VERIFIED**다. 아래 후보 선언을 Production 선언으로 교체하거나, 아직 없는 세대·품질을 임의 생성하지 않는다. [C2 인자와 포트 차이](12_DOMAIN_TYPES.md#production-c2-compatibility)도 함께 적용한다.
+변경 타입을 포함하는 상위 구조체와 모든 API 인자에도 크기·정렬 차이가 전파된다. 실제 ARM 컴파일러 옵션, sizeof/offset/alignment, enum 표현, 포인터·호출 ABI, Getter/TxPort의 복사 방식 및 단위 변환은 **BINDING_NOT_VERIFIED**다. 아래 후보 선언을 Production 선언으로 교체하거나, 아직 없는 세대·품질을 임의 생성하지 않는다. [C2 인자와 포트 차이](12_DOMAIN_TYPES.md#production-c2-compatibility)도 함께 적용한다.
 
-**DECLARED_SOURCE / BINDING_OPEN.** 아래 선언은 Vehicle_Types v0.3 후보이며 ClimateState_t·InteriorLightState_t에 sourceGeneration을 포함한다. 양단 동일 헤더·ABI 연결은 검증 전이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+**DECLARED_SOURCE / BINDING_OPEN.** 아래 선언은 Vehicle_Types v0.3 후보이며 ClimateState_t·InteriorLightState_t에 sourceGeneration을 포함한다. 양단 동일 헤더·ABI 연결은 검증 전이다. 설명 표에는 원본 데이터의 생성 주체·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
 
 [노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/36b4f43db03859518dd82664faa2464d13875a75/firmware/DOMAIN/src/interface/Vehicle_Types_v0.3.h)
 
 <a id="r1-generation-preservation"></a>
-`ClimateState_t.sourceGeneration`과 `InteriorLightState_t.sourceGeneration`은 이 초안의 기존 후보 선언에 이미 포함된 필드다. r1에서는 두 C 선언을 그대로 보존한다. 초기화·복사·상위 composite·Getter·MOBILE projection 전체가 원 생산 세대를 보존하는지 실제 Header/ABI와 함께 확인해야 한다. 유효 관측의 nonzero, 이미 알려진 세대를 INVALID/NO_DATA라고 0으로 지우지 않는 조건을 유지하며, **STALE + sourceGeneration 0은 POLICY_OPEN**이다. CAN BOOT와 생산 세대의 lifecycle이 같다는 근거 없이 단순 대입하지 않는다. 필드 존재는 실제 양단 연결 PASS가 아니다.
+`ClimateState_t.sourceGeneration`과 `InteriorLightState_t.sourceGeneration`은 이 초안의 기존 후보 선언에 이미 포함된 필드다. r1에서는 두 C 선언을 그대로 보존한다. 초기화·복사·상위 복합 자료·Getter·MOBILE 투영 전 과정가 원 생산 세대를 보존하는지 실제 Header/ABI와 함께 확인해야 한다. 유효 관측의 nonzero, 이미 알려진 세대를 INVALID/NO_DATA라고 0으로 지우지 않는 조건을 유지하며, **STALE + sourceGeneration 0은 POLICY_OPEN**이다. CAN BOOT와 생산 세대의 lifecycle이 같다는 근거 없이 단순 대입하지 않는다. 필드 존재는 실제 양단 연결 PASS가 아니다.
 
 ## 타입 바로 찾기
 
@@ -64,7 +64,7 @@ typedef uint32_t RequestId_t;
 typedef uint64_t SessionId_t;
 ```
 
-**범위·소유:** u64 검증된 Session. 수신 대상 Session과 과거 요청 Session을 구분. 발급·교체 정책 미확정.
+**범위·소유:** 검증된 u64 Session. 수신 대상 Session과 과거 요청 Session을 구분. 발급·교체 정책 미확정.
 
 <a id="type-occurrenceid-t"></a>
 ## `OccurrenceId_t`
@@ -108,7 +108,7 @@ typedef uint32_t DeviceContextId_t;
 typedef uint32_t DomainCommandId_t;
 ```
 
-**범위·소유:** u32 Domain 확정 명령 식별. 단일 Domain 기능 owner 발급, Network 재생성 금지.
+**범위·소유:** DOMAIN이 확정한 u32 명령 식별자. 단일 Domain 기능 owner 발급, Network 재생성 금지.
 
 <a id="type-sourcegeneration-t"></a>
 ## `SourceGeneration_t`

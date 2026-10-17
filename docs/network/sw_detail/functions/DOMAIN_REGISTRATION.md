@@ -19,7 +19,7 @@
 | 필수 실패 인계 | identity 있는 discrete 항목을 소비할 기존 DOMAIN Manager/Supervision 경계 | optional RxObserver 등록이 이를 대신할 수 없음 |
 | Observer | DOMAIN/기능 통합 owner가 결정한 소비자·등록·함수 수명 | Network가 11개 본체를 소유하거나 Core를 재실행할 권한 |
 
-초기화의 보수적인 **선후 제약**은 “owner 초기화 확인 후 C2 호출”, “자원/필수 sink/route 준비 확인 후 해당 송신 접수”, “검증된 Rx를 owner 문맥에 인계한 후 실제 commit/관찰 결과 기록”이다. `Init→SetTxPort→SetRxObserver→DriverInit` 같은 단일 제품 순서는 원문 근거가 없어 확정하지 않는다. FreeRTOS Task와 Superloop의 실제 직렬화 방식은 M08 Port 바인딩에 남긴다. ISR은 안정된 장치 관측 확보까지만 담당한다.
+초기화의 보수적인 **선후 제약**은 “owner 초기화 확인 후 C2 호출”, “자원/필수 sink/route 준비 확인 후 해당 송신 접수”, “검증된 Rx를 owner 문맥에 인계한 후 실제 commit/관찰 결과 기록”이다. 초기 연결의 합의된 상위 순서는 DOMAIN Manager 준비→C2 Init→Observer 등록→TxPort 등록→통신 시작이다. DriverInit·IRQ 활성화·SDK별 세부 초기화 순서는 실제 장치 바인딩에서 별도로 확인한다. FreeRTOS Task와 Superloop의 실제 직렬화 방식은 M08 Port 바인딩에 남긴다. ISR은 안정된 장치 관측 확보까지만 담당한다.
 
 <a id="DomainIf_Init"></a>
 ## 1. DomainIf_Init — DOMAIN 논리 경계 초기화

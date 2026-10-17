@@ -1,8 +1,8 @@
-# DOMAIN↔ESP32 — Mobile Codec 전용 typed Data
+# DOMAIN↔ESP32 — MOBILE Codec 내부 자료형
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**PROPOSED_DESIGN / WIRE_PROPOSED / NETWORK_PRIVATE.** 아래 전체 선언과 멤버 표는 Network 내부의 typed Codec 계약이다. 공개 source C2/Gateway 객체를 이 schema로 직접 투영하며 App에 최종 raw envelope 초기화를 요구하지 않는다. packed C layout/실제 Firmware 구현이 아니다.
+**PROPOSED_DESIGN / WIRE_PROPOSED / NETWORK_PRIVATE.** 아래 전체 선언과 멤버 표는 Network 내부의 타입이 명시된 Codec 계약이다. 공개된 원본 C2/Gateway 객체를 이 형식으로 직접 변환하며 App에 최종 원시 프레임을 직접 초기화하도록 요구하지 않는다. 메모리에 배치된 C 구조체나 실제 펌웨어 구현을 뜻하지 않는다.
 
 [DOMAIN Data](10_DATA.md) · [ESP32 Data](../ESP32/10_DATA.md) · [UART-M](../../03_COMMUNICATION/20_UART_M.md) · [명시 enum 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)
 
@@ -20,7 +20,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 | Network private 감독 | [DomainAlive](#type-netmobiledomainalive), [QueryEnd](#type-netmobilequeryend) |
 | enum·선택자 | [RequestKind](#type-netrequestkind), [DoorOperation](#type-netdooroperation), [ClimateOperation](#type-netclimateoperation), [LightOperation](#type-netlightoperation), [DigitalOperation](#type-netdigitalkeyoperation), [QueryScope](#type-netqueryscope), [QueryStatus](#type-netquerystatus), [CommandTarget](#type-netcommandtarget) |
 
-각 `NetMobile*`는 C2/Gateway 객체를 직접 encode/decode할 내부 표현이다. App에 추가 DTO 초기화나 새 공개 API 호출을 요구하지 않는다. CAN 원 출처 투영은 [accepted Snapshot association](25_PRIVATE_ROUTING.md#r2-origin-join), Settings/Digital 의미 손실은 [제한 export 규칙](#r2-partial-export)을 적용하며 모두 PROPOSED/BINDING_OPEN이다.
+각 `NetMobile*`는 C2/Gateway 객체를 직접 인코딩·디코딩할 때 사용하는 내부 표현이다. App에 추가 DTO 초기화나 새 공개 API 호출을 요구하지 않는다. CAN 원 출처 투영은 [accepted Snapshot association](25_PRIVATE_ROUTING.md#r2-origin-join), Settings/Digital 의미 손실은 [제한 export 규칙](#r2-partial-export)을 적용하며 모두 PROPOSED/BINDING_OPEN이다.
 
 <a id="type-netmobilerequestargument"></a>
 ### `NetMobileRequestArgument`
@@ -55,7 +55,7 @@ typedef union NetMobileRequestArgument
 
 
 #### 필요한 중첩 필드만 펼쳐보기
-직접 멤버는 앞의 표를 사용한다. 아래 표는 nested context/source 안의 경로만 표시하며 별도 DTO나 raw 필드를 추가하지 않는다.
+직접 멤버는 앞의 표를 사용한다. 아래 표는 중첩된 context/source 내부의 경로만 표시하며 별도 DTO나 raw 필드를 추가하지 않는다.
 | 필드 | 타입 | 소유자 | 의미·유효 조건 |
 | --- | --- | --- | --- |
 | `normal_rgb.r` | `uint8_t` | MOBILE 원 사용자 의도 · Gateway 검증 | 빨강. 0~255. |
@@ -138,7 +138,7 @@ typedef struct NetAvailabilityItem
 <a id="type-netmobilecontext"></a>
 ### `NetMobileContext`
 
-M_CONTEXT v2. 38B 제안 payload: 기존 앱 활성·근접 값에 등록·연결 공동 평가 품질/순서/나이 7B를 추가한다. v0.2의 31B와 바이너리 호환이 아니다.
+M_CONTEXT v2. 38B 제안 payload: 기존 앱 활성·근접 값에 등록·연결 공동 평가의 품질·순번·경과 시간 7B를 추가한다. v0.2의 31B와 바이너리 호환이 아니다.
 
 **선언 종류:** 구조체
 

@@ -32,7 +32,7 @@ void EspNetPriv_OnQueryEnd(const NetMobileQueryEnd *message, const NetUartRxMeta
 
 Query는 현재 문맥을 수동으로 검증하며 최초 SESSION_READY0을 단독 거부 사유로 쓰지 않는다. Session 발급·활성화·권한·기록 필터·DOMAIN Manager 상태는 DOMAIN/ESP32 Owner 책임이다. sourceGeneration 및 Boot 대응·동일 CAN association은 실제 근거 전 해당 항목 HOLD다. WINDOW2 Tx/Rx·표시·timeout·liveness는 보류한다.
 
-Device별 최대8건 보관은 DOMAIN ResultManager 책임이며 Network는 Recent의 최신순 최대5건만 조회·순차 제출한다. 실제 배열이3개면 capacity3을 전달한다. outCount 초과·Getter 실패를 조용히 잘라 정상 종료하지 않는다. 다른 상태10응답·경고·단건 조회는 이 상한을 공유하지 않는다. recent5 완료와 생산8 중5 성공을 원 선택 범위로 구분한다.
+Device별 최대8건 보관은 DOMAIN ResultManager 책임이며 Network는 Recent의 최신순 최대5건만 조회·순차 제출한다. 준비된 결과 배열의 용량이 3개 항목이면 Getter에 `capacity=3`을 전달한다. 반환 건수가 배열 용량을 초과하거나 Getter 호출이 실패하면 임의로 결과를 잘라 정상 완료로 처리하지 않는다. 다른 상태10응답·경고·단건 조회는 이 상한을 공유하지 않는다. recent5 완료와 생산8 중5 성공을 원 선택 범위로 구분한다.
 
 실패 Getter OUT을 빈 결과로 바꾸지 않고 enqueue 수를 ITEM_COUNT로 세지 않는다. Driver accepted·final UART TX·참조 해제·ESP32 RX·BLE/App 목록 완료를 분리한다. partial/빈 집합/기록 부재/문맥 거부는 원 후보 의미를 유지하며 IF-O12/IF-O25/D-03/D-05가 미해소이면 정상 종료 실행은 제한한다. Query 실패는 새로운 NetworkLocalFailure kind가 아니다.
 

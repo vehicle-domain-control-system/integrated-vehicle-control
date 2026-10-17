@@ -1,6 +1,6 @@
 # Layer·Module·Function 탐색
 
-다섯 Layer와 아홉 Module의 기존 책임 분해를 유지한다. CAN22/Rx25·UART-M23/Rx23·UART-C3/Rx3, DOMAIN Adapter·공통 Service, 노드 경계를 통합해 연결한다. CIS_REAR는 대표 수직 흐름이며 전체 범위를 대체하지 않는다. 기능별 탐색은 [종단 시나리오18](09_E2E_FAILURE_RECOVERY.md)을 따른다. 실제 실행 바인딩과 외부 HOLD는 각 정본의 조건을 따른다.
+기존 5개 계층(Layer)과 9개 모듈(Module)의 책임 구분을 유지한다. CAN22/Rx25·UART-M23/Rx23·UART-C3/Rx3, DOMAIN Adapter·공통 Service, 노드 경계를 통합해 연결한다. CIS_REAR는 대표 수직 흐름이며 전체 범위를 대체하지 않는다. 기능별 탐색은 [종단 시나리오18](09_E2E_FAILURE_RECOVERY.md)을 따른다. 실제 실행 바인딩과 외부 HOLD는 각 정본의 조건을 따른다.
 
 | Layer | Module | 현재 설명 범위 |
 |---|---|---|
@@ -113,7 +113,7 @@ F번호는 기존 내부 책임 후보 식별자다. 제품 함수 개수나 공
 | N01 / I01·P01·P02·R01~R06의 DOMAIN 끝점 | M01/M02/M03, F01·F02·F04~F09 | [DOMAIN](nodes/DOMAIN.md): C2 본체와 Network callback·수신·Query 구분 |
 | N02 / I02·P01·R01 | M03/M04/M05/M07~M09, F10~F15·F19~F25 | [BCM](nodes/BCM.md): 명령 인수/실행·원 결과 귀속 |
 | N03/N06 / I03·I06·P01·P03·R02·R06 | M01/M03/M04/M05/M06/M07~M09, F03·F10~F25 | [CIS/Pi](nodes/CIS_PI.md): 원 품질·AGE·단위·Permission relay |
-| N04 / I04·P01·R03 | M03/M04/M05/M07~M09, F10~F15·F19~F25 | [VSS](nodes/VSS.md): 실제 음향 Owner·CF02 HOLD |
+| N04 / I04·P01·R03 | M03/M04/M05/M07~M09, F10~F15·F19~F25 | [VSS](nodes/VSS.md): 음향 Owner·A1 WARNING60 선택, 실제 양단 Binding/시간은 CF02 HOLD |
 | N05/N08 / I05·P02·P04·R05 | M01/M02/M03/M04/M06/M07~M09 경계 계약 | [ESP32/MOBILE](nodes/ESP32_MOBILE.md): ESP32 내부 구현 Owner 유지; MOBILE 내부 적용 없음 |
 | N07 / I07·P01·R04 | CAN 관련 책임의 설계만 보존 | [WINDOW](nodes/WINDOW.md): 실행·표시·감시 HOLD |
 

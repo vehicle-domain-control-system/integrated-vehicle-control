@@ -9,7 +9,7 @@ DOMAIN은 공개 `DomainIf_Tx*` 26개 본체를 소유하고 Network는 같은 D
 <a id="admission"></a>
 ## 모든 콜백에 적용하는 인수 순서
 
-1. 호출자는 DOMAIN owner Task다. ISR에서 C2나 아래 콜백을 직접 실행하지 않는다. callback은 Driver/상대 응답을 기다리지 않는다.
+1. 호출자는 DOMAIN의 단일 담당 실행 문맥이다. ISR에서 C2나 아래 콜백을 직접 실행하지 않는다. callback은 Driver/상대 응답을 기다리지 않는다.
 2. NULL·enum·범위·조건부 필드를 검증한다. 잘못된 C2 코드와 미합의인 raw 매핑을 구별한다. 미합의 계약은 정상 숫자0을 넣어 통과시키지 않는다.
 3. 현재 준비 상태, 원 의미 identity와 AGE 기준, 대상 기동 또는 recipient binding, 필요한 raw evidence, 해당 route의 필수 failure sink를 확인한다. `DomainIf_IsInitialized()==true`만으로 이 조건들을 만족했다고 보지 않는다.
 4. 반환 전에 자기 소유 항목에 **아래 필드표의 모든 활성 필드와 중첩 값**, 원 identity/시간 기준, 필요한 Queue 슬롯을 함께 확보한다. 임시 검증/예약 실패는 새 항목 전체를 미접수로 끝내고 이전 항목을 그대로 둔다.
@@ -179,7 +179,7 @@ vehiclePowerAllowed와 quality 및 meta의 품질·AGE·updateSequence는 같은
 
 r1 [Permission 의미 투영](../../interface/07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)의 표는 **UNKNOWN의 원인별 C2 Quality 투영 권장안 / DOMAIN Adapter 수용 대기**다. FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고이며 실제 Network→CIS→Pi 연결은 BINDING_NOT_VERIFIED다. 실제 채택·생성원 근거가 있는 경우 확정 ALLOW true/OK는1/OK, 정상 평가의 확정 DENY false/OK는0/OK로 구분한다. 확인된 미관측·만료·평가실패를 DOMAIN이 false+NO_DATA/STALE/INVALID로 투영한 경우에만255+해당 품질의 조건부 경로를 검토한다. 일반 false에서 UNKNOWN을 추측하지 않는다. UNKNOWN+OK를 무손실 보존해야 하면 기존 bool+quality+meta로 표현할 수 없으므로 해당 경로는 NOT_AVAILABLE/HOLD다. quality와 meta.quality가 충돌하면 임의 OK를 선택하지 않고 원 충돌을 보존한다. 정상 형식의 품질 저하를 인자오류나 DENY/OK로 덮지 않는다. 원 의미·원 품질·원인은 DOMAIN 원 기록 소유이며 Network에 새 사유 필드·기능 판단을 추가하지 않는다. 실제 세부 검사는 [합성 Flow](../flows/CAN_BCM_AND_PERMISSION.md#permission-projection)의 같은 조건을 따른다.
 
-FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영은 DOMAIN Adapter 수용 대기인 조건부 권장안이며 Network→CIS→Pi 실제 연결은 BINDING_NOT_VERIFIED다. 성공17 뒤200ms 평가실패에서 원17·마지막 성공시각을 보존하며 성공18/AGE0을 만들지 않는다. 검증된 현재 제한은 같은 원 성공seq라는 이유만으로 중복 폐기하지 않는다. [번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)의 CAN 합성 UPDATE, CAN TX, UART LINK, CIS relay UPDATE를 원 성공번호와 구분한다. 실제 새 합성 revision 발급 규칙·필수 입력·공통 AGE는 미결이다. 성공 이력이 없으면 정상 원 순번·시간을 발명하지 않는다. 후방 원500ms/실제 재평가 약200ms와 CAN50/150·UART500/1500·후방거리150 후보·USE_LIMIT1500 후보/500 조건부는 각각 보존한다.
+UNKNOWN의 원인별 C2 Quality 투영은 DOMAIN Adapter 수용 대기인 조건부 권장안이며 Network→CIS→Pi 실제 연결은 BINDING_NOT_VERIFIED다. 성공17 뒤200ms 평가실패에서 원17·마지막 성공시각을 보존하며 성공18/AGE0을 만들지 않는다. 검증된 현재 제한은 같은 원 성공seq라는 이유만으로 중복 폐기하지 않는다. [번호 공간](../flows/CAN_BCM_AND_PERMISSION.md#permission-sequences)의 CAN 합성 UPDATE, CAN TX, UART LINK, CIS relay UPDATE를 원 성공번호와 구분한다. 실제 새 합성 revision 발급 규칙·필수 입력·공통 AGE는 미결이다. 성공 이력이 없으면 정상 원 순번·시간을 발명하지 않는다. 후방 원500ms/실제 재평가 약200ms와 CAN50/150·UART500/1500·후방거리150 후보·USE_LIMIT1500 후보/500 조건부는 각각 보존한다.
 
 검증된 현재 DOMAIN 제한 사건은 원 소유자의 기존 기록에 귀속한다. 그 제한 이후 미시작 구 ALLOW의 pending/retry 재게시를 막는 관측 fence와 새 전송 항목의 원자 접수는 별개다. 용량 실패로 제한 전달이 실패해도 검증된 원 제한을 이전 ALLOW로 되돌리지 않는다. 검증 전 입력·malformed·일반 접수 실패로 fence를 만들지는 않는다. Driver 참조 중 프레임은 수정·임의취소·재사용하지 않으며 원격 CIS/Pi 동시 제한 반영을 보장하지 않는다. 전송 불능은 실제 실패로 남긴다.
 
@@ -416,7 +416,7 @@ DomainIf_Status_t (*txVssWarningState)( const DomainIf_VssWarningState_t *state)
 | `rearActivationMeta` | `SignalMeta_t` | 활성 값과 중첩 자료를 접수 항목에 값 복사; caller 반환 후 주소 사용 금지 |
 | `rearActivationReason` | `QualityReason_t` | 활성 값과 중첩 자료를 접수 항목에 값 복사; caller 반환 후 주소 사용 금지 |
 
-antiPinch/occupant/rear 3개 판단과 각 quality/reason/availability/source.generation/sequence/ageMs를 독립 보존한다. rearDetectionActivation·rearActivationMeta·rearActivationReason은 별도 DOMAIN 정책 평가다. CF02 used51/60 및 양단 선택 전 전송 보류이며 UNCONFIRMED/UNSUPPORTED를 CLEAR/AVAILABLE로 바꾸지 않는다.
+antiPinch/occupant/rear 3개 판단과 각 quality/reason/availability/source.generation/sequence/ageMs를 독립 보존한다. rearDetectionActivation·rearActivationMeta·rearActivationReason은 별도 DOMAIN 정책 평가다. A1은 WARNING60을 선택했고 실제 양단 지원·원 producer 연결은 검증 대기다. [VSS 전용 제한 투영](../../interface/04_COMMON/30_ENUM_WIRE_MAPPING.md#vss-warning-limited-projection)의 비정상 state0을 정상 CLEAR/AVAILABLE로 소비하지 않으며 원 의미·품질은 보호한다.
 
 **후발 결과:** 일반 상태/Permission은 periodic loss를 개별 NetworkLocalFailure로 만들지 않음. 원 항목의 Driver terminal/release와 M09 계측은 별도로 유지.
 

@@ -142,7 +142,7 @@ if (classificationOk) {
 
 후속 Query는 기존 `DomainNetPriv_ProcessQuery` 한 정본만 사용한다. Getter 성공 OUT과 원본 association을 확인해 안정 사본으로 제출한 뒤 실제 UART final TX와 End 순서가 입증되어야 count/종료를 평가한다. 로컬 접수·DOMAIN snapshot·UART final TX·ESP32 수신·BLE 전달·App 완료·차량 완료는 각각 다른 증거다.
 
-온도·습도 각 원 TTL2500ms와 후방 활성 Power 원500ms 합의는 해당 범위에 적용한다. 다른 source TTL, Session lifetime, Query deadline, queue/Driver timeout과 owner atomicity는 기존 OPEN을 유지한다. WINDOW 실행·Tx/Rx·표시·timeout, CF02 VSS_WARNING_STATE 후보 충돌, Generation0/BOOT_ID/CIS Environment 정책은 이 수직 흐름 작성으로 해소되지 않는다. 협의사항은 기존 S6 큐 동일 ID에 기록하고 S6 이후 승인 절차에서 통합한다.
+온도·습도 각 원 TTL2500ms와 후방 활성 Power 원500ms 합의는 해당 범위에 적용한다. 다른 source TTL, Session lifetime, Query deadline, queue/Driver timeout과 owner atomicity는 기존 OPEN을 유지한다. WINDOW 실행·Tx/Rx·표시·timeout, CF02 VSS_WARNING_STATE의 WARNING60 선택 후 실제 양단 지원 검증 대기, Generation0/BOOT_ID/CIS Environment 정책은 이 수직 흐름 작성으로 해소되지 않는다. 협의사항은 기존 S6 큐 동일 ID에 기록하고 S6 이후 승인 절차에서 통합한다.
 
 위 정본 연결·선언·단위·반례는 정적 설계이며 실제 제품 구현·실행·Owner 바인딩의 증거를 대신하지 않는다.
 
@@ -151,12 +151,21 @@ if (classificationOk) {
 
 1. CIS_OCCUPANT M04는 동일 Pi Boot/vision seq의 old/new 실제 DTO/meta와 현재 제한 사건을 [전용 증거](../data/CAN_NODE_DATA.md#type-NetCanOccupantRestrictionEvidence)에 복사한다. 모든 일반 caller의 `occupantRestriction`은 NULL이며 실제 CAN kind만 설정한다.
 2. `NetCan_ClassifyRx`의 strict semantic 비교는 그대로 유지한다. 새 적법 TX·원값 불변·AGE·전용 제한 검사까지 통과한 경우만 CURRENT_RESTRICTION이며 M03은 `NetCan_DeliverCisOccupant(&incoming,&incomingMeta)`를 호출한다. EXACT_DUPLICATE는 재소비·정상수신 갱신이 없고 SAME_INPUT은 원 관측을 새로 발행하지 않는다.
-3. 환경은 실제 frame/meta 수신 시 `NetCan_DeliverCisEnvironment`를 호출한다. 새 frame이 없는 온습도 만료/해당 수신중단/수용 Boot 변경은 M09가 원 기록과 [NetCisEnvironmentLocalEvent](../data/CAN_NODE_DATA.md#type-NetCisEnvironmentLocalEvent)를 고정하고 M03에서 `NetCan_InvalidateCisEnvironment(&event)`를 호출한다. fake TX/meta를 만들지 않는다.
+3. 환경의 실제 frame/meta는 `NetCan_DeliverCisEnvironment`로 인계한다. 새 frame 없는 사건은 M09가 원 기록과 [NetCisEnvironmentLocalEvent](../data/CAN_NODE_DATA.md#type-NetCisEnvironmentLocalEvent)를 고정해 M03의 `NetCan_InvalidateCisEnvironment(&event)`에 전달하되 일반 ORIGIN_EXPIRED/RX_STOPPED만 기존 공개 Rx 품질 경로를 사용한다. BOOT_CHANGED는 단일 동기 private 목표로 분리되고 현재 ABI/지원 미확인 시 CONTRACT_HOLD이며 공개 Rx NO_DATA로 내려가지 않는다. fake TX/meta를 만들지 않는다.
 4. Network 원 기록/제한/호출 공간의 원자 확보는 외부 C2와의 원자 트랜잭션이 아니다. 원 rc·Core 단계·event/원 identity를 따로 남기며 부분 반영/UNKNOWN에 자동 rollback·재호출을 하지 않는다.
-5. C2→VSM/독립 Meta→Getter에서 같은 원 관측의 현재 제한이 실제 반영되는지 확인해야 한다. Getter가 구 GOOD를 반환하면 완료가 아니다. UART는 원 raw와 제한 사건의 검증된 파생관계 없이는 NOT_READY다. 환경 Boot는 [r1 여섯 단계](../functions/can/CIS_ENVIRONMENT.md#environment-storage-order)의 A 미실행 차단→A 실행 및 후속 비동기 쓰기 배제→기존 Rx NO_DATA→VSM·독립 Meta 실제 commit→B 원seq/누적AGE→지연 A 차단을 따른다. Queue/콜백 반환/OK만으로 단계를 넘기지 않는다. 실제 DOMAIN 경계 미제공은 같은 [BG-R05-BOOT](../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)이며 새 generation/reset API로 감추지 않는다.
+5. 일반 Rx의 현재 제한과 이후 Getter는 같은 원 입력의 실제 Core 반영으로 연결한다. 환경 BOOT는 [r1 여섯 단계](../functions/can/CIS_ENVIRONMENT.md#environment-storage-order)의 Network 자기 대기/콜백·미시작 Query 차단 → 고정 요청 한 번 제출 → DOMAIN 동기 private의 구 작업 미래 commit 봉쇄·VSM/Meta·순서 문맥 무효화·구 GOOD Query 방지 → 현재 요청 내용/수용 BOOT/적용 Epoch/명확한 완료 대조 → B 원seq/누적 AGE 공개 Rx → 지연 A 차단을 따른다. 일반 C2 OK/Queue/콜백 반환으로 대체하지 않는다. BOOT용 Rx NO_DATA 중복 호출은 없다. UART에는 이후 B의 실제 공개 Rx 반영과 같은 원 입력 Getter 연결이 필요하며 구 GOOD 잔존·연결 불명은 해당 환경만 NOT_READY/부분이다. 정확한 private 선언·연속 전환·실제 Binding 미검증의 [BG-R05-BOOT](../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)는 유지하고 새 generation/reset API로 감추지 않는다.
 
 R08 필수 failure sink는 기존 NOT_STARTED의 세 사유와 원 identity에만 연결한다. Driver terminal, buffer reference release, 필수 Core 반영은 서로 별도이며 busy·callback 부재·in-flight unknown을 최종 제출 실패로 바꾸지 않는다.
 
 ### PG6-SW02 환경의 대기·실패 분기
 
-A queued는 미실행 항목만 차단/폐기한다. A running과 반환 뒤 async 저장 pending은 실제 후속 쓰기가 끝나거나 다시 commit할 수 없다는 근거 전까지 무효화 호출과 B 정상을 보류한다. 이 대기는 owner 안의 동기 루프가 아니다. NO_DATA 거부·완료불명에서는 B를 차단하고 구 OK의 실제 저장 상태를 미확인으로 남긴다. 실제 Core·독립 Meta commit 뒤 optional Observer만 실패하면 같은 commit을 재실행하지 않는다. B대기 AGE는 원 기준에서 한 번 증가시키고2500ms 이상인 온습도는 정상복원하지 않는다. B뒤 지연 A는 기억한 종료 Boot로 거부하며 이력 상실/Boot 재사용 한계는 남긴다.
+A queued는 Network 소유 미실행 환경 항목만 차단/폐기하고 실행 중 자체 callback은 기존 owner 순서로 직렬화한다. DOMAIN에 이미 인계된 A의 후속 commit 차단은 동기 private 경계의 책임이며 Network가 내부 Queue를 정리하지 않는다. 구 비동기 객체가 남아도 미래 commit이 확실히 봉쇄되고 무효화·구 Query 차단·요청/적용 Epoch/완료 대조가 충족되면 완료 가능하다. 차단 여부 불명·거부·부분 적용·결과 불일치는 B 정상 HOLD와 원 요청/오류 보존이며 자동 재호출·다음 Epoch 발급은 없다. 실제 ABI/Binding 미제공 및 현재 다른 Epoch EPOCH_ORDER_UNAVAILABLE를 성공으로 처리하지 않는다. Core/독립 Meta 완료 뒤 optional Observer만 실패하면 재commit하지 않는다. B 대기 AGE는 원 기준에서 한 번 증가시키고2500ms 이상 온습도를 정상복원하지 않는다. 기억된 지연 A는 정상수신/복구 근거로 쓰지 않는다. [Epoch 운영 제안](../functions/can/CIS_ENVIRONMENT.md#sw-b-epoch-proposal)의 수용·연속 Core 보완은 대기이며 BOOT 재사용/단독 재시작 자동복구는 보장하지 않는다.
+
+<a id="vss-a2-receive"></a>
+## VSS A2 Status 수신과 부분 결과
+
+기존 HEALTH→FLOW→INPUT 단일 변환에서 만든 완전 보고를 같은 원 DTO/meta로 보호하고 [VSS_STATUS per-K 정본](../functions/can/VSS_STATUS.md#a2-domain-contract)으로 인계한다. K=(VSS 생산 generation,update_sequence)이며 CAN TX/DOMAIN Boot/Getter 시각으로 새 평가를 만들지 않는다. source AGE와 실제 이력 AGE는 원 기준으로 독립 누적하고 부재 이력3은 code/occurrence/AGE0을 보존한다.
+
+State→Fault 순서에서 각 미호출·raw·수용·실제 commit/callback 결과를 따로 남긴다. 같은 K 재수신은 두 Rx 호출0이고 State 수용 뒤 Fault 미등록/실패로 State를 재실행하지 않는다. CALLING/UNKNOWN_FAILED는 자동 재호출0이다. 미호출/무부작용 미접수 실증만 기존 owner의 준비 변화·원 freshness/세대·최대1회 기회 조건에서 해당 경계를 재검토한다. old K 후속 쓰기와 늦은 완료를 새 상태에 귀속하지 않으며 실제 fence가 불명인 해당 VSS 소비를 HOLD한다.
+
+참고 v0.5 State는 service-only, Fault는 observer-only다. Fault에 가짜 Core APPLIED를 넣어 공통 classifier를 통과시키지 않는다. 설치 profile·부분 수용·Getter/TxPort의 같은 accepted 원자료 association은 E-S05 대기다. 값이 같은 최신 raw를 대신 붙이지 않는다. terminal failure는 RX/새 CREATED 유무와 독립된 M09→INPUT 진단→FLOW 후속에서 원 K/BOOT/TX/raw/release를 먼저 보존하며 실제 sink E-S04는 미검증이다. E-S01~05, Host/Board NOT_RUN은 유지한다.

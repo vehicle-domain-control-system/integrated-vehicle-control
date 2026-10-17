@@ -1,6 +1,6 @@
 # CAN 공통 Codec — 프레임 경계와 명시 변환
 
-M05/F14·F15는 Driver가 확보한 실제 프레임과 의미 자료 사이를 변환한다. 수신 순서·Manager 상태·전송 시도는 변경하지 않는다. 호출자는 프레임 저장소를 호출 종료까지 고정하고, 출력은 모든 검증이 끝난 뒤 한 번에 인수한다. DOMAIN의 consumer 호출은 Task 문맥이며 Codec 자체가 ISR에서 공개 C2 API를 호출하지 않는다.
+M05/F14·F15는 Driver가 확보한 실제 프레임과 의미 자료 사이를 변환한다. 수신 순서·Manager 상태·전송 시도는 변경하지 않는다. 호출자는 프레임 저장소를 호출 종료까지 고정하고, 출력은 모든 검증이 끝난 뒤 한 번에 인수한다. DOMAIN의 소비자 API 호출은 ISR 밖의 단일 담당 실행 문맥에서 이루어지며 Codec 자체가 ISR에서 공개 C2 API를 호출하지 않는다.
 
 [CAN 개요](../04_CAN_FD_OVERVIEW.md) · [M05](../modules/M05_CAN_CODEC.md) · [공통 Data](../data/CAN_COMMON_DATA.md) · [전송 제어](CAN_TRANSFER_CONTROL.md) · [흐름](../flows/CAN_NETWORK_PATHS.md)
 
@@ -19,7 +19,7 @@ NetCanResult NetCan_CheckFrame(const NetCanFrame *frame,
 | 결과 | 발생 조건 |
 |---|---|
 | INVALID_ARGUMENT | NULL, 존재하지 않는 kind/node/profile, 입력 인자 범위 오류 |
-| CONTRACT_HOLD | 양단 profile 채택 근거 없음, CF02 profile 미선택, WINDOW 실행 경로 |
+| CONTRACT_HOLD | 실제 양단 profile/producer 지원 증거 없음, A1 WARNING60 외 profile, WINDOW 실행 경로 |
 | MALFORMED | ID/receiver 조합, flags, Driver 오류, DLC/실제 길이, 고정 padding 불일치 |
 | OK | 선택한 profile의 공통 frame 경계 검증만 완료. 개별 raw 필드/품질·순서·freshness는 아직 미검증 |
 
@@ -34,7 +34,7 @@ NetCanResult NetCan_CheckFrame(const NetCanFrame *frame,
     // 미정의 선택자면 INVALID_ARGUMENT. 입력만으로 채택 승인을 만들지 않는다.
     // M01에 해당 송수신 쌍의 동일 revision 채택 근거가 없으면 CONTRACT_HOLD.
     // WINDOW 5종 또는 Permission→WINDOW이면 실행 경로는 CONTRACT_HOLD.
-    // VSS_WARNING_STATE는 합의된 WARNING51 또는 WARNING60만 사용한다.
+    // VSS_WARNING_STATE는 A1에서 선택한 WARNING60만 사용한다. WARNING51은 이력이다.
     // 나머지는 해당 BASE_CANDIDATE revision의 채택 근거를 요구한다.
     if (frame->extended || !frame->fdf || !frame->brs || frame->rtr || frame->driverError)
         return NET_CAN_MALFORMED;
@@ -115,4 +115,4 @@ Decode는 공통 검증 후 메시지별 모든 필드를 임시 typed 자료로
 | VSS_WARNING_STATE | 0x0C0 | VSS | 60 | 64 | 15 | 60..63 |
 | VSS_STATUS | 0x340 | DOMAIN | 28 | 32 | 13 | 28..31 |
 
-WARNING51 대안은 used51/frame64/DLC15/padding51..63이다. 두 WARNING 후보는 frame 길이가 같으며 채택 근거로만 선택한다.
+WARNING51의 used51/frame64/DLC15/padding51..63은 이력 비교용이다. A1은 WARNING60 used60/frame64/DLC15/padding60..63을 선택했다. 동일 길이로 자동 선택하지 않으며 실제 양단 producer/지원·ABI·시간은 검증 대기다. format0은 B50=0/B52..59=0 정규 부재이고 다른 marker/비정규 부재는 거부한다.

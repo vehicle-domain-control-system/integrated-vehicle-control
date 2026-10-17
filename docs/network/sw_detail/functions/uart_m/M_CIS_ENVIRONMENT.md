@@ -183,11 +183,13 @@ NetSubmitResult DomainNetPriv_SubmitMobileCisEnvironment(const CisCabinEnvironme
         return NET_SUBMIT_NOT_READY; // IF-O24. 값이 같은 최신 raw로 대신하지 않는다.
     if (/* 원 Boot/TX/관측 identity·품질의 의미 대응 또는 전 구간 AGE 계보 미확인 */)
         return NET_SUBMIT_NOT_READY;
-    if (환경 Boot 전이 중 원 입력의 VSM·독립 Meta 저장 연결이 미확인이거나
-        무효화 거부/완료불명인데 구 GOOD를 현재 정상으로 투영하려 하면)
-        return NET_SUBMIT_NOT_READY;
-    // B 인계 차단은 구 A 정상값 제거의 증거가 아니다. 구 raw에 B Boot를 붙이지 않는다.
-    // 실제 Core 완료 뒤 Observer만 실패했다면 이 submit에서 Rx commit을 재호출하지 않는다.
+    if (BOOT 전이의 영향을 받는 환경 입력이고 (현재 요청 내용·수용 BOOT·적용 Epoch·명확한 private 완료가 미확인이거나
+        DOMAIN 후속 commit 봉쇄·무효화·Query 구 GOOD 방지 또는 B 공개 Rx의 동일 원 입력 연결이 없으면))
+        return NET_SUBMIT_NOT_READY; // 관련 환경 항목만 기존 Query 미제공/부분 처리.
+    // 일반 만료/중단의 기존 공개 Rx 제한 연결은 아래 품질 투영 경로로 유지한다.
+    // M01/M04는 미시작 A 환경 Query 재게시를 막는다. Driver 참조 중 frame 임의취소 없음.
+    // B gate 차단만으로 A GOOD 제거를 증명하지 않으며 구 raw에 B BOOT를 붙이지 않는다.
+    // 명확한 Core 완료 뒤 Observer 오류로 이 submit에서 Rx/private commit을 재호출하지 않는다.
     NetMobileCisEnvironment owned={0};
     owned.context.recipient = query == NULL ? /* 현재 수신 NetAppContext 값 */ : query->recipient;
     owned.context.domain_boot_id = /* 현재 DOMAIN 기동 */;
@@ -263,4 +265,4 @@ Codec OK는 부호화 성공, NetSubmit OK는 자기 소유 로컬 접수, Gatew
 
 [NetCisEnvironmentLocalEvent](../../data/CAN_NODE_DATA.md#type-NetCisEnvironmentLocalEvent)와 [제한 인입](../can/CIS_ENVIRONMENT.md#local-invalidation)의 같은 원 기록·사건·실제 Core 반영이 Getter/TxPort 사본과 연결되어야 한다. 단순 값 일치나 C2 OK는 이 연결의 증거가 아니다. source BOOT/TX는 마지막 실제 CAN 관측의 출처이며 파생된 제한을 새 CAN 관측으로 주장하지 않는다. 기존 Wire에 이 파생관계를 해석할 양단 근거가 없으면 해당 투영은 HOLD하고 Query에서는 기존 미제공/부분 경로를 따른다. payload·TYPE·offset·CRC는 불변이다.
 
-PG6-SW02는 [r1 환경 저장 순서](../can/CIS_ENVIRONMENT.md#environment-storage-order)를 Getter/TxPort의 출처 연결에 적용한다. A 후속 비동기 쓰기 배제와 동일 NO_DATA의 VSM·독립 Meta 실제 commit을 Queue/반환 OK로 대체하지 않는다. 완료불명에서 구 GOOD를 raw로 다시 발행하지 않으며 B의 실제 저장 후에도 원seq와 미반영 대기 AGE를 보존한다. 기존 선언·Codec·payload는 그대로다.
+PG6-SW02는 [r1 환경 저장 순서](../can/CIS_ENVIRONMENT.md#environment-storage-order)를 Getter/TxPort 출처 연결에 적용한다. BOOT에서는 단일 동기 private 결과가 현재 요청 내용·수용 BOOT·적용 Epoch·명확한 완료와 일치하고 DOMAIN A 작업의 미래 commit 봉쇄·VSM/Meta·순서 문맥 무효화·구 GOOD Query 방지를 입증해야 한다. 구 객체 잔존만으로 미완료라 하지 않지만 Queue/일반 C2 OK/Getter NO_DATA 값만으로 완료를 만들지 않는다. 이후 B의 기존 공개 Rx 실제 반영과 동일 원 입력 Getter/TxPort 연결이 확인된 항목만 투영한다. 미시작 A 환경 Query 재게시 차단은 Network, 이미 인계된 구 작업/Getter의 무효화는 DOMAIN 책임이다. 구 GOOD 잔존·association 불명은 환경 해당 항목만 기존 미제공/부분 처리한다. 현재 다른 Epoch EPOCH_ORDER_UNAVAILABLE·실제 private ABI/Binding 미검증은 HOLD다. 일반 센서 NO_DATA·만료·수신중단의 기존 공개 Rx 품질 투영, 원 seq와 한 번 누적하는 AGE, 기존 선언·Codec·60B payload·TYPE·CRC·M_QUERY_END/count는 유지한다.

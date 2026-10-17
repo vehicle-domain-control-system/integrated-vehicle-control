@@ -23,7 +23,7 @@ void VssApp_OnDomainWarningState(const NetVssWarningState *message, const NetCan
 
 송신 API 인자는 NULL 불가 IN 객체이며 호출 동안만 읽는다. 수신 callback의 message/meta 또는 state/status/result도 NULL 불가이고, 이후 필요하면 소비자가 반환 전에 복사한다. 공개 DomainIf 본체·Manager 상태는 DOMAIN 소유이고 Network가 중복 구현하지 않는다. NetSubmitResult/C2 반환의 전체 의미는 [기존 반환 정본](../../data/CIS_REAR_DATA.md#declared), 내부 함수 반환은 [공통 자료](../../data/CAN_COMMON_DATA.md)에 있다.
 
-**실행에 필요한 미결:** CF02, IF-O01, IF-O02, IF-O06, IF-O17, WINDOW_ANTIPINCH_HOLD: used51/60 양단 선택 전 정상 encode/decode/typed 소비 HOLD. profile enum 값 자체는 팀 채택 증거가 아니다.
+**내부 선택과 실행 미결:** A1 WARNING60(used60/frame64/DLC15)을 단일 선택했고 WARNING51은 이력이다. CF02의 실제 DOMAIN producer/VSS receiver·ABI·시간과 IF-O01/02/06/17은 검증 대기다. WINDOW_ANTIPINCH_HOLD는 유지한다. profile enum만으로 실제 지원을 증명하지 않는다.
 
 <a id="submit"></a>
 ## 송신 인계
@@ -42,13 +42,15 @@ DomainIf_Status_t NetCan_TxVssWarningState(const DomainIf_VssWarningState_t *sta
 {
     if (state == NULL || C2 선언의 코드·필드 조합이 잘못되면)
         return DOMAIN_IF_INVALID_ARGUMENT;
-    if (CF02 양단 선택·DTO 표현 계약이 미합의이면)
+    if (A1 WARNING60의 실제 양단 지원·원 producer/DTO 연결 증거가 없으면)
         return DOMAIN_IF_NOT_AVAILABLE;
     if (TxPort·현재 기동·상대 profile·소유자 문맥이 준비되지 않았으면)
         return DOMAIN_IF_NOT_AVAILABLE;
-    if (명시 투영에서 원 정보가 손실되거나 source-only enum의 대응이 없으면)
-        return DOMAIN_IF_NOT_AVAILABLE; // 외부 계약을 임의 축약하지 않는다.
-    // 세 DomainIf_WarningInputEvidence_t의 source.generation/sequence/ageMs, quality/reason/availability를 각 독립 Wire 묶음으로 연결한다. C2 UNCONFIRMED·UNSUPPORTED는 동등 raw가 없어 CLEAR/UNAVAILABLE로 바꾸지 않는다. rearDetectionActivation과 rearActivationMeta/reason은 독립 DOMAIN 평가다. C2에는 activation_meta_format 멤버가 없고 확장 marker는 채택 profile의 Codec 책임 후보다.
+    if (VSS 한정 A1 제한 투영표 밖의 원 정보 손실이나 미지원 대응이면)
+        return DOMAIN_IF_NOT_AVAILABLE; // 다른 노드/메시지의 enum 축약을 허용하지 않는다.
+    // 세 evidence의 원 source/sequence/AGE·quality/reason/availability와 독립 활성 meta를 보존한다.
+    // VSS 한정 UNCONFIRMED/UNSUPPORTED는 제한 투영표의 비정상 tuple로만 표현하고 원 의미를 보호한다.
+    // state0 placeholder는 정상 CLEAR가 아니다. activation_meta_format은 공개 C2 추가 필드가 아닌 WARNING60 Codec marker다.
     if (전체 의미 사본과 원 식별·시간 기준을 함께 확보할 공간이 없으면)
         return DOMAIN_IF_QUEUE_FULL;
     // 미송신 저장소에 전체 사본을 한 번에 반영한다. 실패 시 기존 항목은 유지한다.
@@ -80,15 +82,17 @@ NetCanResult NetCan_EncodeVssWarningState(const NetVssWarningState *message,
 {
     if (message == NULL || source == NULL || out == NULL || 입출력이 겹치면)
         return NET_CAN_INVALID_ARGUMENT;
-    if (CF02 양단 선택 증거가 없거나 profile != NET_CAN_PROFILE_WARNING60)
-        return NET_CAN_CONTRACT_HOLD; // WARNING51은 빠진 활성 메타를 현 DTO에 채울 계약이 없다.
-    if (profile에 대한 실제 양단 선택·지원 근거가 없으면)
+    if (profile != NET_CAN_PROFILE_WARNING60)
+        return NET_CAN_CONTRACT_HOLD; // WARNING51은 이력이며 자동 수용하지 않는다.
+    if (WARNING60의 실제 양단 producer·지원·ABI 근거가 없으면)
         return NET_CAN_CONTRACT_HOLD;
     if (source의 Boot가0이거나 송신 순번 수용 전제를 확인하지 못하면)
         return NET_CAN_ORDER_HOLD;
     if (단일 필드표의 모든 코드·범위·sentinel·명시 조합을 만족하지 못하면)
         return NET_CAN_INVALID_ARGUMENT;
-    // 세 품질0..3·사유0..9·가용성0..2, 끼임/탑승자/활성 flag0/1, 후방 상태0..2를 검증한다. 확장후보 B51 format1과 format0의 근거 부재를 구분한다.
+    // 세 품질0..3·사유0..9·가용성0..2, 끼임/탑승자/활성 flag0/1, 후방0..2와 각 조합을 검증한다.
+    // format1은 독립 활성 meta를 검증한다. format0은 B50=0/B52..59=0인 정규 부재만 허용한다.
+    // 다른 marker 또는 부재 tuple 위반은 INVALID_ARGUMENT이며 0으로 수리하지 않는다.
     NetCanFrame tmp = {0};
     tmp.canId = 0x0C0; tmp.dlc = 15;
     tmp.length = 64;
@@ -114,8 +118,8 @@ NetCanResult NetCan_DecodeVssWarningState(const NetCanFrame *frame,
 {
     if (frame == NULL || out == NULL || meta == NULL || 저장소가 겹치면)
         return NET_CAN_INVALID_ARGUMENT;
-    if (CF02 양단 선택 증거가 없거나 profile != NET_CAN_PROFILE_WARNING60)
-        return NET_CAN_CONTRACT_HOLD; // WARNING51은 빠진 활성 메타를 현 DTO에 채울 계약이 없다.
+    if (profile != NET_CAN_PROFILE_WARNING60 || 실제 WARNING60 양단 지원 증거가 없으면)
+        return NET_CAN_CONTRACT_HOLD; // WARNING51은 이력이며 자동 수용하지 않는다.
     NetCanResult rc = NetCan_CheckFrame(frame, NET_CAN_VSS_WARNING_STATE,
         NET_CAN_NODE_VSS, profile);
     if (rc != NET_CAN_OK) return rc;
@@ -129,9 +133,11 @@ NetCanResult NetCan_DecodeVssWarningState(const NetCanFrame *frame,
         // i16은 raw<32768이면 raw, 아니면 (int32_t)raw-65536으로 복원한다.
         // 같은 표의 member를 tmp 또는 tmpMeta.source에 저장한다. enum cast는 없다.
     }
-    if (단일 필드표의 코드·예약bit·범위·sentinel 조합 또는 Boot0이 발견되면)
+    if (단일 필드표의 코드·예약bit·범위·sentinel 조합 또는 frame DOMAIN Boot0이면)
         return NET_CAN_MALFORMED;
-    // 세 품질0..3·사유0..9·가용성0..2, 끼임/탑승자/활성 flag0/1, 후방 상태0..2를 검증한다. 확장후보 B51 format1과 format0의 근거 부재를 구분한다.
+    // sourceBoot0은 A1 정규 상실/미평가 tuple에서만 허용하며 정상 출처로 승격하지 않는다.
+    // format1의 독립 meta를 검증한다. format0은 B50=0/B52..59=0만 허용한다.
+    // 다른 marker·비정규 부재는 MALFORMED다. 정규 부재0을 활성 DISABLED/OK로 소비하지 않는다.
     tmpMeta.received_at_ms = frame->receivedAtMs;
     // 이 지점에서 tmp의 모든 멤버와 tmpMeta.source가 채워졌는지 확인한다.
     *out = tmp;
@@ -144,9 +150,9 @@ NetCanResult NetCan_DecodeVssWarningState(const NetCanFrame *frame,
 <a id="receive"></a>
 ## typed 수신과 소비
 
-아래 `PROPOSED_PRIVATE_FUNCTION`은 수신 Network M03의 투영·호출 절차다. 원 public `VssApp_OnDomainWarningState` 본체는 해당 Application Owner 소유다. message/meta는 admission에 성공한 동일 입력의 IN 읽기 전용 쌍이고 NULL 불가다. caller는 원 수신시각·원 AGE를 보존하며 [공통 수신/시간 절차](../CAN_TRANSFER_CONTROL.md)로 소비시점의 미반영 경과를 정확히 한 번 계산한 소유자 문맥이다. 이 함수는 별도 현재 시각을 발급하지 않는다.
+아래 `PROPOSED_PRIVATE_FUNCTION`은 기존 VSS INPUT의 public callback으로 전달하는 Network M03 절차다. message/meta는 같은 입력의 읽기 전용 쌍이고 NULL 불가다. [VSS 전용 admission](../CAN_TRANSFER_CONTROL.md#vss-warning-admission)은 네 lane의 임시 소비 Age·품질을 검사하되 payload는 RX `meta.received_at_ms` 기준 AGE로 보존한다. INPUT이 RX→owner 경과를 한 번 누적한다. callback 반환 뒤 원 포인터를 보관하거나 원 AGE를 초기화하지 않는다.
 
-세 DomainIf_WarningInputEvidence_t의 source.generation/sequence/ageMs, quality/reason/availability를 각 독립 Wire 묶음으로 연결한다. C2 UNCONFIRMED·UNSUPPORTED는 동등 raw가 없어 CLEAR/UNAVAILABLE로 바꾸지 않는다. rearDetectionActivation과 rearActivationMeta/reason은 독립 DOMAIN 평가다. C2에는 activation_meta_format 멤버가 없고 확장 marker는 채택 profile의 Codec 책임 후보다.
+세 위험의 source.generation/sequence/ageMs·quality/reason/availability와 독립 활성 meta를 보존한다. C2 UNCONFIRMED/UNSUPPORTED의 무손실 동등 raw는 없으며 [VSS 한정 A1 제한 투영](../../../interface/04_COMMON/30_ENUM_WIRE_MAPPING.md#vss-warning-limited-projection)만 비정상 tuple로 허용한다. 원 의미를 보존하고 state0을 정상 CLEAR로 소비하지 않는다. format0은 활성 근거 부재이지 전체 Warning 미지원이 아니다.
 
 ```c
 NetCanResult NetCan_DeliverVssWarningState(const NetVssWarningState *message,
@@ -154,18 +160,21 @@ NetCanResult NetCan_DeliverVssWarningState(const NetVssWarningState *message,
 {
     if (message == NULL || meta == NULL || 같은 수신 사건의 쌍이 아니면)
         return NET_CAN_INVALID_ARGUMENT;
-    if (CF02 양단 선택·수신 DTO의 확장 메타 존재·소비 규칙이 미확인이라면)
+    if (WARNING60 실제 양단 지원·format0/1 해석·A1 제한 소비의 연결이 미확인이면)
         return NET_CAN_CONTRACT_HOLD; // profile 인자를 새 공개 API에 추가하지 않는다.
     if (입력 코드·명시 조합이 잘못되면) return NET_CAN_INVALID_ARGUMENT;
     if (수신 소유자 문맥·실제 소비자 지원·초기화가 준비되지 않았으면)
         return NET_CAN_NOT_READY;
-    if (원 생산 세대·순서·identity 대응이 입증되지 않았으면)
+    if (frame DOMAIN 기동 권한·CAN 전달 순서 대응이 입증되지 않았으면)
         return NET_CAN_ORDER_HOLD;
-    if (소비시점의 미반영 홉·수신 대기 또는 필요한 원 사용 한도를 입증하지 못하면)
-        return NET_CAN_TIME_HOLD;
-    if (본문의 필수 품질·enum·원본 투영 계약이 미합의이거나 정보가 손실되면)
+    // 네 lane의 원 출처/순서·임시 소비 AGE·품질을 각각 검사한다.
+    // sourceBoot0 정규 상실, format0, 비정상 품질/만료 lane은 제한 통지로 보존한다.
+    // 한 lane의 근거 부재로 다른 검증된 lane이나 전체 callback을 버리지 않는다.
+    // 새 정상 의미에는 유효 출처/원 기한 증거가 필요하고 미입증 lane은 INPUT이 제한한다.
+    // RX 기준 payload AGE는 유지한다. INPUT 소비 경과와 admission 임시 AGE를 중복 가산하지 않는다.
+    if (A1 한정 투영 범위 밖의 정보 손실 또는 실제 제한 소비 계약이 미확인이면)
         return NET_CAN_CONTRACT_HOLD;
-    // 세 DomainIf_WarningInputEvidence_t의 source.generation/sequence/ageMs, quality/reason/availability를 각 독립 Wire 묶음으로 연결한다. C2 UNCONFIRMED·UNSUPPORTED는 동등 raw가 없어 CLEAR/UNAVAILABLE로 바꾸지 않는다. rearDetectionActivation과 rearActivationMeta/reason은 독립 DOMAIN 평가다. C2에는 activation_meta_format 멤버가 없고 확장 marker는 채택 profile의 Codec 책임 후보다.
+    // 비정상 state0은 정상 CLEAR가 아니다. format0의 활성0도 정상 DISABLED/OK가 아니다.
     VssApp_OnDomainWarningState(message, meta);
     // void는 호출 전달의 끝이다. 소비자의 저장·실행·재생 성공을 선언하지 않는다.
     return NET_CAN_OK;
@@ -176,9 +185,9 @@ OK 뒤 해당 인계를 다시 호출하지 않는다. 실패 시 원 사본은 
 
 ## 원본·시간·보관·후발 실패
 
-끼임·탑승자·후방 각 source_boot/source_sequence와 DOMAIN rear_activation_sequence는 서로 다른 판단 근거다. 세 original_age_ms와 rear_activation_age_ms를 각각 누적한다. 후방 거리 근거의 시각을 활성 평가의 시각으로 쓰지 않는다.
+끼임·탑승자·후방 source_boot/source_sequence와 DOMAIN rear_activation_sequence는 네 독립 lane이다. RX AGE·원 품질·사용기한을 각각 보존하며 후방 거리 시각을 활성 평가 시각으로 쓰지 않는다. sourceBoot0 정규 상실을 새 정상 generation으로 채우지 않는다. 같은 source sequence의 새 품질 제한은 전달하고, 의미 반복은 liveness만 갱신한다. 같은 evidence에서 정상값 변경/정상 복귀에는 DOMAIN 판단 순서 증거가 필요하다.
 
-통신 주기/수신 중단: 50 / 150ms 후보. CF02와 WINDOW 끼임 실행 보류가 해제되지 않는다. 이 수치는 채택·실측되지 않은 후보이며 `>`/`>=` 경계나 원 TTL을 임의 추가하지 않는다. 형식 오류·중복을 정상 heartbeat나 semantic fresh로 쓰지 않는다.
+A1 설계 프로필은 Warning50ms/검증된 전진 TX 수신중단150ms, 끼임TTL/Hold250/250ms(TEST만), 탑승자1000/500ms, 후방위험150/150ms, 활성500/0ms다. Hold anchor=min(최초 상실,마지막 validUntil)를 고정한다. 후방 활성 상실은 현재 위험을 fence하며 새 활성만으로 옛 위험을 복원하지 않는다. format0에서 세 유효 경고는 독립 처리하고 activation 근거만 부재로 제한한다. 실제 생산/시간/자원은 미검증이며 [A1 입력 정본](../../../interface/02_NODES/VSS/10_DATA.md#a1-binding)의 불확실 구간·복구 조건을 따른다.
 
 현재 상태는 동일 의미 key의 아직 송신을 시작하지 않은 항목만 교체 후보가 된다. 채널별 원 순서와 품질을 모두 보존해야 한다. Driver가 참조 중인 프레임은 AGE나TX를 수정하지 않는다. 저장 공간 부족·사본 준비 실패는 전체 새 접수 실패이며 순번 장부부터 진전시키지 않는다.
 
@@ -188,8 +197,8 @@ OK 뒤 해당 인계를 다시 호출하지 않는다. 실패 시 원 사본은 
 
 | 사례 | 기대 처리 |
 |---|---|
-| 정상 또는 조건부 경로 | 현재 정상 진입은 CF02 HOLD다. used60이 향후 채택되어도 세 위험의 원 근거와 후방 활성 평가를 별도로 전달하며 VSS가 거리를 재평가하지 않는다. |
-| 고유 경계 | 두 후보 모두64B다. used51은B51..63 padding0, used60은B51..59 의미+ B60..63 padding0이다. format0을 활성 품질OK로 합성하지 않는다. |
+| 정상 또는 조건부 경로 | A1 WARNING60 선택 후에도 실제 양단 지원·producer·시간은 CF02 HOLD. 세 위험과 독립 활성 근거를 보존하며 VSS가 거리를 재평가하지 않음 |
+| 고유 경계 | WARNING51은 이력. WARNING60의 B60..63 padding0, format0의 B50/B52..59=0을 확인하고 부재를 활성 OK로 만들지 않음 |
 | 의미 반례 | DLC15나 B51=1로used60을 자동 선택하지 않는다. B51..59가0이어도used51을 선택하지 않는다. |
 | ID/FDF/BRS/DLC/길이/padding 또는 raw 예약값 오류 | 임시 변환 전체 폐기, typed 호출·정상 수신 시각·순번 갱신 없음 |
 | 같은 원 identity 재송신·AGE 감소 | 같은 소비시점으로 환산해 원본을 젊게 만들지 않음. 순서/clock/wrap 미확인이면 HOLD |

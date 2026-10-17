@@ -2,15 +2,15 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**H01 실제 적용 확인 대기:** 아래 선언의 update_sequence는 채택 헤더에 존재함을 보증하지 않는다. 실제 공통 헤더 경로·버전과 필드 채택, 또는 UART-M Adapter의 세 생산원별 독립 순번 관리 중 선택을 확인해야 한다. 등록·연결 공동 관측, App 활성, 근접을 구분해 M_CONTEXT38B로 변환하고 최초·반복·재기동·wrap을 검증하기 전에는 [H01 HOLD](11_GATEWAY_TYPES.md#r1-updatebasis-binding)를 유지한다. BLE 채택과 내부 코드 변경은 ESP32/Android 담당 범위다.
+**H01 실제 적용 확인 대기:** 아래 선언의 update_sequence 필드가 실제 채택된 헤더에 존재하는지는 확인되지 않았다. 실제 공통 헤더 경로·버전과 필드 채택, 또는 UART-M Adapter의 세 생산원별 독립 순번 관리 중 선택을 확인해야 한다. 등록·연결 공동 관측, App 활성, 근접을 구분해 M_CONTEXT38B로 변환하고 최초·반복·재기동·wrap을 검증하기 전에는 [H01 HOLD](11_GATEWAY_TYPES.md#r1-updatebasis-binding)를 유지한다. BLE 채택과 내부 코드 변경은 ESP32/Android 담당 범위다.
 
-**DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 Firmware 구현·연결·컴파일 완료를 의미하지 않는다.
+**DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 펌웨어의 구현·연결·컴파일 완료를 의미하지 않는다.
 
 [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [내부 Adapter](25_PRIVATE_ROUTING.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
 
 <a id="query-entry"></a>
 <a id="r1-context-binding"></a>
-M_CONTEXT 생산자 호출은 등록·연결/App/근접의 독립 u32 순번과 원 AGE를 보존해야 한다. [UpdateBasis Header/Adapter 권고](11_GATEWAY_TYPES.md#r1-updatebasis-binding)의 세 생산원 변환과 ABI 검증 전에는 H01 HOLD_BINDING을 유지한다. 문서에 필드가 존재하는 것만으로 실제 ESP32 헤더와 Encoder 연결이 완료된 것은 아니다.
+M_CONTEXT 생산자 호출은 등록·연결/App/근접의 독립 u32 순번과 원 AGE를 보존해야 한다. [UpdateBasis Header/Adapter 권고](11_GATEWAY_TYPES.md#r1-updatebasis-binding)의 세 생산원에 대한 변환과 ABI 검증 전에는 H01 HOLD_BINDING을 유지한다. 문서에 필드가 존재하는 것만으로 실제 ESP32 헤더와 Encoder 연결이 완료된 것은 아니다.
 
 ## Query가 통과하는 호출부터 찾기
 
@@ -60,7 +60,7 @@ BLE/UART Adapter→Core는 `Gateway_Interface_OnMobileMessage/OnDomainMessage`�
 <a id="ports"></a>
 ## 공통 호출·반환·수명 계약
 
-ByteView와 nested payload는 호출이 끝날 때까지 borrowed 다. Core/Transport callback이 비동기로 보관하려면 **local OK 전에 Network-owned bounded deep copy/동기 encode**를 확보한다. 등록 table 값복사는 pointed byte data 또는 user_context의 자동복사를 뜻하지 않는다. owner 처리 문맥과 비차단 callback을 제안하며 실제 Firmware/SDK binding은 미확인이다.
+ByteView와 nested payload는 호출이 끝날 때까지 참조로 빌려 사용하는 자료다. Core/Transport callback이 비동기로 보관하려면 **local OK 전에 Network-owned bounded deep copy/동기 encode**를 확보한다. 등록 table 값복사는 pointed byte data 또는 user_context의 자동복사를 뜻하지 않는다. owner 처리 문맥과 비차단 callback을 제안하며 실제 Firmware/SDK binding은 미확인이다.
 
 | Network 내부 상태 | Gateway callback 반환 제안 | 한계 |
 |---|---|---|
@@ -71,11 +71,11 @@ ByteView와 nested payload는 호출이 끝날 때까지 borrowed 다. Core/Tran
 | NULL callback/지원 안 됨 | `GATEWAY_STATUS_UNSUPPORTED` | init 자체 실패로 소급하지 않음. |
 | 설명할 수 없는 내부 오류 | `GATEWAY_STATUS_INTERNAL_ERROR` | 성공·차량 FAILED로 바꾸지 않음. |
 
-**PROPOSED / NETWORK_OWNED + IMPLEMENTATION_BINDING:** 기존 source enum 안에서 **enqueue 전의 일시적 capacity 부족은 `GATEWAY_STATUS_NOT_READY`**로 반환하는 안을 권장한다. 호출자 borrowed bytes를 보관하지 않고 local OK/차량 ACCEPTED를 만들지 않는다. 재제출은 동일 원 Request/Session/Query ID를 유지하며 현재 peer·수명·중복을 다시 검사한다. 공개 반환코드 확장 없이 일시 준비 불가라는 의미를 보존하므로, 일시 queue full을 구조/인자 오류나 성공으로 바꾸는 안보다 적합하다. 실제 capacity 원인은 기존 Network 로컬 진단에 보존한다.
+**PROPOSED / NETWORK_OWNED + IMPLEMENTATION_BINDING:** 기존 source enum 안에서 **enqueue 전의 일시적 capacity 부족은 `GATEWAY_STATUS_NOT_READY`**로 반환하는 안을 권장한다. 호출자 borrowed bytes를 보관하지 않고 local OK/차량 ACCEPTED를 만들지 않는다. 재제출은 동일 원 Request/Session/Query ID를 유지하며 현재 peer·수명·중복을 다시 검사한다. 공개 반환코드 확장 없이 일시 준비 불가라는 의미를 보존하므로, 일시적인 큐 공간 부족을 구조·인자 오류나 성공으로 바꾸는 안보다 적합하다. 실제 capacity 원인은 기존 Network 로컬 진단에 보존한다.
 
 이미 OK로 안정된 복사/encode를 인수한 뒤 실패하면 과거 반환을 NOT_READY로 소급하거나 사용자에게 무조건 같은 명령을 재실행시키지 않는다. 최종 실패는 기존 Transport/Network 감독의 해당 work/Query 식별자와 함께 인계하며 source callback 시점의 내부 오류는 기존 `GATEWAY_STATUS_INTERNAL_ERROR`를 사용한다. Request 실패를 차량 FAILED로, Query 실패를 STATUS0 완료로 합성하지 않는다. sender가 실제 송신 여부를 모르면 결과 확인/새 Query 경로를 사용하고 자동 중복 실행을 만들지 않는다.
 
-**Gateway 반환·연동 조건:** caller는 NOT_READY에 대한 안전한 재제출과 실패 원인 진단을 구분해야 한다. 로컬 OK 이후 work-ID/최종 TX 실패를 기존 Transport 감독에 연결할 관측 지점이 필요하다. 그 연결 전에는 후발 실패 관측이 `BINDING_OPEN`이다. 새 public failure API/DTO는 정의하지 않는다. 반환 규칙은 `PROPOSED`이며 실제 Firmware/Codec 동작은 검증 전이다.
+**Gateway 반환·연동 조건:** 호출자는 NOT_READY 이후의 안전한 재제출과 실패 원인 진단을 구분해야 한다. 로컬 접수 성공 이후 작업 ID와 최종 송신 실패를 기존 Transport 감독에 연결할 관측 지점이 필요하다. 그 연결 전에는 후발 실패 관측이 `BINDING_OPEN`이다. 새 공개 실패 처리 API/DTO는 정의하지 않는다. 반환 규칙은 `PROPOSED`이며 실제 Firmware/Codec 동작은 검증 전이다.
 
 <a id="api-gateway_interface_init"></a>
 ## `Gateway_Interface_Init()`
@@ -149,7 +149,7 @@ Gateway_Status_t Gateway_Interface_OnDomainMessage( const Gateway_RelayMessageVi
 
 **방향:** Adapter→Core · **지위:** DECLARED_SOURCE / BINDING_OPEN.
 
-**용도·호출자·시점:** UART-M Adapter가 Domain의 ordinary 상태/결과/경고를 raw 검증·typed schema 분류후 Core handler로 인계한다. ALIVE/QUERY_END는 private 감독경로다.
+**용도·호출자·시점:** UART-M Adapter가 DOMAIN에서 수신한 일반 상태·결과·경고의 원시 데이터를 검증하고 형식별로 분류한 뒤 Core 핸들러에 전달한다. ALIVE/QUERY_END는 private 감독경로다.
 
 | 인자 | 정확한 타입 | IN/OUT | 사용·수명 |
 |---|---|---|---|
@@ -187,7 +187,7 @@ Gateway_Status_t Gateway_Interface_SendToMobile( const Gateway_RelayMessageView_
 
 **방향:** Core→Transport · **지위:** DECLARED_SOURCE / BINDING_OPEN.
 
-**용도·호출자·시점:** Gateway Core가 검증된 Domain 상태/결과/경고를 BLE Transport로 중계한다. 원 vehicle 의미/RequestSession/quality/AGE 를변경하지 않는다.
+**용도·호출자·시점:** Gateway Core가 검증된 DOMAIN 상태·결과·경고를 BLE Transport로 중계한다. 원본 차량 의미·RequestSession·품질·AGE를 변경하지 않는다.
 
 | 인자 | 정확한 타입 | IN/OUT | 사용·수명 |
 |---|---|---|---|

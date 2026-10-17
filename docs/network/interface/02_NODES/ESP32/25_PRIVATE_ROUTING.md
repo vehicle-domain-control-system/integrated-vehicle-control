@@ -1,8 +1,8 @@
-# ESP32 — Gateway schema dispatch와 Network private 경로
+# ESP32 — Gateway 메시지 분류와 Network 내부 경로
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**PROPOSED_DESIGN / BINDING_OPEN.** 공개 API는 [기존 Gateway13 종](20_API.md)을 재사용한다. 세 개 MOBILE relay TX와 17 개 ordinary M_* RX마다 새로운 공개 함수를 만들지 않는다. 상세 typed schema를 제거하지 않고 기존 Interface Core/Transport port에 정확하게 연결한다.
+**PROPOSED_DESIGN / BINDING_OPEN.** 공개 API는 [기존 Gateway13 종](20_API.md)을 재사용한다. MOBILE 중계 송신 세 종류와 일반 M_* 수신 17종마다 공개 함수를 새로 추가하지 않는다. 상세 typed schema를 제거하지 않고 기존 Interface Core/Transport port에 정확하게 연결한다.
 
 [Data](10_DATA.md) · [공개 API](20_API.md) · [공통 API·실패](../../04_COMMON/20_API_USAGE_AND_FAILURE.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
 
@@ -25,7 +25,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 NetSubmitResult EspNetPriv_PublishContext(const NetMobileContext *message);
 ```
 
-**호출·사용:** Gateway3 종 원 관측 업데이트의 독립 근거를 보존해 M_CONTEXT compose. App 최종 wire DTO 생성 의무 제거.
+**호출·사용:** Gateway3 종 원 관측 업데이트의 독립 근거를 보존해 M_CONTEXT를 조립한다. App에 최종 Wire DTO를 생성하도록 요구하지 않는다.
 
 | 인자 | 정확한 타입 | 수명·검증 |
 |---|---|---|
@@ -68,15 +68,15 @@ void EspNetPriv_OnQueryEnd(const NetMobileQueryEnd *message, const NetUartRxMeta
 <a id="relay-schema"></a>
 ## 기존 RelayMessageView의 상세 schema registry
 
-source `Gateway_LogicalMessageType_t`는 broad 논리 분류다. `Gateway_RelayMessageView_t.payload`를 검사할 때 아래 **논리 subtype → 실제 typed schema → 현재 context → 허용 API 방향**을 함께 확인한다. category 하나만으로 모든 상태를 같은 구조로 decode 하지 않는다.
+source `Gateway_LogicalMessageType_t`는 포괄적인 논리 분류다. `Gateway_RelayMessageView_t.payload`를 검사할 때 아래 **논리 subtype → 실제 typed schema → 현재 context → 허용 API 방향**을 함께 확인한다. category 하나만으로 모든 상태를 동일한 구조로 디코딩하지 않는다.
 
-**PROPOSED / NETWORK_OWNED + CROSS_NODE_AGREEMENT — 권장 Adapter binding:** 기존 `Gateway_RelayMessageView_t.payload` ByteView에 **현재 UART-M TYPE 1 B + 해당 TYPE의 명시적으로 직렬화한 논리 payload P B**를 보관하여 `length=P+1`로 구분한다. TYPE은 아래 기존 값만 재사용하며 신규 tag/category 숫자를 배정하지 않는다. 이는 Adapter 내부 호출 convention이다. UART-M의 TYPE·PAYLOAD_LENGTH·payload offset이나 BLE 전송 format/Opcode/UUID/MTU를 변경하지 않는다. `Gateway_Interface.h`는 payload를 transport framing을 제거한 논리 payload로 정의하고 구체 표현은 정하지 않았으므로, 현재 ByteView와 공개 13개 경계만 재사용한다.
+**PROPOSED / NETWORK_OWNED + CROSS_NODE_AGREEMENT — 권장 Adapter binding:** 기존 `Gateway_RelayMessageView_t.payload` ByteView에 **현재 UART-M TYPE 1 B + 해당 TYPE의 명시적으로 직렬화한 논리 payload P B**를 보관하여 `length=P+1`로 구분한다. TYPE은 아래 기존 값만 재사용하며 신규 tag/category 숫자를 배정하지 않는다. 이는 Adapter 내부의 호출 규칙이다. UART-M의 TYPE·PAYLOAD_LENGTH·payload offset이나 BLE 전송 format/Opcode/UUID/MTU를 변경하지 않는다. `Gateway_Interface.h`는 payload를 transport framing을 제거한 논리 payload로 정의하고 구체 표현은 정하지 않았으므로, 현재 ByteView와 공개 13개 경계만 재사용한다.
 
 수신 Adapter는 원 frame의 VERSION/방향/TYPE/정확한 P/CRC/필수 필드와 현재 peer·Session을 검증하고 typed decode한 뒤 위 논리 view를 구성한다. Core의 `OnMobileMessage`/`OnDomainMessage`와 Transport의 `SendToDomain`/`SendToMobile` 및 등록한 relay sender는 같은 registry/convention을 검사한다. UART 송신 Adapter는 논리 TYPE을 기존 frame TYPE으로 옮기고 P B만 기존 payload에 encode한다. BLE 송신 Adapter는 subtype별 의미를 기존 모바일 profile로 인계하며 이 내부 prefix를 BLE wire에 자동 복제하지 않는다. C 구조체 주소 cast/memcpy나 검증 없는 raw frame relay는 허용하지 않는다. 현재 ID ByteView(u32 Device/u64 Session/u32 Request)와 payload 문맥도 서로 일치해야 한다.
 
 **Context의 존재·종류 검사:** `device_context_id`/`session_id` view는 recipient/상향 현재 Device(u32)/Session(u64)와 일치시킨다. `request_id` view는 **Request ID**이며 QueryID나 Occurrence를 대입하지 않는다. M_REQUEST/M_RESULT에는 해당 원 REQUEST_ID(u32)를 연결한다. M_QUERY에서 조회 대상 REQUEST_ID가 있으면 그 값과 일치시키고, 상태 조회처럼 대상 Request가 없으면 empty view(`data=NULL,length=0`)를 허용한다. QUERY_ID는 M_QUERY/M_* payload의 별도 조회 식별자로만 보존한다. M_WARNING_ACK·M_WARNING·상태·가용성·M_DIGITAL_RESULT 등 RequestID가 없는 schema의 request_id view도 empty이며 자동 occurrence를 Request로 꾸미지 않는다. M_RESULT의 과거 REQUEST_SESSION은 payload에 그대로 두고 context.session_id에는 현재 recipient Session을 쓴다. UART-M payload에 VEHICLE_ID가 없으므로 `vehicle_id`는 인증된 configured vehicle 문맥이 있을 때만 별도 검증하고 없으면 source의 empty-view 계약을 따른다. Wire payload에 vehicle 값을 신설하지 않는다. private ALIVE는 recipient context가 없고, private QueryEnd는 현재 recipient/Query context만 검사한다.
 
-category 또는 payload 길이만으로 subtype을 추론하면 42 B의 BCM_STATUS/WINDOW_STATE/WINDOW_FAULT 및 DIGITAL_STATUS/RESULT의 공통 category가 충돌한다. 가변 전역 subtype나 `user_context`의 최신 tag는 비동기 수명·동시 호출에서 원 payload와 분리될 수 있다. 권장 ByteView convention은 공개 DTO/API를 추가하지 않으며 borrowed 수명·local OK 전 안정된 복사/동기 encode 조건을 유지한다. ESP32 Core와 두 Transport Adapter에서 ByteView와 context의 중복 일치 검사가 필요하다. 다른 convention의 buffer를 묵시적으로 수용하지 않는다. 해당 subtype 연결은 `BINDING_OPEN`, 규칙은 `PROPOSED`이며 실제 Codec 동작은 검증 전이다.
+category 또는 payload 길이만으로 subtype을 추론하면 42 B의 BCM_STATUS/WINDOW_STATE/WINDOW_FAULT 및 DIGITAL_STATUS/RESULT의 공통 category가 충돌한다. 가변 전역 subtype나 `user_context`의 최신 tag는 비동기 수명·동시 호출에서 원 payload와 분리될 수 있다. 권장 ByteView convention은 공개 DTO/API를 추가하지 않으며 borrowed 수명·로컬 접수 성공 전에 안정적인 복사 또는 동기 인코딩을 마쳐야 한다는 조건을 유지한다. ESP32 Core와 두 Transport Adapter에서 ByteView와 context의 중복 일치 검사가 필요하다. 다른 convention의 buffer를 묵시적으로 수용하지 않는다. 해당 subtype 연결은 `BINDING_OPEN`, 규칙은 `PROPOSED`이며 실제 Codec 동작은 검증 전이다.
 
 | UART-M subtype / TYPE | 방향 / 정확한 payload P | 기존 typed schema | 기존 Gateway category·실제 경계 / Session 검사 |
 |---|---|---|---|
@@ -161,7 +161,7 @@ SESSION_READY=0인 최초 유효 Query도 Domain의 passive 검증 후 처리할
 - End count 불일치·종료 frame 자체 실패·수신 reject·확인할 수 없는 순서/손실은 완료 보류 후 로컬 Query 만료/실패로 인계한다. 만료 기한 수치 및 BLE의 조회 완료/부분/실패 표현은 미확정이다. 이를 M_RESULT DONE/FAILED나 새 raw 값으로 바꾸지 않는다.
 - 활성 Query 중 원 Session/Domain Boot가 바뀌면 이전 조회를 불완전 종료한다. 동일 종료를 다시 받으면 결과를 재발행하지 않는다. 종료·만료 후 도착한 End는 이미 닫힌 원 Query를 다시 열지 않는다. 다시 조회하려면 MOBILE가 새 QueryID를 생성한다. 단일 현재 recipient의 조회를 직렬 처리하는 안을 권장하며 중복/동시 조회 admission과 큐 구현은 Adapter owner binding이다.
 
-**Query 수신·표시 전제:** DOMAIN/ESP32 양단에서 [UART-M 종료 규칙](../../03_COMMUNICATION/20_UART_M.md#r2-query-contract)의 TX 완료 count·0건·부분 기준이 일치해야 한다. End는 private이며 MOBILE 조회 결과의 부분/미완료를 전달할 BLE 논리 경계는 미확정이다. 실제 TX 완료/수신 dedup/큐 순서/BLE 결과 표현이 확인되기 전 완료 binding은 `BINDING_OPEN`이다. 미확정 입력을 완전 완료로 표시하지 않는다. 규칙은 `PROPOSED`이며 실제 Codec/무선 동작은 검증 전이다.
+**Query 수신·표시 전제:** DOMAIN/ESP32 양단에서 [UART-M 종료 규칙](../../03_COMMUNICATION/20_UART_M.md#r2-query-contract)의 TX 완료 count·0건·부분 기준이 일치해야 한다. End는 private이며 MOBILE 조회 결과의 부분/미완료를 전달할 BLE 논리 경계는 미확정이다. 실제 송신 완료·수신 중복 제거·큐 처리 순서·BLE 결과 표현이 확인되기 전 완료 binding은 `BINDING_OPEN`이다. 미확정 입력을 완전 완료로 표시하지 않는다. 규칙은 `PROPOSED`이며 실제 Codec/무선 동작은 검증 전이다.
 
 ## 실제 source API 호출 예 — 구현 시험 아님
 

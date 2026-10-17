@@ -91,7 +91,7 @@ Wire를 가로질러 C 함수를 직접 호출하지 않는다. CIS 내부 함�
 
 ## 종결 범위와 남은 조건
 
-후방 typed 인계가 설계상의 Network 종점이다. DOMAIN 위험 판단·VSS_WARNING_STATE·M_CIS_REAR 표시까지 SC07 전체를 완료한 것으로 세지 않는다. CF02는 VSS_WARNING_STATE 사용51/60B의 선택 미결이며 두 후보 모두 물리64B라는 사실만으로 해소되지 않는다. CF01·UART-C·Permission·WINDOW 기존 외부 HOLD도 영향 없는 이 경로의 작성으로 닫히지 않는다.
+후방 typed 인계가 설계상의 Network 종점이다. DOMAIN 위험 판단·VSS_WARNING_STATE·M_CIS_REAR 표시까지 SC07 전체를 완료한 것으로 세지 않는다. CF02 형식은 A1 WARNING60(used60/frame64/DLC15)으로 선택했고 WARNING51은 이력이다. 실제 DOMAIN producer/VSS receiver 지원·시간 검증은 대기이며 이 후방 경로만으로 VSS 실제 시작/완료를 주장하지 않는다. CF01·UART-C·Permission·WINDOW 기존 외부 HOLD도 닫히지 않는다.
 
 이 흐름의 실행에는 양단 CAN profile, 기동·순번 수용, CIS 품질·세대 투영, 같은 raw와 C2 입력의 연결, 단조 시간, Driver 비동기 수명, DOMAIN 필수 소비 바인딩이 필요하다. 문서가 정한 복사·거부·반영 순서는 로컬 설계이고 실제 RTD/HAL/핀/MB/Queue Depth/RTOS/보드 검증이 아니다. 모든 노드에 RTOS나 Superloop를 공통 강제하지 않는다.
 

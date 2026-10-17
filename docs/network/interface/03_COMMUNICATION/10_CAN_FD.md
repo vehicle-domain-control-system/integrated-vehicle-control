@@ -2,7 +2,7 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**메시지 이름·방향 MESSAGE_LOCKED / ID·DLC·offset·시간 WIRE_PROPOSED.** 하나의 공유 CAN에 DOMAIN/BCM/CIS/VSS가 참여한다. WINDOW는 **[구현 보류 — 설계 유지]**이며 현재 미연결 노드의 timeout을 고장으로 활성화하지 않는다.
+**메시지 이름·방향 MESSAGE_LOCKED / ID·DLC·offset·시간 WIRE_PROPOSED.** 하나의 공유 CAN에 DOMAIN/BCM/CIS/VSS가 참여한다. WINDOW는 **[구현 보류 — 설계 유지]**이며 현재 연결되지 않은 노드의 수신 중단을 실제 고장으로 판정하지 않는다.
 
 [시작 안내](../00_START_HERE.md) · [48 메시지별 API](../05_MESSAGE_INDEX.md) · [공통 타입·AGE](../04_COMMON/10_DATA_AND_ID_RULES.md) · [C enum↔Raw](../04_COMMON/30_ENUM_WIRE_MAPPING.md)
 
@@ -10,11 +10,11 @@ Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES
 ## 설정·공통 Header
 
 <a id="r1-can-receive"></a>
-수신 순서는 송신 출처·수용 BOOT·CAN ID별로 판정한다. 같은 TX_SEQUENCE와 같은 raw의 정확 중복은 새 liveness 근거가 아니다. 새 TX_SEQUENCE의 정상 반복은 수용 뒤 해당 기능 수신감시에 전달하지만 원 관측값·생성시각·관측번호를 새로 만들지 않는다. 같은 원 관측의 확인된 품질 저하는 기존 C2로 인계하고, 높은 TX만으로 값 변경/정상 승격을 허용하지 않는다. raw·품질·Meta·순서의 수용 결과를 함께 연결하며 실패 시 부분 commit하지 않는다. [공통 분기](../04_COMMON/10_DATA_AND_ID_RULES.md#section-repeat-and-quality)의 실제 binding은 검증 대기다.
+수신 순서는 송신 출처·수용 BOOT·CAN ID별로 판정한다. TX_SEQUENCE와 원시 바이트가 모두 같은 정확한 중복 프레임은 새 수신 생존 근거가 아니다. 새 TX_SEQUENCE의 정상 반복은 수용 뒤 해당 기능 수신감시에 전달하지만 원 관측값·생성시각·관측번호를 새로 만들지 않는다. 같은 원 관측의 확인된 품질 저하는 기존 C2로 인계하고, 높은 TX만으로 값 변경/정상 승격을 허용하지 않는다. raw·품질·Meta·순서의 수용 결과를 함께 연결하며 실패 시 일부만 저장 완료로 처리하지 않는다. [공통 분기](../04_COMMON/10_DATA_AND_ID_RULES.md#section-repeat-and-quality)의 실제 binding은 검증 대기다.
 
-CAN TX_SEQUENCE는 수용한 송신 노드 BOOT 안에서 메시지별로 관리한다. 수신 비교 범위는 송신 출처·BOOT·CAN ID/메시지 구분을 포함한다. CIS_ENVIRONMENT(TX1), CIS_OCCUPANT(TX1), CIS_ENVIRONMENT(TX2)는 서로 다른 메시지의 순번을 섞지 않으면 정상 순서다. 원 센서 관측 순번 및 UART-C 방향별 LINK_SEQUENCE와 합치지 않는다. 새 필드가 아니라 기존 카운터 비교 범위를 명확히 한 것이다.
+CAN TX_SEQUENCE는 수용한 송신 노드 BOOT 안에서 메시지별로 관리한다. 수신 비교 범위는 송신 출처·BOOT·CAN ID/메시지 구분을 포함한다. CIS_ENVIRONMENT(TX1), CIS_OCCUPANT(TX1), CIS_ENVIRONMENT(TX2)는 서로 다른 메시지의 순번을 섞지 않으면 정상 순서다. 원본 센서 관측 순번이나 UART-C의 방향별 LINK_SEQUENCE와 혼용하지 않는다. 새 필드가 아니라 기존 카운터 비교 범위를 명확히 한 것이다.
 
-DLC 인코딩과 전송 바이트를 구별한다. CIS_REAR/DOMAIN_PERMISSION은 사용19B·전송20B·DLC11, CIS_OCCUPANT는25B·32B·DLC13, CIS_ENVIRONMENT는40B·48B·DLC14, CIS_STATUS는34B·48B·DLC14다. 기존 숫자·offset을 변경하지 않는다.
+DLC 코드와 실제 전송 바이트 수를 구별한다. CIS_REAR/DOMAIN_PERMISSION은 사용19B·전송20B·DLC11, CIS_OCCUPANT는25B·32B·DLC13, CIS_ENVIRONMENT는40B·48B·DLC14, CIS_STATUS는34B·48B·DLC14다. 기존 숫자·offset을 변경하지 않는다.
 
 | 항목 | 후보 / 상태 |
 | --- | --- |
@@ -35,13 +35,13 @@ DLC 인코딩과 전송 바이트를 구별한다. CIS_REAR/DOMAIN_PERMISSION은
 | B16~17(명령만) | COMMAND_AGE | u16LE | 명령 최초 생성부터 누적. 원 판단의 meta.age와 별개 |
 | B18~19(명령만) | ACCEPT_LIMIT | u16LE | 200 ms 후보 ↔ 구 SysRS 1 s 충돌 OPEN. 적용 조건 미확정 |
 
-CAN ACK는 참여 노드의 수신 증거이며 지정 ECU의 수용·실행 DONE과 구분한다. padding은 의미값으로 사용하지 않는다. 필수 코드·ID·길이·세대 오류를 정상 typed callback이나 liveness로 연결하지 않는다.
+CAN ACK는 버스에 참여한 노드의 수신 사실을 보여줄 뿐이며, 지정 ECU의 명령 수용이나 기능 실행 DONE을 증명하지 않는다. padding은 의미값으로 사용하지 않는다. 필수 코드·ID·길이·세대 오류를 정상 typed callback이나 liveness로 연결하지 않는다.
 
 DLC 9/10/11/12/13/14/15는 12/16/20/24/32/48/64 B에 대응한다. Codec는 C struct의 `sizeof`를 Wire 길이로 사용하지 않는다. 수신 상태의 UPDATE_SEQUENCE는 새 관측에서만 증가하며 TX_SEQUENCE와 독립이다.
 
 ## 메시지 목록 — 시간은 PROPOSED
 
-메시지별 길이·주기는 아래 후보를 적용한다. 후방 활성 Permission은 원 평가 약 200ms/원 기한 500ms와 CAN 50ms 송신/150ms 수신 감시를 적용한다. 온습도 원 사용 기한은 각 2500ms다. 후방 거리 원 150ms 후보와 Permission 원 500ms는 별개다. [시간 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#timing)
+메시지별 길이·주기는 아래 후보를 적용한다. 후방 활성 Permission은 원 평가 약 200ms/원 기한 500ms와 CAN 50ms 송신/150ms 수신 감시를 적용한다. 온도·습도 데이터의 사용 기한은 원본 관측 기준 각각 2500ms다. 후방 거리 원 150ms 후보와 Permission 원 500ms는 별개다. [시간 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#timing)
 
 | 메시지 | ID/Type | 송신 → 수신 | 사용 / 전체 B | 주기 / 수신 중단 |
 | --- | --- | --- | --- | --- |
@@ -72,25 +72,20 @@ DLC 9/10/11/12/13/14/15는 12/16/20/24/32/48/64 B에 대응한다. Codec는 C st
 <a id="message-domain-permission"></a>
 ## `DOMAIN_PERMISSION` — `0x080`
 
-후방 활성 Power는 약 200ms 실제 재평가·원 사용 기한 500ms·새 평가/값 변경 전달 및 CAN 50ms 송신/150ms 수신 감시를 적용한다. 반복 CAN TX는 원 AGE나 원 평가 순번을 초기화하지 않는다. 아래 Power/Operation/Alive 생성·공유 AGE 합성은 별도의 미확정 후보이다. [Permission 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#permission)
+후방 활성 Power는 약 200ms마다 실제로 재평가하고, 원본 평가의 사용 기한 500ms와 새 평가·값 변경 시 전달 및 CAN 50ms 송신/150ms 수신 감시를 적용한다. 반복 CAN TX는 원 AGE나 원 평가 순번을 초기화하지 않는다. 아래 Power/Operation/Alive 생성·공유 AGE 합성은 별도의 미확정 후보이다. [Permission 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#permission)
 
 **DOMAIN → BCM, CIS, WINDOW, VSS · 19 B 사용 / 20 B CAN 전송 / DLC 11 · WIRE_PROPOSED.**
 
 CIS/WINDOW는 허용 기능을 소비하고 BCM/VSS는 Network-private Domain 감시를 소비한다. [공통 7필드 타입·합성 미정](../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission)과 [합성 규칙](../04_COMMON/10_DATA_AND_ID_RULES.md#section-permission-synthesis)을 따른다.
 
-**PROPOSED — 기존 C2 세 입력을 같은 평가시점에 읽는 최소 합성:** 기존 `DomainIf_TxCisPowerPermission()`, `DomainIf_TxWindowOperationPermission()`, `DomainIf_TxWindowDomainAlive()` 입력의 값·각 SignalMeta·로컬 수용 기준점을 별도로 보관한다. private adapter가 하나의 로컬 `t_eval`에서 입력과 원 평가 번호를 고정해 읽고, 읽는 동안 원 tuple이 바뀌면 그 결과로 새 허용을 만들지 않고 현재 입력을 다시 평가하는 안을 권장한다. 이는 원 세 판단의 생성시각이 같다는 뜻이 아니다. 별도 공개 API/DTO/범용 관리자를 추가하지 않는다.
+**초기 송신 경계:** DOMAIN 기능이 제공한 Power 원 값·Quality·AGE를 확인해 `DOMAIN_PERMISSION`의 전원 필드에 반영한다. 확인된 새 평가 또는 의미·품질 변경을 놓치지 않으며, 주기 CAN 송신만으로 원 평가 Sequence와 AGE를 새로 만들지 않는다. DOMAIN Core가 평가 FAILED/NO_DATA에서 이전 ALLOW를 철회한다는 담당자 구현 보고는 실제 TxPort→CAN 경로의 연결 시험 완료와는 구분한다.
 
-전원은 전원 입력의 `quality`와 `meta.quality`가 일치하고 원 사용 기한을 만족할 때 기존 bool을 0/1로 명시 변환한다. 품질 충돌은 전원 값 255/INVALID, 미입력은 255/NO_DATA로 제한하며 OK를 고르지 않는다. operation은 기존 operation 판단과 실제 alive 근거를 필요한 입력으로 보는 후보지만 기능 모듈 조건 확인 전 허용을 생성하지 않는다. `POWER_OPERATION_STATE` 생성원은 제공 C2 bool들에서 증명되지 않으므로 255를 권장하며, operation 근거 미입력/충돌은 `OPERATION_ALLOWED=0`과 해당 NO_DATA/INVALID 품질을 함께 전달한다. 이 0은 **확인된 정책 거부를 주장하는 값이 아니며**, 소비자는 비유효 품질을 반드시 함께 확인한다. 독립적으로 확인된 전원 품질을 operation 부재만으로 새 불허 정책으로 바꾸지 않는다.
-
-공통 `SOURCE_AGE`는 같은 `t_eval`까지 각각 한 번 누적한, 이번 합성에 보존·사용하는 확인 가능한 원 근거 AGE들의 최댓값을 포화하는 안을 권장한다. 품질/원 근거가 없는 입력의 AGE를 0 또는 65535로 지어내지 않는다. 어느 필드에 독립 원 기한 이내라는 근거가 없는지는 그 필드 품질과 사용 제한으로 표시한다. 공통 AGE가 이미 보존된 오래된 근거 때문에 전원 사용 한도를 넘으면 이를 전원 AGE0으로 낮춰 ALLOW를 만들지 않는다. 공유 AGE는 필드별 독립 최신성을 모두 증명하지 못하며, 이 제약을 제거하려면 별도의 양단 계약 변경이 필요하다. 원 입력 tuple 또는 실제 전달 의미/품질 제한이 변할 때만 합성 `UPDATE_SEQUENCE`를 바꾸고 반복 TX/50ms 보고로 AGE0·새 판단을 만들지 않는다.
-
-Network는 원 근거를 보존하며 검증·수신 분배와 CIS·Pi 통신 처리를 담당한다. 후방 Power 시간 규칙은 약 200ms 재평가/원 500ms다. POWER_OPERATION_STATE 생성원, Power/Operation/Alive 필수 입력과 공통 AGE/Quality/세대 합성, UNKNOWN 투영·평가 실패의 기능 정책은 미확정이다. USE_LIMIT 1500ms 후보로 검증된 원 기한을 연장하지 않으며 500ms 전송값은 조건부 권장 프로필이다. 실제 adapter/clock/consumer 연결과 합성 후보의 기능 동작은 검증 전이다. BCM/VSS Network-private 감시와 WINDOW 보류를 유지한다.
-
+`POWER_OPERATION_STATE`, Operation/Alive 결합 조건, 공통 `UPDATE_SEQUENCE/SOURCE_AGE`의 정확한 합성 기준은 기능 Owner의 현재 생산 계약에 따라 확정한다. 미확인 의미는 기존 UNKNOWN/비정상 Quality를 사용하고 임의로 정상 ALLOW나 이동 가능 상태를 만들지 않는다. 두 개 이상의 독립 근거가 합성되는 경우 각 근거의 나이를 축소하거나 순번을 원 성공 평가 번호와 동일시하지 않는다. 기존 세 C2 입력의 전체 합성은 해당 기능 경로를 연결할 때 확인한다. [Permission 합성 조건](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 <a id="delta-can-permission"></a>
 **의미 투영 권장안 / DOMAIN 연동 조건 확인 필요:** DOMAIN Adapter는 확정 ALLOW/DENY만 true/false+OK로 투영하고 UNKNOWN은 원인에 맞는 false+NO_DATA/STALE/INVALID로 구분하는 안을 따른다. CAN에서는 해당 무효 전원을255+비정상 품질로 전달한다. UNKNOWN+OK 보존이 필수인 경우 기존 C2의 표현 손실을 숨기지 않고 [최소 계약 대안](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)을 별도 검토한다. Network는 의미를 추측하지 않고 C2 품질 충돌·시간·문맥을 검증한다.
 
-아래 B13~16의 ‘허용 상태의 새 평가 번호’는 **Network 합성 UPDATE_SEQUENCE**의 설명이며 DOMAIN 원 성공 평가 Sequence와 동일한 번호라는 뜻이 아니다. B17~18은 위 공통 SOURCE_AGE 후보로서 각 입력의 독립 최신성을 모두 증명하지 못한다. 성공17 뒤 실패는 원 성공17·원 시각을 보존하면서 현재 품질 제한을 전달 요청하는 권장 경로다. 동일 원 성공 Sequence 중복으로 버리거나 실패 시 AGE0을 만들지 않는다. 합성·프레임·relay 갱신은 [번호 공간](../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)으로 구분한다. 구 Permission 원TTL150 후보는 원500ms로 대체됐으며 CAN 수신 중단150ms·후방 거리150ms 후보·UART1500ms는 유지한다.
+아래 B13~16의 ‘허용 상태의 새 평가 번호’는 **Network 합성 UPDATE_SEQUENCE**의 설명이며 DOMAIN 원 성공 평가 Sequence와 동일한 번호라는 뜻이 아니다. B17~18은 위 공통 SOURCE_AGE 후보로서 각 입력의 독립 최신성을 모두 증명하지 못한다. 성공17 뒤 실패는 원 성공17·원 시각을 보존하면서 현재 품질 제한을 전달 요청하는 권장 경로다. 동일 원 성공 Sequence 중복으로 버리거나 실패 시 AGE0을 만들지 않는다. 합성·프레임·relay 갱신은 [번호 공간](../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)으로 구분한다. 이전 Permission 원본 사용 기한 150ms 후보는 500ms로 대체됐으며 CAN 수신 중단150ms·후방 거리150ms 후보·UART1500ms는 유지한다.
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
@@ -167,7 +162,7 @@ Network는 원 근거를 보존하며 검증·수신 분배와 CIS·Pi 통신 �
 
 의미 타입 `NetWindowCommand`: [WINDOW Data](../02_NODES/WINDOW/10_DATA.md) · [WINDOW API](../02_NODES/WINDOW/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
-VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수용 200 ms와 구 1 s도 적용 계약이 미확정이다.
+VENT 목표를 닫힘 기준 70%로 보는 값은 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수용 200 ms와 구 1 s도 적용 계약이 미확정이다.
 
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
@@ -255,14 +250,14 @@ VENT 목표 70% closed는 후보이며 구 SysRS 80%와 CONFLICT다. 명령 수�
 
 ## `BCM_RESULT` — `0x140`
 
-**BCM/DOMAIN 확인 대기:** Door·Climate·Interior Light는 각각 원 Command ID·명령 종류·세대에 연결된 새 실제 상태, 품질·Fault 및 원 관측 시각으로 확인 조건을 정해야 한다. 도어 증거를 공조·조명에 일괄 적용하지 않는다. DONE·CAN 수신·Network 접수만으로 CONFIRMED를 만들지 않으며, 현재 Wire로 충분한 근거가 없으면 해당 결과는 UNCONFIRMED로 제한한다. 새 confirmation 필드나 Wire 값은 추가하지 않는다.
+**BCM/DOMAIN 확인 대기:** Door·Climate·Interior Light는 각각 원 Command ID·명령 종류·세대에 연결된 새로 확인한 실제 상태·품질·Fault와 원본 관측 시각으로 확인 조건을 정해야 한다. 도어 증거를 공조·조명에 일괄 적용하지 않는다. DONE·CAN 수신·Network 접수만으로 CONFIRMED를 만들지 않으며, 현재 Wire로 충분한 근거가 없으면 해당 결과는 UNCONFIRMED로 제한한다. 새 confirmation 필드나 Wire 값은 추가하지 않는다.
 
 **BCM → DOMAIN · 29 B 사용 / 32 B CAN 전송 / DLC 13 · WIRE_PROPOSED.**
 
 의미 타입 `NetBcmResult`: [BCM Data](../02_NODES/BCM/10_DATA.md) · [BCM API](../02_NODES/BCM/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
 
-**PROPOSED — 원 실행 연결과 확인의 분리:** 수용한 원 `COMMAND_DOMAIN_BOOT+COMMAND_ID+COMMAND_KIND` 및 원 명령 내용을 기존 실행 문맥에 연결한다. 같은 명령의 재전송은 새 ID나 새 실행이 아니며 원 Application의 단계·결과·occurrence·발생 AGE를 재사용한다. 같은 identity에 다른 내용이면 재실행하지 않고 기존 오류 인계로 BCM 실행 owner가 판단한다. 실제 Application 사실만 ACCEPTED/IN_PROGRESS/DONE/REJECTED/FAILED의 근거이며 local submit OK·CAN 수신·결과 미수신으로 실행 DONE/FAILED를 합성하지 않는다.
+**PROPOSED — 원 실행 연결과 확인의 분리:** 수용한 원 `COMMAND_DOMAIN_BOOT+COMMAND_ID+COMMAND_KIND` 및 원 명령 내용을 기존 실행 문맥에 연결한다. 같은 명령의 재전송은 새 ID나 새 실행이 아니며 원 Application의 단계·결과·occurrence·발생 AGE를 재사용한다. 원본 식별자가 같지만 명령 내용이 다르면 재실행하지 않고 기존 오류 인계로 BCM 실행 owner가 판단한다. 실제 Application 사실만 ACCEPTED/IN_PROGRESS/DONE/REJECTED/FAILED의 근거이며 local submit OK·CAN 수신·결과 미수신으로 실행 DONE/FAILED를 합성하지 않는다.
 
 C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별도 필드가 없다. 확정된 BCM 의미 근거가 없으면 수신 결과를 기존 `RESULT_CONFIRMATION_UNCONFIRMED`로 소비하는 안을 권장한다. 원 DONE/reason/event를 바꾸지 않으며, 정상 프레임 또는 DONE만으로 CONFIRMED나 실제 unlock 전이를 만들지 않는다. 도어 COMPLETED+유효 event quality/원 AGE가 충분한 확인 근거인지, 비도어 terminal 결과가 어떤 실제 피드백을 뜻하는지는 BCM/DOMAIN 기능 owner가 확인해야 한다. `NETWORK_OWNED`는 원 identity·검증·전달, `FUNCTION_OWNER`는 실행·피드백, `CROSS_NODE_AGREEMENT`는 confirmation 소비, `IMPLEMENTATION_BINDING`은 재전송/실패 인계 연결이다. 후보는 PROPOSED이며 기능 정책과 실제 동작은 검증 전이다.
 
@@ -311,7 +306,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 의미 타입 `NetBcmStatus`: [BCM Data](../02_NODES/BCM/10_DATA.md) · [BCM API](../02_NODES/BCM/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
 
-**PROPOSED — 통신 Health는 기존 진단 owner가 평가:** Network의 최초 링크 상실 발견 주체·시각·감시 구간과 실제 회복 관측을 해당 기존 BCM 진단 owner에 전달한다. owner가 근거에 따라 기존 COMM bit7·영향 기능·회복 상태를 평가해 `BcmNet_PublishStatus()`로 제출한다. DOMAIN이 확인한 BCM 수신 상실은 DOMAIN 로컬 관측이며, BCM이 보내지 않은 remote COMM bit가 아니다. 이 메시지의 SOURCE_AGE는 현재 BCM 평가의 AGE이며 최초 COMM 발생 AGE/최근 이력을 대신하지 않는다. 최초 발견·복구 세부 근거는 기존 owner가 보존한다. VSS에는 COMM mask bit가 없으므로 링크 상실을 AUDIO_OUTPUT_FAILURE로 합성하지 않는다. `NETWORK_OWNED`는 관측/인계, `FUNCTION_OWNER`는 진단·clear, `IMPLEMENTATION_BINDING`은 기존 실제 입력·수명 연결이다. BCM 모듈은 최초 발견/회복을 받는 기존 연결과 actuator feedback timeout의 평가 주체를 확인해야 한다. 실제 연결/SDK 시험은 NOT_EXECUTED이고 처리 안은 PROPOSED다.
+**PROPOSED — 통신 Health는 기존 진단 owner가 평가:** Network의 최초 링크 상실 발견 주체·시각·감시 구간과 실제 회복 관측을 기존 BCM 진단 담당자에게 전달한다. owner가 근거에 따라 기존 COMM bit7·영향 기능·회복 상태를 평가해 `BcmNet_PublishStatus()`로 제출한다. DOMAIN이 확인한 BCM 수신 상실은 DOMAIN 로컬 관측이며, BCM이 실제로 보고하지 않은 원격 COMM 비트를 의미하지 않는다. 이 메시지의 SOURCE_AGE는 현재 BCM 평가의 AGE이며 최초 COMM 발생 AGE/최근 이력을 대신하지 않는다. 최초 발견·복구 세부 근거는 기존 owner가 보존한다. VSS에는 COMM mask bit가 없으므로 링크 상실을 AUDIO_OUTPUT_FAILURE로 합성하지 않는다. `NETWORK_OWNED`는 관측/인계, `FUNCTION_OWNER`는 진단·clear, `IMPLEMENTATION_BINDING`은 기존 실제 입력·수명 연결이다. BCM 모듈은 최초 발견/회복을 받는 기존 연결과 actuator feedback timeout의 평가 주체를 확인해야 한다. 실제 연결/SDK 시험은 NOT_EXECUTED이고 처리 안은 PROPOSED다.
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
@@ -332,7 +327,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 **CIS → DOMAIN · 40 B 사용 / 48 B CAN 전송 / DLC 14 · WIRE_PROPOSED.**
 
-**환경 저장 순서 권장안 / private 경계 수용 대기:** 기존 BOOT_ID와 센서별 원 Sequence로 A900→B0을 검증하며 새 전역번호로 이어 붙이지 않는다. 구 BOOT 대기·후속 쓰기 정리 → DOMAIN 소유 private 전환 통지 후보 → 실제 VSM/Meta·필요 순서 문맥 무효화 완료 → 새 원 관측 전달 순서다. private 통지와 기존 Rx NO_DATA의 분담·완료 방식은 [확인 대기](../02_NODES/DOMAIN/20_API.md#delta-environment-completion)다. 일반 NO_DATA는 BOOT/Sequence 리셋 신호가 아니며 BOOT 재사용·Network 기억 상실은 보장 제외다. 아래 ID·길이·필드 바이트와 공개 C2는 유지한다.
+**CIS 환경 수신 후 동기 전환 / 연속 Epoch 목표 수용 대기:** 기존 BOOT_ID와 센서별 원 Sequence로 A900→B0을 검증하며 새 전역번호로 이어 붙이지 않는다. 양쪽 정상 실행·초기 정합 구간에서 Network 자기 소유 구 환경 대기·콜백·미시작 Query 응답 차단/직렬 처리 → 단일 동기 private 요청 → DOMAIN 내부 구 쓰기 배제·VSM/Meta·관련 순서 문맥 무효화 → 현재 요청·적용 Epoch·명확한 완료 대조 → 새 원 관측을 기존 Rx로 전달하는 순서다. BOOT 무효화용 Rx NO_DATA는 중복 호출하지 않는다. 같은 BOOT의 센서 NO_DATA·만료·수신 중단은 기존 Rx·품질·시간 정책을 유지하며 BOOT/Sequence 리셋이나 새 Epoch 사건이 아니다. 첫1/완료 후 다음+1은 목표이며 현재 Core의 다른 Epoch 거부 보고·실제 연결 미검증을 구분하는 [완료 경계](../02_NODES/DOMAIN/20_API.md#delta-environment-completion)를 따른다. 실패·완료 불명은 환경 차단·오류 보고 대상으로 자동 재시도하지 않는다. BOOT 재사용·단독 재시작·기억 상실의 자동 복구는 보장하지 않는다. 아래 ID·길이·필드 바이트와 공개 C2는 유지한다.
 
 의미 타입 `NetCisEnvironment`: [CIS Data](../02_NODES/CIS/10_DATA.md) · [CIS API](../02_NODES/CIS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
@@ -537,7 +532,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 의미 타입 `NetVssEvent`: [VSS Data](../02_NODES/VSS/10_DATA.md) · [VSS API](../02_NODES/VSS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
-
+A1 Event 최초 actual은 검증된 양의 USE_LIMIT·설계 프로필500ms·상한2000ms 중 최소 원 기한 L을 적용하며0은 비사용, L 도달부터 만료다. RX 기준 AGE/후속 cue 구분과 실제 시간 검증 대기는 [VSS 입력 정본](../02_NODES/VSS/10_DATA.md#a1-binding)을 따른다.
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
 | --- | --- | --- | --- |
 | B0~7 | `BOOT_ID`, `TX_SEQUENCE` | u32 LE 두 개. 전송자 BOOT·TX 순서; 관측 근거와 구분 | CAN 공통 송신 헤더(BOOT_ID·TX_SEQUENCE) |
@@ -558,7 +553,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 의미 타입 `NetVssWarningState`: [VSS Data](../02_NODES/VSS/10_DATA.md) · [VSS API](../02_NODES/VSS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
-51used→60used후보는ACTIVATION_META_FORMAT및활성근거9B를포함한다. CAN전송64/DLC 15는같다. format1은이번활성근거,0은legacy근거없음,그외미지원이다.0을후방허용OK로합성하지않는다. 양끝해석확정전혼용금지.
+A1은 WARNING60(used60/frame64/DLC15)을 단일 설계로 선택했다. WARNING51은 이력이며 DLC/B51로 자동 판별하거나 혼용하지 않는다. format1은 B52..59의 독립 활성 meta를 검증하고 format0은 B50=0 및 B52..59=0의 정규 근거 부재다. 그0을 활성 DISABLED/품질OK 판단으로 소비하지 않고 다른 세 경고는 독립 검증한다. 그 외 marker·비정규 부재는 거부한다. 실제 DOMAIN producer/VSS receiver·ABI·시간 검증은 대기다. [A1 입력·시간](../02_NODES/VSS/10_DATA.md#a1-binding).
 
 
 | payload byte | 필드 | Raw 표현·유효 조건 | 논리 근거 |
@@ -601,7 +596,7 @@ REQUEST_SEQUENCE / RELATED_REQUEST_SEQUENCE ↔ C2 commandId는 PROPOSED/OPEN이
 
 의미 타입 `NetVssStatus`: [VSS Data](../02_NODES/VSS/10_DATA.md) · [VSS API](../02_NODES/VSS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 
-**PROPOSED — 기존 DTO를 완전한 원 보고에만 사용:** 실제 조회한 R4/R6 논리 참고에서 `Health_BuildStatus` CREATED의 보호된 원 Snapshot을 FLOW→기존 INPUT 연결에서 한 번 변환·복사하여 `VssNet_PublishStatus()`에 제출하는 안은 [VSS 원 보고·명시 변환 권장안](../02_NODES/VSS/10_DATA.md#r2-status-proposal)에 있다. REEVALUATE는 새 fresh 상태가 아니며 state/availability/accepting은 각각 원 근거가 필요하다. 현재 Fault 목록의 확인된 전체 kind만 기존 bit0~4에 이름으로 변환하고, 최근 이력은 별도 원 occurrence/발생 AGE를 보존한다. current mask0이나 최근 고장만으로 READY/FULL/current clear를 만들지 않는다.
+**A2 내부 선택 / 실제 Binding 대기 — 완전 원 보고:** HEALTH CREATED의 보호된 완전 Snapshot→FLOW→기존 INPUT 한 곳의 11필드 명시 변환→`VssNet_PublishStatus()`→Network 전체 사본 순서다. [VSS 생산·수용 정본](../02_NODES/VSS/10_DATA.md#r2-status-proposal)을 따른다. REEVALUATE는 새 평가가 아니고 state/availability/accepting은 각각 원 근거가 필요하다. 현재 kind만 기존 bit0~4에 대응하고 최근 이력은 원 occurrence/발생 AGE를 보존한다. mask0/최근 고장으로 READY/FULL/current clear를 만들지 않는다. 실제 producer·원 세대·시간·terminal sink·C2는 E-S01~05 대기다.
 
 LAST_FAULT_QUALITY는 기존 기록0/확인된 부재3만 표현한다. C2/로컬 전체 fault INVALID2를 B21=2 또는 이력0/3으로 축약하지 않는다. mandatory current 상태·품질·원 평가 메타가 미확인인 새 Status 투영만 제한하고 독립 Event/Warning의 유효 원 근거를 보존한다. 원 generation과 송신 CAN BOOT의 lifecycle 대응, 완전성 및 최근 주요 기록 선택은 `CROSS_NODE_AGREEMENT`/`FUNCTION_OWNER`, 실제 변환·복사·실패 관측은 `IMPLEMENTATION_BINDING`으로 확인한다. 새 raw/DTO/API 없이 제안한 상태이며 AGREED/IMPLEMENTED/TESTED 증거는 없다.
 

@@ -263,7 +263,7 @@ REAR_DISTANCE raw0.1cm는1mm와 같으므로 raw123은 C2 rearDistanceMm123과 �
 | 42 / 4 | `UPDATE_SEQUENCE` → `state.update_sequence` | u32 / unsigned / LE | 이번 상태 평가; 단위=NOT_SPECIFIED | NOT_SPECIFIED; T34:600; T33:596 +20 |
 | 46 / 2 | `SOURCE_AGE` → `state.source_age_ms` | u16 / unsigned / LE | 평가 후 ms; 단위=ms | 65535 포화 하한; 정확한 경과 상한 또는 fresh의 증거 아님; T34:601; T33:597 +20 |
 
-LAST_FAULT_QUALITY는0기록/3NO_DATA만 허용한다. INVALID2를0이나3으로 축약하지 않는다. 현재 fault와 최근 이력, 수용가능성과 음향 상태는 별개다. 링크 상실을 AUDIO_OUTPUT_FAILURE로 만들지 않는다. C2 VSS state/fault의 분리 인계·부분 반영 원자성이 미확인이면 동일 입력 association도 미입증이다. CF02 VSS_WARNING_STATE used51/60 충돌은 이 메시지와 별개로 유지한다.
+LAST_FAULT_QUALITY는0(실제 이력)/3(확인된 부재)만 허용한다. INVALID2를0이나3으로 축약하지 않는다. 부재3은 code/occurrence/historyAGE가 모두0인 원 조합을 검증하고 그0을 유지하며, 실제 이력0만 원 발생 AGE를 누적한다. 현재 fault와 최근 이력, 수용가능성과 음향 상태는 별개다. 링크 상실을 AUDIO_OUTPUT_FAILURE로 만들지 않는다. State 수용과 Fault 결과는 독립이며 Fault 실패가 이미 수용한 State를 취소하지 않는다. 같은 accepted 원 입력과 Getter/TxPort의 association은 E-S05의 실제 증거가 별도로 필요하다. A1 WARNING60 형식 선택은 완료되었으나 실제 producer/양단 지원 검증은 별도다.
 
 <a id="m_window_state"></a>
 ## M_WINDOW_STATE

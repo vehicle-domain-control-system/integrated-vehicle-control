@@ -2,7 +2,7 @@
 
 [E2E 전체](../../09_E2E_FAILURE_RECOVERY.md) · [WINDOW 노드](../../nodes/WINDOW.md) · [VSS 노드](../../nodes/VSS.md) · [공통 실패·복구](COMMON_FAILURE_RECOVERY.md)
 
-B17은 SC11~SC14의 원 기능 경로를 연결한다. SC11/SC12는 **DEFERRED / IMPLEMENTATION_HOLD**다. WINDOW 송수신·기능·표시·timeout 감시는 활성화하지 않는다. SC13/SC14도 CF02, Status 변환 Owner, 실제 음향·같은 관측 연결 등 개별 계약이 준비된 경계만 설명하며 실행 성공을 선언하지 않는다.
+B17은 SC11~SC14의 원 기능 경로를 연결한다. SC11/SC12는 **DEFERRED / IMPLEMENTATION_HOLD**다. WINDOW 송수신·기능·표시·timeout 감시는 활성화하지 않는다. SC13/SC14는 A1 WARNING60·원 L과 A2 INPUT 단일 변환을 내부 선택했으며 실제 양단 지원·음향·같은 관측 연결 등 개별 경계는 검증 대기다.
 
 ## Layer·Module·Data/API 연결
 
@@ -58,10 +58,10 @@ L01/M01/F01~02는 원 Boot·관측·C2 반영의 연결, L02/M03/F07~10은 DOMAI
 **정상 조건부 흐름:** DOMAIN의 확정 occurrence 또는 유효 현재 Warning → 기존 public Tx/TxPort → Network 사본·선택 시 원 AGE → CAN Driver → VSS 검증/admission → `VssApp_OnDomainEvent` 또는 `VssApp_OnDomainWarningState` → VSS INPUT/App의 한도·품질·가용성 확인과 음향 중재 → 실제 서비스 Status 생산 → DOMAIN 수용. `VSS_STATUS` PLAYING/READY 또는 CAN TX 성공은 해당 Event의 실제 시작/완료 ACK가 아니다. M_WARNING의 App 표시도 별도 종단 소비다.
 
 <a id="sc13-failure"></a>
-**실패:** CF02 used51/used60은 모두 frame64/DLC15다. 길이·DLC·B51 marker로 profile을 추정할 수 없다. 양단 채택 전 Warning encode/decode/typed 소비는 CONTRACT_HOLD다. Event 원 USE_LIMIT 500ms 후보와 구 SysRS의 실제 음향 시작 2초 미만은 서로 다른 적용 지점의 미합의 기준이며 바꿔 쓰지 않는다. INVALID/STALE 입력으로 출력을 중단해도 위험 CLEAR를 합성하지 않는다. Permission의 VSS 내부 감독을 새 `VssRecoveryPermission`으로 변환하지 않는다.
+**실패:** A1은 WARNING60 used60/frame64/DLC15를 선택했다. WARNING51은 이력이고 길이·DLC·B51로 자동 추정하지 않는다. 실제 producer/양단 지원 전 CF02 HOLD다. Event 최초 actual은 원 `L=min(양의 USE_LIMIT,500ms,2000ms)`를 사용하고0은 비사용·L 도달은 만료다. 적법 Started 이후 같은 Session 후속 cue에 최초 기한을 다시 적용하지 않는다. INVALID/STALE 입력으로 출력을 중단해도 위험 CLEAR를 만들지 않는다. VSS Permission 감독을 `VssRecoveryPermission`으로 변환하지 않는다.
 
 <a id="sc13-recovery"></a>
-**복구:** 입력 상실 전 pending/중단된 일회 음향은 자동 재개하지 않는다. 새 유효 현재 Warning으로 재중재한다는 기존 좁은 합의를 유지한다. CAN 복구를 READY·실제 음향 시작·동일 occurrence 재생 허가로 취급하지 않는다. 실제 음향 시작까지의 대기를 원 Age에서 누락하지 않으며 실제 Owner 시각·deadline 비교 근거가 없으면 HOLD다.
+**복구:** 입력 신뢰 상실 전 pending/중단된 일회 음향은 자동 재개하지 않는다. Event 무발생은 no-RX timeout이 아니며 실제 감독·명시 품질·계보/시간 상실과 구별한다. Warning은 새 유효 현재 근거 또는 A1의 동일 세대·원 Hold 기한·lane 자격이 남은 후보만 재중재한다. 출력 장치 Fault만인 경우 전체 NO_START/retirement·HEALTH 제한 해제·원 L·입력 신뢰를 모두 확인한 동일 occurrence 재평가만 가능하다. CAN 복구는 READY/실제 시작/새 재생권이 아니며 [A1 정본](../../../interface/02_NODES/VSS/10_DATA.md#a1-binding)의 실제 시각·오차 증거가 없으면 제한한다.
 
 <a id="sc14"></a>
 ## SC14 — VSS 현재/최근 고장과 App 가용성
@@ -69,7 +69,7 @@ L01/M01/F01~02는 원 Boot·관측·C2 반영의 연결, L02/M03/F07~10은 DOMAI
 직접 Wire/Rx **4/4**: VSS_STATUS, M_WARNING, M_AVAILABILITY, M_VSS_STATUS. 현재 서비스·현재 fault·최근 fault·Network Health·DOMAIN 기능 가용성은 서로 다른 자료다.
 
 <a id="sc14-normal"></a>
-**정상 조건부 흐름:** VSS HEALTH → FLOW → 기존 INPUT 통신 연결 → 확인된 단일 위치에서 NetVssStatus 변환 → PublishStatus → CAN → DOMAIN private OnVssStatus → RxVssState/RxVssFault의 실제 지원·부분 반영 확인 → DOMAIN의 경고/기능 가용성 결정 → 기존 세 Mobile schema → ESP32/App. 변환 Owner와 현재 목록의 완전성·최근 기록 선택·occurrence·품질·시각이 없으면 READY/mask0로 채우지 않는다.
+**정상 조건부 흐름:** VSS HEALTH의 완전 CREATED→FLOW→기존 INPUT 한 곳에서 NetVssStatus 명시 변환→PublishStatus의 전체 사본→CAN→DOMAIN private OnVssStatus→A2 State/Fault 독립 수용→DOMAIN 경고/가용성→기존 Mobile schema→ESP32/App이다. 내부 선택과 E-S01~05 실제 생산·sink·설치 profile/같은 입력 연결 대기를 구분한다. 원 current/이력·occurrence·품질·시각 근거가 없으면 READY/mask0로 채우지 않는다.
 
 원 service `source_age_ms`와 활성 최근이력 `last_fault_age_ms`는 각자의 나이다. 현재 mask0이어도 최근 fault/occurrence는 남을 수 있다. `last_fault_quality` raw0/3을 서비스 전체 품질로 승격하지 않는다. Link Rx timeout은 Network Health이며 VSS 기능 고장을 직접 만들어 내지 않는다.
 
@@ -105,9 +105,9 @@ if (ageRc == NET_CAN_OK) {
 | WINDOW 미설치, 주기 timeout 경과 | 실행·표시·감시 HOLD; fault 생성 없음 | SC11/12 DEFERRED 유지 |
 | 향후 이동 중 Permission 소실 후 STOP | Boot/target/AGE 검증 유지; 로컬 보호 Owner 유지 | 실제 정지 보고 이전 완료 없음 |
 | END event, 원 끼임 근거 없음 | ANTIPINCH 경고 생성 없음 | 원 끝단 발생만 조건부 수용 |
-| Warning64B/DLC15, profile 미합의 | used51/60 자동 판별 없음 | CF02 CONTRACT_HOLD |
+| Warning64B/DLC15, WARNING60 설계 선택·실제 양단 증거 없음 | WARNING51 이력/자동 판별 금지 | 실제 producer/ABI·시간은 CF02 CONTRACT_HOLD |
 | Event queued 뒤 단절·회복 | pending 일회 음향 자동 재생 없음 | 새 유효 Warning만 별도 중재 |
 | current fault0, 과거 occurrence5/Age1000 | 이력 삭제·Age0 갱신 없음 | 새 service 평가와 과거 이력 분리 |
-| RxVssState 반영 후 RxVssFault 실패 | 성공한 Core 중복 호출 없음 | 부분 반영 관측·Owner 정책 미결 |
+| RxVssState 반영 후 RxVssFault 실패 | A2 State 수용 유지·State 중복 호출0, Fault 불명 결과 자동 재시도0 | 실제 profile/부분 결과·old K fence 증거는 E-S05 대기 |
 
 모든 반례는 문서 정적 추적이며 Driver/보드/실제 음향·보호 시험은 NOT_EXECUTED다. 기존 S6 이후 협의 큐의 ID·이력과 G6 당시 Interface39 봉인본을 보존한다. 현재 별도 후보는 고정 r1 Interface40개를 참조하며, 이 문서 동기화로 Owner35·외부 HOLD를 변경하지 않는다.

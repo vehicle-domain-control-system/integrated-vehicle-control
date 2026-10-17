@@ -2,7 +2,7 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**WIRE_PROPOSED / BINDING_OPEN.** 아래 표는 원 C2/Gateway 헤더의 enum 정수값과 제안 Wire의 의미 대응이다. 같은 숫자도 정렬·폭이 같은 메모리 배열이라는 뜻은 아니다. `sizeof(enum)`·struct padding·raw cast 전송은 금지한다.
+**WIRE_PROPOSED / BINDING_OPEN.** 아래 표는 원 C2/Gateway 헤더의 enum 정수값과 제안 Wire의 의미 대응이다. 값이 같더라도 C 메모리에서의 정렬·폭과 Wire 배치가 같다는 뜻은 아니다. `sizeof(enum)`·struct padding·원시 형변환 후 전송은 금지한다.
 
 [공통 타입](10_DATA_AND_ID_RULES.md) · [CAN](../03_COMMUNICATION/10_CAN_FD.md) · [UART-M](../03_COMMUNICATION/20_UART_M.md) · [UART-C](../03_COMMUNICATION/30_UART_C.md)
 
@@ -19,9 +19,9 @@ Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES
 
 ## 변환 불가 값과 안전한 경계
 
-원 헤더 `FunctionAvailability_t.UNSUPPORTED`, `DomainWarningState_t.UNCONFIRMED`, `OccupantHazardState_t.UNCONFIRMED` 및 일부 `ResultReason_t`는 현 Wire 코드에 동등한 표현이 없다. `NOT_ALLOWED/MOTOR_FAULT/SENSOR_FAULT/TIMEOUT/OTHER`를 아무 근거 없이 POWER_NOT_ALLOWED/FAULT/EXPIRED로 바꾸지 않는다. 해당 경로는 **WIRE_MAPPING_OPEN / 표현 확정 전 구현 차단**이며 정상 CLEAR/AVAILABLE·사유 NONE·차량 FAILED를 합성하지 않는다.
+원 헤더 `FunctionAvailability_t.UNSUPPORTED`, `DomainWarningState_t.UNCONFIRMED`, `OccupantHazardState_t.UNCONFIRMED` 및 일부 `ResultReason_t`는 현 Wire 코드에 동등한 표현이 없다. `NOT_ALLOWED/MOTOR_FAULT/SENSOR_FAULT/TIMEOUT/OTHER`를 아무 근거 없이 POWER_NOT_ALLOWED/FAULT/EXPIRED로 바꾸지 않는다. 일반 경로는 **WIRE_MAPPING_OPEN / 표현 확정 전 구현 차단**이며 정상 CLEAR/AVAILABLE·사유 NONE·차량 FAILED를 합성하지 않는다. 아래 VSS_WARNING_STATE 한정 A1 제한 투영만 예외이고 무손실 enum 대응이나 다른 노드 적용이 아니다.
 
-수신 Wire가 유효한 코드라 해도 C2에서 표현할 수 없는 세부 evidence는 node private 보관과 기능 owner 결정이 필요하다. 송신에 없는 code를 새로 만들지 않는다. code sentinel과 예약 값은 수용하지 않는다. 실제 Codec round-trip은 **NOT_EXECUTED**이고 본 표는 정적 제안 대조이다.
+수신 Wire가 유효한 코드라 해도 C2에서 표현할 수 없는 세부 근거는 노드 내부에 보관하고 기능 담당자가 해석해야 한다. 송신에 없는 code를 새로 만들지 않는다. 코드의 sentinel과 예약 값은 수용하지 않는다. 실제 Codec round-trip은 **NOT_EXECUTED**이고 본 표는 정적인 제안 비교 결과다.
 
 <a id="map-dataquality-t"></a>
 ## `DataQuality_t`
@@ -794,3 +794,17 @@ WINDOW SOURCE_CONTEXT(0 없음 / 1 Domain 정책 / 2 자동 기능 / 3 로컬 / 
 | [`NetWindowEventKind`](../02_NODES/WINDOW/10_DATA.md#type-netwindoweventkind) | `NET_WINDOW_EVENT_FULLY_OPENED`=1, `NET_WINDOW_EVENT_FULLY_CLOSED`=2, `NET_WINDOW_EVENT_ANTIPINCH`=3 |
 | [`NetWindowFaultState`](../02_NODES/WINDOW/10_DATA.md#type-netwindowfaultstate) | `NET_WINDOW_FAULT_STATE_NONE`=0, `NET_WINDOW_FAULT_STATE_ACTIVE`=1, `NET_WINDOW_FAULT_STATE_RECOVERING`=2 |
 | [`NetWindowFaultCode`](../02_NODES/WINDOW/10_DATA.md#type-netwindowfaultcode) | `NET_WINDOW_FAULT_NONE`=0, `NET_WINDOW_FAULT_POSITION`=1, `NET_WINDOW_FAULT_DRIVE`=2, `NET_WINDOW_FAULT_ENDPOINT`=3, `NET_WINDOW_FAULT_PROTECTION`=4, `NET_WINDOW_FAULT_DOMAIN_TIMEOUT`=5, `NET_WINDOW_FAULT_INITIALIZATION`=6, `NET_WINDOW_FAULT_OTHER`=255 |
+
+<a id="vss-warning-limited-projection"></a>
+## VSS_WARNING_STATE 한정 A1 제한 투영
+
+기존 raw 코드/필드 폭을 유지하면서 사용 불가능한 근거를 정상값과 구별하는 한정 선택이다. 원 C2 상태·quality·reason·availability·출처는 DOMAIN 원 기록/Network 소유 사본에서 보존한다. 다른 노드의 `UNSUPPORTED` 또는 Event/결과에 이 예외를 확장하지 않는다. 실제 양단 투영/소비 증거는 E01/E02/E03 미검증이다.
+
+| 원 조합/적용 범위 | 기존 VSS raw 표현·제한 |
+|---|---|
+| WINDOW 끼임 PRODUCT 미지원 | state0, quality3(NO_DATA), reason6(NO_DATA), availability2, sourceBoot0, sourceSequence0, AGE65535의 고정 비정상 tuple. 정상 CLEAR가 아니며 제품 끼임 실행은 보류 |
+| UNCONFIRMED + 비정상 quality | state0 placeholder와 원 비정상 quality/reason/availability/출처·시간을 유지. 0을 정상 CLEAR로 소비하지 않음 |
+| UNCONFIRMED + OK 또는 지원 구성 UNSUPPORTED | state0, quality2(INVALID), reason9(DATA_INVALID), availability2의 제한 표현. 원 조합은 진단에 보존하고 정상값·새 위험 판단을 생성하지 않음 |
+| 정상 확정 값 | OK·reason NONE·허용된 availability·유효 원 출처/시간이 모두 확인된 범위만 정상 의미로 소비 |
+
+format0의 후방 활성 근거 부재는 별도 B50=0/B52..59=0 정규형이며 이0을 정상 DISABLED/OK로 바꾸지 않는다. sourceBoot0은 위 정규 상실/미평가 의미에서만 허용하며 프레임 송신자 DOMAIN BOOT0은 거부한다. [원 A1 입력·개별 lane](../02_NODES/VSS/10_DATA.md#a1-binding).

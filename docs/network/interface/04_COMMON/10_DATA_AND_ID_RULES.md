@@ -2,17 +2,17 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-공통 타입과 원 시간·통신 처리 규칙을 정의한다. 확정된 시간 규칙, 권장 프로필과 미확정 기능 정책을 구분하며 실제 기능 연결·시험은 검증 전이다. 연결된 Data·API·Wire에 동일 규칙을 적용한다.
+공통 타입과 원본 시간 정보·통신 처리 규칙을 정의한다. 확정된 시간 규칙, 권장 프로필과 미확정 기능 정책을 구분하며 실제 기능 연결·시험은 검증 전이다. 연결된 Data·API·Wire에 동일 규칙을 적용한다.
 
 시간 기준은 [시간표](#section-timing), 반복 수신과 품질 저하는 [수신 처리](#section-repeat-and-quality), 남은 조건은 [미결과 연결 확인](#section-open-bindings)에서 확인한다.
 
-**PROPOSED_DESIGN / BINDING_OPEN.** 이 문서의 C 표현은 설계용 선언이며 구현 헤더가 아니다. 기존 C2/Gateway 소스 선언은 각 노드 문서의 DECLARED_SOURCE를 따른다. struct 메모리·C enum 크기·padding은 Wire layout이 아니다.
+**PROPOSED_DESIGN / BINDING_OPEN.** 이 문서의 C 표현은 설계용 선언이며 구현 헤더가 아니다. 기존 C2/Gateway 소스 선언은 각 노드 문서의 DECLARED_SOURCE를 따른다. struct의 메모리 배치·C enum 크기·패딩은 Wire layout이 아니다.
 
 [시작 안내](../00_START_HERE.md) · [메시지별 API 색인](../05_MESSAGE_INDEX.md) · [C enum ↔ Wire 변환](30_ENUM_WIRE_MAPPING.md) · [호출·실패](20_API_USAGE_AND_FAILURE.md)
 
 ## 사용 순서
 
-노드 Data의 구조체를 먼저 읽고 아래 공통 선언으로 멤버의 정확한 타입을 확인한다. Wire의 byte 위치·길이는 [CAN](../03_COMMUNICATION/10_CAN_FD.md)·[UART-M](../03_COMMUNICATION/20_UART_M.md)·[UART-C](../03_COMMUNICATION/30_UART_C.md)에서 확인한다.
+노드 Data의 구조체를 먼저 읽고 아래 공통 선언으로 멤버의 정확한 타입을 확인한다. Wire의 바이트 위치·길이는 [CAN](../03_COMMUNICATION/10_CAN_FD.md)·[UART-M](../03_COMMUNICATION/20_UART_M.md)·[UART-C](../03_COMMUNICATION/30_UART_C.md)에서 확인한다.
 
 - 원 ID·기동·전송 순서와 원 평가 번호: [식별자별 생산자와 수명](#section-identity)
 - 값의 품질·누적 AGE·수신 중단: [품질·AGE·수신 중단](#section-quality-freshness)
@@ -54,7 +54,7 @@ Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES
 <a id="section-identity"></a>
 ## 식별자별 생산자와 수명
 
-CAN TX_SEQUENCE는 수용한 송신 노드 BOOT 안에서 메시지별로 관리한다. 수신 비교 범위는 송신 출처·BOOT·CAN ID/메시지 구분을 포함한다. CIS_ENVIRONMENT(TX1), CIS_OCCUPANT(TX1), CIS_ENVIRONMENT(TX2)는 서로 다른 메시지의 순번을 섞지 않으면 정상 순서다. 원 센서 관측 순번 및 UART-C 방향별 LINK_SEQUENCE와 합치지 않는다. 새 필드가 아니라 기존 카운터 비교 범위를 명확히 한 것이다. [노드 간 공통 규칙](#section-generation)
+CAN TX_SEQUENCE는 수용한 송신 노드 BOOT 안에서 메시지별로 관리한다. 수신 비교 범위는 송신 출처·BOOT·CAN ID/메시지 구분을 포함한다. CIS_ENVIRONMENT(TX1), CIS_OCCUPANT(TX1), CIS_ENVIRONMENT(TX2)는 서로 다른 메시지의 순번을 비교 범위에 섞지 않으면 정상 순서로 처리한다. 원 센서 관측 순번 및 UART-C 방향별 LINK_SEQUENCE와 합치지 않는다. 새 필드가 아니라 기존 카운터 비교 범위를 명확히 한 것이다. [노드 간 공통 규칙](#section-generation)
 
 | 정보 | 원 생산자·수명 | 재전송/중계 규칙 |
 | --- | --- | --- |
@@ -75,9 +75,9 @@ CAN TX_SEQUENCE는 수용한 송신 노드 BOOT 안에서 메시지별로 관리
 
 정상 반복의 수신 감시와 원 관측 신규성은 분리한다. 같은 관측의 새로운 품질 저하는 원 관측 순번·AGE를 보존해 기존 C2에 반영한다. 중복 제거로 수신 감시나 무효 품질 전달이 사라지지 않게 하는 구체 호출 조건은 [이 문서의 수신 처리](#section-repeat-and-quality)를 따른다. 사용 기한은 원 누적 AGE가 한도에 도달하면 만료로 판정하며, 시간표의 규격·후보 범위는 [노드 간 공통 규칙](#section-timing)에 구분한다.
 
-원본 AGE는 호출 시점까지의 경과 ms다. TX Network는 인계 시 로컬 시각을 캡처하고 실제 송신 전에 그 뒤 대기만 더한다. RX는 그 홉 전달 여유를 한 번 반영하고 수신시각을 보관한다. 중계 통합부는 RX 이후 대기를 한 번 더하고 다음 TX Network는 새 인계 이후 대기만 더한다. 노드 간 clock 값을 빼지 않는다.
+원본 AGE는 호출 시점까지의 경과 ms다. TX Network는 인계 시 로컬 시각을 캡처하고 실제 송신 전에 그 뒤 대기만 더한다. RX는 해당 구간의 전달 여유를 한 번 반영하고 수신 시각을 보관한다. 중계 통합부는 RX 이후 대기를 한 번 더하고 다음 TX Network는 새 인계 이후 대기만 더한다. 서로 다른 노드의 클록 값을 직접 빼지 않는다.
 
-`effective_age = min(65535, source_age + local_elapsed + not_yet_accounted_hop_allowance)`는 **포화·중복 방지 설명식**이다. u32 ageMs가 65535를 넘으면 u16 modulo로 줄이지 않는다. 원본 사용 한도를 넘은 값은 STALE/INVALID로 소비하며 품질 없는 AGE 0·정상값을 합성하지 않는다. CAN 5 ms / UART 50 ms 전달 여유는 PROPOSED이며 실측값·보장 상한이 아니다.
+`effective_age = min(65535, source_age + local_elapsed + not_yet_accounted_hop_allowance)`는 **포화·중복 방지 설명식**이다. u32 ageMs가 65535를 넘으면 u16 모듈로 연산으로 값을 줄이지 않는다. 원본 데이터의 사용 기한을 넘은 값은 STALE/INVALID로 소비하며 품질 없는 AGE 0·정상값을 합성하지 않는다. CAN 5 ms / UART 50 ms 전달 여유는 PROPOSED이며 실측값·보장 상한이 아니다.
 
 포화값 65535는 실제 AGE가 그 이상일 수 있다는 하한이며 정확한 경과 상한이나 fresh의 증거가 아니다. 포화 또는 미확인 경과 시간 때문에 원 사용 한도 이내임을 확인할 수 없으면 그 정보에 의존하는 제어·허용·새 실행을 허용하지 않는다. 최근 고장 이력의 포화 AGE를 현재 고장이나 새 발생으로 바꾸지 않는다.
 
@@ -129,7 +129,7 @@ DOMAIN 원 평가 Sequence는 실제 평가 성공에서만 증가하며 반복 
 | 대상 | 실제 생성·평가 | 송신·보고 | 정상 프레임 수신 중단 | 원 사용 기한과 지위 |
 |---|---|---|---|---|
 | 후방 활성 Power Permission | DOMAIN 약 200ms 실제 재평가 | CAN 50ms 유지. 변경 또는 같은 값의 새 평가 완료 시 전달 | CAN 150ms 유지 | 500ms. 다른 Permission 전체에 확대하지 않음 |
-| CIS→Pi P_PERMISSION | 검증된 원 DOMAIN 평가·세대 변경·실제 품질 제한을 중계 | 새 평가·제한 시 가능한 즉시, 500ms 반복 유지 | UART-C 1500ms 유지 | 검증된 원 수명 이하. USE_LIMIT 1500ms는 기존 후보, 같은 후방 Power 원본일 때 500ms는 조건부 권장 프로필 |
+| CIS→Pi P_PERMISSION | 검증된 원 DOMAIN 평가·세대 변경·실제 품질 제한을 중계 | 새 평가·제한 시 가능한 즉시, 500ms 반복 유지 | UART-C 1500ms 유지 | 검증된 원본 사용 기한 이하. USE_LIMIT 1500ms는 기존 후보, 같은 후방 Power 원본일 때 500ms는 조건부 권장 프로필 |
 | CIS 온도·습도 | 각 센서의 실제 측정. 약 2000ms는 센서 측정 조건 참고값 | CAN 200ms 후보 | CAN 600ms 후보 | 각 2500ms. 센서별 품질·Sequence·AGE 독립 |
 | CIS 실내 조도 | 해당 센서 실제 측정 | 환경 CAN 200ms 후보 | CAN 600ms 후보 | 1000ms 후보 미확정. 온습도 규칙에 포함하지 않음 |
 | CIS 후방 거리 | 실제 새 거리 관측 | CAN 50ms 후보 | CAN 150ms 후보 | 원 150ms 기존 후보를 검증용으로 유지. SysRS 최대 500ms 잠정 및 Permission 500ms와 별개 |
@@ -167,14 +167,16 @@ Wire BOOT_ID의 0 예약과 C2 sourceGeneration=0은 다른 규칙이다. 수용
 <a id="section-environment-binding"></a>
 ## 환경값의 독립 메타와 무효화
 
-Network는 CIS BOOT와 온도·습도·조도별 Sequence·AGE·품질을 보존한다. 기존 `DomainIf_RxCisCabinEnvironment()`는 값 수신 경계이며 새 BOOT는 DOMAIN 소유 private 전환 통지 후보로 구분한다. private 통지와 Rx NO_DATA의 무효화 분담, 일반 수신 중단의 STALE/NO_DATA 선택 및 VSM·독립 Meta·Getter까지의 실제 저장 완료는 DOMAIN 확인·연동 검증 대기다.
+Network는 CIS BOOT와 온도·습도·조도별 Sequence·AGE·품질을 보존한다. 기존 `DomainIf_RxCisCabinEnvironment()`는 값 수신 경계이며 새 BOOT 무효화는 DOMAIN 소유 단일 동기 private 경계로 처리한다. 전환용 NO_DATA를 공개 Rx에 중복 전달하지 않는다. 같은 BOOT의 센서 NO_DATA·만료·수신 중단은 기존 Rx·품질 정책을 유지한다. 일반 링크 단절의 STALE/NO_DATA 선택과 VSM·독립 Meta·Getter까지의 실제 연동 검증은 별도 미결이다.
 
 환경 C2 구조는 우선 유지한다. 현재 구조로 필요한 무효화·세대 전이를 표현하거나 연결할 수 없다는 구체적인 근거가 나오면 최소 계약 변경을 검토할 수 있다. 이는 영구 확장 금지가 아니다. Network 원 수신 기록을 임의의 최신 Getter 결과에 붙이지 않고, DOMAIN이 실제 처리한 입력과 같은 관측인지 확인해야 한다.
 
 <a id="delta-environment-order"></a>
-**환경 저장 순서 권장안 / DOMAIN private 경계 수용 대기:** 환경 C2에 BOOT/sourceGeneration은 없다. 검증된 BOOT 전환에서 구 콜백·후속 저장을 격리하고 DOMAIN 소유 private 통지 후보로 VSM/독립 Meta·필요 순서 비교 문맥의 무효화를 요청한다. private 통지와 기존 Rx NO_DATA의 분담, 동기 반환 또는 원 BOOT 사건에 연결된 비동기 완료 방식은 미확정이다. 실제 저장 완료 뒤에만 새 원 Sequence·시각을 전달한다. Queue 접수·단순 반환·일반 NO_DATA는 BOOT 전환 또는 완료 증거가 아니며 공개 함수·Generation 필드를 추가하지 않는다.
+**CIS 환경 연속 전환 목표 / DOMAIN 추가 수용 대기:** transitionEpoch는 Wire나 센서 관측 번호가 아닌 로컬 전환 순서다. 유일성은 DOMAIN과 Network가 정상 실행을 지속하고 초기 상태가 맞는 현재 구간에 한정한다. 양쪽 적용 상태·진행 요청·구 작업을 맞춘 명시적 초기화 뒤 첫 Epoch1, Network가 직전 적용 완료를 현재 요청과 대조하고 새 CIS BOOT를 검증한 뒤 다음 +1을 한 번 발급한다. 미완료 중 다음 번호 선발급·동시 승인과 실행 중 감소·reset·wrap 재사용은 금지한다. 실제 타입 최대값은 오류·환경 전달 차단이며 타입 폭이나 Epoch0 예약 의미를 새로 정하지 않는다. 같은 BOOT 센서 갱신·일반 NO_DATA·CAN 재전송은 발급 사건이 아니다.
 
-Network는 `(원 CIS BOOT, 센서, 원 관측 Sequence)`로 A900→B0을 구분하고 원 번호를 재발급·리매핑하지 않는다. DOMAIN도 이를 세대 없는 전역 Sequence 비교로 거절하지 않고 검증 입력 순서를 저장까지 수용해야 한다. 일반 NO_DATA는 데이터 부재이며 재부팅/Sequence 리셋 명령이 아니다. 새 입력 대기 AGE는 누적하고 온습도2500ms 만료를 정상으로 되돌리지 않는다. 종료 BOOT 재반영 차단은 기억 범위에 한정하며 BOOT 재사용·Network 재시작의 기억 상실을 보장하지 않는다. 일반 링크 단절의 STALE/NO_DATA·조도 TTL은 미결이다. [전체 조건과 C2 변경 검토 대안](../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)을 따른다.
+환경 C2에는 BOOT/sourceGeneration이 없다. Network는 자기 소유 구 대기·콜백·미시작 환경 Query 응답을 차단/직렬 처리하고 고정 요청을 동기 private API로 한 번 전달한다. DOMAIN은 이미 인계받은 구 쓰기의 완료 후 재저장을 막고 VSM·독립 Meta·관련 순서 문맥을 무효화한다. Network는 현재 요청 내용·적용 Epoch·명확한 완료를 확인한 뒤 새 원 관측을 기존 Rx로 전달한다. Queue 접수·호출 사실·일반 C2 OK는 완료 증거가 아니다. 현재 마지막 적용 Epoch·동일 내용만 기존 완료 결과를 재사용하며 이후 정상값을 다시 지우지 않는다. 충돌·과거·건너뜀·실패 판정과 실제 선언 미결은 [private 전환 정본](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#delta-environment-routing)을 따른다. DOMAIN의 첫 전환·동일 Epoch 중복/충돌·동기 무효화 Host 시험은 담당자 보고이고 현재 다른 Epoch는 `EPOCH_ORDER_UNAVAILABLE`로 거부한다. 연속 전환 수용·보완 및 실제 Rx/Query 연결은 완료 전이다.
+
+Network는 `(원 CIS BOOT, 센서, 원 관측 Sequence)`로 A900→B0을 구분하고 원 번호를 재발급·리매핑하지 않는다. DOMAIN도 이를 세대 없는 전역 Sequence 비교로 거절하지 않고 검증 입력 순서를 저장까지 수용해야 한다. 일반 NO_DATA는 데이터 부재이며 재부팅/Sequence 리셋 명령이 아니다. 새 입력 대기 AGE는 한 번 누적하고 온습도2500ms 만료를 정상으로 되돌리지 않는다. 종료 BOOT 차단은 기존 기억 범위에 한정하며 Epoch가 CIS BOOT_ID 재사용·구분 근거 부족을 해결하지 않는다. 실패·단독 재시작에서 자동 재시도·복구·영속 완료 승계를 하지 않고 구 작업 정리와 양쪽 초기 정합 전 환경 전달을 보류한다. 실제 초기화 호출·수명 및 CIS BOOT 생성 조건은 확인 대기다. 일반 링크 단절의 STALE/NO_DATA·조도 TTL은 미결이다. [전체 조건과 C2 변경 검토 대안](../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)을 따른다.
 
 <a id="section-failure-boundary"></a>
 ## 접수와 실행·실패의 구분

@@ -4,14 +4,14 @@ Interface v2 · r1 · [규격과 연동 조건](07_CROSS_NODE_INTERFACE_RULES.md
 
 [시작 안내](00_START_HERE.md) · [공통 ID·Data](04_COMMON/10_DATA_AND_ID_RULES.md) · [사용·실패](04_COMMON/20_API_USAGE_AND_FAILURE.md)
 
-CAN 22 · UART-M 23 · UART-C 3종이다. `DOMAIN_PERMISSION`은 하나의 공유 CAN 프레임을 네 노드가 소비하므로 수신 연결은 51건이다. 함수는 기존 선언(`DECLARED_SOURCE`) 또는 구체 설계 후보이며 실제 Port·Codec·SDK 연결은 `BINDING_OPEN`이다. WINDOW는 **[구현 보류 — 설계 유지]**다.
+CAN 22종·UART-M 23종·UART-C 3종이다. `DOMAIN_PERMISSION`은 하나의 공유 CAN 프레임을 네 노드가 소비하므로 수신 연결은 51건이다. 함수는 기존에 선언된 것(`DECLARED_SOURCE`) 또는 구체 설계 후보이며 실제 Port·Codec·SDK 연결은 `BINDING_OPEN`이다. WINDOW는 **[구현 보류 — 설계 유지]**다.
 
-송신 쪽 C2 함수는 기존 TxPort에 연결하고, 수신 쪽 C2 함수는 명시 Codec 변환 후 직접 호출한다. 같은 의미의 두 번째 공개 API를 추가하지 않는다. C enum 숫자는 raw byte와 분리해 명시적으로 변환하고 struct memcpy를 사용하지 않는다. Network local 접수와 ECU 실행 결과는 별개다. Gateway 공용 함수는 메시지 subtype별 검증·타입을 각각 유지한다. Query 응답의 private submit과 일반 C2 송신은 동일 Codec 경로를 사용하며 QueryId·종료 집계는 Network에서 보완한다.
+송신 쪽 C2 함수는 기존 TxPort에 연결하고, 수신 쪽 C2 함수는 명시 Codec 변환 후 직접 호출한다. 같은 의미의 두 번째 공개 API를 추가하지 않는다. C enum 숫자는 원시 바이트 값과 구분하여 명시적으로 변환하고 struct memcpy를 사용하지 않는다. Network의 로컬 접수와 ECU의 실행 결과는 별개다. Gateway 공용 함수는 메시지 하위 유형별 검증·자료형을 각각 유지한다. Query 응답의 내부 submit과 일반 C2 송신은 동일 Codec 경로를 사용하며 QueryId·종료 집계는 Network에서 보완한다.
 
 <a id="section-read-endpoints"></a>
 ## 표를 사용하는 순서
 
-메시지의 **송신 함수**에서 반환형·전체 인자·로컬 실패를, **수신 함수**에서 검증 뒤 호출할 노드 내부 소비자를 확인한다. C2의 `Tx*`는 DOMAIN의 기존 TxPort callback을 통해 송신 Adapter에 인계하며, 상대 ECU의 함수를 직접 호출하는 구조가 아니다. **Codec 의미 타입**은 전체 구조체·멤버 유효조건으로 연결되고 메시지 이름은 Wire offset/길이로 연결된다.
+메시지의 **송신 함수**에서 반환형·전체 인자·로컬 실패 조건을 확인하고, **수신 함수**에서 검증 뒤 호출할 노드 내부 소비자를 확인한다. C2의 `Tx*`는 DOMAIN의 기존 TxPort callback을 통해 송신 Adapter로 인계하며, 상대 ECU의 함수를 직접 호출하는 구조가 아니다. **Codec의 의미 타입**은 전체 구조체·멤버 유효조건으로 연결되고 메시지 이름은 Wire offset/길이로 연결된다.
 
 [CAN](#section-can-messages) · [UART-M](#section-uart-m-messages) · [UART-C](#section-uart-c-messages) · [BLE 경계](03_COMMUNICATION/40_BLE.md)
 
@@ -43,7 +43,7 @@ M_CONTEXT는 기존 생산자 3종으로 구성하고, M_DOMAIN_ALIVE와 M_QUERY
 | [WINDOW_FAULT](03_COMMUNICATION/10_CAN_FD.md#message-window-fault)<br>WINDOW → DOMAIN | [WindowNet_PublishFault](02_NODES/WINDOW/20_API.md#api-windownet_publishfault) | DOMAIN: [DomainNetPriv_OnWindowFault](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnetpriv_onwindowfault) *(private)* | [NetWindowFault](02_NODES/WINDOW/10_DATA.md#type-netwindowfault)<br>**구현 보류 — 설계 유지**. Fault occurrence 근거 보존. FaultInfo 투영 OPEN. |
 | [VSS_EVENT](03_COMMUNICATION/10_CAN_FD.md#message-vss-event)<br>DOMAIN → VSS | [DomainIf_TxVssOneShotEvent](02_NODES/DOMAIN/20_API.md#api-domainif_txvssoneshotevent) | VSS: [VssApp_OnDomainEvent](02_NODES/VSS/20_API.md#api-vssapp_ondomainevent) | [NetVssEvent](02_NODES/VSS/10_DATA.md#type-netvssevent)<br>명시적 Codec 변환·실제 바인딩 OPEN. |
 | [VSS_WARNING_STATE](03_COMMUNICATION/10_CAN_FD.md#message-vss-warning-state)<br>DOMAIN → VSS | [DomainIf_TxVssWarningState](02_NODES/DOMAIN/20_API.md#api-domainif_txvsswarningstate) | VSS: [VssApp_OnDomainWarningState](02_NODES/VSS/20_API.md#api-vssapp_ondomainwarningstate) | [NetVssWarningState](02_NODES/VSS/10_DATA.md#type-netvsswarningstate)<br>명시적 Codec 변환·실제 바인딩 OPEN. |
-| [VSS_STATUS](03_COMMUNICATION/10_CAN_FD.md#message-vss-status)<br>VSS → DOMAIN | [VssNet_PublishStatus](02_NODES/VSS/20_API.md#api-vssnet_publishstatus) | DOMAIN: [DomainNetPriv_OnVssStatus](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnetpriv_onvssstatus) *(private)* | [NetVssStatus](02_NODES/VSS/10_DATA.md#type-netvssstatus)<br>R4 snapshot→NetVssStatus 및 Domain C2 투영 소유자 FUNCTION_POLICY_OPEN. |
+| [VSS_STATUS](03_COMMUNICATION/10_CAN_FD.md#message-vss-status)<br>VSS → DOMAIN | [VssNet_PublishStatus](02_NODES/VSS/20_API.md#api-vssnet_publishstatus) | DOMAIN: [DomainNetPriv_OnVssStatus](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#api-domainnetpriv_onvssstatus) *(private)* | [NetVssStatus](02_NODES/VSS/10_DATA.md#type-netvssstatus)<br>A2에서 기존 VSS INPUT의 완전 Snapshot→NetVssStatus 단일 변환을 내부 설계로 선택했다. DOMAIN 설치 C2 profile·동일 원 DTO/meta association 및 State/Fault 실제 수용은 E-S05/Binding 확인 대기다. |
 
 <a id="section-uart-m-messages"></a>
 ## UART-M v2 — 23종

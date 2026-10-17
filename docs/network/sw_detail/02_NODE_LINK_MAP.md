@@ -28,7 +28,7 @@ R01(DOMAIN↔BCM), R02(DOMAIN↔CIS), R03(DOMAIN↔VSS), R04(DOMAIN↔WINDOW)는
 
 DOMAIN은 L01 원본 연결과 조회 감독, L02 C2 호출, L03~L05 CAN/UART-M 처리의 접점이다. CIS는 L01 원 관측·Pi 중계, L02 센서·Permission typed 경계, L03~L05 CAN/UART-C를 사용한다. BCM·VSS는 CAN 관련 L02~L05를 적용하며 기능 판단은 각 노드의 Application 담당 책임으로 남긴다. ESP32·Pi의 L02~L05는 상대 담당자 구현의 계약을 나타내며 S32K 공통 구현을 강제하지 않는다. WINDOW의 적용표는 재개 전까지 설계만 유지한다. MOBILE 내부에는 이 Layer 구성을 적용하지 않는다.
 
-기존 대표 경로의 시작은 N03 후방 관측이고 끝은 N01의 공개 Rx 입력이다. CAN 22종은 [메시지별 지도](04_CAN_FD_OVERVIEW.md#messages)로 확장하되 각 양단의 미결을 유지한다. DOMAIN 위험 판단→VSS 경고는 후속 기능 경계이며 CF02 used51/60 선택을 완료했다고 볼 수 없다.
+기존 대표 경로의 시작은 N03 후방 관측이고 끝은 N01의 공개 Rx 입력이다. CAN 22종은 [메시지별 지도](04_CAN_FD_OVERVIEW.md#messages)로 확장하되 각 양단의 미결을 유지한다. DOMAIN 위험 판단→VSS 경고의 CF02 형식은 A1 WARNING60으로 선택했으며 실제 DOMAIN producer/VSS receiver·시간·ABI 지원은 검증 대기다.
 
 [Network](01_NETWORK_OVERVIEW.md) · [CIS_REAR 전체 흐름](flows/CIS_REAR_144_TO_344.md)
 

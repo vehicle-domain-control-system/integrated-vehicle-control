@@ -6,7 +6,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
-**PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제 설치 헤더/firmware가 아니며 struct padding·enum 크기를 raw bytes로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
+**PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제로 설치된 헤더나 펌웨어 코드가 아니며 struct padding·enum 크기를 raw bytes로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
 
 ## 타입 빠른 찾기
 
@@ -346,22 +346,22 @@ Pi의 `pi_boot_id/vision_sequence/vision_age_ms`와 Presence/Count의 원 validi
 
 ## Source AGE를 한 번씩 누적
 
-Pi Network는 원 판정 Age에 **Pi 제출→실제 UART 송신 대기**만 더한다. CIS RX는 원 Age에 아직 반영하지 않은 UART 전달 여유만 한 번 반영한다. CIS는 이 수신 record의 age를 cache에 두고 `received_at_ms`를 기준점으로 보관한다. Common의 UART50ms/CAN5ms 전달 여유는 PROPOSED이며 이미 반영한 여유를 다시 더하지 않는다. CAN 제출 시 CIS 수신→제출 경과를 한 번 더한 뒤, CIS Network는 제출→실제 CAN 송신 대기만 더한다. callback 지연을 이미 반영했다면 같은 수신 기준점으로 다시 더하지 않는다. App·Network의 실제 기준점 연결은 BINDING_OPEN이다.
+Pi Network는 원 판정 Age에 **Pi 제출→실제 UART 송신 대기**만 더한다. CIS RX는 원 Age에 아직 반영하지 않은 UART 전달 여유만 한 번 반영한다. CIS는 이 수신 기록의 AGE를 캐시에 두고 `received_at_ms`를 기준점으로 보관한다. Common의 UART50ms/CAN5ms 전달 여유는 PROPOSED이며 이미 반영한 여유를 다시 더하지 않는다. CAN 제출 시 CIS 수신→제출 경과를 한 번 더한 뒤, CIS Network는 제출→실제 CAN 송신 대기만 더한다. 콜백 지연을 이미 반영했다면 같은 수신 기준점으로 다시 더하지 않는다. App·Network의 실제 기준점 연결은 BINDING_OPEN이다.
 
 링크 전송 시간을 공통 clock 없이 정확히 복원할 수 없으므로 필요한 여유/최신성 상한은 팀 Wire·측정 조건으로 결정한다. 65535 포화는 충분히 오래된 값이며 정상 Age0으로 되돌리지 않는다. DOMAIN은 이후 수신→사용/중계 경과만 한 번 더한다.
 
 <a id="허용-입력과-pi-relay"></a>
 ## 허용 입력과 Pi relay
 
-DOMAIN 원 허용의 합성은 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission), Pi 수신의 사용 기한 검사는 [공통 시간표](../../04_COMMON/10_DATA_AND_ID_RULES.md#section-timing)를 따른다. [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)에도 같은 원 기한을 적용한다. 실제 기능 사용과 통신 중계를 나눈다.
+DOMAIN 원 허용의 합성은 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission), Pi 수신의 사용 기한 검사는 [공통 시간표](../../04_COMMON/10_DATA_AND_ID_RULES.md#section-timing)를 따른다. [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)에도 같은 원본 사용 기한을 적용한다. 실제 기능 사용과 통신 중계를 나눈다.
 
-후방 활성 Permission은 약 200ms마다 실제 재평가하고 원 사용 기한은 500ms로 한다. 값이 바뀌면 즉시 제출하며, 같은 값이어도 실제 새 평가가 성공하면 그 평가 번호·시각을 전달한다. CAN 50ms 송신/150ms 수신 중단과 UART-C 500ms 반복/1500ms 수신 중단은 유지한다. 반복 프레임 때문에 원 AGE를 0으로 만들거나 이전 허용을 연장하지 않는다.
+후방 활성 Permission은 약 200ms마다 실제 재평가하고 원본 평가의 사용 기한은 500ms다. 값이 바뀌면 즉시 제출하며, 같은 값이어도 실제 새 평가가 성공하면 그 평가 번호·시각을 전달한다. CAN 50ms 송신/150ms 수신 중단과 UART-C 500ms 반복/1500ms 수신 중단은 유지한다. 반복 프레임 때문에 원 AGE를 0으로 만들거나 이전 허용을 연장하지 않는다.
 
 CIS Network는 같은 검증된 `NetDomainPermission`/`NetCanRxMeta`를 `CisApp_OnDomainPermission()`과 private `CisNetPriv_RelayPiPermission()`에 분배한다. CIS App은 후방 기능을 제어하고, Network 내부 relay는 원 허용을 제한·전달한다. 공개 App에 별도의 Pi 허용 생성 API를 요구하지 않는다.
 
 새 원 DOMAIN 평가·수용한 세대 변경·실제 중계 품질 제한이 생기면 중계 record를 갱신해 가능한 즉시 제출한다. 단순 반복은 기존 relay revision과 증가한 AGE를 유지한다. 매 CAN 전송의 TX_SEQUENCE를 새 허용 평가 번호로 쓰지 않는다. `CIS_BOOT_ID`는 CIS 통신 기동이며 원 DOMAIN BOOT가 아니다.
 
-전원 값·전원 품질·수용한 세대·신뢰 가능한 원 AGE를 함께 검사한다. 0/OK는 확인된 불허, 255 또는 NO_DATA/INVALID/STALE는 허용 확인 불가다. 같은 프레임의 WINDOW operation 부재만으로 확인된 Power를 새 불허 정책으로 바꾸지 않으며, 확인되지 않은 공통 AGE로 ALLOW를 생성하지 않는다. `POWER_OPERATION_STATE` 생성원과 독립 입력의 공통 AGE/순번 합성은  미결이다.
+전원 값·전원 품질·수용한 세대·신뢰 가능한 원 AGE를 함께 검사한다. 0/OK는 확인된 불허, 255 또는 NO_DATA/INVALID/STALE는 허용 확인 불가다. 같은 프레임의 WINDOW operation 부재만으로 확인된 Power를 새 불허 정책으로 바꾸지 않으며, 확인되지 않은 공통 AGE로 ALLOW를 생성하지 않는다. `POWER_OPERATION_STATE` 생성원과 독립 입력의 공통 AGE·순번 합성은 미결이다.
 
 `P_PERMISSION.USE_LIMIT=1500ms`는 기존 필드 값 후보로 보존한다. 같은 후방 Power 원 판단의 중계라는 근거를 확인한 경우 `500ms`로 전달하는 안은 조건부 권장 프로필이다. 배포 전 양단 바이트·AGE·만료 해석을 검증하며, 실제 송신 필드 값은 미확정이다. 어떤 `USE_LIMIT`도 원 판단의 검증된 사용 기한을 연장하지 않는다.
 
@@ -377,26 +377,24 @@ CIS Network는 같은 검증된 `NetDomainPermission`/`NetCanRxMeta`를 `CisApp_
 Network가 관측한 Pi UART/CAN 제공 경로 상태는 CIS 진단 owner가 실제 근거와 영향 기능을 확인한 뒤 기존 `NetCisStatus`의 interface 상태·현재 fault·affected_function에 반영하고 `CisNet_PublishStatus()`로 제출하는 안을 권장한다. 단순 수신 누락을 센서 자체 고장이나 최근 fault의 새 발생으로 직접 변환하지 않는다. 다른 정상 센서의 값/품질은 보존하고, 링크 실패가 영향을 주는 제공·소비 경로만 사용을 제한한다. CIS 진단 모듈은 기존 Health 연결과 실제 영향 기능을 기능 코드에서 확인한다. 그 연결 증거는 아직 제공되지 않았다. 미확인 health 전달 함수나 신규 fault frame을 만들지 않는다. SDK/Firmware/Codec/Board 시험은 `NOT_EXECUTED`다.
 
 <a id="r1-permission-consumption"></a>
-**후방 허용 소비:** DOMAIN의 원 Power 평가 주기 약 200ms·원 유효기한 500ms를 적용한다. 원 평가 AGE 499ms라도 출처·품질·기능 조건이 모두 유효해야 하며, 500ms/501ms에는 허용을 사용하지 않는다. CIS relay 송신이나 Pi 재수신으로 원 AGE를 0으로 만들지 않는다. P_PERMISSION.USE_LIMIT 1500ms 후보를 500ms로 바꾸는 안은 원 갱신·전송·기능 owner 근거를 필요로 하는 CONDITIONAL이며 자동 적용하지 않는다. 공유 Operation/Alive/Power의 미확인 source는 미결이며 UNKNOWN을 ALLOW로 승격하지 않는다. WINDOW 부재만으로 이미 확인된 별도 Power를 DENIED로 덮어쓰지도 않는다.
+**후방 허용 소비:** DOMAIN의 원 Power 평가 주기 약 200ms·원본 판단의 사용 기한 500ms를 적용한다. 원 평가 AGE 499ms라도 출처·품질·기능 조건이 모두 유효해야 하며, 500ms/501ms에는 허용을 사용하지 않는다. CIS relay 송신이나 Pi 재수신으로 원 AGE를 0으로 만들지 않는다. P_PERMISSION.USE_LIMIT 1500ms 후보를 500ms로 바꾸는 안은 원 갱신·전송·기능 owner 근거를 필요로 하는 CONDITIONAL이며 자동 적용하지 않는다. 공유 Operation/Alive/Power의 미확인 source는 미결이며 UNKNOWN을 ALLOW로 승격하지 않는다. WINDOW 부재만으로 이미 확인된 별도 Power를 DENIED로 덮어쓰지도 않는다.
 
 <a id="환경-원본-최신성--o20"></a>
 ## 환경 원본 최신성 —
 
 <a id="r1-environment-transition"></a>
-온도·습도는 각각 원 생성시점 기준 2500ms다. 2499ms에는 해당 센서의 품질까지 확인하고, 2500ms·2501ms에는 사용을 제한한다. 한 센서의 새 유효 관측은 그 센서만 회복시키며 다른 센서의 AGE/품질을 초기화하지 않는다. 조도 1000ms는 미확정 권장 후보다. 새 CIS BOOT를 수용하면 구 BOOT의 캐시를 정상으로 재사용하지 않고, 낮은 새 관측 순번을 구 세대의 높은 순번과 비교하지 않는다. 지연된 구 BOOT 프레임은 새 세대 복구 근거가 아니다. 기존 C2→VSM 저장·독립 Meta·Getter까지의 무효화/회복은 실제 연결 검증 대기이며, 현재 구조로 불가능하다는 근거가 있을 때만 최소 계약 변경을 검토한다.
+온도·습도 데이터의 사용 기한은 원본 관측 시점부터 각각 2500ms다. 2499ms에는 해당 센서의 품질까지 확인하고, 2500ms·2501ms에는 사용을 제한한다. 한 센서의 새 유효 관측은 그 센서만 회복시키며 다른 센서의 AGE/품질을 초기화하지 않는다. 조도 1000ms는 미확정 권장 후보다. 새 CIS BOOT를 수용하면 이전 BOOT의 캐시를 정상으로 재사용하지 않고, 낮은 새 관측 순번을 이전 세대의 높은 순번과 비교하지 않는다. 뒤늦게 도착한 이전 BOOT 프레임은 새 세대의 복구 근거가 아니다. 기존 C2→VSM 저장·독립 Meta·Getter까지의 무효화/회복은 실제 연결 검증 대기이며, 현재 구조로 불가능하다는 근거가 있을 때만 최소 계약 변경을 검토한다.
 
-온도·습도의 각 원본 사용 기한은 2500ms다. 원 AGE가 2500ms에 도달하면 해당 값을 사용하지 않는다. 다른 센서의 정상 측정이나 CAN 반복 송신으로 원 AGE·측정 순번을 갱신하지 않는다.
+온도·습도는 각각 원본 관측 시점부터 2500ms까지만 사용할 수 있다. 원 AGE가 2500ms에 도달하면 해당 값을 사용하지 않는다. 다른 센서의 정상 측정이나 CAN 반복 송신으로 원 AGE·측정 순번을 갱신하지 않는다.
 
 CIS의 참고 코드에는 약 2000ms 측정 주기와 `ENV_STALE_MS=5000ms` 후보가 있다. 5000ms는 현재 코드의 값 유효성 검사 후보이며 진단 전용 한도로 확정된 것이 아니다. 이 값이 DOMAIN의 2500ms 소비 한도를 연장하지 않는다. CIS 쪽 적용 방식과 `age >= limit` 경계는 기능 코드 연결 시 확인한다.
 
 실내 조도 1000ms는 기능 정책이 미확정인 후보다. CIS 로컬 `LUX_STALE_MS=1000`은 DOMAIN 사용 기한을 확정하는 근거가 아니다. SysRS의 온습도·실내/외 조도 묶음 기준과 별개로 온습도에는 각 2500ms를 적용하며 조도는 후보로 남는다. CAN 환경 보고 200ms/수신 중단 600ms 후보는 원본 사용 기한과 별개다.
 
-환경 C2는 현재 구조를 우선 유지한다. Network는 CIS BOOT와 센서별 Sequence·AGE를 보존한다. BOOT 전환은 DOMAIN 소유 private 통지 후보로 구분하며, 기존 값 수신 경계인 `DomainIf_RxCisCabinEnvironment()`의 NO_DATA와 무효화 역할을 어떻게 분담할지는 확인 대기다. 일반 링크 단절의 품질 선택과 실제 VSM/Getter 무효화 완료는 별도 연동 조건이다. 기존 C2로 연결할 수 없다는 근거가 나오면 최소 계약 변경을 검토하되 새 공개 필드를 임의로 추가하지 않는다.
+환경 C2는 현재 구조를 유지하고 Network는 CIS BOOT와 센서별 Sequence·AGE를 보존한다. 새 BOOT를 확인하면 이전 BOOT에서 대기 중인 환경 데이터의 전달을 차단한다. DOMAIN의 동기 Private Transition이 연결되어 이전 저장값의 무효화 완료를 확인할 수 있는 경우에만 새 BOOT 값을 기존 환경 Rx에 전달한다. 완료를 확인하지 못하면 해당 환경 입력은 제한한다. 일반 환경 NO_DATA·STALE은 재부팅 신호로 사용하지 않는다.
 
 <a id="delta-cis-environment"></a>
-**환경 저장 순서 권장안 / DOMAIN 연동 조건 확인 필요:** Network는 구 BOOT 대기 데이터·콜백·DOMAIN 후속 비동기 쓰기를 격리한 뒤 private 전환 통지 후보를 적용한다. private 통지와 기존 Rx NO_DATA의 분담 및 동기/비동기 완료 방식은 미정이다. 실제 VSM/Meta·필요 순서 문맥 무효화 완료 후 새 BOOT 센서 원 Sequence·시간을 전달한다. 구900/신0을901로 바꾸지 않으며 일반 NO_DATA로 재부팅을 추론하거나 순번을 리셋하지 않는다. 무효화 실패·완료 미확인에서는 새 정상 전달을 막되 과거 VSM OK가 이미 지워졌다고 주장하지 않는다. commit 뒤 Observer 실패는 중복 저장 사유가 아니다.
-
-대기 경과 AGE와 온습도2500ms 만료를 유지한다. 종료 BOOT 차단은 기억 범위 내 조건이며 BOOT 재사용·Network 재시작으로 기억을 잃는 경우까지 보장하지 않는다. 일반 링크 단절 STALE/NO_DATA 선택과 조도1000ms는 미결이다. 실제 C2 저장 경계를 증명할 수 없다면 최소 계약 변경을 검토한다. [전체 환경 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
+연속 BOOT 전환의 자동 복귀는 DOMAIN의 다음 전환 수용 및 VSM/Query Binding 확인 후 연결한다. DOMAIN은 첫 전환과 같은 요청 중복/충돌 처리에 대한 Host 시험 완료를 보고했지만, 현재 서로 다른 Epoch는 거부한다. 환경 수명 2500ms, 기존 공개 C2/Wire, 원 Sequence의 유지 원칙은 그대로 적용한다. [환경 BOOT 처리](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 ## 구현 전 결정
 

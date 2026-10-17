@@ -4,7 +4,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
-**PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제 설치 헤더/firmware가 아니며 struct padding·enum 크기를 raw bytes로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
+**PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제 설치된 헤더나 펌웨어가 아니며, 구조체의 패딩·enum 크기를 원시 바이트로 그대로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
 
 ## 타입 빠른 찾기
 
@@ -56,7 +56,7 @@ typedef struct NetBcmDoorCommand
 | `origin` | `NetOrigin` | 요청 출처 코드 | DOMAIN 기능 결정. BCM은 로컬 보호·가용성을 별도 판단하며 Network 접수로 실행을 확정하지 않음. |
 
 <a id="command-context"></a>
-`command`의 전체 선언·4개 멤버는 [`NetCommandMeta`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcommandmeta)에 둔다. `command_id`는 DOMAIN C2 원 결정 ID, `target_boot_id`는 DOMAIN Network가 확인한 대상 BCM 세대, `command_age_ms`는 원 명령 생성 이후 경과, `accept_limit_ms`는 제안 수용 상한이다. BCM은 `meta.source.boot_id`로 원 DOMAIN 세대를 함께 보존한다. 200ms↔구 SysRS 1초는 CONTRACT_OPEN이며 이 문서에서 확정하지 않는다.
+`command`의 전체 선언·4개 멤버는 [`NetCommandMeta`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcommandmeta)에 둔다. `command_id`는 DOMAIN C2가 생성한 원본 결정 ID, `target_boot_id`는 DOMAIN Network가 확인한 대상 BCM의 기동 세대, `command_age_ms`는 원본 명령 생성 이후 경과 시간, `accept_limit_ms`는 제안 수용 상한이다. BCM은 `meta.source.boot_id`로 원 DOMAIN 세대를 함께 보존한다. 200ms↔구 SysRS 1초는 CONTRACT_OPEN이며 이 문서에서 확정하지 않는다.
 <a id="type-netbcmclimatecommand"></a>
 ## `NetBcmClimateCommand`
 
@@ -81,7 +81,7 @@ typedef struct NetBcmClimateCommand
 | `thermal_direction` | `NetThermalDirection` | 0=IDLE; 1=COOL; 2=HEAT | DOMAIN 기능 결정. BCM은 로컬 보호·가용성을 별도 판단하며 Network 접수로 실행을 확정하지 않음. |
 | `thermal_target_percent` | `uint8_t` | 0~100%, 1%/raw | DOMAIN 기능 결정. BCM은 로컬 보호·가용성을 별도 판단하며 Network 접수로 실행을 확정하지 않음. |
 
-`command`는 [명령 공통부의 ID·기동·Age·수용 한도](#command-context)를 그대로 적용한다. 구체 기능 목표와 로컬 보호는 이 타입의 멤버 계약을 따른다.
+`command`는 [명령 공통부의 ID·기동·Age·수용 한도](#command-context)를 그대로 적용한다. 구체적인 기능 목표와 로컬 보호 조건에는 이 타입의 멤버 계약을 적용한다.
 <a id="type-netbcmlightcommand"></a>
 ## `NetBcmLightCommand`
 
@@ -239,7 +239,7 @@ typedef struct NetBcmResult
 } NetBcmResult;
 ```
 
-**로컬 사용:** [`BcmNet_SendResult()`](20_API.md#api-bcmnet_sendresult). 원 명령의 실제 처리 결과이며 local OK로 DONE을 만들지 않는다. 이 선언에는 C2 `confirmation` 필드가 없다. 원 DONE을 보존하되 실제 확인 근거 없는 CONFIRMED는 만들지 않는 [BCM_RESULT 권장안](../../03_COMMUNICATION/10_CAN_FD.md#message-bcm-result)은 PROPOSED/BINDING_OPEN이다.
+**로컬 사용:** [`BcmNet_SendResult()`](20_API.md#api-bcmnet_sendresult). 원 명령의 실제 처리 결과이며 로컬 접수 성공을 기능 완료(DONE)로 판단하지 않는다. 이 선언에는 C2 `confirmation` 필드가 없다. 원 DONE을 보존하되 실제 확인 근거 없는 CONFIRMED는 만들지 않는 [BCM_RESULT 권장안](../../03_COMMUNICATION/10_CAN_FD.md#message-bcm-result)은 PROPOSED/BINDING_OPEN이다.
 
 | 멤버 | 정확한 C 타입 | 값·단위·범위 / 역할 | 원 소유자·유효 조건 |
 |---|---|---|---|

@@ -9,7 +9,7 @@
 | N01 DOMAIN | S32K344. DOMAIN이 공개 C2·Manager·판단 소유, Network는 callback/codec/인계·전송 수명 | [DOMAIN](nodes/DOMAIN.md): 원 명령 → BCM 결과 → MOBILE, 수신 → C2 → Query |
 | N02 BCM | S32K144. App이 액추에이터·보호·실제 결과 소유 | [BCM](nodes/BCM.md): 명령 인수와 실행 결과를 분리 |
 | N03 CIS | S32K144. Sensor App 원 관측과 Pi 중계를 구분 | [CIS/Pi](nodes/CIS_PI.md): Pi 관측 → CAN, 원 DOMAIN Permission → Pi |
-| N04 VSS | DOMAIN과 별도 S32K344. App이 음향 중재·실제 출력 소유 | [VSS](nodes/VSS.md): 경고/사건 수신 → 실제 상태, CF02 HOLD |
+| N04 VSS | DOMAIN과 별도 S32K344. App이 음향 중재·실제 출력 소유 | [VSS](nodes/VSS.md): A1 WARNING60 형식 선택, 경고/사건→상태의 실제 양단 지원/Binding은 CF02 HOLD |
 | N05 ESP32 | Gateway. **ESP32 담당자가 내부 Network 전체 구현 소유** | [ESP32/MOBILE](nodes/ESP32_MOBILE.md): BLE/UART typed relay·독립 context·private 감독 |
 | N06 Pi | 카메라 서비스. Pi Owner가 원 Vision/상태·실제 Permission 소비 소유 | [CIS/Pi](nodes/CIS_PI.md): DOMAIN과 직접 물리 링크 없음 |
 | N07 WINDOW | 예정 S32K144. IMPLEMENTATION_HOLD / DESIGN_PRESERVED | [WINDOW](nodes/WINDOW.md): 비활성 timeout은 차량 고장 아님; STOP도 원 문맥 검증 |
@@ -27,7 +27,7 @@
 | P04 | MOBILE↔ESP32 BLE | [ESP32/MOBILE](nodes/ESP32_MOBILE.md); Wire48에 더하는 새 메시지 집합 아님 |
 | R01 | DOMAIN 명령 → BCM / BCM 상태·결과·사건 → DOMAIN | [DOMAIN](nodes/DOMAIN.md#command-flow)·[BCM](nodes/BCM.md) |
 | R02 | DOMAIN 원 허용 → CIS / CIS 환경·후방·승객·진단 → DOMAIN | [CIS/Pi](nodes/CIS_PI.md) |
-| R03 | DOMAIN 경고·사건 → VSS / VSS 상태 → DOMAIN | [VSS](nodes/VSS.md); used51/60 자동 선택 금지 |
+| R03 | DOMAIN 경고·사건 → VSS / VSS 상태 → DOMAIN | [VSS](nodes/VSS.md); A1 WARNING60 단일 선택, WARNING51은 이력이며 자동 선택·혼용 금지 |
 | R04 | DOMAIN Window 명령 / Window 상태·고장 | [WINDOW](nodes/WINDOW.md); 설계만 보존 |
 | R05 | MOBILE↔ESP32↔DOMAIN | [ESP32/MOBILE](nodes/ESP32_MOBILE.md#relay-flow); 요청·Query·private와 차량 결과 구분 |
 | R06 | Pi↔CIS↔DOMAIN | [CIS/Pi](nodes/CIS_PI.md); Pi 품질·원 순번과 CIS relay의 기동/순번 구분 |

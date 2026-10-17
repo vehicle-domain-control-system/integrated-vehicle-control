@@ -23,7 +23,7 @@ DomainIf_Status_t DomainNetPriv_OnVssStatus(const NetVssStatus *message, const N
 
 송신 API 인자는 NULL 불가 IN 객체이며 호출 동안만 읽는다. 수신 callback의 message/meta 또는 state/status/result도 NULL 불가이고, 이후 필요하면 소비자가 반환 전에 복사한다. 공개 DomainIf 본체·Manager 상태는 DOMAIN 소유이고 Network가 중복 구현하지 않는다. NetSubmitResult/C2 반환의 전체 의미는 [기존 반환 정본](../../data/CIS_REAR_DATA.md#declared), 내부 함수 반환은 [공통 자료](../../data/CAN_COMMON_DATA.md)에 있다.
 
-**실행에 필요한 미결:** IF-O06, IF-O15, IF-O17, IF-O09, IF-O24, VSS_STATUS_PROJECTION: R4/R6 원 Snapshot→DTO, C2 서비스/고장 품질·세대 및 두 소비 경계의 부분 성공 집계가 미합의다.
+**내부 설계 선택 / 실제 Binding 대기:** A2는 완전 HEALTH Snapshot→기존 INPUT 단일 변환→`NetVssStatus` 생산과 같은 K의 State/Fault 독립 수용을 선택했다. IF-O06/15/17/09/24의 실제 producer·설치 C2·품질/세대·같은 입력 association·후발 관측은 E-S01~05 확인 대기다. [A2 수신 계약](#a2-domain-contract)을 적용하며 문서 선택을 구현 완료로 처리하지 않는다.
 
 <a id="submit"></a>
 ## 송신 인계
@@ -49,7 +49,7 @@ NetSubmitResult VssNet_PublishStatus(const NetVssStatus *message)
 }
 ```
 
-형식이 정상인 INVALID/STALE/NO_DATA/FAULT 보고는 그대로 보존한다. 호출 실패 시 새 자료의 부분 접수는 없고 이전 대기는 유지한다. 후발 Driver 실패는 과거 반환을 변경하지 않는 별도 관측이다.
+형식이 정상인 INVALID/STALE/NO_DATA/FAULT 보고는 허용된 각 필드 의미로 보존한다. last_fault_quality는 별도 이력형식0/3이며1/2를 허용하지 않는다. 호출 실패 시 새 자료의 부분 접수는 없고 이전 대기는 유지한다. 후발 Driver 실패는 과거 반환을 변경하지 않는 별도 관측이다. Network는 반환 전에 DTO 11필드·원 generation 대응·각 AGE 기준·진단 K를 전체 복사한다. terminal failure는 RX나 새 CREATED와 무관하게 기존 M09→INPUT 진단→FLOW sink로 원 K/BOOT/TX/raw/release를 인계하며 실제 E-S04 연결은 미검증이다.
 
 <a id="codec"></a>
 ## 메시지 Codec: 내부 함수 후보
@@ -147,49 +147,103 @@ DomainIf_Status_t DomainIf_RxVssFault( const FaultInfo_t *fault);
 
 출처: S4A api/domain_rx.md#api-DomainIf_RxVssFault.
 
+아래 단계 이름은 기존 M03/M09의 원 K와 각 호출 결과를 설명하는 의사 표기다. 새 enum·struct·API 선언이 아니다. `ACCEPTED_CONFIRMED`는 해당 경계의 실제 수용 근거, `CALLING/UNKNOWN_FAILED`는 호출 중 또는 미수용이 입증되지 않은 상태다. raw OK 자체로 Core commit을 만들지 않는다.
+
 ```c
 DomainIf_Status_t DomainNetPriv_OnVssStatus(const NetVssStatus *message, const NetCanRxMeta *meta)
 {
     if (message == NULL || meta == NULL || 같은 검증 수신 사건의 쌍이 아니면)
         return DOMAIN_IF_INVALID_ARGUMENT;
-    if (입력 enum·필드 조합이 잘못되면) return DOMAIN_IF_INVALID_ARGUMENT;
-    if (초기화·원본 순서·소비시점 AGE·소비자가 준비되지 않았으면)
+    if (원 enum·범위·present/absent 조합이 잘못되면) return DOMAIN_IF_INVALID_ARGUMENT;
+    if (완전 producer·설치 profile·원 세대·순서·freshness·동일 입력 근거가 없으면)
         return DOMAIN_IF_NOT_AVAILABLE;
-    if (원 반환과 입력 식별·반영 단계를 보존할 기존 M09 관측을 사전 확보하지 못하면)
-        return DOMAIN_IF_NOT_AVAILABLE; // 호출 뒤 원 결과를 잃지 않도록 호출 전에 멈춘다.
-    // DomainNetPriv_OnVssStatus가 service.state/availability/acceptingEvents/faultActive를 의미 이름으로 구성하고 service.meta에 원 update/소비 AGE를 연결한다. faultMask/lastFaultCode/lastFaultOccurrenceId/lastFaultAgeMs와 sourceGeneration은 원 VSS 보고의 근거로만 연결한다. LAST_FAULT_QUALITY0/3은 최근 기록 존재의 뜻이며 C2 faultQuality 전체 의미와 동등하지 않다. FaultInfo 선택·현재 고장 우선순위는 원문만으로 확정할 수 없다.
-    if (R4/R6 원 보고·서비스/고장 품질·세대·동일입력 결합이 미확인이라면)
-        return DOMAIN_IF_NOT_AVAILABLE;
-    if (두 C2 소비자의 사전 준비·부분 성공 집계·재호출 원자성 계약이 없으면)
-        return DOMAIN_IF_NOT_AVAILABLE; // 현재는 이 분기에서 멈춘다.
+    // 기존 직렬 owner 경계에서 K=(VSS 생산 generation, update_sequence)를 조회한다.
+    if (K가 high-water보다 오래되거나 회수·fence된 K이면)
+        return DOMAIN_IF_NOT_AVAILABLE; // 새 평가·새 K를 발급하지 않는다.
+    bool newKey = 기존 M09에 같은 K가 보호되어 있지 않음;
+    if (!newKey) {
+        if (보호한 원 평가의 의미·본문·두 AGE 계보와 모순이면)
+            return DOMAIN_IF_INVALID_ARGUMENT;
+        if (기존 owner가 식별한 부분 후속 처리 기회가 아니면)
+            goto aggregate; // 같은 K 재수신/높은 TX: State와 Fault 호출 0.
+    } else {
+        if (원 K 없는 후속 처리 || 엄격히 새 K 아님 || old 비동기 후속 쓰기 차단 미확인)
+            return DOMAIN_IF_NOT_AVAILABLE;
+        if (전체 원 DTO/meta·두 결과·이전 결과 이전·후발 sink의 보호 공간 없음)
+            return DOMAIN_IF_NOT_AVAILABLE;
+        [기존 결과를 bounded 진단/손실 관측에 보존하고 old 미수용 재검토를 종료];
+        [전체 원 K 사본과 high-water를 함께 보호; State/Fault NOT_CALLED, raw 없음];
+    }
     DomainIf_VssStateReport_t state;
     FaultInfo_t fault;
-    // 전체 원 DTO/meta를 보존한 상태로, 확인된 투영만 사용하여 두 객체를 구성한다.
-    DomainIf_Status_t stateRc = DomainIf_RxVssState(&state);
-    M09의 확보한 기존 관측에 원 stateRc, 입력의 BOOT/TX와 의미 식별자,
-        호출 대상 DomainIf_RxVssState, 실제로 확인한 Core/선택 Observer 반영 단계를 보존한다;
-    if (Core와 Observer 중 어느 단계까지 반영했는지 미확인이면)
-        같은 입력의 state 재호출을 HOLD로 남긴다;
-    if (stateRc != DOMAIN_IF_OK) return stateRc;
-    DomainIf_Status_t faultRc = DomainIf_RxVssFault(&fault);
-    M09의 확보한 기존 관측에 원 faultRc, 같은 입력 식별자,
-        호출 대상 DomainIf_RxVssFault, 실제로 확인한 Core/선택 Observer 반영 단계를 보존한다;
-    if (반영 단계가 미확인이면) 같은 입력의 fault 재호출을 HOLD로 남긴다;
-    if (faultRc != DOMAIN_IF_OK) {
-        // state 수신의 성공 사실을 보존한다. 두 입력 전체가 성공했다고 기록하지 않는다.
-        // fault 미접수와 재호출 계약이 확인되어야 이후 그 경계만 다시 평가한다.
-        return faultRc;
-    }
-    // 로컬 두 호출의 성공만 기록한다. 실제 Manager commit은 별도 Owner 근거다.
-    return DOMAIN_IF_OK;
+    [보호된 원 K에서 설치 profile의 승인된 State와 현재 대표 Fault를 준비];
+
+    if (State 단계 == ACCEPTED_CONFIRMED) {
+        /* State 재호출 없음; 실제 수용·원 raw·commit 근거 보존. */
+    } else if (State 단계 == CALLING || State 단계 == UNKNOWN_FAILED || old State 쓰기 미확인) {
+        goto aggregate;
+    } else if (State 단계 == NOT_CALLED || State 단계 == EXPLICIT_NOT_ACCEPTED) {
+        if (EXPLICIT_NOT_ACCEPTED인데 무부작용 미접수 실증이 없으면) goto aggregate;
+        if (!newKey && (owner 부분 후속·준비 변화·DOMAIN 무부작용 보장 중 하나 없음 ||
+                        State의 최대1회 재검토 기회를 이미 소모)) goto aggregate;
+        if (State 자체 준비 또는 기존 raw 보존·이번 결과/sink 공간이 없으면)
+            goto aggregate; // 기존 raw 보존. Fault 준비 여부로 State를 전역 차단하지 않는다.
+        if (!newKey) [State 재검토 기회를 실제 호출 전에 소모];
+        [기존 raw를 보호하고 State 단계 CALLING으로 표시];
+        DomainIf_Status_t stateRc = DomainIf_RxVssState(&state);
+        [실제 stateRc/raw 존재와 Owner 근거로 State 수용·명시 미접수·불명을 각각 기록];
+    } else return DOMAIN_IF_NOT_AVAILABLE;
+    if (State 단계 != ACCEPTED_CONFIRMED || State raw 없음 || State raw != DOMAIN_IF_OK)
+        goto aggregate; // State가 미호출/실패/불명일 때 Fault를 선행하지 않는다.
+
+    if (Fault 단계 == ACCEPTED_CONFIRMED) {
+        /* Fault 재호출 없음; State 수용도 그대로 보존. */
+    } else if (Fault 단계 == CALLING || Fault 단계 == UNKNOWN_FAILED || old Fault 쓰기 미확인) {
+        goto aggregate;
+    } else if (Fault 단계 == NOT_CALLED || Fault 단계 == EXPLICIT_NOT_ACCEPTED) {
+        if (EXPLICIT_NOT_ACCEPTED인데 무부작용 미접수 실증이 없으면) goto aggregate;
+        if (!newKey && (owner 부분 후속·준비 변화·DOMAIN 무부작용 보장 중 하나 없음 ||
+                        Fault의 최대1회 재검토 기회를 이미 소모)) goto aggregate;
+        if (Fault 자체 준비 또는 기존 raw 보존·이번 결과/sink 공간이 없으면)
+            goto aggregate; // Fault 미호출, 기존 State/Fault raw와 수용 결과 유지.
+        if (!newKey) [Fault 재검토 기회를 실제 호출 전에 소모];
+        [기존 raw를 보호하고 Fault 단계 CALLING으로 표시];
+        DomainIf_Status_t faultRc = DomainIf_RxVssFault(&fault);
+        [실제 faultRc/raw 존재와 callback/consumer 근거로 Fault 단계를 각각 기록];
+        // v0.5 observer-only Fault의 Core commit은 해당 없음. 가짜 APPLIED 금지.
+    } else return DOMAIN_IF_NOT_AVAILABLE;
+aggregate:
+    // 미호출 raw 생성 금지. 실패/중복/준비 회복이 재검토 기회를 충전하지 않는다.
+    if (State raw 존재 && State raw != DOMAIN_IF_OK) return State raw;
+    if (State raw 존재 && State raw == DOMAIN_IF_OK && Fault raw 존재) return Fault raw;
+    return DOMAIN_IF_NOT_AVAILABLE; // aggregate 보류이며 호출하지 않은 C2의 raw 반환이 아니다.
 }
 ```
 
-C2 반환은 원 값을 보존한다. QUEUE_FULL은 로컬 공간 부족, NOT_INITIALIZED/NOT_AVAILABLE은 준비 부족, INVALID_ARGUMENT/REJECTED/UNSUPPORTED는 각각 형식·의미 거부·미지원이다. OK는 해당 로컬 인계일 뿐 Manager 상태 반영·기능 성공을 증명하지 않는다. 부분 성공 뒤 이미 성공한 입력을 다시 적용하지 않는다. 원자성·재시도 근거가 없으면 위 사전 HOLD를 해제하지 않는다.
+<a id="a2-domain-contract"></a>
+## A2 생산·설치 profile·독립 수용
+
+HEALTH가 같은 원 평가의 서비스/current/history와 시각·generation·sequence를 완전하게 보호하고 기존 INPUT 한 곳에서 11필드로 변환한다. 불완전 Snapshot은 REEVALUATE이며 READY/정상품질/mask0을 합성하지 않는다. INPUT은 정책을 재판정하지 않고 명시 대응·범위·원 시각을 검증한다. 실제 새 완료 평가만 `update_sequence`를 증가시키고 tick/재인계는 번호·기산점을 바꾸지 않는다. `last_fault_quality=3`은 code/occurrence/historyAGE 모두0; quality0은 code1..5와 원 occurrence1..UINT32_MAX를 가진다. `source_age_ms`는 원 평가, 이력 AGE는 최초 발생 기준으로 독립 누적하며 부재 이력0은 증가시키지 않는다.
+
+| 대상 | 명시 투영·손실 방지 |
+|---|---|
+| State service | state0..3/availability0..2/flag0..1을 이름별 대응. meta는 원 update/누적 source AGE이며 완전 producer·동일 입력·freshness 근거 없이 OK 합성 금지 |
+| State current/history | mask/code/occurrence/이력 AGE와 승인된 원 generation을 보존. history quality0/3을 전체 faultQuality와 동치로 쓰지 않음;65535는 포화 하한 |
+| FaultInfo | 완전 current mask의 가장 작은 정의 code1..5를 현재 대표로 선택; category FUNCTION/state ACTIVE/quality OK. 공집합이면 code0/state INACTIVE. 위험 우선순위가 아니며 lastFaultCode를 현재 고장으로 대입하지 않음 |
+
+FaultInfo에 없는 전체 mask/occurrence/AGE/generation은 보호한 원 State/M09에 남긴다. 같은 kind 여러 instance의 원 기록은 HEALTH 소유다. 반복 현재 요약을 새 고장 발생으로 소비하지 않는다.
+
+문서의 기본 대상은 확장 C2 StateReport다. 참고 v0.5는 StateReport가 service/lastFaultCode/faultQuality 3필드이고 RxVssState는 service만 VSM에 전달한다. RxVssFault는 onVssFault 부재 시 NOT_AVAILABLE, 등록 시 callback 원 반환이며 선행 Core commit이 없는 observer-only 경계다. 설치 profile/header/source를 E-S05로 확인하기 전 참고 source를 실제 제품 지원으로 간주하지 않는다. 확인된 v0.5 service 한정 수용을 확장 이력/generation 전체 소비 성공으로 기록하지 않는다. 후보 C2 7값과 v0.5 6값(UNSUPPORTED 없음)을 혼용하지 않는다.
+
+같은 K 재수신은 두 Rx 추가 호출0이다. 실제 수용된 State는 Fault 미등록/실패/불명으로 롤백하거나 재호출하지 않는다. CALLING/UNKNOWN_FAILED는 자동 재호출0이며 raw REJECTED/QUEUE_FULL/NOT_AVAILABLE만으로 무부작용 미접수를 추정하지 않는다. 미호출/명시 미접수만 기존 owner의 부분 후속·준비 변화·원 freshness/세대·무부작용 증거·미소모 최대1회 기회가 모두 있을 때 해당 경계를 재검토한다. 현재 처리/부분 미결 원 K는 기존 M09 1건과 bounded 진단에 보존하고 후속 보고 수용 전에 old 결과를 이전한다. 회수된 K는 high-water/fence로 다시 등록하지 않는다. old 비동기 작업의 후속 쓰기 차단이 미확인인 해당 VSS 소비만 HOLD하며 늦은 old 결과를 새 State/결과에 귀속하지 않는다.
+
+State의 raw·수용·실제 VSM commit과 Fault의 raw·callback·consumer 결과는 독립이다. 미호출 Fault raw는 없음이고 aggregate NOT_AVAILABLE과 구별한다. v0.5 Fault를 [공통 Core→Observer classifier](../DOMAIN_RX_ADAPTER.md#outcome)에 넣기 위해 Core APPLIED를 만들지 않는다. Getter/TxPort의 같은 accepted 원 DTO/meta association은 값 일치로 추정하지 않으며 E-S05 미입증 투영만 제한한다.
+
+E-S01 원기록 완전성/게시·용량, E-S02 reportGeneration↔CAN BOOT/수명, E-S03 clock/원 AGE·TTL/포화, E-S04 전체 복사와 terminal sink→INPUT/FLOW, E-S05 설치 C2/부분 결과/old K fence/Getter 연결은 실제 확인 대기다. Host·Board·실제 Binding은 NOT_RUN/BINDING_NOT_VERIFIED다.
 
 ## 원본·시간·보관·후발 실패
 
-VSS 생산 세대+update_sequence는 서비스 평가, last_fault_occurrence는 최근 고장 이력이다. source_age_ms와 last_fault_age_ms는 독립이다. 최근 고장 AGE65535는 오래된 이력의 포화 하한이다.
+VSS 생산 세대+update_sequence는 서비스 평가, last_fault_occurrence는 최근 고장 이력이다. source_age_ms와 last_fault_age_ms는 독립이다. 이력 있음0의 AGE65535는 오래된 이력의 포화 하한이고, 확인된 부재3의 code/occurrence/이력 AGE0은 누적하지 않는다. 새 reportGeneration은 VSS 실제 기동이며 DOMAIN Boot로 대체하거나 CAN 단독 재시작으로 old 보고를 재라벨하지 않는다(E-S02).
 
 통신 주기/수신 중단: 250 / 750ms 후보. VSS_EVENT의 무발생과 링크 상실을 구별한다. 이 수치는 채택·실측되지 않은 후보이며 `>`/`>=` 경계나 원 TTL을 임의 추가하지 않는다. 형식 오류·중복을 정상 heartbeat나 semantic fresh로 쓰지 않는다.
 
@@ -206,7 +260,7 @@ VSS 생산 세대+update_sequence는 서비스 평가, last_fault_occurrence는 
 | 의미 반례 | CAN link lost를 FAULT_MASK의 AUDIO_OUTPUT_FAILURE로 만들거나 기록품질2를0/3으로 축약하지 않는다. |
 | ID/FDF/BRS/DLC/길이/padding 또는 raw 예약값 오류 | 임시 변환 전체 폐기, typed 호출·정상 수신 시각·순번 갱신 없음 |
 | 같은 원 identity 재송신·AGE 감소 | 같은 소비시점으로 환산해 원본을 젊게 만들지 않음. 순서/clock/wrap 미확인이면 HOLD |
-| Queue full·C2 미준비·소비 거부 | 새 항목 전체 인계 실패. 기존 상태·Driver 참조 버퍼 불변, 반환 원인 보존 |
+| Queue full·C2 미준비·소비 거부 | 호출 전 미접수는 해당 경계만 제한하고 기존 상태·Driver 참조 버퍼 불변. State 수용 뒤 Fault 실패/불명은 원 부분 결과를 보존하며 State 재호출0; 실제 각 raw와 aggregate를 구분 |
 | accepted 뒤 Driver 실패·옛 callback·bus-off | 실제 관측을 원 제출과 연결하고 참조 해제 전 재사용 금지. 자동 재송신·기능 완료 생성 없음 |
 
 근거: B07 can/VSS_STATUS.md 전문, S4A의 위 API/Data 절, 최신 S4C TIME_IDENTITY_CONTRACT/FRESHNESS_AGE_TIMEOUT/RESOURCE_QUEUE_DRIVER_FLOW/FAILURE_RECOVERY_CONTRACT. 출처 채택·팀 변경은 별도이며 본문에서 기존 공개 선언이나 Wire를 변경하지 않는다.

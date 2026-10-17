@@ -2,9 +2,9 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**이 API 목록은 v0.3/v0.6 후보 계약이다.** 담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며 실제 빌드 헤더·포트·ABI는 확인 대기다. v0.5 참고 헤더의 41개 공개 함수·TxPort15·Observer12와 이 문서의 72개·TxPort26·Observer11은 서로 다르므로 [C2 호환 조건](12_DOMAIN_TYPES.md#production-c2-compatibility)을 먼저 적용한다. 여기의 후보 원형을 실제 Production 프로젝트에 그대로 include하거나 혼용하도록 지시하지 않는다.
+**이 API 목록은 v0.3/v0.6 Network 후보 계약이다.** DOMAIN 담당자는 Production v0.5에 공개 API 72개·Query 18개·TxPort 26개·Observer 11개가 있다고 보고했다. 저장소의 과거 v0.5 참고 헤더(41개·TxPort15·Observer12)와는 다른 시점의 선언일 수 있다. 실제 Production에 포함된 헤더 경로·Commit·SHA를 대조하기 전에는 후보 원형을 그대로 include하거나 구형 포트와 혼용하지 않는다. [C2 호환 조건](12_DOMAIN_TYPES.md#production-c2-compatibility).
 
-**DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 Firmware 구현·연결·컴파일 완료를 의미하지 않는다.
+**DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 펌웨어 구현·연결·컴파일 완료를 의미하지 않는다.
 
 [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [내부 Adapter](25_PRIVATE_ROUTING.md) · [메시지 48](../../05_MESSAGE_INDEX.md)
 
@@ -14,7 +14,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 | 읽는 순서 | 정확한 API·Data | 호출과 결과의 경계 |
 |---|---|---|
 | 1 · 명령 결정 | [TxBcmDoorCommand 원형·인자](#api-domainif_txbcmdoorcommand), [전체 Command](12_DOMAIN_TYPES.md#type-domainif-bcmdoorcommand-t), [원 CommandContext](12_DOMAIN_TYPES.md#type-domainif-commandcontext-t) | Domain 기능 owner가 원 commandId를 한 번 생성하고 목표를 정한다. |
-| 2 · Network 제출 | [TxPort 등록](#api-domainif_settxport), [txBcmDoorCommand callback](25_PRIVATE_ROUTING.md#tx-port), [반환·복사 수명](#ports) | Network Adapter가 안정된 복사/encode 후 로컬 OK를 반환한다. 실제 BCM DONE은 별도다. |
+| 2 · Network 제출 | [TxPort 등록](#api-domainif_settxport), [txBcmDoorCommand callback](25_PRIVATE_ROUTING.md#tx-port), [반환·복사 수명](#ports) | Network Adapter가 자료를 안전하게 복사·인코딩한 뒤 로컬 접수 성공을 반환한다. 실제 BCM DONE은 별도다. |
 | 3 · 실제 결과 수신 | [RxBcmCommandResult 원형·인자](#api-domainif_rxbcmcommandresult), [전체 결과·도어 근거](12_DOMAIN_TYPES.md#type-domainif-bcmcommandresult-t), [BCM_RESULT Wire·확인 제한](../../03_COMMUNICATION/10_CAN_FD.md#message-bcm-result) | BCM owner의 실행 결과를 원 commandId/kind에 연결한다. confirmation은 CAN에 없으며 확인 근거 연결은 PROPOSED/BINDING_OPEN이다. |
 
 ## 호출 경계
@@ -390,7 +390,7 @@ DomainIf_Status_t DomainIf_RxCisOccupant( const CisOccupantState_t *state);
 <a id="api-domainif_rxciscabinenvironment"></a>
 ## `DomainIf_RxCisCabinEnvironment()`
 
-온습도 각각의 원 사용 기한은 2500ms다. Network는 원 CIS BOOT·센서별 순번·AGE를 보존하고 기동 변경/수신 중단의 무효 품질을 이 기존 API로 전달한다. VSM/독립 Meta/Getter의 실제 무효화는 연동 검증 전이다. 현재 C2를 우선 유지하되 필요한 동작을 표현·연결할 수 없다는 근거가 있을 때만 최소 계약 변경을 검토한다. [노드 간 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#environment)
+온습도 각각의 원 사용 기한은 2500ms다. Network는 원 CIS BOOT·센서별 순번·AGE를 보존한다. 새 BOOT의 무효화는 DOMAIN 소유 단일 동기 private 경계로 처리하고, 전환용 NO_DATA를 이 공개 Rx에 중복 전달하지 않는다. 같은 BOOT의 센서 NO_DATA·만료·수신 중단은 기존 Rx·품질 정책을 유지한다. VSM/독립 Meta/Getter의 실제 연동 검증은 완료 전이다. 현재 C2를 우선 유지하되 필요한 동작을 표현·연결할 수 없다는 근거가 있을 때만 최소 계약 변경을 검토한다. [노드 간 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#environment)
 
 ```c
 DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState_t *state);
@@ -409,13 +409,9 @@ DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState
 **메시지:** `CIS_ENVIRONMENT` — [송수신 색인](../../05_MESSAGE_INDEX.md). 원 wire 객체를 C2/Gateway App 객체로 raw cast 하지 않고 명시 decode/projection 후 호출한다.
 
 <a id="delta-environment-completion"></a>
-**PROPOSED / CROSS_OWNER_ACCEPTANCE_PENDING — 환경 BOOT private 완료 경계:** 유효한 새 CIS BOOT를 Network가 판별하고 구 BOOT 미실행 콜백·후속 비동기 쓰기를 격리한 뒤 DOMAIN 소유 private 경계에 전환 사실을 알리는 후보를 적용한다. private 통지가 무효화 저장까지 담당할지 기존 Rx NO_DATA와 병행할지는 미정이며 이중 commit은 금지한다. VSM 구 정상값·독립 Meta 및 필요한 순서 비교 문맥의 무효화 완료 확인 뒤 새 BOOT의 원 Sequence·생성 시각을 유지한 값을 전달한다. 대기 AGE를 누적하고 온습도2500ms 만료를 연장하지 않는다. 이 Rx는 값 수신 경계이며 일반 NO_DATA는 BOOT 통지가 아니다.
+**환경 BOOT 변경 시 C2 Rx 사용:** 평상시에는 기존 `DomainIf_RxCisCabinEnvironment()`로 원 환경값·품질·AGE를 전달한다. CIS BOOT가 변경되면 Network는 이전 BOOT에 속한 입력의 전달을 차단하며, DOMAIN의 동기 Private Transition이 이전 저장값·순번 비교 문맥·Query의 이전 상태를 무효화했음이 확인되면 새 BOOT 입력을 재개한다. 전환용 NO_DATA를 이 공개 Rx로 중복 제출하지 않는다.
 
-DOMAIN owner 문맥의 실제 저장 완료를 보장하는 동기 반환 또는 원 BOOT 전환 사건과 연결되는 비동기 완료 식별/Callback/상태 확인 중 선택은 미확정이다. private 함수명·인자·Token 타입은 선언하지 않는다. lock/queue/observer 및 구 후속 쓰기 순서가 입증되기 전에는 호출 반환을 완료로 간주하지 않는다. 완료 실패·timeout·재기동·늦은 Callback에서는 새 정상 입력을 보류하고 과거 OK가 이미 지워졌다고 주장하지 않는다.
-
-DOMAIN이 확인해야 할 것은 실제 Rx→Manager/VSM→Getter의 commit 위치, 구 후속 쓰기 배제 및 완료를 판단할 기존 관측 근거다. `DOMAIN_IF_OK`에 새 공개 완료 의미를 임의 부여하지 않으며 TX의 로컬 접수 의미를 환경 저장 완료로 가져오지 않는다. Core commit 후 optional Observer 실패는 직접 저장 실패가 아니고 이미 끝난 commit의 재실행 근거도 아니다. 무효화 실패·완료 미확인에서는 새 정상 입력을 차단하되 과거 OK가 이미 지워졌다고 판정하지 않는다.
-
-환경 C2에는 CIS BOOT/sourceGeneration이 없다. Network가 검증한 A900→B0을 전역 순번으로 비교·거절하거나 901로 재발급하지 않고 실제 저장 순서를 유지하는 연결이 실제 DOMAIN 저장 경계에서 성립해야 한다. 일반 NO_DATA는 재부팅/Sequence 리셋 명령이 아니다. 기존 연결로 완료·순서를 증명할 수 없거나 다른 쓰기 경로·DOMAIN 자체 세대 판별이 필요하면 해당 연결을 보류하고 최소 Environment Generation/완료 경계 계약을 계약 변경 검토한다. 현재 헤더·API에는 추가 필드가 없다. [전체 저장 순서와 BOOT 한계](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
+Private API의 설치 선언과 실제 Rx→VSM→Query 연결은 확인 대상이다. 첫 전환 Core Host 시험 완료 보고와 연속 BOOT 전환 자동 복귀 미구현 상태를 구분한다. 완료를 확인할 수 없으면 해당 환경값 인계는 제한하며 기존 공개 API와 CAN Wire는 변경하지 않는다. [Private 경계](25_PRIVATE_ROUTING.md#delta-environment-routing) · [환경 BOOT 전환 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 <a id="api-domainif_rxcisrear"></a>
 ## `DomainIf_RxCisRear()`
@@ -538,7 +534,7 @@ DomainIf_Status_t DomainIf_RxVssState( const DomainIf_VssStateReport_t *state);
 
 **방향:** Network→C2 · **지위:** DECLARED_SOURCE / BINDING_OPEN.
 
-**용도·호출자·시점:** DOMAIN CAN Codec가 VSS_STATUS를 C2 서비스상태/원 fault 묶음으로 명시투영해 인계한다. R4/R6 원 Snapshot→DTO 변환위치와 별도 단계다.
+**용도·호출자·시점:** DOMAIN CAN Codec가 VSS_STATUS를 C2 서비스상태/원 fault 묶음으로 명시투영해 인계한다. A2 producer의 완전 Snapshot→NetVssStatus 변환은 기존 VSS INPUT 한 곳이며 DOMAIN 수신 투영과 별도다. 같은 K의 State 수용은 Fault 미호출/실패로 취소·재호출하지 않는다. 확장 C2와 참고 v0.5 service-only의 실제 설치 profile·같은 입력/Getter 연결은 E-S05 확인 대기다([A2 수신 정본](../../../sw_detail/functions/can/VSS_STATUS.md#a2-domain-contract)).
 
 | 인자 | 정확한 타입 | IN/OUT | 사용·수명 |
 |---|---|---|---|
@@ -557,13 +553,13 @@ DomainIf_Status_t DomainIf_RxVssFault( const FaultInfo_t *fault);
 
 **방향:** Network→C2 · **지위:** DECLARED_SOURCE / BINDING_OPEN.
 
-**용도·호출자·시점:** VSS_STATUS의 FaultInfo 투영을 기존 Domain 고장 owner에 인계한다. 음향서비스상태와 최근 fault occurrence/AGE를 소실시키지 않는다.
+**용도·호출자·시점:** VSS_STATUS 완전 current mask의 가장 작은 정의 code1..5를 현재 대표 FaultInfo로 투영한다. 최근 fault occurrence/AGE/generation과 전체 mask는 원 State/M09에 보존하며 이력을 현재 고장으로 대입하지 않는다. 공집합은 code0/state INACTIVE다. State 수용 뒤 Fault를 독립 기록하고 CALLING/UNKNOWN_FAILED에는 자동 재호출하지 않는다.
 
 | 인자 | 정확한 타입 | IN/OUT | 사용·수명 |
 |---|---|---|---|
 | `fault` | [`const FaultInfo_t *`](11_VEHICLE_TYPES.md#type-faultinfo-t) | IN / borrowed | 호출 동안 유효한 `FaultInfo_t` 객체. 아래 용도와 연결된 원 owner의 VSS_STATUS 의미를 제공한다. [전체 Data](10_DATA.md)의 필드별 품질/식별/AGE를 적용한다. |
 
-**반환·호출:** 로컬 C2 입력 처리 결과. Network 수신 및 Core commit/observer 계약은 [공통 호출 계약](#ports)을 따른다.
+**반환·호출:** 원 로컬 반환·실제 수용·후발 결과를 구분한다. 참고 v0.5 RxVssFault는 observer-only이므로 Core commit을 합성하지 않고 callback 원 결과를 보존한다. 설치 profile과 E-S05 실제 Binding은 대기이며 [A2 수신 정본](../../../sw_detail/functions/can/VSS_STATUS.md#a2-domain-contract)의 같은 K/최대1회 조건부 후속을 따른다.
 
 **메시지:** `VSS_STATUS` — [송수신 색인](../../05_MESSAGE_INDEX.md). 원 wire 객체를 C2/Gateway App 객체로 raw cast 하지 않고 명시 decode/projection 후 호출한다.
 

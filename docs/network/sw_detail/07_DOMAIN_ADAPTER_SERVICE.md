@@ -10,12 +10,12 @@ DOMAIN 경계와 Network 책임을 연결한다. 실제 제품 바인딩·컴파
 4. [접수·Queue·수명](functions/NETWORK_SERVICE_LIFETIME.md), [후발 실패·운영 counter·Health](functions/NETWORK_FAILURE_HEALTH.md)를 읽는다.
 5. [DOMAIN 명령→Network](flows/DOMAIN_COMMAND_TO_NETWORK.md)와 [Network 수신→DOMAIN](flows/NETWORK_TO_DOMAIN.md)의 전체 경로를 따라 함수별 반례를 검토한다.
 
-| 서로 다른 분모 | 구성·해석 |
+| 구분할 집계 기준 | 구성·해석 |
 |---|---|
 | C2 공개 함수72 | 관리6 + Rx22 + Tx26 + Getter18. 공개 본체 Owner는 DOMAIN이며 Network는 호출/Port 구현 경계를 연결 |
 | DomainIf_TxPort_t26 | Tx26에 대응하는 Network callback. 공개 함수72에 더해 새로운 공개 함수98개로 계산하지 않음 |
 | DomainIf_RxObserver_t11 | DOMAIN Core 뒤 기능별 optional 통지. Network가 11개 본체의 소유권을 인수하지 않음 |
-| Getter18 / 모바일 snapshot schema17 | RequestResult 단건·RecentRequestResults 목록 Getter2가 같은 M_RESULT schema를 공유. Query 정본의 실제 인자·출력·기한·최종TX 집계 보존 |
+| Getter 18개 / 모바일 스냅샷 메시지 형식 17종 | RequestResult 단건·RecentRequestResults 목록 Getter2가 같은 M_RESULT schema를 공유. Query 정본의 실제 인자·출력·기한·최종TX 집계 보존 |
 | Wire48 / Rx51 | CAN22/Rx25, UART-M23/Rx23, UART-C3/Rx3의 기존 전체 범위. Rx22 공개 함수와 일대일이 아님 |
 | 요구103 / Owner 미결35 / 시나리오18 | 기존 대장과 ID를 보존. 문서 작성으로 미결·HOLD를 닫지 않음 |
 

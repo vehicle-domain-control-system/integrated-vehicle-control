@@ -7,7 +7,7 @@
 <a id="common"></a>
 ## 공통 호출 계약
 
-CAN은 기존 M05/F14–F15 codec과 원본 admission, UART-M은 M06/F16–F18·Router를 거친 동일 수신 사건을 M03/F08에서 인계한다. Wire Rx가 아닌 NetworkLocalFailure는 M03/F09의 별도 후발 실패 역할이다. DOMAIN의 실제 Task/Owner 직렬 문맥에서만 C2를 호출하며 ISR에서 직접 호출하지 않는다. Driver callback은 안정된 값/길이/원 수신시각을 넘기는 범위에 머문다. 실제 Task/Lock/Queue/초기화·재진입 바인딩은 D-05/G06 OPEN이다.
+CAN은 기존 M05/F14–F15 codec과 원본 admission, UART-M은 M06/F16–F18·Router를 거친 동일 수신 사건을 M03/F08에서 인계한다. Wire Rx가 아닌 NetworkLocalFailure는 M03/F09의 별도 후발 실패 역할이다. DOMAIN의 ISR 밖 단일 담당 실행 문맥에서만 C2를 호출하며 ISR에서 직접 호출하지 않는다. Driver callback은 안정된 값/길이/원 수신시각을 넘기는 범위에 머문다. 실제 Task/Lock/Queue/초기화·재진입 바인딩은 D-05/G06 OPEN이다.
 
 각 `const T *`는 NULL 불가 IN, 호출 동안 안정된 borrowed 객체다. `deviceContextId`는 현재 검증된 단말 값이다. typed 값과 raw/meta가 같은 수신 사건인지 확인한 뒤 호출하고, 반환 후 사용하려는 소비자가 반환 전에 복사한다. 실패 OUT은 없으며 입력 객체를 수정하지 않는다. C2 enum은 이름별 대응으로 변환하고 raw 숫자 cast, `sizeof` 기반 Wire 복사, 값 없음의 정상0 대체를 금지한다. sourceGeneration0·BOOT_ID 대응은 회신 대기다. 온도·습도 원 TTL2500ms(기한 도달 비사용)는 합의 기준이며 조도 TTL과 실제 Binding은 별개다.
 
@@ -175,11 +175,11 @@ DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState
 
 **소유·호출:** DOMAIN 공개 본체, Network M03/F08 호출자. CIS_ENVIRONMENT → [`CisCabinEnvironmentState_t` 변환 정본](can/CIS_ENVIRONMENT.md) → 이 C2 경계 → DOMAIN Owner. [정확한 API](../../interface/02_NODES/DOMAIN/20_API.md#api-domainif_rxciscabinenvironment)의 common 계약과 위 borrowed 수명을 따른다.
 
-**Data·변환:** 온도 i16 centi-°C(-32768 sentinel), 습도 u16 centi-%RH(65535 sentinel), 조도 u32 lx(0xFFFFFFFF sentinel)를 유지한다. 세 센서의 update/AGE/validity/reason은 독립이며 공통 정상 meta로 덮지 않는다. 정상 CAN 수신과 [M09 로컬 무효화 사건](can/CIS_ENVIRONMENT.md#local-invalidation)은 서로 다른 출처로 같은 기존 C2를 호출한다. 후자는 원 frame/meta를 위조하지 않고 현재 NO_DATA/STALE을 전달한다.
+**Data·변환:** 온도 i16 centi-°C(-32768 sentinel), 습도 u16 centi-%RH(65535 sentinel), 조도 u32 lx(0xFFFFFFFF sentinel)를 유지한다. 세 센서의 update/AGE/validity/reason은 독립이며 공통 정상 meta로 덮지 않는다. 정상 CAN 관측과 [M09 로컬 무효화 사건](can/CIS_ENVIRONMENT.md#local-invalidation) 중 일반 ORIGIN_EXPIRED/RX_STOPPED는 서로 다른 출처로 같은 기존 C2를 호출한다. 후자는 원 frame/meta를 위조하지 않고 채택된 현재 NO_DATA/STALE을 전달한다. BOOT_CHANGED는 DOMAIN 소유 단일 동기 private 전환 목표로 분리하며 BOOT용 Rx NO_DATA를 중복 호출하지 않는다. 이 공개 Rx는 확인된 전환 완료 뒤 새 원 관측의 값 수신 경계로 유지한다.
 
 **반환 이후:** 원 C2 7값은 [공통 결과](#common)로 보존한다. 전용 Observer 없음. 실제 commit과 전달 결과를 분리하며 미확인 단계를 완료로 기록하지 않는다.
 
-**미결·반례:** IF-O09·IF-O24; 온습도 각2500ms는 합의 완료, 조도 TTL은 별도 미합의다. 환경 generation 필드 없이 구 Boot 미실행 차단→실행·후속 비동기 쓰기 종료/향후 commit 불가 확인→기존 Rx NO_DATA→VSM·독립 Meta 실제 commit→B 원 낮은seq 인계의 [r1 조건부 순서](can/CIS_ENVIRONMENT.md#environment-storage-order)는 존재한다. 실제 DOMAIN 저장 경계·완료 관측·낮은seq 수용 근거가 없어 [BG-R05-BOOT](can/CIS_ENVIRONMENT.md#boot-binding-gap)를 유지한다. Queue/반환 OK만으로 B를 열거나 구 GOOD 제거를 주장하지 않는다. 실제 Core commit 후 Observer만 실패하면 같은 commit을 재실행하지 않는다. [역방향 추적](../flows/NETWORK_TO_DOMAIN.md)에서 해당 원 수신으로 돌아간다.
+**미결·반례:** IF-O09·IF-O24; 온습도 각2500ms는 합의 완료, 조도 TTL은 별도 미합의다. 환경 generation 필드를 추가하지 않는다. [r1 조건부 순서](can/CIS_ENVIRONMENT.md#environment-storage-order)는 Network 자기 환경 대기·콜백/미시작 Query 차단 → 단일 동기 private 목표 → DOMAIN 구 작업 후속 commit 봉쇄·VSM/Meta·순서 문맥/구 Query 무효화 → 현재 요청/수용 BOOT/적용 Epoch/명확한 완료 대조 → B 원 낮은seq의 공개 Rx다. 구 작업 객체가 남아도 확실한 후속 commit 차단과 나머지 완료 조건이 성립하면 가능하며 Network가 DOMAIN 내부 Queue를 지우지 않는다. 담당자 부분 Core/Host 완료 보고와 별개로 실제 private 선언·연속 Epoch 수용·Rx/Query Binding이 미확인이므로 [BG-R05-BOOT](can/CIS_ENVIRONMENT.md#boot-binding-gap)를 유지한다. Queue/일반 C2 OK로 B를 열지 않으며 실패/불명에서 구 GOOD 제거를 주장하지 않는다. 명확한 Core 완료 뒤 Observer 오류로 재실행하지 않는다. [역방향 추적](../flows/NETWORK_TO_DOMAIN.md)에서 해당 원 수신으로 돌아간다.
 
 <a id="api-DomainIf_RxCisRear"></a>
 ### DomainIf_RxCisRear
@@ -280,11 +280,11 @@ DomainIf_Status_t DomainIf_RxVssState( const DomainIf_VssStateReport_t *state);
 
 **소유·호출:** DOMAIN 공개 본체, Network M03/F08 호출자. VSS_STATUS → [`DomainIf_VssStateReport_t` 변환 정본](can/VSS_STATUS.md) → 이 C2 경계 → DOMAIN Owner. [정확한 API](../../interface/02_NODES/DOMAIN/20_API.md#api-domainif_rxvssstate)의 common 계약과 위 borrowed 수명을 따른다.
 
-**Data·변환:** service quality와 VSS 상태·fault 의미를 유지한다. raw R4/R6과 C2 converter의 소유/품질 매핑이 미확인인 부분은 진행하지 않는다. VSS_WARNING_STATE의 CF02 충돌을 VSS_STATUS 전체 해제로 오해하지 않는다.
+**Data·변환:** A2의 기존 INPUT 단일 완전 보고 producer 뒤 DOMAIN Network가 service/current/history를 명시 투영한다. [per-K 정본](can/VSS_STATUS.md#a2-domain-contract)의 State/Fault 독립 결과를 따른다. 실제 설치 profile·원 품질·세대·Getter association E-S05가 미확인인 해당 투영은 제한한다. WARNING60 형식 선택은 Status 실제 Binding을 해제하지 않는다.
 
 **반환 이후:** 원 C2 7값은 [공통 결과](#common)로 보존한다. 전용 Observer 없음. 실제 commit과 전달 결과를 분리하며 미확인 단계를 완료로 기록하지 않는다.
 
-**미결·반례:** IF-O06·D-05·IF-O24; state/fault 두 호출의 부분 반영/재시도 OPEN. [역방향 추적](../flows/NETWORK_TO_DOMAIN.md)에서 해당 원 수신으로 돌아간다.
+**미결·반례:** IF-O06·D-05·IF-O24/E-S05의 실제 설치·수용·old K fence·후발 관측 대기. 같은 K 반복은 Rx 호출0이며 State 수용 뒤 Fault 실패로 State를 재실행하지 않는다. [역방향 추적](../flows/NETWORK_TO_DOMAIN.md#vss-a2-receive).
 
 <a id="api-DomainIf_RxVssFault"></a>
 ### DomainIf_RxVssFault
@@ -295,11 +295,11 @@ DomainIf_Status_t DomainIf_RxVssFault( const FaultInfo_t *fault);
 
 **소유·호출:** DOMAIN 공개 본체, Network M03/F08 호출자. VSS_STATUS의 고장 근거 → [`FaultInfo_t` 변환 정본](can/VSS_STATUS.md) → 이 C2 경계 → DOMAIN Owner. [정확한 API](../../interface/02_NODES/DOMAIN/20_API.md#api-domainif_rxvssfault)의 common 계약과 위 borrowed 수명을 따른다.
 
-**Data·변환:** 같은 VSS_STATUS에서 확인된 고장만 분리한다. state가 이미 반영된 뒤 fault 인계가 실패했을 때 state를 다시 호출하지 않는다. 새 VSS_FAULT Wire를 추가하지 않는다.
+**Data·변환:** 같은 완전 VSS_STATUS current mask의 가장 작은 정의 code1..5를 현재 대표로 선택한다. 공집합은 code0/state INACTIVE이며 lastFaultCode는 현재 고장으로 쓰지 않는다. 원 전체 mask/occurrence/AGE/generation은 State/M09에 남긴다. 새 VSS_FAULT Wire는 없다.
 
-**반환 이후:** 원 C2 7값은 [공통 결과](#common)로 보존한다. onVssFault. 실제 commit과 전달 결과를 분리하며 미확인 단계를 완료로 기록하지 않는다.
+**반환 이후:** 실제 설치 profile의 원 raw·callback/consumer 결과를 보존한다. 참고 v0.5 RxVssFault는 observer-only이므로 선행 Core commit은 해당 없음이다. 이를 [Core→Observer classifier](#outcome)에 넣기 위해 APPLIED를 합성하지 않고 기존 M09에 직접 원 결과를 남긴다. 후보7값과 v0.5 6값을 혼용하지 않는다. 이미 수용한 State는 Fault 실패/불명으로 재호출하지 않는다.
 
-**미결·반례:** IF-O06·D-05·IF-O24; converter 및 원자성 OPEN. [역방향 추적](../flows/NETWORK_TO_DOMAIN.md)에서 해당 원 수신으로 돌아간다.
+**미결·반례:** E-S05 실제 설치·Observer 등록·같은 K 수용·후발 실패 상관·old K fence는 대기다. CALLING/UNKNOWN_FAILED는 자동 재호출0, 미호출/실증된 무부작용 미접수만 [A2 정본](can/VSS_STATUS.md#a2-domain-contract)의 bounded 후속 조건으로 재검토한다.
 
 <a id="api-DomainIf_RxBcmStatus"></a>
 ### DomainIf_RxBcmStatus
@@ -378,7 +378,7 @@ DomainIf_Status_t DomainIf_RxNetworkLocalFailure(const NetworkLocalFailure_t *fa
 | `DomainIf_Status_t (*onWindowCommandResult)( const DomainIf_WindowCommandResult_t *result);` | [DomainIf_RxWindowCommandResult](#api-DomainIf_RxWindowCommandResult) | DOMAIN 기능 Owner의 선택적 관찰. 실제 본체/등록 OPEN; Core 반영 후 실패를 재입력하지 않음. |
 | `DomainIf_Status_t (*onWindowAntiPinch)( const DomainIf_AntiPinchReport_t *report);` | [DomainIf_RxWindowAntiPinch](#api-DomainIf_RxWindowAntiPinch) | DOMAIN 기능 Owner의 선택적 관찰. 실제 본체/등록 OPEN; Core 반영 후 실패를 재입력하지 않음. |
 | `DomainIf_Status_t (*onWindowFault)( const FaultInfo_t *fault);` | [DomainIf_RxWindowFault](#api-DomainIf_RxWindowFault) | DOMAIN 기능 Owner의 선택적 관찰. 실제 본체/등록 OPEN; Core 반영 후 실패를 재입력하지 않음. |
-| `DomainIf_Status_t (*onVssFault)( const FaultInfo_t *fault);` | [DomainIf_RxVssFault](#api-DomainIf_RxVssFault) | DOMAIN 기능 Owner의 선택적 관찰. 실제 본체/등록 OPEN; Core 반영 후 실패를 재입력하지 않음. |
+| `DomainIf_Status_t (*onVssFault)( const FaultInfo_t *fault);` | [DomainIf_RxVssFault](#api-DomainIf_RxVssFault) | 참고 v0.5는 observer-only. 실제 설치/등록 E-S05 대기; 원 callback/consumer 결과 보존, Core APPLIED 합성·불명 결과 자동 재호출 금지. |
 
 NetworkLocalFailure의 필수 Manager sink는 이 11멤버에 없다. `onBcmCommandResult`가 성공해도 물리 도어 확인을 새로 생성하지 않는다. `onWarningAck`가 성공해도 위험 CLEAR가 아니며 `onWindow*` 문서 존재가 WINDOW 활성화 근거가 아니다.
 

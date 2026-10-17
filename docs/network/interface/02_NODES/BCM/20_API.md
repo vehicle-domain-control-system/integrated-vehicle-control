@@ -2,11 +2,11 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**BCM/DOMAIN 확인 대기:** Door·Climate·Interior Light는 각각 원 Command ID·명령 종류·세대에 연결된 새 실제 상태, 품질·Fault 및 원 관측 시각으로 확인 조건을 정해야 한다. 도어 증거를 공조·조명에 일괄 적용하지 않는다. DONE·CAN 수신·Network 접수만으로 CONFIRMED를 만들지 않으며, 현재 Wire로 충분한 근거가 없으면 해당 결과는 UNCONFIRMED로 제한한다. 새 confirmation 필드나 Wire 값은 추가하지 않는다.
+**BCM/DOMAIN 확인 대기:** Door·Climate·Interior Light는 각각 원본 Command ID·명령 종류·기동 세대에 연결되는 새로운 실제 상태, 품질·Fault 및 원 관측 시각으로 확인 조건을 정해야 한다. 도어 증거를 공조·조명에 일괄 적용하지 않는다. DONE·CAN 수신·Network 접수만으로 CONFIRMED를 만들지 않으며, 현재 Wire로 충분한 근거가 없으면 해당 결과는 UNCONFIRMED로 제한한다. 새 confirmation 필드나 Wire 값은 추가하지 않는다.
 
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
-**PROPOSED_DESIGN · BINDING_OPEN.** 아래는 각 노드 안의 로컬 Application/Network 경계다. 제공 DOMAIN C2·ESP32 Gateway 헤더와 달리 해당 노드의 실제 설치/firmware 선언은 확인되지 않았다. 기존 Port가 동일 책임을 충족하면 그 Port에 아래 계약을 매핑하고 공개 wrapper를 중복 설치하지 않는다.
+**PROPOSED_DESIGN · BINDING_OPEN.** 아래는 각 노드 안의 로컬 Application/Network 경계다. 제공 DOMAIN C2·ESP32 Gateway 헤더와 달리 해당 노드의 실제 설치된 펌웨어의 선언은 확인되지 않았다. 기존 Port가 동일 책임을 충족하면 그 Port에 아래 계약을 매핑하고 공개 wrapper를 중복 설치하지 않는다.
 
 ## 송신·수신 함수 빠른 찾기
 
@@ -23,7 +23,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 | [`NetSubmitResult BcmNet_PublishStatus(const NetBcmStatus *message);`](#api-bcmnet_publishstatus) | App→Network · `BCM_STATUS` | BCM 상태·진단 모듈 → BCM Network |
 | [`void BcmNetPriv_OnDomainPermission(const NetDomainPermission *permission, const NetCanRxMeta *meta);`](#api-bcmnetpriv_ondomainpermission) | NETWORK_PRIVATE · `DOMAIN_PERMISSION` | BCM Network 수신 Dispatcher → BCM Network 내부 감시 |
 
-송신은 비차단 로컬 인계이며 [반환/실패·수명 공통 규칙](../../04_COMMON/20_API_USAGE_AND_FAILURE.md)을 적용한다. 수신은 owner 처리 문맥(superloop 또는 task)에서 등록된 소비자에 전달하며 ISR에서 의미 API를 직접 호출하지 않는다. 실제 task/queue/driver/OS/SDK 배치는 확정하지 않는다. **`NET_SUBMIT_OK ≠ CAN/UART 송신 완료 ≠ 상대 ECU ACCEPTED ≠ 차량 DONE`**.
+송신은 비차단 로컬 인계이며 [반환/실패·수명 공통 규칙](../../04_COMMON/20_API_USAGE_AND_FAILURE.md)을 적용한다. 수신은 담당 주체의 처리 문맥(Superloop 또는 태스크)에서 등록된 소비자에 전달하며 ISR에서 의미 API를 직접 호출하지 않는다. 실제 task/queue/driver/OS/SDK 배치는 확정하지 않는다. **`NET_SUBMIT_OK ≠ CAN/UART 송신 완료 ≠ 상대 ECU ACCEPTED ≠ 차량 DONE`**.
 
 <a id="local-call-contract"></a>
 ## 로컬 호출·수명·실패 계약
@@ -36,17 +36,17 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 <a id="local-rx-return"></a>
 ### 수신 전달
 
-**반환·실패:** `void`는 의미 전달 notification이며 ECU ACCEPTED/DONE을 반환하는 API가 아니다. 필수 소비자가 연결·준비된 owner 처리 문맥에서만 호출한다. CRC/length/예약 코드/수용되지 않은 세대/명령 Age 오류는 Network에서 격리하며 실제 기능 Result를 합성하지 않는다. 정상 형식의 INVALID/FAULT 상태 전달은 허용한다. 소비자 연결 실패의 실제 진단/무효화 경계는 BINDING_OPEN이다.
+**반환·실패:** `void`는 의미를 전달하는 알림이며 ECU ACCEPTED/DONE을 반환하는 API가 아니다. 필수 소비자가 연결·준비된 owner 처리 문맥에서만 호출한다. CRC/length/예약 코드/수용되지 않은 세대/명령 Age 오류는 Network에서 격리하며 실제 기능 Result를 합성하지 않는다. 정상 형식의 INVALID/FAULT 상태 전달은 허용한다. 소비자 연결 실패의 실제 진단/무효화 경계는 BINDING_OPEN이다.
 
 <a id="pending-current-value"></a>
 ### 현재값 보관
 
-같은 의미 key의 아직 송신을 시작하지 않은 현재값은 최신 평가로 교체할 수 있다. 이미 송신한 원 관측을 새 관측으로 만들거나 필요한 discrete 결과/발생을 덮어쓰지 않는다. 실제 scheduler/capacity/전송 후 실패 관측은 BINDING_OPEN이다.
+동일한 의미 식별자의 아직 송신을 시작하지 않은 현재값은 최신 평가로 교체할 수 있다. 이미 송신한 원 관측을 새 관측으로 만들거나 필요한 discrete 결과/발생을 덮어쓰지 않는다. 실제 scheduler/capacity/전송 후 실패 관측은 BINDING_OPEN이다.
 
 <a id="discrete-result-event"></a>
 ### 개별 결과·발생 보관
 
-개별 결과/발생은 같은 identity를 보존하여 보관한다. 공간 부족을 기존 다른 결과/발생의 조용한 삭제로 해결하지 않는다. 실패 후 재시도는 동일 원 ID와 실제 증가한 Age를 사용하며 새 실행/새 발생을 만들지 않는다. 수용 후 terminal local failure의 기존 owner 연결은 필요성이 확인된 경우에만 적용하며 실제 sink는 BINDING_OPEN이다.
+개별 결과/발생은 동일한 원본 식별자를 보존하여 저장한다. 공간 부족을 기존 다른 결과/발생의 조용한 삭제로 해결하지 않는다. 실패 후 재시도는 동일 원 ID와 실제 증가한 Age를 사용하며 새 실행/새 발생을 만들지 않는다. 수용 후 terminal local failure의 기존 owner 연결은 필요성이 확인된 경우에만 적용하며 실제 sink는 BINDING_OPEN이다.
 
 아래 상대편 `DomainIf_*`는 DOMAIN MCU 안의 제공 C2 선언이다. 이 노드가 함수 주소를 직접 호출하지 않는다. 양쪽 로컬 API 사이에는 CAN Codec/typed 변환이 있으며 실제 Port 바인딩은 BINDING_OPEN이다.
 
@@ -202,7 +202,7 @@ NetSubmitResult BcmNet_PublishDoorState(
 |---|---|---|
 | `message` | `const NetBcmDoorState *` · IN/read-only · OUT 없음 | [`NetBcmDoorState`](10_DATA.md#type-netbcmdoorstate) 전체 의미 record. NULL 불가. BCM 도어 평가 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
-**호출·사용:** 잠금/개폐/조합과 각 품질을 한 평가 record로 제출한다. 새 실제 평가에서만 update_sequence를 바꾸고, 반복 전송은 원 sequence와 증가한 source Age를 유지한다.
+**호출·사용:** 잠금/개폐/조합과 각 품질을 하나의 평가 기록으로 제출한다. 실제 새로운 평가를 수행한 경우에만 update_sequence를 갱신하고, 반복 전송은 원본 순번과 실제로 누적된 원본 AGE를 유지한다.
 
 **반환·실패:** [송신 반환](#local-tx-return)을 적용한다. 품질이 INVALID/STALE인 정상 형식의 자료는 그 품질을 보존해 제출할 수 있다.
 

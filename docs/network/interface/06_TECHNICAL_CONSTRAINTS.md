@@ -25,9 +25,9 @@ Interface v2 · r1 · [노드 간 공통 규칙](07_CROSS_NODE_INTERFACE_RULES.m
 
 **WIRE_MAPPING_OPEN** · 담당: DOMAIN + 각 소비 기능 + Network
 
-일부 ResultReason, Availability의 UNSUPPORTED, Warning/OccupantHazard의 UNCONFIRMED는 Wire에서 표현하지 못한다. origin 세부 정보를 축약하는 기준에도 근거가 필요하다.
+일부 ResultReason, Availability의 UNSUPPORTED, Warning/OccupantHazard의 UNCONFIRMED는 Wire에서 표현하지 못한다. 원본 출처의 세부 정보를 축약하는 기준에도 근거가 필요하다.
 
-표현하지 못하는 값은 인코딩을 거부하고 local 실패를 기록한다. OK·정상 CLEAR·임의의 기타 값으로 대체하지 않는다.
+표현하지 못하는 일반 값은 인코딩을 거부하고 로컬 실패를 기록한다. OK·정상 CLEAR·임의의 기타 값으로 대체하지 않는다. VSS_WARNING_STATE만 [A1 제한 투영](04_COMMON/30_ENUM_WIRE_MAPPING.md#vss-warning-limited-projection)의 비정상 tuple과 원 의미 보존을 적용하며 다른 노드/메시지에 확대하지 않는다.
 
 [관련 계약](04_COMMON/30_ENUM_WIRE_MAPPING.md)
 
@@ -55,27 +55,25 @@ Interface v2 · r1 · [노드 간 공통 규칙](07_CROSS_NODE_INTERFACE_RULES.m
 
 **POLICY_OPEN / BINDING_OPEN.** 후방 Power 시간 규칙은 아래와 같으며, 공유 합성과 기능 정책·실제 연결은 미확정이다. 책임: DOMAIN 기능, Network 전달, CIS 소비. WINDOW 구현은 보류한다.
 
-적용하는 규격은 후방 활성 Power의 약 200ms 실제 재평가·원 사용 기한 500ms, 새 평가/값 변경 전달, CAN50/150ms 및 UART-C500/1500ms 유지, 반복 송신의 AGE 초기화 금지다.
+적용할 시간 규칙은 후방 활성 Power의 약 200ms 실제 재평가·원 사용 기한 500ms, 새 평가/값 변경 전달, CAN50/150ms 및 UART-C500/1500ms 유지, 반복 송신의 AGE 초기화 금지다.
 
 남은 범위는 `POWER_OPERATION_STATE` 생성원, Power/Operation/Alive의 필수 입력과 공통 `UPDATE_SEQUENCE/SOURCE_AGE` 합성이다. 기존 [CAN 합성안](03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)은 후보로 유지한다. 독립 Power를 WINDOW 부재만으로 불허로 바꾸지 않고, 공통 AGE를 입증하지 못한 경우 허용을 꾸미지 않는다. 정상 ALLOW 사용에는 해당 합성 조건의 입증이 필요하다.
 
 `P_PERMISSION.USE_LIMIT`의 1500ms 후보와 조건부 500ms 권장 프로필은 원 Power 사용 기한 500ms와 구분한다. Pi 통신 수신·만료 검사와 카메라 기능 적용은 별도 경계다. [상세](07_CROSS_NODE_INTERFACE_RULES.md#permission)
 
-**원 평가와 UNKNOWN 처리:** 원 평가 Sequence는 성공 평가에서만 증가하고 원 TTL500ms·CAN50/150ms·UART-C500/1500ms는 유지한다. 평가 실패·NO_DATA에서 ALLOW 즉시 철회, 원 성공 Sequence 유지와 내부 stateRevision 증가는 DOMAIN 담당자 구현 완료 보고다. UNKNOWN의 false+비정상 Quality 투영과 Network 전달·합성은 수용/검증 대기이며 UNKNOWN+OK의 무손실 표현 한계는 남아 있다. 같은 Seq 품질 하향 누락·실패 AGE0·구 ALLOW 재등장을 막는 실제 TxPort→Queue→CAN 연결은 **BINDING_NOT_VERIFIED**다. POWER_OPERATION_STATE·필수 입력·공통 AGE/Quality/세대 및 O05 합성은 미결이다. [투영 조건](07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**원 평가·전달 구분:** 후방 활성 판단의 원본 사용 기한은 500ms이며, CAN 수신 중단 150ms와 UART-C 수신 중단 1500ms는 별개다. DOMAIN Core는 평가 FAILED/NO_DATA 시 ALLOW 즉시 철회 구현 완료를 보고했다. Network는 평가 순번만이 아니라 값·Quality 변경도 전송에 반영하고, 정기 송신으로 원 평가 시각을 갱신하지 않는다. `UNKNOWN`의 C2 투영과 전체 Power/Operation/Alive 합성은 별도 양단 계약이 확정된 범위에서 연결한다. [Permission 평가·합성 계약](07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 ## VSS R4/R6→DTO→C2
 
 VSS 기능과 통신의 내부 연결은 하나의 구현 범위다. DOMAIN의 원 경고 의미와 VSS의 음향·상태 변환은 각각의 기술 경계에서 확인한다.
 
-**BINDING_OPEN / BINDING_OPEN** · 담당: VSS + DOMAIN + Network
+**A2 내부 선택 / BINDING_OPEN** · 담당: VSS + DOMAIN + Network
 
-R4/R6 논리 참고에 Snapshot·Fault kind·보고 수명 정의가 있다. 실제 Firmware Header/구현 증거는 아니며, 변환 위치와 서비스 상태·fault provenance의 연결은 미확정이다.
-
-VSS 상태 입력 API와 출력 DTO는 제안이다. 실제 R4/R6 원형이 확정됐거나 구현이 완료된 것으로 표기하지 않는다.
+R4/R6 논리 참고에 따른 완전 HEALTH 보고→FLOW→기존 INPUT 단일 11필드 변환→Network 전체 사본을 A2에서 선택했다. 실제 펌웨어 헤더·원본 생산자·클록·세대·최종 결과 수신 경로와 DOMAIN 설치 프로필의 연결은 E-S01~05 미검증이다. 이 내부 선택이 실제 원형 확정·구현 완료를 뜻하지 않는다.
 
 [관련 계약](02_NODES/VSS/10_DATA.md) · [관련 계약](02_NODES/VSS/20_API.md)
 
-**PROPOSED:** [보호된 원 Snapshot 변환 권장안](02_NODES/VSS/10_DATA.md#r2-status-proposal)를 따른다. 기존 NetVssStatus를 통한 일회 변환·복사 후보이며 실제 원 평가/완전성/세대 연결은 미확정이다. VSS/DOMAIN은 current 완전성·최근 주요 기록/품질 축약을 확인해야 한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
+**A2 내부 선택:** [원 Snapshot 생산·수용 정본](02_NODES/VSS/10_DATA.md#r2-status-proposal)의 완전 current/최근 원 이력·원 평가를 보존한다. 같은 K의 State/Fault는 독립 수용하며 이미 수용한 State를 Fault 실패로 재호출하지 않는다. v0.5 service-only State/observer-only Fault와 확장 C2의 차이·같은 입력의 연결 관계·이전 K의 유입 차단은 실제 E-S05 확인 대기다.
 
 ## WINDOW 결과·END·Fault lineage
 
@@ -93,11 +91,11 @@ REQUEST_SEQUENCE↔C2 commandId의 대응, END와 AntiPinch의 전달 분기, Fa
 
 UUID·Properties·ATT MTU·분할 방식은 ESP32/Android 양단의 P4-A 실제 채택 자료 확인 전까지 OPEN이다. 구현 진행과 P4-B 실기기 검증 완료를 동일시하지 않는다. [채택에 필요한 자료](03_COMMUNICATION/40_BLE.md#p4a-adoption)의 동일 버전 근거가 필요하며 App 활성·등록·Session 정책은 해당 기능 담당 범위다.
 
-예제 UUID를 확정 BLE 계약으로 사용하지 않는다. 현재 인증된 session binding이 없으면 요청을 차단한다.
+예제 UUID를 확정 BLE 계약으로 사용하지 않는다. 현재 인증된 Session 연결이 없으면 요청을 차단한다.
 
 [관련 계약](03_COMMUNICATION/40_BLE.md) · [관련 계약](02_NODES/ESP32/20_API.md)
 
-## 원 AGE·boot/generation
+## 원본 AGE·BOOT/세대
 
 통신 권장 프로필 / 일부 C2 정책 미결 / 구현 확인 대기 · 담당: Network, 원 생산 기능, DOMAIN C2.
 
@@ -105,35 +103,35 @@ UUID·Properties·ATT MTU·분할 방식은 ESP32/Android 양단의 P4-A 실제 
 
 CAN 5ms/UART 50ms 전달 여유, wrap·BOOT 실제 생성/기억 범위는 구현·실측 확인이 남아 있다. 원 생산 `sourceGeneration`과 통신 BOOT를 동일시하지 않는다. 후보 C2의 유효 관측 nonzero, 세대 미확인0 규칙과 `STALE + sourceGeneration==0` 정책 OPEN을 분리한다. 환경 C2에 필드를 자동 추가하는 요구가 아니다. [기동·품질](07_CROSS_NODE_INTERFACE_RULES.md#identity)
 
-**원 식별과 기동 조건:** DOMAIN 원 성공 평가 Sequence, CAN 합성 UPDATE_SEQUENCE, 메시지별 TX_SEQUENCE, UART LINK_SEQUENCE와 CIS relay 번호를 구분한다. 실패 보고는 성공 원 시각·순번을 유지한 현재 품질 제한이며 원 AGE0이 아니다. 환경 A900→B0을 원값 그대로 수용하고 일반 NO_DATA로 재부팅 추론·순번 리셋을 하지 않는다. 종료 BOOT 차단은 기억된 범위에 한정하며 BOOT 재사용·Network 재시작의 기억 상실을 단순 BOOT 값으로 해결했다고 보장하지 않는다. [번호 공간](04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)
+**원 식별과 기동 조건:** DOMAIN 원 성공 평가 Sequence, CAN 합성 UPDATE_SEQUENCE, 메시지별 TX_SEQUENCE, UART LINK_SEQUENCE와 CIS relay 번호를 구분한다. 실패 보고는 성공 원 시각·순번을 유지한 현재 품질 제한이며 원본 AGE를 0으로 초기화하는 사건이 아니다. 환경 A900→B0을 원값 그대로 수용하고 일반 NO_DATA로 재부팅 추론·순번 리셋을 하지 않는다. 종료 BOOT 차단은 기억된 범위에 한정하며 BOOT 재사용·Network 재시작의 기억 상실을 단순 BOOT 값으로 해결했다고 보장하지 않는다. [번호 공간](04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)
 
 ## SDK/Port·핀·전압
 
 **BINDING_OPEN** · 담당: 보드·각 노드 + Network
 
-144/344 SDK와 superloop/RTOS의 바인딩, 실제 전원·IO·핀·transceiver의 보드 근거를 확인해야 한다.
+144/344 SDK와 Superloop/RTOS의 실제 연결, 실제 전원·IO·핀·transceiver의 보드 근거를 확인해야 한다.
 
 태스크·드라이버·핀·전압을 임의로 확정하지 않는다. 구현 직전에 보드 자료와 대조한다. SDK/Board 검증은 NOT_EXECUTED다.
 
 [관련 계약](03_COMMUNICATION/10_CAN_FD.md) · [관련 계약](03_COMMUNICATION/20_UART_M.md)
 
-## CAN bitrate·주기·CRC
+## CAN 비트 전송률·주기·CRC
 
 **WIRE_PROPOSED / CONTRACT_OPEN** · 담당: Network + 전체 CAN 노드
 
 단일 공유 CAN의 nominal 500kbps/data 2Mbps와 bit timing·ID·DLC·CRC·주기는 후보다.
 
-실측 전에는 지연·응답의 상한을 보장하지 않는다. rate 변경은 필요한 구간만 검토한다.
+실측 전에는 지연·응답의 상한을 보장하지 않는다. 전송률 변경은 필요한 구간에 한해 검토한다.
 
 [관련 계약](03_COMMUNICATION/10_CAN_FD.md)
 
-## capacity·accepted 이후 실패
+## 큐 용량·접수 후 실패
 
 **BINDING_OPEN** · 담당: Network + DOMAIN/ESP32 + 각 기능
 
-bounded 큐 용량, driver 실패·TTL 만료의 전달, Query burst와 BLE 병목 처리가 미정이다.
+고정 크기 큐의 용량, 드라이버 실패·TTL 만료의 전달, Query 집중 송신과 BLE 병목 처리는 미정이다.
 
-local OK와 차량 DONE을 구분한다. 인계 후 실패를 전달할 sink를 준비하고 identity를 보존한다. high-water 실측은 NOT_EXECUTED다.
+로컬 접수 성공과 차량 기능 DONE을 구분한다. 접수 후 실패를 전달할 수신 경로를 준비하고 원본 식별자를 보존한다. 큐 최대 점유량 실측은 NOT_EXECUTED다.
 
 [관련 계약](04_COMMON/20_API_USAGE_AND_FAILURE.md) · [관련 계약](03_COMMUNICATION/40_BLE.md)
 
@@ -149,39 +147,39 @@ Pi 원 판정의 값·필드별 품질·사유와 원 Pi BOOT/VISION_SEQUENCE/AG
 
 [CIS 품질 권장 규칙](02_NODES/CIS/10_DATA.md#pi-원-관측과-cis-추가-평가)을 따른다. 사유 변환·C2 commit/Getter 연결은 실제 연동 검증 전이다. 이 권장 프로필은 DOMAIN 기능 정책 전체의 확정을 뜻하지 않으며 새 Wire 품질 필드를 정의하지 않는다.
 
-## Gateway local capacity 상태
+## Gateway 로컬 용량 상태
 
 **CONTRACT_OPEN / BINDING_OPEN** · 담당: ESP32 + Network
 
-Gateway의 기존 반환 enum에는 capacity 전용 값이 없다. NOT_READY/INTERNAL_ERROR로 변환하는 책임이 미정이다.
+Gateway의 기존 반환 enum에는 용량 부족 전용 값이 없다. NOT_READY/INTERNAL_ERROR로 변환하는 책임이 미정이다.
 
-기존 enum을 변경하지 않는다. local capacity 실패를 UART 실행 결과로 바꾸지 않는다.
+기존 enum을 변경하지 않는다. 로컬 용량 부족를 UART 실행 결과로 바꾸지 않는다.
 
 [관련 계약](02_NODES/ESP32/20_API.md)
 
-**PROPOSED:** [기존 반환형과 port 규칙](02_NODES/ESP32/20_API.md#ports)를 따른다. 일시 capacity 부족의 NOT_READY와 인자/내부 오류를 구분하는 후보다. caller/adapter가 현재 원 ID·문맥·수명을 재검증하는 재제출과 후발 실패 관측을 함께 확인해야 한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
+**PROPOSED:** [기존 반환형과 port 규칙](02_NODES/ESP32/20_API.md#ports)를 따른다. 일시적인 용량 부족의 NOT_READY와 인자/내부 오류를 구분하는 후보다. 호출자/Adapter가 현재 원 ID·문맥·수명을 재검증하는 재제출과 후발 실패 관측을 함께 확인해야 한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
 
-## Fault bit·helper projection
+## Fault 비트·보조 투영
 
 **CONTRACT_OPEN** · 담당: DOMAIN + BCM/CIS/VSS/WINDOW
 
 상태 비트와 C2 fault helper 사이의 정확한 범주·bit·provenance 대응이 미정이다. CIS_FAULT/VSS_FAULT를 위한 추가 frame은 없다.
 
-확정된 bit가 없는 상태를 특정 고장으로 추정하지 않는다. current 고장·최근 이력·link health를 구분한다.
+확정된 bit가 없는 상태를 특정 고장으로 추정하지 않는다. 현재 고장·최근 이력·통신 상태를 구분한다.
 
 [관련 계약](04_COMMON/30_ENUM_WIRE_MAPPING.md) · [관련 계약](02_NODES/DOMAIN/20_API.md)
 
-**PROPOSED:** [BCM Health 경계](03_COMMUNICATION/10_CAN_FD.md#message-bcm-status)를 따른다. 기존 확인된 bit만 변환하고 최초 관측/진단 생성 주체를 분리한다. [VSS current/history 변환](02_NODES/VSS/10_DATA.md#r2-status-proposal)을 함께 확인한다. 기능별 생성·해제 및 실제 진단 입력은 owner 확인 사항이다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
+**PROPOSED:** [BCM Health 경계](03_COMMUNICATION/10_CAN_FD.md#message-bcm-status)를 따른다. 기존 확인된 bit만 변환하고 최초 관측/진단 생성 주체를 분리한다. [VSS current/history 변환](02_NODES/VSS/10_DATA.md#r2-status-proposal)을 함께 확인한다. 기능별 생성·해제 및 실제 진단 입력은 담당자 확인이 필요하다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
 
 ## VSS Event 사용 한도·실제 시작
 
 VSS 기능과 통신의 내부 연결은 하나의 구현 범위다. DOMAIN의 원 경고 의미와 VSS의 음향·상태 변환은 각각의 기술 경계에서 확인한다.
 
-**CONFLICT / FUNCTION_POLICY_OPEN** · 담당: VSS + DOMAIN + Network
+**A1 내부 선택 / BINDING_OPEN** · 담당: VSS + DOMAIN + Network
 
-Network USE_LIMIT 500ms 후보와 구 SysRS의 원 발생 후 실제 시작 2초 미만 기준은 서로 다른 계층의 후보다. 시간 계약을 확정해야 한다.
+최초 actual에 `L=min(검증된 양의 USE_LIMIT,500ms 설계 프로필,2000ms 상한)`의 원 기한을 적용한다. USE_LIMIT0은 비사용이고 L 도달부터 만료다. 적법 Started 이후 같은 Session 후속 cue에는 최초 시작 검사를 다시 적용하지 않는다.
 
-500ms 또는 2초를 확정 deadline으로 적용하지 않는다. 양단의 수명과 VSS의 실제 시작 직전 검사 기준을 확정해야 한다.
+RX 기준 AGE와 소비 경과를 중복 누적하지 않으며 원 발생→실제 최초 시작의 구간·clock·오차 근거는 실제 검증 대기다. in-flight 만료를 NO_START로 바꾸거나 과거 Event를 새 occurrence로 만들지 않는다.
 
 [관련 계약](02_NODES/VSS/10_DATA.md) · [관련 계약](03_COMMUNICATION/10_CAN_FD.md)
 
@@ -191,13 +189,13 @@ VSS 기능과 통신의 내부 연결은 하나의 구현 범위다. DOMAIN의 �
 
 **BINDING_OPEN** · 담당: VSS + DOMAIN
 
-C2 service.meta.quality·faultQuality·sourceGeneration과 축약된 VSS_STATUS의 대응이 미정이다.
+A2는 완전 원 보고·현재 mask 최소 정의 code·State/Fault 독립 수용을 선택했다. C2 service.meta.quality·faultQuality·sourceGeneration의 실제 설치 profile별 표현과 같은 원 DTO/meta↔Getter association은 E-S05 확인 대기다.
 
 서비스 품질과 고장 품질을 정상값으로 추정하지 않는다. 원본 세대·부분 진단은 필요한 내부 원장에 보존하고 조건 확정 후 투영한다.
 
 [관련 계약](02_NODES/VSS/10_DATA.md)
 
-**PROPOSED:** [VSS 원 보고별 제한](02_NODES/VSS/10_DATA.md#r2-status-proposal)를 따른다. 이력 raw0/3과 C2 전체 품질은 동치가 아니다. VSS/DOMAIN이 current 완전성·원 평가/generation·최근 기록 소비를 확인하기 전 미확인 fresh Status 투영은 제한한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
+**A2 내부 선택 / 실제 증거 대기:** [VSS 원 보고별 제한](02_NODES/VSS/10_DATA.md#r2-status-proposal)을 따른다. 이력 raw0/3과 C2 전체 품질은 동치가 아니다. 완전한 현재 상태·원본 평가/세대·최근 기록의 소비의 실제 증거가 없는 해당 fresh 투영은 제한하며 선택한 producer/독립 수용 규칙을 다시 미선정으로 표현하지 않는다.
 
 ## WINDOW 실제 보호 확인
 
@@ -225,11 +223,11 @@ CIS `INACTIVE=5`, 만료/불허 사유, 새 측정 후 재활성, Network Health
 
 온도·습도 각각의 원 사용 기한은 2500ms다. 사용 시점의 누적 AGE가 2500ms에 도달하면 해당 값을 사용하지 않는다. 새 CAN 프레임이나 다른 센서 갱신으로 오래된 관측의 AGE를 초기화하지 않는다.
 
-실내 조도1000ms는 미확정 후보이고 CIS 로컬1000 코드가 DOMAIN의 수용을 대신하지 않는다. CIS 환경 CAN200ms 보고/600ms 수신 감시와 로컬 온습도5000ms 후보는 소비2500ms와 다른 기준이다. 온습도 원2500ms와 조도 후보를 구분한다.
+실내 조도1000ms는 미확정 후보이고 CIS 로컬1000 코드가 DOMAIN의 수용을 대신하지 않는다. CIS 환경 CAN200ms 보고/600ms 수신 감시와 로컬 온습도5000ms 후보는 소비2500ms와 다른 기준이다. 온도·습도 원본 사용 기한 2500ms와 조도 후보를 구분한다.
 
-환경 C2는 기존 구조를 우선 유지한다. 새 CIS BOOT는 DOMAIN 소유 private 전환 통지 후보로 구분하고, 기존 Rx NO_DATA와의 무효화 분담은 확인 대기다. 수신 중단의 STALE/NO_DATA 선택 및 Rx→VSM→Getter의 실제 저장 완료는 별도 연동 조건이다. 기존 구조로 해결할 수 없다는 근거가 나오면 최소 계약 변경을 검토한다. [상세](07_CROSS_NODE_INTERFACE_RULES.md#environment)
+환경 C2는 기존 구조를 우선 유지한다. 새 CIS BOOT 무효화는 DOMAIN 소유 단일 동기 private API 경로로 처리하고 전환용 Rx NO_DATA를 중복 전달하지 않는다. 같은 BOOT의 센서 NO_DATA·만료·수신 중단은 기존 Rx·품질 정책을 유지하며 일반 링크 단절의 STALE/NO_DATA 선택은 별도 미결이다. 정확한 private 선언·결과 ABI는 확인 대기이고 Rx→VSM→Getter/Query의 실제 Binding은 미검증이다. 기존 구조로 해결할 수 없다는 근거가 나오면 최소 계약 변경을 검토한다. [상세](07_CROSS_NODE_INTERFACE_RULES.md#environment)
 
-**환경 저장 순서:** 유효한 새 BOOT 판별 → 구 콜백·후속 쓰기 격리 → DOMAIN 소유 private 전환 통지 후보 → VSM/Meta·필요 순서 문맥 무효화 완료 확인 → 새 BOOT 원 Sequence/AGE 전달은 **PROPOSED / CROSS_OWNER_ACCEPTANCE_PENDING**이다. private 통지와 기존 Rx NO_DATA의 분담, 동기/비동기 완료 방식·실패 처리는 미확정이다. 일반 NO_DATA는 BOOT 신호가 아니며 일반 링크 단절의 STALE/NO_DATA 선택은 별도 미결이다. 무효화 실패·미확인에서는 새 정상 입력을 보류하지만 과거 OK가 지워졌다고 판단하지 않는다. 대기 AGE와 온습도2500ms 경계를 유지한다. [저장 순서·한계](07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)를 따른다.
+**환경 BOOT 변경:** Network는 새 BOOT가 확인되면 해당 환경 경로에서 이전 BOOT의 대기 데이터 전달을 제한한다. DOMAIN 동기 Private Transition이 연결된 경우 적용 완료를 확인하고 새 BOOT 데이터를 전달한다. 결과가 불명확하면 환경 입력을 보류하며 다른 정상 통신은 계속 처리한다. DOMAIN Core의 첫 전환 Host 시험 완료 보고와 연속 Epoch 자동 복귀의 미구현 상태는 구분한다. 초기 연결에서 자동 재시작 복구·영속 Epoch·추가 공개 C2 타입은 사용하지 않는다. [환경 처리](07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 ## 부분 UserSettings 존재 정보
 
@@ -253,7 +251,7 @@ C2 actualUnlockTransition의 직접 raw bool 없음. ALREADY_AT_TARGET은 false�
 
 [관련 계약](02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md)
 
-**PROPOSED:** [DigitalResult 소비 후보](02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md#r2-partial-export)를 따른다. 원 DONE/reason을 보존하며 완료와 실제 unlock 전이 표시를 분리한다. MOBILE/기능 owner가 전이 확인의 별도 근거를 확인해야 하며 bool이 필요한 표시만 제한한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
+**PROPOSED:** [DigitalResult 소비 후보](02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md#r2-partial-export)를 따른다. 원 DONE/reason을 보존하며 완료와 실제 unlock 전이 표시를 분리한다. MOBILE/기능 담당자가 전이 확인의 별도 근거를 확인해야 하며 bool이 필요한 표시만 제한한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
 
 ## Gateway 다형 relay subtype
 
@@ -279,7 +277,7 @@ QueryGet에 raw boot/TX_SEQUENCE가 없음. receive provenance와 source generat
 
 [관련 계약](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md)
 
-**PROPOSED:** [원 수신과 C2 admitted Snapshot 연결](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-origin-join)를 따른다. 원 NetDTO/Meta를 실제 같은 원 입력의 commit에 연결한 경우만 투영한다. DOMAIN owner가 중간 갱신 배제/원자적 결합 지점을 확인해야 하며 미증명 projection만 제외한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
+**PROPOSED:** [원 수신과 C2 admitted Snapshot 연결](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-origin-join)를 따른다. 원 NetDTO/Meta를 실제 같은 원 입력의 commit에 연결한 경우만 투영한다. DOMAIN 담당자가 중간 갱신 배제·원자적 결합 지점을 확인해야 하며 미증명 projection만 제외한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
 
 **환경 commit 경계:** DOMAIN Rx→VSM→Getter의 commit 위치, 구 콜백 이후 비동기 쓰기 배제와 기존 완료 관측 근거가 필요하다. Queue 접수/콜백 반환만으로 무효화 저장 완료를 판정하지 않는다. Core commit 뒤 optional Observer 실패는 직접 저장 실패와 구별하고 중복 commit하지 않는다. 저장 순서를 유지할 수 없거나 자체 세대 판별·다른 쓰기 경로 때문에 기존 C2로 입증할 수 없으면 해당 연결을 보류한다. 최소 Environment Generation/완료 경계의 계약 변경은 대안이며 현재 공개 필드/API에는 포함되지 않는다. [Rx 완료 조건](02_NODES/DOMAIN/20_API.md#delta-environment-completion)
 
@@ -291,7 +289,7 @@ QueryGet에 raw boot/TX_SEQUENCE가 없음. receive provenance와 source generat
 
 M_QUERY_END의 actual frame count는 local queue admission 및 App receipt와 다름. 송신 complete commit·partial stream·footer ordering과 MOBILE 종료 schema 미정.
 
-private Query 서비스는 유지한다. local OK로 actual count나 완료를 합성하지 않으며, 종결은 실제 commit 근거와 양단 schema를 확정해야 한다.
+private Query 서비스는 유지한다. 로컬 접수 성공만으로 실제 송신 건수나 완료 상태를 추정하지 않으며, 종결은 실제 commit 근거와 양단 schema를 확정해야 한다.
 
 [관련 계약](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md) · [관련 계약](02_NODES/ESP32/25_PRIVATE_ROUTING.md)
 

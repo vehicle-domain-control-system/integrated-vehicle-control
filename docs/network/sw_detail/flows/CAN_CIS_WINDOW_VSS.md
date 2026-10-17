@@ -2,7 +2,7 @@
 
 [Network](../00_START_HERE.md) · [Node/Link](../02_NODE_LINK_MAP.md) · [Layer/Module](../03_LAYER_MODULE_INDEX.md) · [공통 CAN Flow](CAN_NETWORK_PATHS.md) · [노드 Data](../data/CAN_NODE_DATA.md)
 
-CIS의 센서·Pi 판정은 DOMAIN에 입력되고, DOMAIN이 만든 이벤트·경고는 VSS로 간다. WINDOW의 다섯 전용 Wire와 공유 Permission의 WINDOW 수신은 문서상 연결만 유지한다. 현재 WINDOW의 실제 송수신·timeout·liveness·모터·STOP 작업을 열지 않는다. VSS 경고는 CF02 양단 형식이 미선택이므로 정상 소비가 막힌다.
+CIS의 센서·Pi 판정은 DOMAIN에 입력되고, DOMAIN이 만든 이벤트·경고는 VSS로 간다. WINDOW의 다섯 전용 Wire와 공유 Permission의 WINDOW 수신은 문서상 연결만 유지한다. 현재 WINDOW의 실제 송수신·timeout·liveness·모터·STOP 작업을 열지 않는다. VSS 경고는 A1 WARNING60 형식 선택과 실제 CF02 양단 지원 미검증을 구분하며, 실행은 해당 Binding 확인 전 HOLD다.
 
 ```mermaid
 flowchart LR
@@ -37,11 +37,11 @@ flowchart LR
 
 [함수·양단 API](../functions/can/CIS_ENVIRONMENT.md) · [자료](../data/CAN_NODE_DATA.md#CIS_ENVIRONMENT)
 
-원본 전환: 온도·습도·조도 각각의 원 생산 세대, temperature/humidity/illuminance_sequence. CAN BOOT/TX는 외피 식별이다. temperature_age_ms, humidity_age_ms, illuminance_age_ms를 독립 누적한다. 다른 채널 갱신이 원 시각을 재시작하지 않는다.
+온도·습도·조도의 원 관측 번호인 `temperature_sequence`, `humidity_sequence`, `illuminance_sequence`는 각각 보존한다. 원 생산 세대는 실제 확인된 근거가 있을 때만 연결하며 CAN `BOOT_ID/TX_SEQUENCE`와 구분한다. `temperature_age_ms`, `humidity_age_ms`, `illuminance_age_ms`는 센서별로 독립 누적하고, 다른 채널의 갱신으로 기존 관측 시각을 다시 시작하지 않는다.
 
 소비 전에 cabinTemperature/cabinHumidity/cabinIlluminance에 원 raw를 그대로 옮긴다. 각 ValueQuality_t.validity/reason은 이름으로 변환하고 meta.updateSequence와 meta.ageMs에는 같은 채널의 원 순번과 소비시점 AGE를 넣는다. meta.quality는 validity/reason 숫자 비교로 만들지 않는다. 세대 연결과 DataQuality 투영이 합의된 경우에만 전체 C2 객체를 전달한다.
 
-온도·습도 원 사용기한은 각각2500ms이며 도달 시 비사용한다. 조도 TTL과 기존 품질의 나머지 대응·실제 VSM/독립 Meta 연결은 검증 대기다. 새 frame 없는 만료·수신중단·Boot 변경은 [M09 로컬 사건→기존 C2](../functions/can/CIS_ENVIRONMENT.md#local-invalidation) 경로다. 환경 sourceGeneration을 추가하지 않으며 Boot 후 낮은seq의 C2 수용 규칙 부족은 [별도 경계](../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)에 남긴다.
+온도·습도 원 사용기한은 각각2500ms이며 도달 시 비사용한다. 조도 TTL과 기존 품질의 나머지 대응·실제 VSM/독립 Meta 연결은 검증 대기다. 새 frame 없는 일반 만료·수신중단은 [M09 로컬 사건→기존 C2](../functions/can/CIS_ENVIRONMENT.md#local-invalidation) 품질 경로를 유지한다. BOOT 변경은 Network 자체 구 환경 전달/Query 재게시 차단 → DOMAIN 소유 단일 동기 private 전환 → 후속 commit 봉쇄·무효화·Query 구 GOOD 방지와 현재 요청/적용 Epoch/완료 대조 → 새 원 관측의 기존 공개 Rx라는 목표이며 BOOT용 Rx NO_DATA를 중복 호출하지 않는다. 현재 실제 private ABI·연속 Epoch 수용·Binding은 미검증이므로 [별도 경계](../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)의 HOLD를 유지한다. 환경 sourceGeneration이나 Wire를 추가하지 않는다.
 
 정상/조건부 예: 온도 -123raw는 -1.23°C, 습도65535+INVALID/SENSOR_FAULT와 조도70000lx를 함께 보존한다. 유효하지 않은 습도만으로 정상 온도·조도를 버리지 않는다. 실패·경계: 조도70000을 uint16으로 절삭하거나 습도 고장 때문에 온도를0°C로 바꾸면 거부 대상이다. 온도 -32768+VALID, 습도10001, 조도200001은 거부한다. 올바른 sentinel+INVALID는 malformed가 아니다.
 
@@ -157,13 +157,13 @@ Pi 원 기록과 현재 제한은 구별한다. 같은 관측의 새 적법 TX·
 
 [함수·양단 API](../functions/can/VSS_EVENT.md) · [자료](../data/CAN_NODE_DATA.md#VSS_EVENT)
 
-원본 전환: DOMAIN 원 생산 세대+event_kind+occurrence_id가 의미 사건이다. related_command_id는 별도 명령 연결이다. original_age_ms는 최초 사건 후 경과, use_limit_ms는 원 사용 한도다. 후보500ms와 구 실제 음향 시작2초 요구의 기준을 임의 통합하지 않는다.
+원본 전환: 수용된 DOMAIN Boot+occurrence_id(필요한 PRODUCT/TEST 문맥 포함)가 의미 사건 Key이고 event_kind는 같은 Key의 내용 충돌 검사다. related_command_id는 별도 명령 연결이다. original_age_ms는 원 발생부터 누적하며 최초 actual의 기한은 `L=min(검증된 양의 USE_LIMIT,500ms,2000ms)`이다. USE_LIMIT0은 사용 불가, L 도달은 만료이며 정상 시작 뒤 후속 cue에 새 Start 게이트를 만들지 않는다.
 
 소비 전에 C2 VSS_EVENT_VEHICLE_WELCOME/GOODBYE/DOOR_LOCK_COMPLETE/DOOR_UNLOCK_COMPLETE/DOOR_LOCK_ERROR0..4를 Net 대응 이름1..5로 바꾼다. occurrenceId는 보존하고 meta.quality와 meta.ageMs만 원 품질/AGE로 연결한다. meta.updateSequence는 이 Wire와 중복 판정에 사용하지 않으며 원 DTO 값을0으로 강제하지 않는다. availability3 UNSUPPORTED는 HOLD다. hasRelatedCommand=true일 때 실제 relatedCommandId 연결을 보존한다.
 
-현재 차단 조건: IF-O02, IF-O16, D-03, D-05, IF-O09, IF-O12: use-limit/실제 시작 기준과 필수 후발 실패 sink 바인딩이 미합의다. C2 UNSUPPORTED 가용성에는 동등 raw가 없다.
+현재 차단 조건: IF-O02, IF-O16, D-03, D-05, IF-O09, IF-O12의 실제 clock/first actual·생산 세대·필수 후발 실패 sink는 검증 대기다. A1의 원 L 내부 선택은 실제 음향 시작 시험을 대신하지 않는다. C2 Event UNSUPPORTED 가용성에는 동등 raw가 없다.
 
-정상/조건부 예: 원 occurrence17을 TX10/11로 보완 전송해도 한 사건이며 새 재생 요구로 만들지 않는다. VSS App의 void 반환은 실제 음향 시작·완료가 아니다. 실패·경계: 환영 이벤트 미발생을 timeout으로 판정하거나 LOCAL TX 성공으로 VSS 재생 완료를 보고하지 않는다. 원 AGE가 확인한 use-limit을 넘거나 경계 비교 정책이 미합의면 새 재생 입력을 제한한다. use-limit500을 자동 기본값으로 넣지 않는다.
+정상/조건부 예: 원 occurrence17을 TX10/11로 전달해도 한 사건이며 event_kind만 달라지면 내용 충돌이지 새 재생 사건이 아니다. VSS App의 void 반환은 실제 시작·완료가 아니다. Event 무발생은 timeout이 아니며 원 AGE가 L에 도달하면 새 Start를 제한한다. use-limit500을 원 입력의 기본값으로 채우지 않는다.
 
 <a id="VSS_WARNING_STATE"></a>
 ## VSS_WARNING_STATE
@@ -174,11 +174,11 @@ Pi 원 기록과 현재 제한은 구별한다. 같은 관측의 새 적법 TX·
 
 원본 전환: 끼임·탑승자·후방 각 source_boot/source_sequence와 DOMAIN rear_activation_sequence는 서로 다른 판단 근거다. 세 original_age_ms와 rear_activation_age_ms를 각각 누적한다. 후방 거리 근거의 시각을 활성 평가의 시각으로 쓰지 않는다.
 
-소비 전에 세 DomainIf_WarningInputEvidence_t의 source.generation/sequence/ageMs, quality/reason/availability를 각 독립 Wire 묶음으로 연결한다. C2 UNCONFIRMED·UNSUPPORTED는 동등 raw가 없어 CLEAR/UNAVAILABLE로 바꾸지 않는다. rearDetectionActivation과 rearActivationMeta/reason은 독립 DOMAIN 평가다. C2에는 activation_meta_format 멤버가 없고 확장 marker는 채택 profile의 Codec 책임 후보다.
+소비 전에 세 위험과 독립 activation의 원 품질·reason·availability·source·AGE를 각 lane으로 검증한다. VSS 전용 UNCONFIRMED/UNSUPPORTED 제한 투영은 [정본](../../interface/04_COMMON/30_ENUM_WIRE_MAPPING.md)을 따르며 비정상 state0을 정상 CLEAR로 쓰지 않는다. RX 기준 AGE는 DTO에 보존하고 소비시점 경과는 admission용으로 계산하여 INPUT과 중복 누적하지 않는다.
 
-현재 차단 조건: CF02, IF-O01, IF-O02, IF-O06, IF-O17, WINDOW_ANTIPINCH_HOLD: used51/60 양단 선택 전 정상 encode/decode/typed 소비 HOLD. profile enum 값 자체는 팀 채택 증거가 아니다.
+현재 차단 조건: A1 WARNING60 used60/frame64/DLC15 선택은 완료, 실제 DOMAIN producer/VSS receiver 및 시간/owner 지원은 CF02/E01~05 확인 대기다. WINDOW 실행 HOLD는 유지한다.
 
-정상/조건부 예: 현재 정상 진입은 CF02 HOLD다. used60이 향후 채택되어도 세 위험의 원 근거와 후방 활성 평가를 별도로 전달하며 VSS가 거리를 재평가하지 않는다. 실패·경계: DLC15나 B51=1로used60을 자동 선택하지 않는다. B51..59가0이어도used51을 선택하지 않는다. 두 후보 모두64B다. used51은B51..63 padding0, used60은B51..59 의미+ B60..63 padding0이다. format0을 활성 품질OK로 합성하지 않는다.
+WARNING51은 이력이며 DLC15/B51 marker로 자동 수용하지 않는다. WARNING60 format1은 독립 activation 근거를 검증하고 format0은 B50=0·B52..59=0인 정규 부재다. 부재를 활성 OK로 합성하지 않고 다른 유효 위험을 함께 버리지 않는다. 원 sensor Boot0 정규 상실과 frame DOMAIN Boot0 거부는 구분한다.
 
 <a id="VSS_STATUS"></a>
 ## VSS_STATUS
@@ -189,11 +189,11 @@ Pi 원 기록과 현재 제한은 구별한다. 같은 관측의 새 적법 TX·
 
 원본 전환: VSS 생산 세대+update_sequence는 서비스 평가, last_fault_occurrence는 최근 고장 이력이다. source_age_ms와 last_fault_age_ms는 독립이다. 최근 고장 AGE65535는 오래된 이력의 포화 하한이다.
 
-소비 전에 DomainNetPriv_OnVssStatus가 service.state/availability/acceptingEvents/faultActive를 의미 이름으로 구성하고 service.meta에 원 update/소비 AGE를 연결한다. faultMask/lastFaultCode/lastFaultOccurrenceId/lastFaultAgeMs와 sourceGeneration은 원 VSS 보고의 근거로만 연결한다. LAST_FAULT_QUALITY0/3은 최근 기록 존재의 뜻이며 C2 faultQuality 전체 의미와 동등하지 않다. FaultInfo 선택·현재 고장 우선순위는 원문만으로 확정할 수 없다.
+소비 전에 완전 producer→기존 INPUT 단일 11필드 변환→같은 원 DTO/meta를 확인한다. service와 원 update/AGE/current/history/generation은 보존하고 LAST_FAULT_QUALITY0/3을 전체 품질로 대체하지 않는다. 완전 current mask 최소 정의 code1..5를 현재 Fault 대표로 선택하며 공집합은 code0/INACTIVE다. 위험 우선순위나 최근 이력 고장의 재활성화가 아니다.
 
-현재 차단 조건: IF-O06, IF-O15, IF-O17, IF-O09, IF-O24, VSS_STATUS_PROJECTION: R4/R6 원 Snapshot→DTO, C2 서비스/고장 품질·세대 및 두 소비 경계의 부분 성공 집계가 미합의다.
+적용 조건: A2 State→Fault 독립 수용은 선택되었다. [per-K 정본](../functions/can/VSS_STATUS.md#a2-domain-contract)에 따라 같은 K 반복은 호출0, State 수용은 Fault 미호출/실패로 롤백·재호출하지 않는다. CALLING/UNKNOWN_FAILED와 old 후속 쓰기 불명은 해당 경계만 HOLD한다. E-S01~05 실제 producer·설치 C2·원 세대/시간·association·terminal sink 증거는 여전히 대기다.
 
-정상/조건부 예: fault_active0·fault_mask0이어도 최근 fault3/occurrence5/AGE65535/quality0은 이력으로 남는다. VSS PLAYING은 개별 Event 완료가 아니다. 실패·경계: CAN link lost를 FAULT_MASK의 AUDIO_OUTPUT_FAILURE로 만들거나 기록품질2를0/3으로 축약하지 않는다. fault_mask0x1F는 정의 비트,0x20은 예약이다. last_fault_quality1/2는 malformed다. NO_DATA3은 실제 기록없음과 함께 해석한다.
+정상/조건부 예: current mask0이어도 quality0의 최근 fault3/occurrence5/AGE65535는 이력으로 남는다. quality3은 code/occurrence/historyAGE0을 검증·보존하며 sourceAGE는 독립 누적한다. 품질1/2는 malformed이고 링크 상실을 AUDIO_OUTPUT_FAILURE로 만들지 않는다. PLAYING은 개별 Event 완료가 아니다.
 
 ## 실패와 복구의 책임 전환
 

@@ -1,4 +1,4 @@
-# Pi Data — 언어 중립 비전 record와 허용
+# Pi Data — 언어 중립 비전 기록과 사용 허용
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
@@ -6,7 +6,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
-**PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제 설치 헤더/firmware가 아니며 struct padding·enum 크기를 raw bytes로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
+**PROPOSED_DESIGN · BINDING_OPEN.** 아래 전체 선언은 의미 타입을 표시하는 설계용 C 표현이다. 실제 설치된 헤더나 펌웨어가 아니며, 구조체의 패딩·enum 크기를 원시 바이트로 그대로 전송하지 않는다. [공통 ID·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md)과 [C enum↔Wire 명시 변환](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 함께 적용한다.
 
 현재 검토한 참고 구현은 Python이다. 각 `NetVision*`/`NetPiPermission`은 필드·폭·범위·의미가 같은 언어 중립 record로 매핑한다. C 타입은 의미 폭을 표시한 참조 표현이며 구현 언어 변경이나 동일 이름의 C wrapper 설치를 강제하지 않는다.
 
@@ -133,7 +133,7 @@ enum NetVisionFaultCodeCode
 ```
 
 <a id="fixed-width-codes"></a>
-별칭은 위의 고정 폭 C 정수다. 이어지는 `enum ...Code`는 상수 집합으로, enum 메모리 크기가 별칭/Wire 폭이라는 뜻이 아니다. 아래 숫자는 **이 설계 후보의 의미 코드**이며 기존 C2 타입은 [명시 mapping](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 거친다. 예약/지원하지 않는 코드는 형식 오류로 처리한다.
+별칭은 위의 고정 폭 C 정수다. 이어지는 `enum ...Code`는 상수 집합으로, enum 메모리 크기가 별칭/Wire 폭이라는 뜻이 아니다. 아래 숫자는 **이 설계 후보의 의미 코드**이며 기존 C2 타입은 [명시 변환표](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)을 거친다. 예약/지원하지 않는 코드는 형식 오류로 처리한다.
 
 | 상수 | 제안 값 / 의미 |
 |---|---|
@@ -145,13 +145,13 @@ enum NetVisionFaultCodeCode
 
 ## 언어 중립 record의 필드 책임
 
-`NetVisionResult/NetVisionStatus`의 `pi_boot_id`는 Pi runtime이 local admission 시 원 관측과 결합하여 고정하는 필드다. 비전 생산자에게 임의 기동 번호 초기화를 요구하지 않는다. 실제 언어 객체에서 해당 필드를 생략하거나 읽기 전용 runtime 참조로 제공할 수 있으며, 동일 의미 record→Codec의 한 번 변환으로 충분하다. 실제 송신 전에 고정한 generation이 현재 runtime/생산자 관측 문맥과 같은지 검증한다. 기동/process 관측 세대 변경이면 이전 pending/cache를 무효화하고 새 관측 전까지 old record를 새 Boot로 stamp하지 않는다. CIS에 수신된 뒤에는 **원 Pi Boot 보존**이므로 CIS가 자기 Boot로 덮어쓰지 않는다.
+`NetVisionResult/NetVisionStatus`의 `pi_boot_id`는 Pi runtime이 local admission 시 원 관측과 결합하여 고정하는 필드다. 비전 생산자에게 임의 기동 번호 초기화를 요구하지 않는다. 실제 언어 객체에서 해당 필드를 생략하거나 읽기 전용 runtime 참조로 제공할 수 있으며, 동일 의미 record→Codec의 한 번 변환으로 충분하다. 실제 송신 전에 고정한 generation이 현재 runtime/생산자 관측 문맥과 같은지 검증한다. 기동/process 관측 세대 변경이면 이전 대기·캐시 자료를 무효화하고 새 관측 전까지 과거 기록에 새 BOOT를 부여하지 않는다. CIS에 수신된 뒤에는 **원 Pi Boot 보존**이므로 CIS가 자기 Boot로 덮어쓰지 않는다.
 
 `vision_sequence`는 새 카메라 판정, `status_sequence`는 새 기능 상태 평가에서만 증가한다. 같은 판정/상태 반복은 원 순번 유지·Age 증가다. UART-C LINK_SEQUENCE는 별도 Network 전송 순번으로 wire frame마다 증가한다. runtime 기동 ID 생성/수용과 process 재시작→새 관측 세대 구분은 BINDING_OPEN다.
 
 Presence INVALID를 없음으로, Count INVALID를 0명으로 합성하지 않는다. 같은 판정의 Presence와 Count가 각각 유효하고 값 범위·기능 상태 검사를 통과했을 때만 상호 모순을 검사한다. 한쪽이 미확인이면 그 숫자만으로 다른 정상 필드까지 무효화하지 않는다. Count 0~5/255는 기존 표현 범위이지 실제 검출 성능의 보증이 아니다.
 
-**권장 프로필 — 독립 제출:** 같은 판정의 Presence/Count와 각각의 원 validity/reason은 `PiNet_PublishVisionResult()`에, 독립된 기능 상태·고장은 `PiNet_PublishVisionStatus()`에 제출한다. STATUS 갱신은 원 Vision 판단을 갱신하지 않는다. CIS는 원 판정 사유를 보존하고 이후 실제 장애가 생기면 현재 사용 품질을 추가 제한한다. 최종 규칙은 [CIS의 Pi 원 관측·추가 평가](../CIS/10_DATA.md#pi-원-관측과-cis-추가-평가)를 따른다. Wire를 늘리거나 최종 품질이 원 Pi 사유 전체를 전달한다고 주장하지 않는다. 실제 함수 연결과 시험은 미완료다.
+**권장 프로필 — 독립 제출:** 동일 판정에 속하는 Presence/Count와 각각의 원 validity/reason은 `PiNet_PublishVisionResult()`에, 독립된 기능 상태·고장은 `PiNet_PublishVisionStatus()`에 제출한다. STATUS 갱신은 원 Vision 판단을 갱신하지 않는다. CIS는 원 판정 사유를 보존하고 이후 실제 장애가 생기면 현재 사용 품질을 추가 제한한다. 최종 규칙은 [CIS의 Pi 원 관측·추가 평가](../CIS/10_DATA.md#pi-원-관측과-cis-추가-평가)를 따른다. Wire를 늘리거나 최종 품질이 원 Pi 사유 전체를 전달한다고 주장하지 않는다. 실제 함수 연결과 시험은 미완료다.
 
 <a id="허용-소비와-원본-age"></a>
 ## 허용 소비와 원본 Age
@@ -171,6 +171,6 @@ P_PERMISSION에는 DOMAIN 원 BOOT/순번이 직접 없다. CIS는 수용한 DOM
 UART-C의 500ms 반복만으로 원 기한 500ms 이내의 연속 ALLOW를 보증하지 않는다. 새 DOMAIN 평가가 CIS에 도착하면 원 근거를 유지하여 가능한 즉시 중계하고 실제 지연·실패를 확인해야 한다. Pi의 통신 수신·해석·만료 검증과 비전 기능 적용은 별개다. 비전 기능에 사용할지는 Pi 모듈이 결정하며, 카메라 중지·프로세스 종료·물리 전원 차단을 이 계약의 새 요구로 만들지 않는다. 비전 기능을 적용하지 않는 구성에서도 통신 문서와 수신 시험은 진행할 수 있다.
 
 <a id="delta-pi-permission"></a>
-**추가 소비 조건:** FAILED/NO_DATA 시 과거 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영과 Network→CIS→Pi 실제 전달은 수용·검증 대기이며, 정상 형식의 무효 품질을 과거 ALLOW로 대체하지 않는 기존 소비 원칙은 유지한다. 검증된 relay가 실패·품질 하향을 전달하면 원 AGE가500ms 안이어도 이전 ALLOW를 사용하지 않고 다음 성공 평가/TTL 만료까지 무효화를 미루지 않는다. Pi Wire에는 원 DOMAIN 성공 Sequence가 없으므로 relay revision을 그것으로 간주하지 않는다. 원 AGE를 재수신·실패 시각으로0으로 만들지 않으며 지연된 구 ALLOW로 복원하지 않는다. 실제 relay·Queue·수신 연결은 미검증이고 Pi 카메라/비전 기능 적용 선택은 모듈 범위다. [적용 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**추가 소비 조건:** FAILED/NO_DATA 시 과거 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영과 Network→CIS→Pi 실제 전달은 수용·검증 대기이며, 정상 형식의 무효 품질을 과거 ALLOW로 대체하지 않는 기존 소비 원칙은 유지한다. 검증된 relay가 실패·품질 하향을 전달하면 원본 AGE가 500ms 이내라도 이전 ALLOW를 사용하지 않고 다음 성공 평가/TTL 만료까지 무효화를 미루지 않는다. Pi Wire에는 원 DOMAIN 성공 Sequence가 없으므로 relay revision을 그것으로 간주하지 않는다. 재수신·실패 시점에 원본 AGE를 0으로 초기화하지 않으며 지연된 구 ALLOW로 복원하지 않는다. 실제 relay·Queue·수신 연결은 미검증이고 Pi 카메라/비전 기능 적용 선택은 모듈 범위다. [적용 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
-**Generation 수용 조건:** 생산자와 runtime의 실제 기동/관측 세대 연결은 BINDING_OPEN이다. runtime reset 후 이전 record를 다시 제출하여 새 BOOT를 얻는 방식은 금지하며 새 판정/상태 평가가 필요하다. 이는 신규 wire 필드·별도 App DTO를 추가하는 계약이 아니다.
+**Generation 수용 조건:** 생산자와 runtime의 실제 기동/관측 세대 연결은 BINDING_OPEN이다. runtime reset 후 이전 기록을 다시 제출해 새 BOOT를 부여받는 방식은 금지하며 새 판정/상태 평가가 필요하다. 이는 신규 wire 필드·별도 App DTO를 추가하는 계약이 아니다.

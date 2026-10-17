@@ -2,7 +2,7 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**DECLARED_SOURCE / BINDING_OPEN.** 아래 code block은 참조 헤더의 typedef 선언이다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
+**DECLARED_SOURCE / BINDING_OPEN.** 아래 코드 블록은 참조 헤더의 typedef 선언이다. 설명 표는 원본 데이터의 생성 주체·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
 
 [노드 Data](10_DATA.md) · [노드 API](20_API.md) · [원 선언 헤더](https://github.com/vehicle-domain-control-system/integrated-vehicle-control/blob/9f0bbed4f2a2444111bc71e756103912c983993b/docs/esp32/3_Gateway_Interface/Gateway_Interface.h)
 
@@ -151,7 +151,7 @@ typedef Gateway_Status_t (*Gateway_InterfaceMessageHandler_t)(
     void *user_context);
 ```
 
-**범위·소유:** typed callback/로컬 별칭. pointed 객체 수명과 해당 Interface callback 계약을 함께 적용한다.
+**범위·소유:** 타입이 지정된 콜백 또는 로컬 별칭이다. 가리키는 객체의 수명과 해당 Interface 콜백 계약을 함께 적용한다.
 
 <a id="type-gateway-interfacecorehandlers-t"></a>
 ## `Gateway_InterfaceCoreHandlers_t`
@@ -184,7 +184,7 @@ typedef Gateway_Status_t (*Gateway_InterfaceRelaySender_t)(
     void *user_context);
 ```
 
-**범위·소유:** typed callback/로컬 별칭. pointed 객체 수명과 해당 Interface callback 계약을 함께 적용한다.
+**범위·소유:** 타입이 지정된 콜백 또는 로컬 별칭이다. 가리키는 객체의 수명과 해당 Interface 콜백 계약을 함께 적용한다.
 
 <a id="type-gateway-interfaceregistrationsender-t"></a>
 ## `Gateway_InterfaceRegistrationSender_t`
@@ -197,7 +197,7 @@ typedef Gateway_Status_t (*Gateway_InterfaceRegistrationSender_t)(
     void *user_context);
 ```
 
-**범위·소유:** typed callback/로컬 별칭. pointed 객체 수명과 해당 Interface callback 계약을 함께 적용한다.
+**범위·소유:** 타입이 지정된 콜백 또는 로컬 별칭이다. 가리키는 객체의 수명과 해당 Interface 콜백 계약을 함께 적용한다.
 
 <a id="type-gateway-interfaceappactivitysender-t"></a>
 ## `Gateway_InterfaceAppActivitySender_t`
@@ -210,7 +210,7 @@ typedef Gateway_Status_t (*Gateway_InterfaceAppActivitySender_t)(
     void *user_context);
 ```
 
-**범위·소유:** typed callback/로컬 별칭. pointed 객체 수명과 해당 Interface callback 계약을 함께 적용한다.
+**범위·소유:** 타입이 지정된 콜백 또는 로컬 별칭이다. 가리키는 객체의 수명과 해당 Interface 콜백 계약을 함께 적용한다.
 
 <a id="type-gateway-interfaceproximitysender-t"></a>
 ## `Gateway_InterfaceProximitySender_t`
@@ -223,7 +223,7 @@ typedef Gateway_Status_t (*Gateway_InterfaceProximitySender_t)(
     void *user_context);
 ```
 
-**범위·소유:** typed callback/로컬 별칭. pointed 객체 수명과 해당 Interface callback 계약을 함께 적용한다.
+**범위·소유:** 타입이 지정된 콜백 또는 로컬 별칭이다. 가리키는 객체의 수명과 해당 Interface 콜백 계약을 함께 적용한다.
 
 <a id="type-gateway-interfacetransportports-t"></a>
 ## `Gateway_InterfaceTransportPorts_t`

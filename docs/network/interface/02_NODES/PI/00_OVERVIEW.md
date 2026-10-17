@@ -6,9 +6,9 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 
 [전체 시작](../../00_START_HERE.md) · [개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md)
 
-Raspberry Pi의 카메라 서비스가 원 탑승자 판정·비전 기능/고장을 만든다. UART-C는 115200bps로 시작하는 기존 기준을 유지한다. Pi는 CIS가 중계한 DOMAIN Permission을 수신·해석하며, 이 값을 비전 기능 제한에 사용할지는 Pi 기능 모듈이 결정한다.
+Raspberry Pi의 카메라 서비스가 원본 탑승자 판정과 비전 기능·고장 상태를 생성한다. UART-C는 115200bps로 시작하는 기존 기준을 유지한다. PI는 CIS가 중계한 DOMAIN Permission을 수신·해석하며, 이 값을 비전 기능 제한에 사용할지는 Pi 기능 모듈이 결정한다.
 
-**PROPOSED_DESIGN · IMPLEMENTATION_BINDING_HOLD.** Data/API는 계약 후보이며 실제 firmware·보드 연결은 검증 전이다. 공용 CAN FD는 단일 공유 버스이고 nominal 500kbps/data 2Mbps는 WIRE_PROPOSED다. WINDOW는 **[구현 보류 — 설계 유지]**다.
+**PROPOSED_DESIGN · IMPLEMENTATION_BINDING_HOLD.** Data/API는 계약 후보이며 실제 펌웨어·보드 연결은 검증되지 않았다. 공용 CAN FD는 단일 공유 버스이고 nominal 500kbps/data 2Mbps는 WIRE_PROPOSED다. WINDOW는 **[구현 보류 — 설계 유지]**다.
 
 ## 구현자가 먼저 볼 문서
 
@@ -36,4 +36,4 @@ Raspberry Pi의 카메라 서비스가 원 탑승자 판정·비전 기능/고�
 
 [팀 미결](../../06_TECHNICAL_CONSTRAINTS.md) · [48 메시지 색인](../../05_MESSAGE_INDEX.md). 실제 SDK/Firmware/Codec/Board/무선/카메라 통합 시험은 **NOT_EXECUTED**다.
 
-**Generation 수용 조건:** 생산자와 runtime의 실제 기동/관측 세대 연결은 BINDING_OPEN이다. runtime reset 후 이전 record를 다시 제출하여 새 BOOT를 얻는 방식은 금지하며 새 판정/상태 평가가 필요하다. 이는 신규 wire 필드·별도 App DTO를 추가하는 계약이 아니다.
+**Generation 수용 조건:** 생산자와 runtime의 실제 기동/관측 세대 연결은 BINDING_OPEN이다. 런타임 재시작 후 이전 기록을 다시 제출해 새로운 BOOT로 취급하는 방식은 금지하며 새 판정/상태 평가가 필요하다. 이는 신규 wire 필드·별도 App DTO를 추가하는 계약이 아니다.

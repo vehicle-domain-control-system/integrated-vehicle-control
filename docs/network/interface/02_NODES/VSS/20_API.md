@@ -26,7 +26,7 @@ void VssNetPriv_OnDomainPermission(const NetDomainPermission *message, const Net
 
 ## 공통 호출·반환 계약
 
-송신은 기다리지 않는 로컬 제출이다. `NET_SUBMIT_OK`는 Network가 caller와 독립인 bounded handoff를 확보해 복사·접수한 상태다. 실제 CAN 송신·ACK·상대 RX·ECU 실행 DONE은 별도다. 포인터는 호출 동안만 빌려 읽으며 OK 반환 후 caller가 저장소를 재사용할 수 있다. `NO_CAPACITY`에서 discrete Event/Result를 조용히 버리지 않고 원 identity·Age를 유지한 처리/진단 방침을 적용한다.
+송신은 기다리지 않는 로컬 제출이다. `NET_SUBMIT_OK`는 Network가 호출자 저장소와 독립된 크기 제한형 인계 사본를 확보해 복사·접수한 상태다. 실제 CAN 송신·ACK·상대 RX·ECU 실행 DONE은 별도다. 포인터는 호출 동안만 빌려 읽으며 OK 반환 후 호출자가 원본 저장소를 재사용할 수 있다. `NO_CAPACITY`에서 discrete Event/Result를 조용히 버리지 않고 원 identity·Age를 유지한 처리/진단 방침을 적용한다.
 
 | 반환 | 정확한 범위·처리 |
 |---|---|
@@ -36,7 +36,7 @@ void VssNetPriv_OnDomainPermission(const NetDomainPermission *message, const Net
 | `NET_SUBMIT_NO_CAPACITY` | bounded 제출 저장소 부족; 원 identity·Age·순서/유효기한을 지킨 처리 필요 |
 | RX `void` | 검증된 typed 자료의 local 전달 callback이며 접수 성공·저장성공·물리 동작 결과를 반환하지 않음 |
 
-RX callback은 Node owner 처리 문맥에서 호출하고 ISR 직접 호출을 하지 않는다. `message/meta`는 NULL이 아니고 호출 중 읽기 전용이며 반환 뒤 필요 값은 consumer가 복사한다. 실제 callback/poll/queue 바인딩·bounded 소비 보장·수용 후 실패 sink는 BINDING_OPEN이다. `void`를 사용할 때 실제 sink가 전달을 처리할 수 있어야 하며 누락을 성공으로 간주하지 않는다. [공통 호출·비동기 실패](../../04_COMMON/20_API_USAGE_AND_FAILURE.md).
+RX callback은 기존 직렬 Node owner 문맥에서 호출하고 ISR 직접 호출을 하지 않는다. `message/meta`는 NULL 아닌 읽기 전용 borrow이며 Event1/Warning최대4 bundle을 기존 INPUT에 전달한다. STORE가 원 meta·기한·상실 정보를 자기 수명에 복사한 뒤 반환하고 이후 원 포인터를 참조하지 않는다. payload Age는 RX 기준으로 보존하며 INPUT이 RX→소비 경과를 한 번 누적한다. 실제 callback/직렬화·bounded 소비·수용 후 sink는 BINDING_OPEN이다. `void`는 소비/저장/음향 성공을 증명하지 않는다. [입력 정본](10_DATA.md#a1-binding) · [공통 호출·비동기 실패](../../04_COMMON/20_API_USAGE_AND_FAILURE.md).
 
 <a id="api-vssapp_ondomainwarningstate"></a>
 ## `VssApp_OnDomainWarningState()`
@@ -54,9 +54,9 @@ void VssApp_OnDomainWarningState(const NetVssWarningState *message, const NetCan
 | `message` | `const NetVssWarningState *` · IN/borrowed; [전체 Data](10_DATA.md#type-netvsswarningstate) | 수신 Network가 길이/enum/기동/순서 검증 후 제공; VSS 기능 입력 연결이 소비; NULL 금지, 호출 반환까지 유효 |
 | `meta` | `const NetCanRxMeta *` · IN/borrowed; [전체 메타](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcanrxmeta) | Network 기동/프레임 전송순번·로컬 RX 시간. 원 관측 source sequence/Age와 별개; NULL 금지, 호출 동안 읽기 전용 |
 
-**언제·어떻게 사용:** 세 경고 evidence와 후방 활성 meta를 독립 보존한다. 후방 거리로 위험을 다시 판단하지 않는다. format0/미지원은 후방 활성 근거 없음이며 다른 유효 경고에 영향 주지 않는다.
+**언제·어떻게 사용:** A1 WARNING60의 세 경고 판단 근거와 후방 활성 meta를 독립 보존하고 거리를 다시 판단하지 않는다. format0은 B50/B52..59=0의 정규 활성 근거 부재이며 미지원 marker와 구별한다. 부재0을 정상 DISABLED/OK로 소비하지 않고 다른 유효 경고는 독립 처리한다. [A1 시간·품질](10_DATA.md#a1-binding)을 따른다.
 
-**반환·실패:** `void`이며 local 전달 callback 호출은 기능적 수용·저장 수용·음향 시작·완료를 증명하지 않는다. 의미상 무효/만료 근거를 typed 상태로 전달할 수 있지만 CRC·length·unsupported code 등 구조 오류는 Network가 구분한다. 실패를 CLEAR/DONE으로 합성하지 않는다.
+**반환·실패:** `void`이며 로컬 전달 콜백 호출은 기능적 수용·저장 수용·음향 시작·완료를 증명하지 않는다. 의미상 무효/만료 근거를 typed 상태로 전달할 수 있지만 CRC·length·unsupported code 등 구조 오류는 Network가 구분한다. 실패를 CLEAR/DONE으로 합성하지 않는다.
 
 **경로:** DOMAIN→공유 CAN `VSS_WARNING_STATE`→VSS Network→이 함수. [DOMAIN API](../DOMAIN/20_API.md)와 [메시지 색인](../../05_MESSAGE_INDEX.md).
 
@@ -75,14 +75,14 @@ void VssApp_OnDomainEvent(const NetVssEvent *message, const NetCanRxMeta *meta);
 
 **한 번 발생한 DOMAIN 음향 의미를 기존 VSS INPUT 연결에 전달한다.** PROPOSED_DESIGN / BINDING_OPEN.
 
-**호출 주체·시점:** VSS Network가 검증한 `VSS_EVENT`를 owner 처리 문맥에서 Application의 기존 INPUT 연결에 전달한다. Application은 원 DOMAIN 기동·occurrence·AGE와 필요한 값을 반환 전에 복사한다.
+**호출 주체·시점:** VSS Network가 검증한 `VSS_EVENT`를 owner 처리 문맥에서 Application의 기존 INPUT 연결에 전달한다. Application은 원본 DOMAIN 기동·occurrence·AGE와 필요한 값을 반환 전에 복사한다.
 
 | 인자 | 정확한 타입·방향 | 생성·소비·수명 |
 |---|---|---|
 | `message` | `const NetVssEvent *` · IN/borrowed; [전체 Data](10_DATA.md#type-netvssevent) | 수신 Network가 길이/enum/기동/순서 검증 후 제공; VSS 기능 입력 연결이 소비; NULL 금지, 호출 반환까지 유효 |
 | `meta` | `const NetCanRxMeta *` · IN/borrowed; [전체 메타](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcanrxmeta) | Network 기동/프레임 전송순번·로컬 RX 시간. 원 관측 source sequence/Age와 별개; NULL 금지, 호출 동안 읽기 전용 |
 
-**언제·어떻게 사용:** DOMAIN 기동 + occurrence로 같은 발생을 구분한다. 기한·품질·가용성을 검사하며 same occurrence를 새 음향으로 재생하지 않는다. 무발생은 통신 고장이 아니다.
+**언제·어떻게 사용:** 수용한 DOMAIN 기동 + occurrence(출처 PRODUCT/TEST 포함)가 key이며 event_kind 변경은 같은 key의 내용 충돌이다. 같은 occurrence를 새 음향으로 재생하지 않는다. 최초 actual에는 원 `L=min(양의 USE_LIMIT,500ms,2000ms)`를 적용하고 L 도달은 만료다. 무발생은 통신 고장이 아니다.
 
 **반환·실패:** `void`이며 local 전달 callback 호출은 기능적 수용·저장 수용·음향 시작·완료를 증명하지 않는다. 의미상 무효/만료 근거를 typed 상태로 전달할 수 있지만 CRC·length·unsupported code 등 구조 오류는 Network가 구분한다. 실패를 CLEAR/DONE으로 합성하지 않는다.
 
@@ -103,17 +103,17 @@ NetSubmitResult VssNet_PublishStatus(const NetVssStatus *message);
 
 **현재 VSS 서비스·현재/최근 고장 보고를 DOMAIN에 제출한다.** PROPOSED_DESIGN / BINDING_OPEN.
 
-**호출 주체·시점:** Application의 기존 FLOW→INPUT 통신 연결이 실제 보고가 생성됐을 때 호출하는 후보다. HEALTH가 Network를 직접 호출하는 새 경계는 추가하지 않는다. 보호된 원 Snapshot의 변환·복사 위치는 [Status 보고 권장안](10_DATA.md#r2-status-proposal)의 **PROPOSED / BINDING_OPEN** 범위를 따른다.
+**호출 주체·시점:** HEALTH의 완전 CREATED 보고를 FLOW가 기존 INPUT으로 전달하고 INPUT 한 곳에서 보호된 Snapshot을 기존 NetVssStatus 자료형으로 변환해 호출한다. HEALTH→Network 직접 호출이나 새 공개 변환기를 추가하지 않는다. [A2 생산·수용](10_DATA.md#r2-status-proposal)의 선택과 실제 E-S01~05 Binding 대기를 구분한다.
 
 | 인자 | 정확한 타입·방향 | 생성·소비·수명 |
 |---|---|---|
 | `message` | `const NetVssStatus *` · IN/borrowed; [전체 Data](10_DATA.md#type-netvssstatus) | 실제 기능 owner가 생성한 보고; Network가 접수 전 검사·복사; NULL 금지, 호출 반환까지 유효 |
 
-**언제·어떻게 사용:** 일관된 반영 완료 관측에 근거한 서비스·고장 보고만 제출한다. currentFaults는 완전성이 확인된 현재 목록, last_fault는 원 발생·AGE를 가진 최근 기록이다. `VSS_STATUS_REEVALUATE`로 이전 보고의 평가 번호·AGE를 새로 만들지 않는다. Snapshot→DTO owner·인계 형식은 BINDING_OPEN이며 이 인자 후보가 App 선행 변환·Network 변환을 확정하지 않는다.
+**언제·어떻게 사용:** 완전한 current와 원 최근 이력·state/availability/accepting·평가 근거가 함께 있는 보고만 제출한다. `VSS_STATUS_REEVALUATE`로 이전 번호·AGE를 새로 만들지 않는다. INPUT이 한 번 명시 변환하고 Network는 반환 전 11필드·원 key·두 AGE 기준의 전체 사본을 확보한다. 호출자의 Snapshot 포인터를 반환 후에도 보관하지 않는다.
 
-**반환·실패:** 위4개 NetSubmitResult만 local 수용 상태로 사용한다. 실패 뒤 재시도해도 원 상태평가/발생/명령 식별을 바꾸거나 원 Age를 초기화하지 않는다. State/Fault와 discrete Event/Result의 서로 다른 교체·수명 규칙은 Data를 따른다. Network는 송신시 Boot/TX_SEQUENCE/실제 대기 Age를 보완하고 기능 상태·고장을 재판정하지 않는다.
+**반환·실패:** 위4개 NetSubmitResult는 local 수용 결과다. 원 세대/평가/발생 identity와 AGE를 보존한다. sink 미준비는 NOT_READY, 전체 미접수·용량 부족은 NO_CAPACITY이며 bounded 재검토만 허용한다. 접수 후 terminal 실패는 기존 M09→INPUT 진단16/loss latch→FLOW 후속으로 RX/새 CREATED와 독립 전달한다. actual sink는 E-S04 미검증이며 local OK를 TX/DOMAIN/음향 성공으로 만들지 않는다. Network는 송신 Boot/TX와 대기 AGE만 보완하고 기능 사실을 재판정하지 않는다.
 
-**경로:** VSS App→이 함수→Network Codec→`VSS_STATUS`→DOMAIN Network 내부 `DomainNetPriv_OnVssStatus`→기존 C2 또는 미정 의미 owner. [DOMAIN API](../DOMAIN/20_API.md) · [DOMAIN 내부 Routing](../DOMAIN/25_PRIVATE_ROUTING.md).
+**경로:** VSS HEALTH→FLOW→기존 INPUT→이 함수→Network Codec→`VSS_STATUS`→DOMAIN `DomainNetPriv_OnVssStatus`→설치 profile별 State/Fault 독립 수용. 같은 원 K의 중복 호출·old K 늦은 완료를 제한하며 실제 C2/Getter association은 E-S05 대기다. [DOMAIN API](../DOMAIN/20_API.md) · [DOMAIN 내부 Routing](../DOMAIN/25_PRIVATE_ROUTING.md).
 
 ```c
 /* observed_message는 실제 기능 owner가 만든 NetVssStatus 객체다. */
@@ -151,4 +151,4 @@ VssNetPriv_OnDomainPermission(&decoded, &rx_meta);
 
 ## 구현 연동 경계
 
-`VssNet_PublishStatus`는 정확한 NetVssStatus 보고가 제공됐을 때 사용할 로컬 handoff 후보다. R4 Snapshot을 직접 인자로 받는 구조를 확정하지 않는다. 형식·owner 조건 확정 전 normal0/READY/Fault없음으로 누락을 보완하지 않는다. `LAST_FAULT_QUALITY`의 이력 있음0/부재3은 current service·전체 Fault 품질을 표현하지 않으므로 미확인 품질을 정상 보고로 채우지 않는다. [변환·제한 정본](10_DATA.md#r2-status-proposal) · [입력 상실·복구](10_DATA.md#vss-input-recovery). VSS App permission ingress는 consumer 필요성이 미확인이라 필수 API에서 제외했다. 하나의 DOMAIN_PERMISSION은 VSS 포함4수신 의무를 유지하며 private handler가 담당한다. 별도 VSS_FAULT frame·VSS MOBILE Query RPC·재생제어 wrapper를 신설하지 않는다.
+`VssNet_PublishStatus`는 INPUT이 만든 정확한 기존 NetVssStatus 전체 보고의 local handoff다. R4 Snapshot을 직접 인자로 받는 공개 구조를 추가하지 않는다. A2에서 변환 owner를 선택했어도 실제 원 생산·세대·시간·sink·consumer 근거는 E-S01~05 확인 대기다. normal0/READY/Fault없음으로 누락을 보완하지 않는다. `LAST_FAULT_QUALITY`의 이력0/부재3은 current service·전체 Fault 품질이 아니다. [생산·제한 정본](10_DATA.md#r2-status-proposal) · [입력 상실·복구](10_DATA.md#vss-input-recovery). VSS App permission ingress는 필수 API에 추가하지 않고 DOMAIN_PERMISSION의4수신 의무는 private handler로 유지한다. 별도 VSS_FAULT frame·VSS MOBILE Query RPC·재생제어 wrapper를 신설하지 않는다.

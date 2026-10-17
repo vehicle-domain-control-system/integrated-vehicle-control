@@ -3,7 +3,7 @@
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
 <a id="production-c2-compatibility"></a>
-## Production 참고 C2와 후보의 연결 제한
+## 운영 코드의 참고 C2와 설계 후보 사이의 연결 제한
 
 담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며, 아래 C 선언·공개 API는 **v0.3/v0.6 후보**다. `docs/Domain/architecture/2_Domain_interface/Domain_Interface_v0.5.h`는 참고 파일이며 실제 ECU 빌드 경로·SHA와의 동일성은 미확인이다.
 
@@ -14,7 +14,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 | TxPort Callback | 15개 | 26개 |
 | RxObserver Callback | 12개 | 11개 |
 
-이 참고 헤더는 후보와 원형 전체가 일치하지 않는다. 실제 Production의 원형 일치 여부는 담당자가 사용하는 빌드 파일로 재확인해야 하며, 위 차이를 없애기 위해 아래 API를 삭제·추가하거나 구형 포트로 되돌리지 않는다. **후보 수용·실제 연결·ABI 검증은 대기**다.
+위 표는 저장소에 남아 있는 **과거 v0.5 참고 헤더와 v0.6 후보**의 비교다. DOMAIN 담당자는 현재 Production v0.5가 공개 API 72개·Query 18개·TxPort 26개·Observer 11개라고 별도로 보고했다. 이 보고는 실제 빌드에 사용된 헤더의 SHA·함수 원형/ABI 검증과 구분한다. 참고 헤더 차이를 이유로 아래 API를 삭제하거나 구형 Port로 되돌리지 않는다. **실제 설치 선언·Adapter 연결·ABI 검증은 대기** 상태다.
 
 | 차이 범위 | 호환 검토 대상 |
 |---|---|
@@ -26,7 +26,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 | VSS·Warning·Window·AntiPinch | 상태·Fault·원 세대·입력별 근거, 원 Command 연결, Warning 종류·읽음·품질·SourceEvidence 차이 |
 | Status·Function ID·헤더 의존성 | UNSUPPORTED와 Environment/COUNT 등의 추가, include guard/version·필수 Vehicle 헤더 변경 |
 
-공통 이름의 함수에도 [Vehicle 타입 차이](11_VEHICLE_TYPES.md#production-compatibility)가 파급된다. 필드·enum 의미를 명시 변환하고, C 구조체 배치나 포트 개수가 같다는 이유로 호환을 승인하지 않는다. 컴파일러별 sizeof/정렬·호출 ABI와 실제 Manager/Observer/TxPort 바인딩은 미검증이며 Wire raw/길이·품질·시간 규칙은 기존 계약을 유지한다.
+공통 이름의 함수에도 [Vehicle 타입 차이](11_VEHICLE_TYPES.md#production-compatibility)가 파급된다. 필드·enum 의미를 명시 변환하고, C 구조체 배치나 포트 개수가 같다는 이유만으로 호환된다고 판단하지 않는다. 컴파일러별 sizeof/정렬·호출 ABI와 실제 Manager/Observer/TxPort 바인딩은 미검증이며 Wire raw/길이·품질·시간 규칙은 기존 계약을 유지한다.
 
 **DECLARED_SOURCE / BINDING_OPEN.** 아래 선언은 C2 v0.6 후보의 의미 타입이다. 공개 API 72개와 TxPort 26개를 정의한다. 실제 ABI·연결 검증은 남아 있다. 설명 표는 원 생성자·유효성·수명을 명시한다. 이 문서는 컴파일용 헤더가 아니며 C enum/padding을 Wire로 복사하지 않는다.
 
@@ -1064,7 +1064,7 @@ typedef struct
 | `meta` | [`SignalMeta_t`](11_VEHICLE_TYPES.md#type-signalmeta-t) | 원 생산자의 품질·원본 AGE·평가 번호. 이 메타는 링크 BOOT_ID/TX_SEQUENCE가 아니다. | Domain 기능 결정/설정/결과 owner |
 
 <a id="delta-permission-projection"></a>
-** 추가 권장안 / DOMAIN 연동 조건 확인 필요:** 미관측·근거 없음은 false+NO_DATA, 수명 만료는 false+STALE, 신뢰할 수 없는 평가 실패는 false+INVALID로 투영하는 안이다. `quality`와 `meta.quality`가 일치해야 하며 충돌 시 기존 CAN 후보처럼 확인 불가로 제한하고 임의 OK 선택을 금지한다. 무효 bool을 정상 DENY로 읽지 않는다. UNKNOWN+OK 원 품질을 반드시 보존해야 하면 현재 bool+quality+meta로 무손실 표현할 수 없다. 의미 축약은 DOMAIN Adapter의 정책 수용이 필요하고, 원 의미·원 품질·원인 근거의 DOMAIN 내부 보존 위치도 확인 대기다. Network는 품질 검증·전달을 담당하며 이 정보 손실을 숨기거나 새 필드를 추가하지 않는다. [원인별 권장표·상태](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
+**추가 권장안 / DOMAIN 연동 조건 확인 필요:** 미관측·근거 없음은 false+NO_DATA, 수명 만료는 false+STALE, 신뢰할 수 없는 평가 실패는 false+INVALID로 투영하는 안이다. `quality`와 `meta.quality`가 일치해야 하며 충돌 시 기존 CAN 후보처럼 확인 불가로 제한하고 임의 OK 선택을 금지한다. 무효 bool을 정상 DENY로 읽지 않는다. UNKNOWN+OK 원 품질을 반드시 보존해야 하면 현재 bool+quality+meta 조합으로는 의미를 손실 없이 표현할 수 없다. 의미 축약은 DOMAIN Adapter의 정책 수용이 필요하고, 원 의미·원 품질·원인 근거의 DOMAIN 내부 보존 위치도 확인 대기다. Network는 품질 검증·전달을 담당하며 이 정보 손실을 숨기거나 새 필드를 추가하지 않는다. [원인별 권장표·상태](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)
 
 `meta.updateSequence`는 DOMAIN의 실제 성공 평가에 대한 원 순번이다. 실패 보고는 마지막 성공 순번·원 시각을 보존한 현재 품질 하향이며 새 성공 평가가 아니다. CAN 합성 UPDATE_SEQUENCE·TX_SEQUENCE로 이를 대체하지 않는다. [제출 조건](20_API.md#delta-permission-submit)
 
@@ -1302,7 +1302,7 @@ typedef struct
 
 | 멤버 | 정확한 C 타입 | 역할·범위·유효성 | 원 생성자 |
 |---|---|---|---|
-| `service` | [`VssServiceState_t`](11_VEHICLE_TYPES.md#type-vssservicestate-t) | VSS 실제 음향 서비스 상태. R4/R6→이 DTO 변환 owner 미정. | VSS 음향 서비스 owner |
+| `service` | [`VssServiceState_t`](11_VEHICLE_TYPES.md#type-vssservicestate-t) | VSS 실제 음향 서비스 상태. A2 producer는 기존 INPUT의 완전 Snapshot→NetVssStatus 단일 변환으로 선택했다. DOMAIN Net DTO↔C2/Getter association과 설치 profile은 E-S05 확인 대기이며 v0.5 service-only 수용은 전체 이력 소비가 아니다. | VSS 음향 서비스 owner |
 | `faultMask` | `uint8_t` | 활성/종합 fault bitmask. 노드별 bit 계약 및 활성 code와 구분. | VSS 음향 서비스 owner |
 | `lastFaultCode` | `uint16_t` | 원 ECU 최근 고장 code u16. 활성 고장 여부가 아니다. | VSS 음향 서비스 owner |
 | `lastFaultOccurrenceId` | [`OccurrenceId_t`](11_VEHICLE_TYPES.md#type-occurrenceid-t) | 최근 고장 발생 식별, 코드·원 세대·AGE와 함께 소비. | VSS 음향 서비스 owner |

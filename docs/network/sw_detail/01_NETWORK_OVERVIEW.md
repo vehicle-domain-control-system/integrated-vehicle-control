@@ -28,15 +28,15 @@ flowchart LR
 | L04 프레임 검증과 변환 | 링크 형식과 필드를 검사하고 명시적으로 변환 | [L04](layers/L04_FRAME_CODEC.md) |
 | L05 전송 수명과 장치 경계 | 버퍼 수명·장치 관측·통신 진단을 연결 | [L05](layers/L05_TRANSPORT_PORT.md) |
 
-이 다섯 Layer는 설계 책임을 찾아가는 구조다. Layer마다 별도 Task·Queue·래퍼 함수를 만드는 지시는 아니다. DOMAIN C2 호출은 Task 문맥에서 수행한다. CIS 등 다른 노드에는 동일 RTOS 구성을 강제하지 않는다.
+이 다섯 Layer는 설계 책임을 찾아가는 구조다. Layer마다 별도 Task·Queue·래퍼 함수를 만드는 지시는 아니다. DOMAIN의 C2 Rx·Query·Private Transition은 ISR 밖의 단일 담당 실행 문맥에서 순차적으로 호출한다. 초기 구현은 Superloop를 사용하며 RTOS Task는 필수 조건이 아니다. CIS 등 다른 노드에는 동일 RTOS 구성을 강제하지 않는다.
 
 ## 첫 송수신 경로
 
-CIS 기능 모듈은 원 관측 번호와 품질을 붙인 후방 자료를 `CisNet_PublishRear`로 제출한다. Network는 호출 중 전체 자료를 복사하고, 실제 전송 선택 시 아직 반영하지 않은 대기를 AGE에 누적한다. Codec가 필드별 프레임을 만들고 장치 Port가 이를 인계한다. 접수 뒤 Driver가 참조하는 동안 프레임은 불변이다.
+CIS 기능 모듈은 원 관측 번호와 품질을 붙인 후방 자료를 `CisNet_PublishRear`로 제출한다. Network는 호출 중 자료 전체를 복사하고, 실제 송신 시 AGE에 아직 반영되지 않은 로컬 대기 시간만 한 번 더한다. Codec가 필드별 프레임을 만들고 장치 Port가 이를 인계한다. 접수 뒤 Driver가 참조하는 동안 프레임은 불변이다.
 
 DOMAIN Network는 Driver가 확보한 프레임·수신 시각을 함께 인수한다. 형식·필드 검증 후 원 기동과 순서를 확인한다. 같은 관측의 값·품질·AGE·번호를 한 묶음으로 C2 자료에 투영한 다음 `DomainIf_RxCisRear`를 호출한다. 함수 본체와 Manager 상태는 DOMAIN이 소유한다. 호출 성공 이후의 위험 판단과 VSS 경고 출력은 이 Network 인계의 완료 조건이 아니다.
 
-원 거리 raw123의 단위는 0.1cm, 즉123mm다. 정수 cm로 잘랐다가 mm로 되돌리지 않는다. 값65535는 유효 거리로 소비하지 않고 무검출·고장 등 상태와 함께 해석한다. 필드와 코드표는 [Data 정본](data/CIS_REAR_DATA.md) 한 곳에 둔다.
+거리 원시값 123은 0.1cm 단위이므로 123mm에 해당한다. 정수 cm로 잘랐다가 mm로 되돌리지 않는다. 값65535는 유효 거리로 소비하지 않고 무검출·고장 등 상태와 함께 해석한다. 필드와 코드표는 [Data 정본](data/CIS_REAR_DATA.md) 한 곳에 둔다.
 
 ## 실패와 복구
 

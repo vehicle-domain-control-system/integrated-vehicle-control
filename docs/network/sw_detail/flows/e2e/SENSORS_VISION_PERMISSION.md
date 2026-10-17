@@ -78,21 +78,34 @@ default:
 실제 온습도 만료·해당 메시지 무수신·수용된 CIS Boot 변경은 새 CAN frame을 만들지 않는다. M09가 보관 중인 동일 raw/meta/C2와 사건을 연결하고 M03의 기존 직렬화 문맥으로 [로컬 무효화](../../functions/can/CIS_ENVIRONMENT.md#local-invalidation)를 호출한다. `observedEnvironmentEvent`는 [NetCisEnvironmentLocalEvent](../../data/CAN_NODE_DATA.md#type-NetCisEnvironmentLocalEvent)의 실제 사본이다. 원 `retainedRaw/retainedMeta/retainedC2`, 현재 record/event revision, 수용 Boot, 관측시각·미반영 경과, 해당 메시지의 마지막 정상 수신시각·채택된 중단 한도와 affectedChannels를 모두 보존한다. 시간이나 중단 정책 근거가 없으면 가짜 사건을 채우지 않는다.
 
 ```c
-// Boot 전이는 아래 SC05 r1 순서에서 A 미실행 차단 및 실행/후속 비동기 쓰기의
-// 종료·향후 commit 불가 실제 근거를 먼저 확인한다. 미확인일 때 이 호출을 보류한다.
-NetCanResult invalidated = NetCan_InvalidateCisEnvironment(
-    &observedEnvironmentEvent);
-// 내부에서 같은 DomainIf_RxCisCabinEnvironment 경계를 사용한다.
-// OK는 그 C2 반환만 뜻한다. 실제 Core/Observer 반영은 원 기록과 함께 확인한다.
-// NO_CAPACITY/CONSUMER_REJECTED/NOT_READY 또는 부분 반영 불명확이면
-// 실제 반환과 사건 identity를 남기며 자동 재호출하지 않는다.
-// TIME_HOLD/ORDER_HOLD/CONTRACT_HOLD/INVALID_ARGUMENT에서는
-// 새 정상 값·수신시각·원 sequence를 생성하지 않는다.
+/* PSEUDOCODE_ONLY: 실제 M09 사건과 기존 Network 내부 함수의 분기 예 */
+switch (observedEnvironmentEvent.kind) {
+case NET_ENV_ORIGIN_EXPIRED:
+case NET_ENV_RX_STOPPED: {
+    NetCanResult invalidated = NetCan_InvalidateCisEnvironment(&observedEnvironmentEvent);
+    // 기존 공개 환경 Rx 품질 경로. 원 반환·Core/Observer를 보존하며 자동 재호출하지 않는다.
+    // TIME_HOLD/ORDER_HOLD/CONTRACT_HOLD 등은 새 정상·수신시각·원seq를 만들지 않는다.
+    break;
+}
+case NET_ENV_BOOT_CHANGED: {
+    // M01이 자기 구 환경 대기/콜백·미시작 Query 재게시를 막고 자체 callback을 직렬화.
+    NetCanResult invalidated = NetCan_InvalidateCisEnvironment(&observedEnvironmentEvent);
+    // 이 분기는 공개 Rx NO_DATA를 호출하지 않는다. 현재 ABI/Binding 미확인으로 CONTRACT_HOLD.
+    // 향후 DOMAIN 소유 동기 private 한 번 제출·미래 commit 봉쇄/무효화/구 Query 차단 후
+    // 현재 요청 내용·수용 BOOT·적용 Epoch·명확한 완료를 대조해야 B 정상 gate 검토 가능.
+    // 현재 다른 Epoch EPOCH_ORDER_UNAVAILABLE를 성공/다음 요청으로 바꾸지 않는다.
+    // 원 결과·불명 상태를 보존하고 자동 재시도하지 않는다.
+    break;
+}
+default:
+    // 기존 INVALID_ARGUMENT 경계. 정상 인계나 가짜 BOOT 사건을 생성하지 않는다.
+    break;
+}
 ```
 
-온습도 만료는 기존 유효 채널의 품질을 INVALID/STALE로 제한하고 기존 비유효 채널의 원 사유는 보존한다. 일반 같은 Boot 수신중단의 STALE/NO_DATA 선택은 별도 미결이며, Boot 변경은 조건부 저장 순서에서 구 세대 채널을 INVALID/NO_DATA로 제한한다. 원 raw·sequence는 보존하고 AGE는 입증한 미반영 경과만 더한다. 온도만 새 유효 관측을 받으면 온도만 회복하며 조도 정책을 온습도2500ms에서 추정하지 않는다. **BG-R05-BOOT / BLOCKED_DESIGN:** r1의 구 쓰기 배제→NO_DATA 실제 저장→새 Boot 원 낮은seq 전달 조건부 권장안은 존재한다. 실제 DOMAIN 저장 위치·구 후속 쓰기 배제·완료 관측·낮은seq 수용 근거가 없어 [해당 분기](../../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)는 차단으로 남긴다. 일반 NO_DATA를 reset 명령으로 쓰거나 reset API를 만들지 않는다.
+온습도 만료는 기존 유효 채널의 품질을 INVALID/STALE로 제한하고 기존 비유효 채널의 원 사유를 보존한다. 일반 같은 BOOT 수신중단의 STALE/NO_DATA 선택은 별도 미결이다. BOOT 무효화는 단일 동기 private 전환 목표이며 같은 전환을 공개 Rx NO_DATA로 중복 전달하지 않는다. 원 raw·sequence를 보존하고 AGE는 입증한 미반영 경과만 한 번 더한다. 새 유효 온도만 온도를 회복시키며 조도 정책을 온습도2500ms에서 추정하지 않는다. **BG-R05-BOOT / BLOCKED_DESIGN:** [해당 분기](../../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)는 담당자 부분 Core/Host 완료 보고와 별개로 실제 private ABI·연속 Epoch 수용·Rx/Query Binding 미검증 때문에 현재 HOLD다. 일반 NO_DATA로 BOOT/순번 reset이나 새 Epoch를 만들지 않는다.
 
-Boot A/seq900 → 수용된 새 Boot B/seq0 → 늦은 A/seq901 반례에서는 A의 자료를 NO_DATA로 제한하고 늦은 A는 거부한다. B/seq0을 A/seq900과 단순 비교하지 않지만, B의 C2/VSM 정상 소비·회복은 BG-R05-BOOT 해소 전 HOLD다.
+BOOT A/seq900 → 검증된 새 B/seq0 → 늦은 A/seq901에서는 DOMAIN private 경계가 A의 미래 commit을 봉쇄하고 실제 환경 무효화·구 GOOD Query 방지를 완료해야 한다. 구 객체가 남아도 그 보장과 요청/Epoch/완료 대조가 성립하면 가능하다. B0을901로 바꾸거나 A900과 전역비교하지 않는다. 현재 미바인딩 상태에서 B 정상 소비·회복을 성공으로 만들지 않으며 기억된 지연 A는 재인계·정상수신/복구 근거로 쓰지 않는다.
 
 **실패·복구.** 온도와 습도의 원 사용기한은 각각 합의된 2500ms다. 각 채널의 현재 누적 AGE가 2499ms이면 시간 필요조건만 통과하고, 2500ms와 2501ms에서는 그 채널을 사용할 수 없다. 조도1000ms와 CIS 로컬5000ms는 별도 미확정 정책이며 온습도 합의로 확정하지 않는다. 보고200ms·수신 중단600ms 후보로 원 TTL을 대신하지 않는다. 늦은 frame·동일 sequence 재전송·CIS 재기동·bus-off 복귀는 새 측정이 아니다. 새 유효 온도만 들어오면 온도만 회복하고 습도·조도는 기존 원 품질/AGE로 남긴다. DROP/Queue full은 전체 새 접수 실패이며 원 순서장부를 먼저 진전시키지 않는다. 표시용 열화 사실 보존과 기능 제어 사용 제한은 구별한다.
 
@@ -179,7 +192,7 @@ raw `rear_distance_deci_cm`의 0.1cm는1mm이므로123raw→123mm다. 정수 `/1
 
 | 출력과 실제 소비 Owner | 기존 API·Function 정본 | 확인할 종료·실패 의미 |
 |---|---|---|
-| DOMAIN 위험 Owner → VSS 의미 입력 | `DomainIf_Status_t DomainIf_TxVssWarningState(const DomainIf_VssWarningState_t *state);` → [TxPort/Service](../../functions/DOMAIN_TX_PORT.md) → [VSS_WARNING_STATE](../../functions/can/VSS_WARNING_STATE.md) → `void VssApp_OnDomainWarningState(const NetVssWarningState *message, const NetCanRxMeta *meta);` | CF02 used51/60은 둘 다64B/DLC15. 양단 채택 전 encode/decode/typed 소비 HOLD. CAN TX/void 반환은 VSS 실제 시작·완료가 아님 |
+| DOMAIN 위험 Owner → VSS 의미 입력 | `DomainIf_Status_t DomainIf_TxVssWarningState(const DomainIf_VssWarningState_t *state);` → [TxPort/Service](../../functions/DOMAIN_TX_PORT.md) → [VSS_WARNING_STATE](../../functions/can/VSS_WARNING_STATE.md) → `void VssApp_OnDomainWarningState(const NetVssWarningState *message, const NetCanRxMeta *meta);` | A1 WARNING60 used60/frame64/DLC15 선택; WARNING51은 이력. 실제 양단 producer/ABI·시간 검증 전 CF02 HOLD. CAN TX/void 반환은 실제 음향 시작·완료가 아님 |
 | VSS 현재 유효 Warning → 실제 음향 | [VSS Owner 경계](../../nodes/VSS.md#event-warning), [SC13/14](WINDOW_VSS_HEALTH.md) | VSS가 의미·원 AGE·품질·활성 조건으로 중재. 위험 재판정·실행 완료 생성은 Network 범위 밖. 소리 중단으로 DOMAIN 위험을 CLEAR하지 않음 |
 | DOMAIN 위험 Owner → Mobile 경고 | `DomainIf_Status_t DomainIf_TxMobileWarning(const DomainIf_WarningInfo_t *warning);` → [M_WARNING](../../functions/uart_m/M_WARNING.md) → [ESP32](../../nodes/ESP32_MOBILE.md) → BLE → App | 원 DOMAIN 경고 occurrence/품질/AGE와 현재 recipient Device/Session 보존. UART/BLE 접수는 화면 인지·읽음이 아님; [SC16](QUERY_WARNING_SESSION.md)로 읽음/위험 해제를 분리 |
 | DOMAIN 원 관측 → Mobile 상태 | `DomainIf_Status_t DomainIf_TxMobileCisOccupant(const CisOccupantState_t *state);` 또는 `DomainIf_TxMobileCisRear` → [M_CIS_OCCUPANT](../../functions/uart_m/M_CIS_OCCUPANT.md) / [M_CIS_REAR](../../functions/uart_m/M_CIS_REAR.md) | 관측 표시와 경고 의미는 별도. 한 경로 송신 실패가 다른 경로의 Owner 결과를 소급 변경하지 않음 |
@@ -280,7 +293,7 @@ SC10의 상태 송신 정확 선언은 `DomainIf_Status_t DomainIf_TxMobileCisSt
 | B17-SEN-03 / SC06 | Presence INVALID/VISION_FAULT, Count VALID2, 뒤 Pi Status READY | NetNodeCis_CheckOccupantTransfer·CheckVisionProjection, 원 record 불변 | Count 독립·Presence 원 INVALID/사유 보존. O13 미합의 투영 BLOCKED. Pi/CIS Data·SC06 |
 | B17-SEN-04 / SC06 | UART29B 중 일부만 도착 또는 CRC오류, 기존 occupant 정상 | UART_C_FRAME_ROUTER, OUT/Owner 정상 갱신 없음 | 새 완전 검증 전 typed callback0회. link reset 시 이전 half-frame 섞지 않음. SC06/UART-C profile HOLD |
 | B17-SEN-05 / SC07 | raw123을12 또는120mm로 변환하려 함; 별도 raw0/65535 | DOMAIN_CIS_REAR_INGRESS의 단위·품질 변환 | 123mm 보존,0 유효와65535 sentinel 구별, FAULT→CLEAR 없음. SC07/IF-O19 |
-| B17-SEN-06 / SC06·07 | Warning64B/DLC15, used51/60 채택 없음 | VSS_WARNING_STATE, 양단 계약 미확인 | CF02 CONTRACT_HOLD. 길이 자동선택·음향 완료·위험 CLEAR 생성 없음. SC06/07·VSS node |
+| B17-SEN-06 / SC06·07 | A1 WARNING60 선택, 실제 양단 producer/지원·시간 증거 없음 | VSS_WARNING_STATE, 실제 Binding 미확인 | CF02 CONTRACT_HOLD. 길이 자동선택·음향 완료·위험 CLEAR 생성 없음. SC06/07·VSS node |
 | B17-SEN-07 / SC08 | 원 Permission을 CIS500ms 대기 뒤 Pi 수신, USE_LIMIT1500 후보 | ProjectPermission·CheckPermissionUse, 원 AGE 누적 | 후방 Power 원500ms 도달로 비사용. relay1500 후보로 연장하지 않음; 원 association과 USE_LIMIT 채택 근거는 별도 HOLD. SC08/IF-O05·G02 |
 | B17-SEN-08 / SC08 | power1/INVALID 또는255, 원 DOMAIN association 미확인 | CheckPermissionUse, source raw 불변 | 허용 생성 없음; UNCONFIRMED와 CONTRACT_HOLD를0/OK 불허로 합성하지 않음. Pi Data/IF-O05·09 |
 | B17-SEN-09 / SC08 | CAN 복구, WINDOW 무수신, 다른 수신자는 새 원 판단 수용 | 각 DOMAIN_PERMISSION Rx 의무 독립 | 2Wire/5Rx 추적 유지·WINDOW DEFERRED, 무수신 차량 Fault/동작 재개 없음. SC08/G07 |
@@ -299,18 +312,18 @@ SC10의 상태 송신 정확 선언은 `DomainIf_Status_t DomainIf_TxMobileCisSt
 <a id="sc05-r1-storage-order"></a>
 ## PG6-SW02 SC05 — Boot 전이의 실제 저장 순서
 
-[r1 조건부 저장 순서](../../functions/can/CIS_ENVIRONMENT.md#environment-storage-order)를 SC05의 기존 M01→M03/F08→M09→환경 Rx→VSM/독립 Meta→Getter 경로에 적용한다. 실제 기존 DOMAIN 저장 경계의 근거는 없어 BG-R05-BOOT를 유지한다. 새 공개 API/완료 bool·callback·환경 generation은 만들지 않는다.
+[r1 조건부 저장 순서](../../functions/can/CIS_ENVIRONMENT.md#environment-storage-order)를 SC05의 기존 M01→M03/F08→M09→DOMAIN 동기 private 목표→무효화/Query 완료 대조→새 원 관측의 공개 환경 Rx→Getter 경로에 적용한다. DOMAIN 첫 전환·동일 Epoch 중복/충돌·동기 무효화 Host 완료는 담당자 보고이며 현재 다른 Epoch는 EPOCH_ORDER_UNAVAILABLE다. 연속 운영안은 발송된 Network 제안/DOMAIN 회신 대기이고 실제 private ABI·Rx/Query Binding이 없어 BG-R05-BOOT를 유지한다. 새 공개 API/완료 bool·callback·환경 generation을 만들지 않는다.
 
 | 입력·경계 | 연결된 실제 분기와 남길 사실 |
 |---|---|
-| A900 queued, 검증된 B0 수용 | M01이 A 신규 전달·미실행 패킷/callback을 차단하고 B 원자료를 보존한다. 기존 A 실행·후속 쓰기가 없다는 실제 경계 근거 후 기존 무효화 함수 호출 |
-| A callback 실행 중 | 실행작업을 임의취소하지 않는다. 후속 비동기 쓰기까지 종료/향후 commit 불가를 실제 owner 연결로 확인할 때까지 반환·보류하며 owner를 동기대기시키지 않음 |
-| A callback 반환, async VSM write pending | 반환을 완료로 보지 않는다. 구 쓰기가 이후 NO_DATA를 덮을 수 있으므로 무효화 호출 및 B 정상 gate 보류 |
-| 구 쓰기 배제 후 기존 Rx NO_DATA | 같은 eventRevision/recordRevision 입력·원 반환을 보존한다. Queue/DOMAIN_IF_OK가 아니라 VSM 구 정상값과 독립 Meta의 실제 무효화 commit을 기다림 |
-| 무효화 거부·완료불명 | B 정상 전달 금지. 구 OK가 이미 제거됐다는 주장 금지. 같은 입력 자동재호출 없이 실제 미접수/부분 반영 근거 확인 |
+| A900 queued, 검증된 B0 수용 | M01이 자기 A 환경 대기·미실행 callback·미시작 Query 재게시를 차단하고 B 원자료 보존. M03/F08가 고정 요청을 단일 동기 private에 한 번 제출하는 목표이며 ABI 미확인은 HOLD |
+| A callback 실행 중 | Network 자기 callback을 owner 문맥에서 직렬화. 이미 DOMAIN에 인계된 A 후속 commit 봉쇄는 DOMAIN 책임. 단순 callback 반환/빈 Queue로 완료를 대신하지 않음 |
+| A callback 반환, async VSM write pending | 객체가 남아도 미래 commit이 확실히 봉쇄되고 무효화/Query/완료 대조가 충족되면 가능. 봉쇄 여부 불명이면 B HOLD. 물리적 소멸 무한 대기/임의취소 없음 |
+| DOMAIN 단일 동기 private 무효화 완료 | 고정 요청 내용/수용 BOOT/적용 Epoch/명확한 완료를 대조. VSM/Meta·순서 문맥과 구 GOOD Query 차단 근거 필요. BOOT용 공개 Rx NO_DATA를 중복 호출하지 않음 |
+| 무효화 거부·부분 적용·완료불명/불일치 | 관련 환경 B 차단·원 요청/결과·오류 보존. A GOOD 제거를 추정하지 않고 자동 재호출·다음 Epoch 발급 없음 |
 | Core·독립 Meta 실제 완료 후 optional Observer 실패 | 저장 실패와 구분하고 동일 commit 재실행 금지. 실제 저장/원본 연결이 충족된 범위에서 다음 gate 검토; Observer의 원 오류도 보존 |
 | 완료 후 B0 인계 / 대기 AGE2499→2500→2501 | 원0 그대로,901 리매핑 금지. 실제 대기 경과를 원 기준에 한 번 더하고 온습도2500 이상 정상복원 금지. 채널 독립 |
 | B 뒤 지연 A frame/callback | 기억된 종료 Boot의 전달·재저장을 차단. 처음 본 임의 Boot를 최신으로 수용하지 않으며 Boot 재사용/Network 재시작/이력상실은 재동기화 근거별 HOLD |
-| 같은 Boot 일반 NO_DATA | 재부팅/seq reset을 추론하지 않음. 일반 수신중단 STALE/NO_DATA 선택은 별도 미결이며 Boot NO_DATA 권장안으로 확정하지 않음 |
+| 같은 Boot 일반 NO_DATA | 재부팅/seq reset/새 Epoch로 해석하지 않음. 일반 만료·수신중단은 기존 공개 Rx·시간·품질 규칙이며 STALE/NO_DATA 선택 미결을 BOOT private로 확정하지 않음 |
 
-이 단계는 조건부 설계 흐름이며 실제 저장 완료 관측을 수행한 시험 결과가 아니다. BG-R05-BOOT의 r1 근거는 존재하나 구 비동기 쓰기 배제·실제 commit·낮은seq 수용 근거가 제공되지 않아 RV-R05-03/07 및 연결 IM-026/027/028은 같은 차단으로 남는다.
+이 단계는 조건부 목표 설계이며 실제 Host/Board 시험 결과가 아니다. 현재 다른 Epoch 미지원·실제 private 선언/결과 ABI와 Rx/Query Binding 미검증을 유지한다. BG-R05-BOOT, RV-R05-03/07 및 IM-026/027/028은 같은 차단 이력이며 문서 정합화만으로 닫지 않는다.

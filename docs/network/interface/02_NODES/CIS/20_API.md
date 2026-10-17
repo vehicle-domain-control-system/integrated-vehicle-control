@@ -36,11 +36,11 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 <a id="local-rx-return"></a>
 ### 수신 전달
 
-통신 처리 규칙 — 같은 수용 BOOT에서 같은 전송 순번·같은 raw인 정확한 중복은 수신감시를 갱신하지 않는다. 새 TX_SEQUENCE/LINK_SEQUENCE로 수용한 정상 반복은 같은 원 관측이라도 기존 수신 콜백으로 전달하여 기능 수신감시를 갱신한다. 원 생성시각·관측번호는 유지하고 현재 AGE는 경과에 따라 증가한다. 콜백 생략은 별도 감시 경로가 같은 수용 사실을 전달한다는 연결 증거가 있을 때만 허용한다. CRC/길이/코드 오류와 구세대는 감시 근거가 아니다. UART-C Pi Result/Status는 기존 두 CisApp 수신 콜백의 감시 연결을 따른다. CAN에서 같은 원 관측·같은 값·같은 품질인 정상 반복은 감시/AGE에 반영하되 C2의 새 관측으로 재발행하지 않는다. 확인된 품질 저하는 품질 저하 인계 분기로 별도 처리한다. [공통 수용 규칙](../../04_COMMON/10_DATA_AND_ID_RULES.md#section-repeat-and-quality)을 호출 경계에 적용한다.
+통신 처리 규칙 — 같은 수용 BOOT에서 전송 순번과 원시 바이트가 모두 일치하는 중복 프레임은 수신감시를 갱신하지 않는다. 새 TX_SEQUENCE/LINK_SEQUENCE로 수용한 정상 반복은 같은 원 관측이라도 기존 수신 콜백으로 전달하여 기능 수신감시를 갱신한다. 원 생성시각·관측번호는 유지하고 현재 AGE는 경과에 따라 증가한다. 콜백 생략은 별도 감시 경로가 같은 수용 사실을 전달한다는 연결 증거가 있을 때만 허용한다. CRC/길이/코드 오류와 구세대는 감시 근거가 아니다. UART-C Pi Result/Status는 기존 두 CisApp 수신 콜백의 감시 연결을 따른다. CAN에서 같은 원 관측·같은 값·같은 품질인 정상 반복은 감시/AGE에 반영하되 C2의 새 관측으로 재발행하지 않는다. 확인된 품질 저하는 품질 저하 인계 분기로 별도 처리한다. [공통 수용 규칙](../../04_COMMON/10_DATA_AND_ID_RULES.md#section-repeat-and-quality)을 호출 경계에 적용한다.
 
 정상 형식의 INVALID/NO_DATA/STALE 보고와 CRC·길이·예약 코드 오류를 구분한다. 전자는 현재 품질을 전달할 자료이며, 후자를 버렸다고 마지막 정상 관측의 원 AGE가 다시 시작되지는 않는다. 후속 처리에 필요한 message·meta·수신 시각은 콜백 반환 전에 복사한다.
 
-**반환·실패:** `void`는 의미 전달 notification이며 ECU ACCEPTED/DONE을 반환하는 API가 아니다. 필수 소비자가 연결·준비된 owner 처리 문맥에서만 호출한다. CRC/length/예약 코드/수용되지 않은 세대/명령 Age 오류는 Network에서 격리하며 실제 기능 Result를 합성하지 않는다. 정상 형식의 INVALID/FAULT 상태 전달은 허용한다. 소비자 연결 실패의 실제 진단/무효화 경계는 BINDING_OPEN이다.
+**반환·실패:** `void`는 의미 데이터를 전달하는 알림이며 ECU ACCEPTED/DONE을 반환하는 API가 아니다. 필수 소비자가 연결·준비된 owner 처리 문맥에서만 호출한다. CRC/length/예약 코드/수용되지 않은 세대/명령 Age 오류는 Network에서 격리하며 실제 기능 Result를 합성하지 않는다. 정상 형식의 INVALID/FAULT 상태 전달은 허용한다. 소비자 연결 실패의 실제 진단/무효화 경계는 BINDING_OPEN이다.
 
 <a id="pending-current-value"></a>
 ### 현재값 보관
@@ -52,7 +52,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 <a id="api-cisapp_ondomainpermission"></a>
 ## `CisApp_OnDomainPermission()`
 
-후방 활성용 원 Permission은 약 200ms 재평가·500ms 사용 기한을 적용한다. CAN 정상 프레임 수신 중단 150ms와 원 평가 만료 500ms를 별도 검사한다. 미수신·만료를 실제 기능에 반영할 호출/주기 확인 지점은 구현 연결에서 확인하며 새 통지 API를 임의로 추가하지 않는다. 소유권은 Network의 검증·전달과 CIS의 후방 power_gate로 나눈다.
+후방 활성용 원 Permission은 약 200ms 재평가·500ms 사용 기한을 적용한다. CAN 정상 프레임 수신 중단 150ms와 원 평가 만료 500ms를 별도 검사한다. 미수신·만료를 실제 기능에 반영할 호출/주기 확인 지점은 구현 연결에서 확인하며 새 통지 API를 임의로 추가하지 않는다. Network는 검증·전달을, CIS는 후방 power_gate 기능 적용을 담당한다.
 
 ```c
 void CisApp_OnDomainPermission(
@@ -70,7 +70,7 @@ void CisApp_OnDomainPermission(
 | `message` | `const NetDomainPermission *` · IN/read-only · OUT 없음 | [`NetDomainPermission`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission) 전체 의미 record. NULL 불가. Network 검증 후 CIS 전원 허용 소비 담당에게 전달, 반환까지 borrowed; 보관할 의미와 시간근거는 App이 복사. |
 | `meta` | `const NetCanRxMeta *` · IN/read-only | [`NetCanRxMeta`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netcanrxmeta)는 수신 Network 생산. 로컬 수신 시각/그 홉 전송 순번; 원 관측 sequence/현재 Session/command ID로 대체하지 않음. callback 반환까지 borrowed. |
 
-**호출·사용:** DOMAIN_PERMISSION 수신의 vehicle_power_permission/power 품질·원 Age/새 평가를 소비한다. operation/window 정보가 같은 frame에 존재해도 CIS 전원 정책의 새 원천이 아니다. 원 DOMAIN generation은 meta.source에서 검증한다.
+**호출·사용:** DOMAIN_PERMISSION 수신의 vehicle_power_permission 값·power 품질·원본 AGE·새 평가 정보를 소비한다. operation/window 정보가 같은 frame에 존재해도 CIS 전원 정책의 새 원천이 아니다. DOMAIN의 원본 세대는 meta.source에서 검증한다.
 
 **반환·실패:** [수신 전달](#local-rx-return)을 적용한다. `void`는 실제 실행·소비 성공이 아니며 오류를 기능 Result로 합성하지 않는다.
 
@@ -110,7 +110,7 @@ NetSubmitResult CisNet_PublishRear(
 <a id="api-cisnet_publishenvironment"></a>
 ## `CisNet_PublishEnvironment()`
 
-각 값의 원 품질·Sequence·AGE를 독립 제출한다. DOMAIN의 온도·습도 소비 기한 2500ms는 적용값이고, 조도 1000ms는 미결이다. 기존 C2 환경 구조를 우선 유지하는 범위와 DOMAIN 저장값 무효화 확인은 [환경 원본 최신성](10_DATA.md#환경-원본-최신성--o20)을 따른다.
+각 센서값의 원본 품질·Sequence·AGE를 독립적으로 제출한다. DOMAIN의 온도·습도 소비 기한 2500ms는 적용값이고, 조도 1000ms는 미결이다. 기존 C2 환경 구조를 우선 유지하는 범위와 DOMAIN 저장값 무효화 확인은 [환경 원본 최신성](10_DATA.md#환경-원본-최신성--o20)을 따른다.
 
 ```c
 NetSubmitResult CisNet_PublishEnvironment(
@@ -132,7 +132,7 @@ NetSubmitResult CisNet_PublishEnvironment(
 
 **보관·재시도:** [현재값 보관](#pending-current-value)을 적용하며 원 평가 순번·Age를 보존한다.
 
-환경 원 Sequence는 새 BOOT의0을 구900에 이어901로 바꾸지 않는다. 일반 NO_DATA는 재부팅/순번 리셋 명령이 아니다. DOMAIN 측의 구 쓰기 격리 → DOMAIN 소유 private BOOT 통지 후보 → 무효화 저장 완료 확인 → 새 원 관측 전달은 [수용 대기인 저장 순서](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)다. private 통지의 정확한 API·동기/비동기 완료 방식은 미확정이며 CIS 공개 함수나 Wire를 추가하지 않는다. 이 송신 API의 local OK로 DOMAIN VSM 완료를 입증하지 않는다.
+환경 원 Sequence는 BOOT별로 유지하고 서로 다른 BOOT의 번호를 이어 붙이지 않는다. CIS BOOT 변경이 확인되면 Network는 이전 BOOT에 속한 환경 데이터의 전달을 제한하며, DOMAIN의 동기 Private Transition 완료가 확인된 경우에만 새 데이터를 기존 Rx에 전달한다. 연결·완료가 없으면 환경값 사용을 보류하고 다른 정상 통신은 계속한다. 일반 센서 NO_DATA와 BOOT 변경은 별개다. [환경 BOOT 전환 계약](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 **결과 사용:** 습도 실패가 온도/조도 정상 관측을 무효화하는 근거는 아니다. 제안 스케일과 실제 물리 센서 범위는 구분한다.
 
@@ -141,7 +141,7 @@ NetSubmitResult CisNet_PublishEnvironment(
 <a id="api-cisnet_publishoccupant"></a>
 ## `CisNet_PublishOccupant()`
 
-같은 원 관측의 품질이 저하되면 원 Pi 값·BOOT/VISION_SEQUENCE·생성 기준점을 유지한 채 현재 품질과 실제 제한 근거를 제출한다. 현재 AGE는 경과에 따라 증가하며 순번 증가·AGE=0으로 새 관측을 꾸미지 않는다. 높은 CAN TX_SEQUENCE만으로 원값 변경이나 INVALID→VALID를 허용하지 않는다. copy/인계가 실패하면 원 raw·Meta·품질·순서 중 일부만 먼저 commit하지 않는다. 기존 C2 경로의 DOMAIN 저장·Getter까지 같은 수용 결과로 연결하는 실제 구현은 검증 대기다.
+같은 원 관측의 품질이 저하되면 원 Pi 값·BOOT/VISION_SEQUENCE·생성 기준점을 유지한 채 현재 품질과 실제 제한 근거를 제출한다. 현재 AGE는 경과에 따라 증가하며 순번 증가·AGE=0으로 새 관측을 꾸미지 않는다. 높은 CAN TX_SEQUENCE만으로 원값 변경이나 INVALID→VALID를 허용하지 않는다. 복사·인계에 실패하면 원 raw·Meta·품질·순서 중 일부만 먼저 commit하지 않는다. 기존 C2 경로의 DOMAIN 저장·Getter까지 같은 수용 결과로 연결하는 실제 구현은 검증 대기다.
 
 ```c
 NetSubmitResult CisNet_PublishOccupant(
@@ -157,7 +157,7 @@ NetSubmitResult CisNet_PublishOccupant(
 |---|---|---|
 | `message` | `const NetCisOccupant *` · IN/read-only · OUT 없음 | [`NetCisOccupant`](10_DATA.md#type-netcisoccupant) 전체 의미 record. NULL 불가. CIS Pi 관측 취합 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
-**호출·사용:** 같은 occupant update에 연결한 Pi 원 Boot/vision_sequence/원 Age·presence/count와 CIS 최종 품질·vision_function_status를 제출한다. 원 Pi record는 cache에 보존한다.
+**호출·사용:** 같은 occupant 갱신에 연결한 Pi 원본 BOOT/vision_sequence/AGE·presence/count와 CIS 최종 품질·vision_function_status를 제출한다. 원 Pi record는 cache에 보존한다.
 
 **반환·실패:** [송신 반환](#local-tx-return)을 적용한다. 품질이 INVALID/STALE인 정상 형식의 자료는 그 품질을 보존해 제출할 수 있다.
 
@@ -184,7 +184,7 @@ NetSubmitResult CisNet_PublishStatus(
 |---|---|---|
 | `message` | `const NetCisStatus *` · IN/read-only · OUT 없음 | [`NetCisStatus`](10_DATA.md#type-netcisstatus) 전체 의미 record. NULL 불가. CIS 기능·고장 평가 모듈이 준비; Network는 OK 반환 전 caller와 무관하게 복사/보관. 실패는 부분 수용 없음. |
 
-**호출·사용:** 기능별 상태·UART/CAN 경로 상태·현재 fault/이번 기동 최근 fault/발생 번호/영향 기능·새 상태 sequence/Age를 제출한다. 실제 인터페이스 상태는 Network 관측에서 제공한다.
+**호출·사용:** 기능별 상태·UART/CAN 경로 상태·현재 고장·이번 기동에서 발생한 최근 고장/발생 번호/영향 기능·새 상태 sequence/Age를 제출한다. 실제 인터페이스 상태는 Network 관측에서 제공한다.
 
 **반환·실패:** [송신 반환](#local-tx-return)을 적용한다. 품질이 INVALID/STALE인 정상 형식의 자료는 그 품질을 보존해 제출할 수 있다.
 
@@ -251,7 +251,7 @@ void CisApp_OnPiVisionStatus(
 <a id="api-cisnetpriv_relaypipermission"></a>
 ## `CisNetPriv_RelayPiPermission()` — NETWORK_PRIVATE
 
-새 DOMAIN 평가·수용한 원 세대 변경·품질 제한 발생 시 중계 record를 갱신해 가능한 즉시 제출한다. 같은 원 평가의 500ms 반복은 relay 순번을 유지하고 AGE만 누적한다. DOMAIN 후방 원 기한 500ms와 UART-C 수신 중단 1500ms는 별개다. `USE_LIMIT`의 기존 1500ms 후보를 500ms로 바꾸는 것은 조건부 권장 프로필이며 최종 송신값은 미확정이다.
+새 DOMAIN 평가·수용한 원 세대 변경·품질 제한 발생 시 중계 기록을 갱신하여 가능한 한 즉시 제출한다. 같은 원 평가의 500ms 반복은 relay 순번을 유지하고 AGE만 누적한다. DOMAIN 후방 원 기한 500ms와 UART-C 수신 중단 1500ms는 별개다. `USE_LIMIT`의 기존 1500ms 후보를 500ms로 바꾸는 것은 조건부 권장 프로필이며 최종 송신값은 미확정이다.
 
 ```c
 NetSubmitResult CisNetPriv_RelayPiPermission(
@@ -264,7 +264,7 @@ NetSubmitResult CisNetPriv_RelayPiPermission(
 
 | 인자 | 정확한 타입 / IN·OUT | 책임·유효·수명 |
 |---|---|---|
-| `permission` | `const NetDomainPermission *` · IN/read-only · OUT 없음 | 현재 검증된 [DOMAIN 원 허용](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission). power 품질·원 source Age/revision을 복사한다. App이 생성한 별도 Pi 허용 객체를 입력받지 않는다. |
+| `permission` | `const NetDomainPermission *` · IN/read-only · OUT 없음 | 현재 검증된 [DOMAIN 원 허용](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission). power 품질과 원본 관측의 AGE·revision을 복사한다. App이 생성한 별도 Pi 허용 객체를 입력받지 않는다. |
 | `meta` | `const NetCanRxMeta *` · IN/read-only | 수신 DOMAIN generation·수신시각. relay 수용 전에 필요한 근거를 복사; 반환 후 외부 포인터 보관 금지. |
 
 CIS permission Dispatcher의 owner 처리 문맥에서 `CisApp_OnDomainPermission()`과 이 내부 relay에 같은 검증된 원 입력을 분배한다. Network는 [NetPiPermission](../PI/10_DATA.md#type-netpipermission)의 `cis_boot_id`를 runtime에서 채우고, 새 relay 의미 평가에서만 update_sequence를 바꾼다. 반복 전송은 순번 유지·Age 증가다. **DOMAIN 원 허용을 제한하는 유효성 검사는 수행할 수 있으나 새 허용 판단을 생성하지 않는다.**
@@ -275,11 +275,11 @@ CIS permission Dispatcher의 owner 처리 문맥에서 `CisApp_OnDomainPermissio
 
 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)에서 파생하여 [P_PERMISSION](../../03_COMMUNICATION/30_UART_C.md#message-p-permission)으로 전달하고, 반대편은 [PiApp_OnCisPermission](../PI/20_API.md#api-piapp_oncispermission)이다. 같은 원 허용의 App 소비와 내부 Pi relay를 나누며 공개 Pi 허용 생성 API를 중복 설치하지 않는다. 후방 원 기한 500ms와 CAN 수신 중단 150ms·UART-C 반복 500ms/수신 중단 1500ms, 별도 USE_LIMIT 후보의 차이는 [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)와 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)을 함께 확인한다. **PROPOSED_DESIGN · BINDING_OPEN**.
 
-** relay 확인 대기:** 실패 무효화 권장안을 DOMAIN이 수용해 품질 하향을 전달하면 같은 원 성공 Sequence여도 이 private 경로가 누락시키지 않아야 한다. 기존 relay 갱신·즉시 제출 요청을 사용하고 원 시각/AGE를 유지한다. 500ms 반복·다음 성공 평가까지 품질 하향을 유예하지 않는 안이며 Queue 적체·송신 실패 뒤 과거 ALLOW가 되살아나지 않는지 검증한다. Pi 실제 수신·적용은 local OK로 보장하지 않는다. [번호 공간과 상태](../../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)
+**중계 경로 확인 대기:** 실패 무효화 권장안을 DOMAIN이 수용해 품질 하향을 전달하면 원본 성공 평가 Sequence가 같더라도 해당 내부 경로에서 품질 저하 전달을 누락하지 않아야 한다. 기존 relay 갱신·즉시 제출 요청을 사용하고 원 시각/AGE를 유지한다. 500ms 반복·다음 성공 평가까지 품질 하향을 유예하지 않는 안이며 Queue 적체·송신 실패 뒤 과거 ALLOW가 되살아나지 않는지 검증한다. Pi 실제 수신·적용은 local OK로 보장하지 않는다. [번호 공간과 상태](../../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)
 
 ## 사용 순서와 구현 한계
 
-1. Pi 결과/상태는 각각 `CisApp_OnPiVisionResult/Status`에서 독립 수명으로 받는다. 원 record를 cache에 복사하고 원 Age/기동·관측 순번을 보존한다.
+1. Pi 결과/상태는 각각 `CisApp_OnPiVisionResult/Status`에서 독립 수명으로 받는다. 원본 기록을 캐시에 복사하고 원 Age/기동·관측 순번을 보존한다.
 2. CIS 추가 평가를 같은 occupant update와 연결해 `CisNet_PublishOccupant()`로 제공한다. 환경/후방/진단은 각각 독립 생성·품질로 보고한다.
 3. DOMAIN 허용은 CIS App이 소비하고 private relay가 Pi로 전달한다. 공개 별도 Pi 허용 생성/조회 API는 없다.
 

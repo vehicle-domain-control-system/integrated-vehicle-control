@@ -48,7 +48,11 @@ DomainIf_Status_t NetCan_TxVssEvent(const DomainIf_VssOneShotEvent_t *event)
         return DOMAIN_IF_NOT_AVAILABLE;
     if (명시 투영에서 원 정보가 손실되거나 source-only enum의 대응이 없으면)
         return DOMAIN_IF_NOT_AVAILABLE; // 외부 계약을 임의 축약하지 않는다.
-    // C2 VSS_EVENT_VEHICLE_WELCOME/GOODBYE/DOOR_LOCK_COMPLETE/DOOR_UNLOCK_COMPLETE/DOOR_LOCK_ERROR0..4를 Net 대응 이름1..5로 바꾼다. occurrenceId는 보존하고 meta.quality와 meta.ageMs만 원 품질/AGE로 연결한다. meta.updateSequence는 이 Wire와 중복 판정에 사용하지 않으며 원 DTO 값을0으로 강제하지 않는다. availability3 UNSUPPORTED는 HOLD다. hasRelatedCommand=true일 때 실제 relatedCommandId 연결을 보존한다.
+    // C2 Event enum0..4를 같은 의미 Net1..5로 명시 변환하고 occurrence/meta.quality/ageMs를 보존한다.
+    // C2에 USE_LIMIT 필드는 없다. Network의 A1 선택 프로필500ms를 message.use_limit_ms에 명시 투영한다.
+    // 프로필 실제 바인딩이 없으면 NOT_AVAILABLE이며 임의 누락 기본값/새 공개 필드를 만들지 않는다.
+    // meta.updateSequence는 Event Wire/key로 쓰지 않지만 원 사본에 보존한다.
+    // availability3 UNSUPPORTED는 HOLD. hasRelatedCommand가 true인 경우만 실제 relatedCommandId를 연결한다.
     if (전체 의미 사본과 원 식별·시간 기준을 함께 확보할 공간이 없으면)
         return DOMAIN_IF_QUEUE_FULL;
     // 미송신 저장소에 전체 사본을 한 번에 반영한다. 실패 시 기존 항목은 유지한다.
@@ -140,7 +144,7 @@ NetCanResult NetCan_DecodeVssEvent(const NetCanFrame *frame,
 <a id="receive"></a>
 ## typed 수신과 소비
 
-아래 `PROPOSED_PRIVATE_FUNCTION`은 수신 Network M03의 투영·호출 절차다. 원 public `VssApp_OnDomainEvent` 본체는 해당 Application Owner 소유다. message/meta는 admission에 성공한 동일 입력의 IN 읽기 전용 쌍이고 NULL 불가다. caller는 원 수신시각·원 AGE를 보존하며 [공통 수신/시간 절차](../CAN_TRANSFER_CONTROL.md)로 소비시점의 미반영 경과를 정확히 한 번 계산한 소유자 문맥이다. 이 함수는 별도 현재 시각을 발급하지 않는다.
+아래 `PROPOSED_PRIVATE_FUNCTION`은 수신 Network M03의 투영·호출 절차다. 원 public `VssApp_OnDomainEvent` 본체는 기존 VSS INPUT Owner 소유다. message/meta는 같은 입력의 IN 읽기 전용 쌍이며 NULL 불가다. caller는 [공통 수신/시간](../CAN_TRANSFER_CONTROL.md)과 [A1 Event 원 기한](../../../interface/02_NODES/VSS/10_DATA.md#a1-binding)에 따라 임시 소비 Age로 원 L을 확인하지만 callback payload에는 `meta.received_at_ms`의 RX 기준 AGE를 보존한다. INPUT이 RX→owner 경과를 한 번 누적하고 별도 now 발급·중복 가산을 하지 않는다.
 
 C2 VSS_EVENT_VEHICLE_WELCOME/GOODBYE/DOOR_LOCK_COMPLETE/DOOR_UNLOCK_COMPLETE/DOOR_LOCK_ERROR0..4를 Net 대응 이름1..5로 바꾼다. occurrenceId는 보존하고 meta.quality와 meta.ageMs만 원 품질/AGE로 연결한다. meta.updateSequence는 이 Wire와 중복 판정에 사용하지 않으며 원 DTO 값을0으로 강제하지 않는다. availability3 UNSUPPORTED는 HOLD다. hasRelatedCommand=true일 때 실제 relatedCommandId 연결을 보존한다.
 
@@ -170,9 +174,9 @@ OK 뒤 해당 인계를 다시 호출하지 않는다. 실패 시 원 사본은 
 
 ## 원본·시간·보관·후발 실패
 
-DOMAIN 원 생산 세대+event_kind+occurrence_id가 의미 사건이다. related_command_id는 별도 명령 연결이다. original_age_ms는 최초 사건 후 경과, use_limit_ms는 원 사용 한도다. 후보500ms와 구 실제 음향 시작2초 요구의 기준을 임의 통합하지 않는다.
+의미 사건 key는 (PRODUCT 또는 TEST, DOMAIN, 수용한 DOMAIN 원 Boot, occurrence_id)다. event_kind는 같은 key의 내용 검증 값이며 종류만 다른 입력을 새 사건으로 받지 않는다. related_command_id와 CAN TX는 별도 상관/전달 순서다. original_age_ms는 원 발생 후 경과이고 최초 actual에는 `L=min(검증된 양의 use_limit_ms,500ms 설계 프로필,2000ms 상한)`을 적용한다.0은 비사용·L 도달은 만료다. 적법 Started 이후 같은 Session 후속 cue는 최초 시작 검사를 반복하지 않으며 in-flight 만료를 NO_START로 위조하지 않는다. [A1 정본](../../../interface/02_NODES/VSS/10_DATA.md#a1-binding).
 
-통신 주기/수신 중단: 일회성 사건. 무발생 timeout 없음. 이 수치는 채택·실측되지 않은 후보이며 `>`/`>=` 경계나 원 TTL을 임의 추가하지 않는다. 형식 오류·중복을 정상 heartbeat나 semantic fresh로 쓰지 않는다.
+통신 주기/수신 중단: 일회성 사건이며 무발생 timeout은 없다. Event 침묵과 실제 DOMAIN 감독·명시 품질·계보/시간 상실을 구별한다. 원 L은 A1 문서 선택이며 실제 RX/actual clock·오차·Binding 시험은 미검증이다. 형식 오류·중복을 정상 heartbeat나 새 semantic fresh로 쓰지 않는다.
 
 명령·사건·결과는 개별 identity와 본문을 유지한다. 다른 사건으로 덮어쓰지 않는다. Driver가 참조 중인 프레임은 AGE나TX를 수정하지 않는다. 저장 공간 부족·사본 준비 실패는 전체 새 접수 실패이며 순번 장부부터 진전시키지 않는다.
 
@@ -183,7 +187,7 @@ DOMAIN 원 생산 세대+event_kind+occurrence_id가 의미 사건이다. relate
 | 사례 | 기대 처리 |
 |---|---|
 | 정상 또는 조건부 경로 | 원 occurrence17을 TX10/11로 보완 전송해도 한 사건이며 새 재생 요구로 만들지 않는다. VSS App의 void 반환은 실제 음향 시작·완료가 아니다. |
-| 고유 경계 | 원 AGE가 확인한 use-limit을 넘거나 경계 비교 정책이 미합의면 새 재생 입력을 제한한다. use-limit500을 자동 기본값으로 넣지 않는다. |
+| 고유 경계 | USE_LIMIT0 또는 원 AGE가 L=min(양의USE_LIMIT,500,2000)에 도달하면 새 최초 actual을 제한한다. 실제 시각 구간·오차 근거 미확인은 HOLD이며 송신 원 use-limit에 임의 기본값을 채우지 않는다. |
 | 의미 반례 | 환영 이벤트 미발생을 timeout으로 판정하거나 LOCAL TX 성공으로 VSS 재생 완료를 보고하지 않는다. |
 | ID/FDF/BRS/DLC/길이/padding 또는 raw 예약값 오류 | 임시 변환 전체 폐기, typed 호출·정상 수신 시각·순번 갱신 없음 |
 | 같은 원 identity 재송신·AGE 감소 | 같은 소비시점으로 환산해 원본을 젊게 만들지 않음. 순서/clock/wrap 미확인이면 HOLD |

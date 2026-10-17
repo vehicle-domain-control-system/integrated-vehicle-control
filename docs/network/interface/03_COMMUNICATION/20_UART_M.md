@@ -2,16 +2,16 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-최근 요청 결과 조회는 DOMAIN Device별8건 보관/최신순 최대5건 제공, 기록별 M_RESULT 순차 전송 뒤 M_QUERY_END로 종료한다. 이 제한은 최근 결과 항목에만 적용하며 전체 상태 Query의 응답 수를5건으로 자르지 않는다. 기존23종 TYPE/Frame/CRC와 QueryEnd 세부 count 후보를 변경하지 않는다. [노드 간 공통 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#query)
+최근 요청 결과 조회는 DOMAIN이 Device별 최대 8건을 보관하고 최신순으로 최대 5건을 제공, 기록별 M_RESULT 순차 전송 뒤 M_QUERY_END로 종료한다. 이 제한은 최근 결과 항목에만 적용하며 전체 상태 Query의 응답 수를 5건으로 제한하지 않는다. 기존23종 TYPE/Frame/CRC와 QueryEnd 세부 count 후보를 변경하지 않는다. [노드 간 공통 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#query)
 
-**경로·VERSION 2·초기 115200 bps 적용 기준 / 상세 프레이밍·CRC·offset·시간 WIRE_PROPOSED.** MOBILE ↔ BLE ↔ ESP32 ↔ UART-M ↔ DOMAIN이다. UART-M과 BLE 프로파일은 별도다.
+**경로·VERSION 2·초기 115200 bps 적용 기준 / 상세 프레이밍·CRC·offset·시간 WIRE_PROPOSED.** MOBILE ↔ BLE ↔ ESP32 ↔ UART-M ↔ DOMAIN이다. UART-M 통신 규격과 BLE 프로파일은 서로 별개다.
 
 [시작 안내](../00_START_HERE.md) · [메시지별 API](../05_MESSAGE_INDEX.md) · [ESP32](../02_NODES/ESP32/00_OVERVIEW.md) · [DOMAIN](../02_NODES/DOMAIN/00_OVERVIEW.md) · [Enum 변환](../04_COMMON/30_ENUM_WIRE_MAPPING.md)
 
 <a id="section-profile"></a>
 ## 직렬 외형·CRC — 두 UART 공통 제안
 
-115200 bps 시작 baud는 사용자 기준이다. 8N1 / 전이중 / RTS·CTS 미사용은 제안이고 Port·전압·핀은 실물 바인딩 확인이 필요하다. UART-C는 VERSION 1이며 runtime·Type·payload는 별도다.
+초기 115200 bps 전송 속도는 사용자 기준이다. 8N1 / 전이중 / RTS·CTS 미사용은 제안이고 Port·전압·핀은 실물 바인딩 확인이 필요하다. UART-C는 VERSION 1이며 runtime·Type·payload는 별도다.
 
 <a id="section-shared-framing"></a>
 
@@ -25,7 +25,7 @@ Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES
 |8~P+7|PAYLOAD|P바이트. 아래 payload B0은 frame B8이다|
 |P+8~P+9|CRC16|u16 LE. VERSION부터 payload 끝까지 계산, SYNC 제외|
 
-전체 길이는 P+10 B다. SYNC/payload escape를 사용하지 않는 후보이며 frame 공백·CPU 처리·BLE 분할 비용은 별도다. 지원 VERSION/Type, 정확한 Type 길이, 필수 enum을 검사한다. 정상 CRC frame 안의 SYNC는 payload 데이터이고 잘린 frame은 전체 길이까지 조립한다.
+전체 길이는 P+10 B다. SYNC/payload escape를 사용하지 않는 후보이며 frame 공백·CPU 처리·BLE 분할 비용은 별도다. 지원 VERSION/Type, 정확한 Type 길이, 필수 enum을 검사한다. 정상 CRC frame 안의 SYNC는 payload 데이터이고 분할 수신한 프레임은 정해진 전체 길이까지 조립한다.
 
 <a id="section-shared-crc"></a>
 
@@ -40,7 +40,7 @@ Interface v2 · r1 · [규격과 연동 조건](../07_CROSS_NODE_INTERFACE_RULES
 | 검산 |ASCII `123456789`→0x29B1|
 | 조립 기한 |50ms PROPOSED|
 
-CRC/길이/50 ms 조립 기한 오류가 발생하면 후보 SYNC 첫 바이트 다음부터 resync한다. CRC 정상은 기능 허용이나 Request 실행 확인과 구분한다. 실제 Framer/Codec·split/concat/overflow·무선 시험은 NOT_EXECUTED다.
+CRC/길이/50 ms 조립 기한 오류가 발생하면 후보 SYNC 첫 바이트 다음 위치부터 동기화를 다시 탐색한다. CRC 정상은 기능 허용이나 Request 실행 확인과 구분한다. 실제 Framer/Codec·split/concat/overflow·무선 시험은 NOT_EXECUTED다.
 
 <a id="section-context"></a>
 ## 요청·하향 문맥과 v2 이관
@@ -53,18 +53,18 @@ CRC/길이/50 ms 조립 기한 오류가 발생하면 후보 SYNC 첫 바이트 
 |12~15(하향)|DOMAIN_BOOT_ID|u32, 현재 DOMAIN 기동|
 |16~19(하향)|QUERY_ID|u32, 조회는 원 ID, 자발 갱신은 0|
 
-M_CONTEXT 38 B payload / 48 B frame와 등록·연결 shared meta 7 B를 양 끝에서 동시에 맞춘다. legacy 31 B payload / 41 B frame를 VERSION 2의 현재 형식으로 해석하지 않는다. App 활성 meta, 근접 meta, 등록·현재 연결 shared meta는 독립이며 BLE 연결을 App ACTIVE로 합성하지 않는다. UART-M 2에 맞춰 BLE/UART-C의 version을 자동 변경하지 않는다.
+M_CONTEXT 38 B payload / 48 B frame와 등록·연결 공통 메타데이터 7 B를 양 끝에서 동시에 맞춘다. 이전 규격의 31 B payload / 41 B frame를 VERSION 2의 현재 형식으로 해석하지 않는다. App 활성 meta, 근접 meta, 등록·현재 연결 shared meta는 독립이며 BLE 연결을 App ACTIVE로 합성하지 않는다. UART-M 2에 맞춰 BLE/UART-C의 version을 자동 변경하지 않는다.
 
-M_* 11개 상태 projection은 **DOWN_CONTEXT 20 B + 원 CAN 사용 B**다. B20~27의 원 CAN BOOT/TX 순서와 원 관측 sequence를 보존한다. CAN padding은 중계하지 않고 새 Domain Boot로 과거 snapshot 출처를 치환하지 않는다. 모든 AGE는 전달·대기를 한 번만 추가한다. 제어 사용 한도와 App 표시 갱신 중단은 별도로 해석한다.
+M_* 11개 상태 정보 변환은 **DOWN_CONTEXT 20 B + 원 CAN 사용 B**다. B20~27의 원 CAN BOOT/TX 순서와 원 관측 sequence를 보존한다. CAN padding은 중계하지 않고 새 Domain Boot로 과거 Snapshot의 출처를 치환하지 않는다. 모든 AGE는 전달·대기를 한 번만 추가한다. 제어 사용 한도와 App 표시 갱신 중단은 별도로 해석한다.
 
 <a id="section-request-arguments"></a>
 
 <a id="r2-uart-origin"></a>
 ### PROPOSED — 11 원 CAN projection과 부분 export
 
-원 CAN `Net*` 수신 객체+`NetCanRxMeta`를 C2 ingress/Getter/TxPort의 동일 원 입력과 owner 직렬 처리 안에서 association한 경우만 DOWN_CONTEXT+원 CAN used(+20 B)로 투영한다. C2 값만 같다는 이유로 최신 CAN Boot/TX를 붙이지 않는다. Pi 관측 identity와 CIS CAN sender identity도 서로 보존한다. 이 결합 증거가 없으면 해당 projection만 local NOT_READY/source NOT_AVAILABLE 및 Query 부분으로 제한하고, Domain Boot/TX/AGE0로 가짜 원본을 만들지 않는다. 원 padding/raw/길이/offset은 변경하지 않는다. 상세 결합·실패는 [DOMAIN 원본 결합](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-origin-join)을 따른다.
+원 CAN `Net*` 수신 객체+`NetCanRxMeta`를 C2 ingress/Getter/TxPort의 동일 원 입력과 담당 주체가 직렬 처리하는 과정에서 같은 입력임을 연결한 경우에만 DOWN_CONTEXT+원 CAN used(+20 B)로 투영한다. C2 값만 같다는 이유로 최신 CAN Boot/TX를 붙이지 않는다. Pi 관측 identity와 CIS CAN sender identity도 서로 보존한다. 이 결합 증거가 없으면 해당 projection만 local NOT_READY/source NOT_AVAILABLE 및 Query 부분으로 제한하고, Domain Boot/TX/AGE0로 가짜 원본을 만들지 않는다. 원 padding/raw/길이/offset은 변경하지 않는다. 상세 결합·실패는 [DOMAIN 원본 결합](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-origin-join)을 따른다.
 
-M_USER_SETTINGS의 existing sentinel은 미확인 값에만 사용하며 확인된0/OFF는 보존한다. 독립 sentinel이 없는 NORMAL 밝기/RGB의 has=false이면 해당 composite frame 누락과 Query STATUS2를 권장한다. M_DIGITAL_RESULT의 DONE는 결과 완료이며 ALREADY_AT_TARGET는 실제 Unlock 전이를 뜻하지 않는다. Wire에 없는 전이 bool을 임의 추론하지 않고 그 전이 표시만 제한한다. [부분 export 규칙](../02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md#r2-partial-export)은 `PROPOSED`; 양단 모듈 채택·Codec binding은 아직 미확인이다.
+M_USER_SETTINGS의 기존 sentinel은 미확인 값에만 사용하며 확인된0/OFF는 보존한다. 독립 sentinel이 없는 NORMAL 밝기/RGB의 has=false이면 해당 composite frame 누락과 Query STATUS2를 권장한다. M_DIGITAL_RESULT의 DONE는 결과 완료이며 ALREADY_AT_TARGET는 실제 Unlock 전이를 뜻하지 않는다. Wire에 없는 전이 bool을 임의 추론하지 않고 그 전이 표시만 제한한다. [부분 전송 규칙](../02_NODES/DOMAIN/14_MOBILE_CODEC_DATA.md#r2-partial-export)은 `PROPOSED`; 양단 모듈 채택·Codec binding은 아직 미확인이다.
 
 ## M_REQUEST — Kind/operation/ARG의 정확한 분해
 
@@ -372,7 +372,7 @@ Codec 전용 타입 `NetMobileQueryEnd`: [DOMAIN Codec Data](../02_NODES/DOMAIN/
 <a id="r2-query-contract"></a>
 ### PROPOSED — Query 양단 완료·0건·부분 사용
 
-성공한 최종 로컬 UART TX 응답만 ITEM_COUNT에 포함한다. 확정 실패 terminal은 종결 판정 근거지만 성공 count가 아니며 pending이 남으면 End를 보류한다. 10개 중 8개 성공/2개 확정 실패는 `STATUS=2, ITEM_COUNT=8` 후보이고 8개 성공/2개 pending은 End 보류다. 품질 UNCONFIRMED인 정상 응답의 TX 성공과 송신 결과 미확인은 다르다. [DOMAIN 종결 규칙](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-query-producer)의 PROPOSED/BINDING_OPEN 지위를 유지한다.
+성공한 최종 로컬 UART TX 응답만 ITEM_COUNT에 포함한다. 실패가 확정된 응답은 종결 판정 근거지만 성공 count가 아니며 pending이 남으면 End를 보류한다. 10개 중 8개 성공/2개 확정 실패는 `STATUS=2, ITEM_COUNT=8` 후보이고 8개 성공/2개 pending은 End 보류다. 품질 UNCONFIRMED인 정상 응답의 TX 성공과 송신 결과 미확인은 다르다. [DOMAIN 종결 규칙](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#r2-query-producer)의 PROPOSED/BINDING_OPEN 지위를 유지한다.
 
 기존 byte/STATUS 숫자는 그대로다. 권장 `ITEM_COUNT`는 같은 현재 Device/Session·Domain Boot·QueryID/scope의 응답 중 **최종 로컬 UART TX 완료를 증명한 N**이며 End·자발 QUERY_ID0·중복 frame은 제외한다. DOMAIN은 모든 응답의 terminal TX 완료/확정 실패 후 End를 그 뒤 송신한다. enqueue/NET_SUBMIT_OK는 count 근거가 아니고 UART TX 완료도 ESP32/BLE 수신 증거가 아니다.
 

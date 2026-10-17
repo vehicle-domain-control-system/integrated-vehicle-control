@@ -64,9 +64,9 @@ Gateway_Status_t Gateway_Interface_SendToMobile( const Gateway_RelayMessageView_
 
 모든 필드의 정확한 offset·폭·LE·부호·enum·sentinel은 [단일 필드 정본](../../data/UART_M_PROJECTION_FIELDS.md#m_vss_status)이다. `20+원 CAN used28=48`이며 CAN padding은 복제하지 않는다. outer DOMAIN_BOOT_ID는 payload B12, 원 ECU BOOT_ID/TX_SEQUENCE는 B20/B24다. LINK_SEQUENCE는 frame B6이다. 어느 하나를 다른 순번·부트로 대체하지 않는다.
 
-LAST_FAULT_QUALITY는0기록/3NO_DATA만 허용한다. INVALID2를0이나3으로 축약하지 않는다. 현재 fault와 최근 이력, 수용가능성과 음향 상태는 별개다. 링크 상실을 AUDIO_OUTPUT_FAILURE로 만들지 않는다. C2 VSS state/fault의 분리 인계·부분 반영 원자성이 미확인이면 동일 입력 association도 미입증이다. CF02 VSS_WARNING_STATE used51/60 충돌은 이 메시지와 별개로 유지한다.
+LAST_FAULT_QUALITY는0(실제 이력)/3(확인된 부재)만 허용한다. INVALID2를0이나3으로 축약하지 않는다. 부재3은 code/occurrence/historyAGE가 모두0인 원 조합을 검증하고 그0을 유지하며, 실제 이력0만 원 발생 AGE를 누적한다. 현재 fault와 최근 이력, 수용가능성과 음향 상태는 별개다. 링크 상실을 AUDIO_OUTPUT_FAILURE로 만들지 않는다. State 수용과 Fault 결과는 독립이며 Fault 실패가 이미 수용한 State를 취소하지 않는다. 같은 accepted 원 입력과 Getter/TxPort의 association은 E-S05의 실제 증거가 별도로 필요하다. A1 WARNING60 형식 선택은 완료되었으나 실제 producer/양단 지원 검증은 별도다.
 
-AGE 적용 위치는 `B39 state.last_fault_age_ms`, `B46 state.source_age_ms`다. 송신 재포장으로0을 만들지 않는다. 원 association의 관측시각/이미 반영된 AGE 기준부터 UART 제출 전까지 아직 더하지 않은 로컬 경과만 한 번 누적한다. Getter nowMs로 이미 증가된 부분을 또 더하지 않고, 원 raw AGE 사본을 쓰는 경우에는 그 기준시각에서 계산한다. 65535는 포화 하한이며 미측정 Driver 지연은0으로 처리하지 않는다. 전송된 원 quality/reason은 유지하고 해당 최신성의 사용 여부는 소비자 계약으로 제한한다.
+AGE 적용 위치는 `B39 state.last_fault_age_ms`, `B46 state.source_age_ms`다. 원 tuple을 먼저 검증하고 quality0의 실제 이력 AGE에만 미반영 경과를 누적한다. quality3의 확인된 부재 이력 AGE0은 그대로이며 비정상 부재 tuple을0으로 보정하지 않는다. source AGE는 부재 여부와 무관하게 원 평가 기준에서 독립 누적한다. Getter nowMs로 이미 증가된 부분을 또 더하지 않고, 원 raw AGE 사본을 쓰는 경우에는 그 기준시각에서 계산한다. 65535는 포화 하한이며 미측정 Driver 지연은0으로 처리하지 않는다. 전송된 원 quality/reason은 유지하고 해당 최신성의 사용 여부는 소비자 계약으로 제한한다.
 
 ## Private Codec 후보와 한국어 C형 의사코드
 
@@ -88,6 +88,12 @@ NetUartMResult NetUartM_ValidateVssStatus(const NetMobileVssStatus *message)
     if ((message->state.fault_mask & ~0x1Fu) != 0) return NET_UART_M_MALFORMED;
     if (message->state.vss_last_fault > 5) return NET_UART_M_MALFORMED;
     if (message->state.last_fault_quality != 0 && message->state.last_fault_quality != 3) return NET_UART_M_MALFORMED;
+    if (message->state.last_fault_quality == 3 &&
+        (message->state.vss_last_fault != 0 || message->state.last_fault_occurrence != 0 ||
+         message->state.last_fault_age_ms != 0)) return NET_UART_M_MALFORMED;
+    if (message->state.last_fault_quality == 0 &&
+        (message->state.vss_last_fault == 0 || message->state.last_fault_occurrence == 0))
+        return NET_UART_M_MALFORMED;
     // enum 저장형은 Net raw 코드 정본이다. C2 enum을 직접 cast한 입력은 허용하지 않는다.
     return NET_UART_M_OK;
 }
@@ -182,9 +188,14 @@ NetSubmitResult DomainNetPriv_SubmitMobileVssStatus(const DomainIf_VssStateRepor
     // 아래 메시지별 AGE 위치만 같은 로컬 now의 미반영 경과로 증가시키고 원 품질·번호는 유지한다.
     if (/* 동기화된 위 값 사본과 경과 근거를 실제 확보하지 못함 */)
         return NET_SUBMIT_NOT_READY;
+    // 원 조합의 검증은 AGE 누적 전에 수행한다. 잘못된 부재 tuple을0으로 보정하지 않는다.
+    if (NetUartM_ValidateVssStatus(&owned) != NET_UART_M_OK)
+        return NET_SUBMIT_INVALID_ARGUMENT;
     uint32_t deltaMs = /* 원 raw AGE 기준시각부터 같은 로컬 now까지 미반영 경과, wrap·재시작 검증 완료 */;
-    { uint64_t age=(uint64_t)owned.state.last_fault_age_ms+deltaMs;
-      owned.state.last_fault_age_ms=(uint16_t)(age > 65535u ? 65535u : age); }
+    if (owned.state.last_fault_quality == 0) {
+        uint64_t age=(uint64_t)owned.state.last_fault_age_ms+deltaMs;
+        owned.state.last_fault_age_ms=(uint16_t)(age > 65535u ? 65535u : age);
+    } // quality3의 검증된 code/occurrence/historyAGE0은 그대로 보존한다.
     { uint64_t age=(uint64_t)owned.state.source_age_ms+deltaMs;
       owned.state.source_age_ms=(uint16_t)(age > 65535u ? 65535u : age); }
     // owned={0}는 초기 저장소일 뿐이다. 원본·문맥을 전부 채웠다는 증거 전 Encode/접수 금지.
@@ -217,7 +228,9 @@ Codec OK는 부호화 성공, NetSubmit OK는 자기 소유 로컬 접수, Gatew
 
 | 입력/상황 | 검사·출력/상태 |
 |---|---|
-| 조건부 정상: lastFaultQuality3와 원 최근고장 부재 기록; profile·원본 association·현재 문맥·시간·수명 전제 확보 | NO_DATA를0정상 이력으로 바꾸지 않음; 정확한 48B payload·58B frame, 성공 때만 OUT commit |
+| 조건부 정상: quality3/code0/occurrence0/historyAge0, sourceAge10; 미반영20ms와 association 전제 확보 | historyAge0/sourceAge30; 부재를 새 이력으로 만들지 않음. payload48B/frame58B·원 번호 유지 |
+| quality0/code3/occurrence5/historyAge1000/sourceAge10, 미반영20ms | historyAge1020/sourceAge30; 각 원 시각 의미 보존,65535 포화 |
+| quality3인데 code/occurrence/historyAge 중 하나가0이 아님, 또는 quality0의 code/occurrence0 | 누적 전에 MALFORMED/INVALID_ARGUMENT, OUT 불변;0으로 보정 금지 |
 | 47B 또는 49B payload / CRC 오류 / 반대 방향 / VERSION1 또는 다른 Type | 공통 CheckFrame에서 거부; typed·정상 liveness·Gateway 호출 없음 |
 | 이 표의 enum·reserved bit·범위 위반 | Validator MALFORMED, OUT 불변; 허용 UNKNOWN/NO_DATA와 구분 |
 | C2 snapshot 값은 같으나 원 관측번호 또는 C2 commit association 미입증 | submit NOT_READY; 최신 raw의 Boot/TX를 붙이지 않음; Query 일부 미제공 |

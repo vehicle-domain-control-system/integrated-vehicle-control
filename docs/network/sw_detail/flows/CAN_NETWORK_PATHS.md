@@ -40,7 +40,7 @@ flowchart TD
   Consumer --> Result[원 반환과 반영 증거 보존]
 ```
 
-원장 공개는 안정 사본 확보 뒤에만 한다. reserve/copy 실패가 sequence를 앞당겨 정상 재시도를 버리게 하지 않는다. consumer가 부분 반영했는지 불명확하면 성공으로 표시하거나 무조건 재호출하지 않는다. VSS state/fault처럼 한 입력에서 둘 이상의 공개 인계가 필요한 경계는 실제 원자성/부분 성공 계약이 확인되기 전 해당 정상 분기를 HOLD한다.
+원장 공개는 안정 사본 확보 뒤에만 한다. reserve/copy 실패가 sequence를 앞당겨 정상 재시도를 버리게 하지 않는다. consumer가 부분 반영했는지 불명확하면 성공으로 표시하거나 무조건 재호출하지 않는다. VSS_STATUS는 [A2 State/Fault 독립 수용](../functions/can/VSS_STATUS.md#a2-domain-contract)을 적용한다. 수용한 State를 Fault 실패로 다시 실행하지 않으며, 실제 profile·같은 입력·부분 결과/old K fencing 증거가 없는 해당 경계만 HOLD한다.
 
 ## 메시지 성격별 저장과 수명
 

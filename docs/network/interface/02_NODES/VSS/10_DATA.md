@@ -2,11 +2,11 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-VSS는 DOMAIN의 확정 Event·Warning을 받아 음향을 중재하고, 자신의 서비스·고장 상태를 보고한다. 위험 판정은 DOMAIN, 음향 선택·실제 출력 상태는 VSS가 소유한다. **TX App은 링크 BOOT_ID/TX_SEQUENCE를 채우지 않는다.** RX의 원 source Boot는 판단 근거의 식별이며 링크 송신 Boot와 목적이 다르다.
+VSS는 DOMAIN의 확정 Event·Warning을 받아 음향 출력을 중재하고, 자신의 서비스·고장 상태를 보고한다. 위험 판정은 DOMAIN, 음향 선택·실제 출력 상태는 VSS가 소유한다. **TX App은 링크 BOOT_ID/TX_SEQUENCE를 채우지 않는다.** RX에서 수신한 원본 출처의 BOOT는 판단 근거의 식별이며 링크 송신 Boot와 목적이 다르다.
 
 [노드 개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md) · [전체 시작](../../00_START_HERE.md) · [공통 의미·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md) · [CAN FD](../../03_COMMUNICATION/10_CAN_FD.md)
 
-모든 아래 신규 로컬 타입은 **PROPOSED_DESIGN / BINDING_OPEN**이다. WINDOW 관련 경계는 **[구현 보류 — 설계 유지]**다. `Net*` 별칭의 숫자는 이 초안의 의미 코드이고 실제 C2 enum은 [명시 변환표](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)로 변환한다. C struct padding·enum 폭을 포함한 `memcpy` 전송은 금지한다. `<stdint.h>`와 공통 Net 타입은 [공통 Data](../../04_COMMON/10_DATA_AND_ID_RULES.md)에서 읽는다.
+모든 아래 신규 로컬 타입은 **PROPOSED_DESIGN / BINDING_OPEN**이다. WINDOW 관련 경계는 **[구현 보류 — 설계 유지]**다. `Net*` 별칭의 숫자는 이 초안의 의미 코드이고 실제 C2 enum은 [명시 변환표](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)로 변환한다. C 구조체의 패딩·enum 폭을 포함한 `memcpy` 전송은 금지한다. `<stdint.h>`와 공통 Net 타입은 [공통 Data](../../04_COMMON/10_DATA_AND_ID_RULES.md)에서 읽는다.
 
 ## 타입 색인
 
@@ -47,7 +47,7 @@ typedef struct NetVssEvent
 | `event_kind` | [NetVssEventKind](10_DATA.md#type-netvsseventkind) | 완료·오류·웰컴·굿바이 의미; 허용 코드 1~5 | 의미 코드 · 무단위 | DOMAIN 기능 판단; 입력 품질·가용성·사용 한도를 함께 확인 |
 | `occurrence_id` | `uint32_t` | 기동 내 일회성 발생 번호, uint32 범위 | 발생 식별자 · 무단위 | DOMAIN 발생 owner; 같은 발생 재전달 때 유지. 수용된 DOMAIN 기동과 함께 중복 판정 |
 | `original_age_ms` | `uint16_t` | 최초 의미 발생 이후 누적 ms, 0~65535 포화 | ms | DOMAIN 원본 + 각 Network 구간 대기만 1회 누적; 새 RX로 0 재설정 금지 |
-| `use_limit_ms` | `uint16_t` | 일회성 사용 한도 ms; 500ms 후보(PROPOSED) | ms | Network profile500ms↔구 SysRS 실제 음향시작2초: CONFLICT/FUNCTION_POLICY_OPEN. 수용·시작 기준 미확정 |
+| `use_limit_ms` | `uint16_t` | 일회성 원 사용 한도 ms; A1 설계 프로필 500ms | ms | 최초 actual에 L=min(검증된 양의 USE_LIMIT,500ms,2000ms), 0 비사용·L 도달 만료. 실제 시각/Binding 검증 대기 |
 | `value_quality` | [NetValueQuality](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netvaluequality) | 의미 입력 품질; OK/STALE/INVALID/NO_DATA | 의미 코드 · 무단위 | DOMAIN 의미 owner; 정상 의미값과 독립 |
 | `input_availability` | [NetAvailability](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netavailability) | 의미 생성 기능의 가용성; 0 가용/1 제한/2 불가 | 의미 코드 · 무단위 | DOMAIN 기능 owner; VSS 서비스 가용성과 구분 |
 | `related_command_id` | `uint32_t` | 원 DOMAIN 명령 ID; 연결이 없으면 0 | 명령 식별자 · 무단위 | DOMAIN C2 명령 owner; 새 발급 금지, occurrence·MOBILE RequestId와 별개 |
@@ -302,11 +302,11 @@ enum NetVssFaultCode
 | `NetVssStatus` | [VssNet_PublishStatus](20_API.md#api-vssnet_publishstatus) | 현재 service/fault와 last_fault 이력 별개. 송신 미시작 pending 현재 상태만 최신 평가로 교체 가능 |
 | `NetDomainPermission` | [VssNetPriv_OnDomainPermission](20_API.md#api-vssnetpriv_ondomainpermission) | [공통 전체7필드](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission). 기본 소비는 Network 수신 감시. App 소비 필요성·항목은 FUNCTION_POLICY_OPEN |
 
-`VSS_WARNING_STATE`는 사용60B/전송64B/DLC15의 **WIRE_PROPOSED** 정본 후보다. format0/미지원은 후방 활성 근거가 없다는 뜻이며 다른 유효 경고를 일괄 폐기하지 않는다. 구 VSS receiver와 새 DOMAIN encoder의 혼용은 지원하는 것으로 간주하지 않는다. 양측 Codec·정책을 함께 확정해야 한다. [CAN 상세](../../03_COMMUNICATION/10_CAN_FD.md#message-vss-warning-state).
+`VSS_WARNING_STATE`는 **A1 내부 선택 WARNING60**(사용60B/전송64B/DLC15)이다. WARNING51은 이력이며 DLC/B51로 자동 감지하거나 혼용하지 않는다. format1은 독립 활성 meta를 검증하고, format0은 B50=0 및 B52..59=0인 정규 근거 부재다. format0의 0을 활성 DISABLED/품질 OK의 새 판단으로 소비하지 않으며 다른 세 유효 경고는 독립 검증한다. 그 외 marker·비정규 부재는 프레임 오류다. 실제 DOMAIN producer/VSS receiver·ABI 지원은 검증 대기다. [CAN 상세](../../03_COMMUNICATION/10_CAN_FD.md#message-vss-warning-state).
 
-후방 활성 근거 사용 한도150ms는 기존 활성 근거 계약을 따른다. frame 수신 중단150ms와 같은 숫자여도 다른 시간 개념이다. 후방 원 근거150ms/끼임250ms/탑승자1000ms 및 Event500ms 등 나머지 일반 후보 시간은 [CAN 설정](../../03_COMMUNICATION/10_CAN_FD.md)의 PROPOSED 범위를 따른다.
+A1 입력 설계는 끼임 원 TTL/Hold 250/250ms(TEST만, 제품 경로 보류), 탑승자 1000/500ms, 후방 위험 150/150ms, 후방 활성 500/0ms를 선택한다. 후방 활성은 DOMAIN Power의 실제 약200ms 평가/원500ms에 연결하며 다른 정책이면 별도 생성 주기≤200ms·원500ms 근거가 필요하다. frame no-RX150ms와 후방 위험 TTL150ms를 활성 TTL로 바꾸지 않는다. 실제 생산·Clock·경계 시험은 미검증이다.
 
-**CONFLICT / FUNCTION_POLICY_OPEN — 일회성 시간:** Network `VSS_EVENT.USE_LIMIT=500ms` 후보와 구 SysRS의 원 발생→실제 음향 시작 2초 미만 잠정 기준은 적용 위치·허용 범위가 다르다. Network 전달·VSS 대기·출력 준비를 포함하는 실제 시작 Age를 검증해야 한다. 500ms를 2초로 임의 상향하거나 2초 이내라는 이유로 만료 Event를 재유효화하지 않는다. DOMAIN/VSS/Network 경계에서 전달 수용 한도와 실제 시작 한도의 합성·우선 규칙이 확정돼야 한다. Wire 숫자 후보는 최종 음향 정책 확정을 뜻하지 않는다.
+**A1 Event 원 기한:** `L=min(검증된 양의 USE_LIMIT, 500ms 설계 프로필, 2000ms 상한)`이고 USE_LIMIT0은 사용 불가, 정확히 L부터 만료다. 원 발생→Network 전달→VSS 대기→최초 실제 음향 시작까지 같은 기한을 사용한다. 적법하게 Started가 확인된 같은 Session의 후속 cue에는 최초 시작 검사를 다시 적용하지 않는다. in-flight 기한 경과를 전체 NO_START로 바꾸거나 이미 시작한 사실을 지우지 않는다. 실제 원 시각 구간·actual 시각·오차 근거가 없으면 해당 fresh 사용을 제한한다.
 
 <a id="vss-source-conversion"></a>
 ## R4/R6 서비스·C2 변환 — BINDING_OPEN
@@ -316,36 +316,57 @@ enum NetVssFaultCode
 | C2 측 기존 자료 | 로컬 후보 자료 | 보존·변환 결정 |
 |---|---|---|
 | `DomainIf_VssOneShotEvent_t` | `NetVssEvent` | Event enum C0~4→raw1~5; `hasRelatedCommand` false이면 wire related0. `meta.updateSequence`는 Event wire/중복 식별에 없음 |
-| `DomainIf_VssWarningState_t` | `NetVssWarningState` | 각 evidence의 generation/sequence/Age/quality/reason/availability 보존. rearActivationMeta는 별도 DOMAIN 평가. R4 입력 단위·시간 변환 owner OPEN |
-| `DomainIf_VssStateReport_t` / 기존 `VssStatusSnapshot` 의미 | `NetVssStatus` | Snapshot→DTO 인계 형식·변환 위치·목록축약 owner OPEN. mask·최근 code/occurrence/Age/quality 원 근거 필요 |
+| `DomainIf_VssWarningState_t` | `NetVssWarningState` | 각 evidence의 generation/sequence/Age/quality/reason/availability 보존. rearActivationMeta는 별도 DOMAIN 평가. A1 기존 INPUT이 의미·시간 변환을 맡으며 실제 원 source/clock/consumer는 E02~E04 확인 대기 |
+| `DomainIf_VssStateReport_t` / 기존 `VssStatusSnapshot` 의미 | `NetVssStatus` | A2 기존 INPUT 단일 변환 선택. HEALTH가 완전 current/원 최근 이력·평가를 생산하며 실제 원형·세대·clock·DOMAIN profile은 E-S01~05 확인 대기 |
 | C2 `service.meta.quality`, `faultQuality`, `sourceGeneration` | 현재 Status wire에는 같은 폭·멤버가 모두 존재하지 않음 | 현재 서비스 품질·부분진단·lineage reduction을 단순 cast나 정상0으로 보완하지 않음. DOMAIN ingress 매핑 조건 미확정 |
 
-`lastFaultAgeMs:uint32_t`→wire `last_fault_age_ms:uint16_t`는65535 포화하고 원 이력 Age를 보존한다. TX source_age 역시 새로운 생성시점으로 바꾸지 않는다. Status 변환의 책임이 정해지지 않았으므로 [PublishStatus](20_API.md#api-vssnet_publishstatus) 인자 후보가 App 선행변환이나 Network 변환을 확정하지 않는다.
+`lastFaultAgeMs:uint32_t`→wire `last_fault_age_ms:uint16_t`는65535 포화하고 원 이력 Age를 보존한다. TX source_age 역시 새로운 생성시점으로 바꾸지 않는다. A2의 변환 owner는 기존 INPUT이며 [PublishStatus](20_API.md#api-vssnet_publishstatus)는 완전한 기존 NetVssStatus만 받는다. 원 Snapshot을 받는 공개 API를 추가하지 않고 실제 복사·수명·송신 관측은 E-S04에서 확인한다.
 
 <a id="r2-status-proposal"></a>
-### 기존 DTO를 통한 Status 보고 권장안 — PROPOSED
+### 기존 DTO를 통한 A2 Status 생산·수용 — 내부 선택 / BINDING_OPEN
 
-**NETWORK_OWNED:** 기존 `NetVssStatus`와 `VssNet_PublishStatus()`를 재사용한다. **CROSS_NODE_AGREEMENT:** VSS/DOMAIN은 아래 축약의 완전성·품질·원 세대 연결을 확인한다. **FUNCTION_OWNER:** HEALTH가 서비스·현재/최근 고장의 사실과 제한을 생성한다. **IMPLEMENTATION_BINDING:** 기존 INPUT 통신 경계의 변환 위치·복사/참조·송신 실패 관측을 연결한다. 아래는 `PROPOSED`이며 해당 양단의 `AGREED`, 실제 source의 `IMPLEMENTED`, Codec/Board의 `TESTED` 근거는 확인되지 않았다. 실제 Firmware/Codec/Board 시험은 `NOT_EXECUTED`다.
+**내부 선택:** HEALTH는 서비스·현재/최근 고장의 완전하고 일관된 원 보고를 생산하고, FLOW→기존 INPUT 한 곳에서 `NetVssStatus` 11필드로 명시 변환한다. Network는 원 key·두 AGE의 기준·전체 DTO를 반환 전에 자기 저장소에 복사한다. 새 공개 변환 API·Manager·동적 Queue를 추가하지 않는다. 실제 생산 완전성(E-S01), 원 VSS 세대와 CAN BOOT 대응(E-S02), 시간(E-S03), 복사·terminal sink(E-S04), DOMAIN 설치 profile·consumer(E-S05)는 별도 확인 대기이며 Firmware/Host/Board 시험은 `NOT_EXECUTED`다.
 
-권장 순서는 HEALTH의 `VSS_STATUS_CREATED` 보고 → FLOW → 기존 INPUT 통신 연결에서 원 Snapshot·진단 근거 대조 → 기존 DTO 제출 → Network 직렬화다. INPUT 연결 안의 변환 또는 기존 Network Adapter 중 실제 source가 재사용 가능한 한 곳에만 둔다. 새 공개 변환 함수·Snapshot DTO·진단 관리자는 추가하지 않는다. Snapshot과 목록/basis는 복사 완료 또는 실제 송신 소비 종료까지 보호한다. `VSS_STATUS_REEVALUATE`는 새 정상 보고를 생성하지 않는 결과이며, 이전 Snapshot의 Age/평가 번호를 새 것으로 바꾸는 근거가 아니다.
+`VSS_STATUS_CREATED`는 완전 current·원 최근 이력·state/availability/accepting·평가 시각/번호가 함께 확보된 새 완료 평가다. 단순 tick·읽기·재전송은 reportSequence를 증가시키지 않는다. 불완전 조합은 `VSS_STATUS_REEVALUATE`/written0으로 남겨 이전 번호·시각을 바꾸지 않는다. HEALTH 기존 보고 책임의 정적2슬롯은 생성용/미인계용으로 구분하며 current/recent kind 각각 최대5개와 원 basis/stamp를 보호한다. 원 Fault pool과 stamp 고정 상한 초과도 REEVALUATE다. 아직 미접수인 보고만 더 새 coherent 보고로 교체할 수 있고 accepted/Driver 참조 중 사본은 바꾸지 않는다.
 
-| 기존 원 자료 → DTO 필드 | 가장 단순한 권장 처리·누락 시 제한 |
+| 기존 원 자료 → DTO 필드 | A2 내부 선택·근거 누락 시 제한 |
 |---|---|
-| Snapshot `state` → `vss_state` | STARTUP/READY/PLAYING/FAULT의 **의미 이름**을 기존 Net 코드로 명시 변환한다. enum cast를 쓰지 않는다. PLAYING은 원 owner가 확인한 Session 보고이며 개별 Event DONE이나 현재 매 순간 실제 소리가 난다는 뜻은 아니다. |
-| Snapshot `availability` → `vss_availability` | 원 HEALTH의 확정된 외부 가용성 의미만 기존 FULL/DEGRADED/UNAVAILABLE에 대응한다. `serviceLevel=FULL`이나 mask0만으로 FULL을 만들지 않는다. startup 미평가·전체 조합 reduction이 미정이면 해당 새 보고를 확정하지 않는다. |
-| Snapshot `accepting` → `vss_accepting_events` | INPUT/STORE의 반영된 수용 근거를 그대로 0/1로 옮긴다. 이것은 개별 수용·재생 시작·복구 완료 보장이 아니다. false라도 기존 duplicate·유효 CLEAR·품질/기한의 안전 처리 경로는 유지한다. |
+| Snapshot `state` → `vss_state` | 의미 이름으로 대응한다. 우선순위는 QUARANTINED/불명확 최종 또는 확인된 Fault로 공통 정상 출력·새 start 불가→FAULT, 확인된 초기화 진행→STARTUP, 초기화 완료·적법 actual로 시작한 Session이 retirement 전→PLAYING, 초기화 완료·Started Session 없음·하나 이상 서비스 가능→READY다. 어떤 조건도 입증 못 하면 REEVALUATE이며 current bit만으로 FAULT를 정하지 않는다. PLAYING의 cue 무음/STOPPING은 개별 DONE이 아니다. |
+| Snapshot `availability` → `vss_availability` | 첫 두 상태 조건은 UNAVAILABLE, PLAYING/READY는 실제 지원 집합의 전체 준비→FULL·일부 준비→DEGRADED다. 보류 WINDOW는 지원 집합에 넣지 않는다. 초기화 완료·무고장인데 출력 가능한 서비스가 전혀 없으면 원 모순/부족으로 REEVALUATE한다. mask0/serviceLevel만으로 FULL을 합성하지 않는다. |
+| Snapshot `accepting` → `vss_accepting_events` | 출처/scope가 검증된 INPUT 준비와 STORE 추적/replay 준비의 결합이다. 둘 다 true일 때 true, 확인된 false 하나가 있으면 false, 그 외 NULL unknown 조합은 REEVALUATE다. false가 다른 NULL을 false로 확정하지 않으며 필수 다른 보고 근거는 독립 요구다. FAULT/UNAVAILABLE과 accepting=true도 가능하나 새 Event/출력 보장은 아니다. duplicate/CLEAR/품질/기한 정리는 계속한다. |
 | 완전성이 확인된 `currentFaults` → `fault_mask`, `vss_fault_active` | 원 5종 이름을 이 문서의 같은 이름 `NET_VSS_FAULT_*` bit로 변환하고 현재 항목만 OR한다. 여러 대상에서 같은 종류면 bit 하나이며 원 instance/대상 정보는 HEALTH에 보존한다. 현재 목록의 완전성이 확인된 경우에만 빈 목록→mask0/current inactive를 사용할 수 있다. 최근 목록을 합쳐 current bit를 만들지 않는다. |
-| HEALTH의 원 현재/최근 Fault 기록 → `vss_last_fault`, `last_fault_occurrence`, `last_fault_age_ms`, `last_fault_quality` | 권장 선택은 해당 기동의 원 기록 중 실제 발생 순서로 최근임이 확인된 주요 기록 하나다. 그 기록의 kind를 기존 code로 명시 변환하고 원 occurrence·원 발생 AGE를 함께 보존한다. 복구로 current가 해제돼도 이력의 발생은 바뀌지 않는다. Snapshot의 `recentFaults`는 kind 목록뿐이므로 목록 순서에서 occurrence·발생 시각을 추정할 수 없다. 원 기록 연결·주요 기록 선택이 미확인인 경우 이력 투영을 확정하지 않는다. `NO_DATA=3`은 확인된 기록 부재일 때만 사용한다. |
+| HEALTH의 원 현재/최근 Fault 기록 → `vss_last_fault`, `last_fault_occurrence`, `last_fault_age_ms`, `last_fault_quality` | Fault5의 현재/해제 원 기록 중 최초 발생시각이 가장 늦음이 입증된 하나를 선택한다. 정확히 같은 시각만 큰 reportOccurrence로 정하고 불확실 구간 겹침은 REEVALUATE다. 뒤늦게 온 과거 진단의 큰 번호로 최신 이력을 바꾸지 않는다. 원 kind/occurrence/최초 시각은 current 해제 뒤에도 보존하며 목록 순서에서 추정하지 않는다. `lastFaultPresent=false`가 확인된 경우 무효 lastFaultKind/lastFaultAt을 읽지 않고 code/occurrence/historyAGE0·quality3을 함께 만든다. 존재 quality0일 때만 historyAGE를 누적한다. 원 기록/시각 미확인은 부재3으로 바꾸지 않는다. |
 | 원 보고 basis/평가 → `update_sequence`, `source_age_ms` | 실제 새 반영 완료 평가 번호와 평가부터 경과 시간을 기존 필드에 연결한다. basis를 uint32로 cast하거나 CAN TX_SEQUENCE·수신 now로 대체하지 않는다. 원 번호/시각 연결이 미확인인 경우 새 fresh Status를 제출하지 않는다. AGE는 65535 포화이며 원 사용 한도 검증은 공통 규칙을 따른다. |
 | 원 VSS 보고 → DOMAIN C2/모바일 | 원 CAN BOOT/TX·UPDATE/AGE를 함께 보존한다. C2 `service.meta.quality`, `faultQuality`, `sourceGeneration`은 해당 원 의미 근거가 있을 때만 채운다. Link 수신 성공이나 이력 존재 raw0은 서비스·전체 Fault 품질 OK를 증명하지 않는다. VSS 원 세대와 수용 CAN BOOT의 실제 lifecycle 대응을 양단이 확인하기 전 자동 동치로 처리하지 않는다. |
 
 **부분 품질의 안전 제한:** 기존 `LAST_FAULT_QUALITY` Wire는 이력 존재0/부재3만 표현하며 current service 품질·부분 진단의 `INVALID`를 표현하는 필드가 아니다. C2/로컬 `faultQuality=INVALID`를 이력0/3이나 READY/mask0으로 바꾸지 않는다. Wire B21에 그 외 값을 받은 경우 지원하는 정상 이력 형식으로 수용하지 않는다. 현재 서비스/현재 고장/평가 메타의 필수 근거가 부족하면 해당 새 `VSS_STATUS`의 fresh 제출과 그에 의존하는 C2/`M_VSS_STATUS` 투영을 제한한다. 원본 근거가 다른 유효 Event/Warning까지 일괄 비지원 처리하지 않는다. 마지막 확정 보고는 원 평가 번호·원 AGE를 유지하고 경과만 한 번 누적하며 현재 입력 상실을 숨기는 fresh 근거로 쓰지 않는다. 수신자는 기존 freshness/timeout 기준으로 더 이상 현재 근거가 아님을 처리한다.
 
-원 보고 목록이 현재 제한 전체를 포함하는 조건, 최근 주요 기록의 선택·원 occurrence/시각과 새 보고 번호/시각은 VSS HEALTH의 관측 근거가 필요하다. VSS INPUT/Network는 보호 자료를 한 번 변환·복사하고 실패를 FLOW에 인계해야 한다. DOMAIN 소비는 축약된 이력 품질과 서비스/전체 Fault 품질을 구분하고 원 세대 대응·부분 품질에 따른 투영 제한을 적용해야 한다. `lastFaultCode`로 current bit를 합성하거나 enum cast·기본 0으로 누락 품질/시각을 보완하면 허위 정상이 되므로 금지한다. 완전한 원 보고를 명시 변환하는 기존 DTO 재사용은 권장안이며 위 조건이 확인되기 전 미표현 품질을 NORMAL로 보완하지 않는다.
+DOMAIN은 같은 원 `K=(VSS 생산 세대, 실제 평가 sequence)`에서 State와 Fault 결과를 독립 기록한다. 현재 mask의 대표 Fault는 정의된 활성 code1..5 중 최소 code이며 최근 이력을 현재 고장으로 쓰지 않는다. 수용한 State는 Fault 실패로 롤백·재호출하지 않고 같은 K 재수신은 새 Rx 호출을 만들지 않는다. CALLING/UNKNOWN_FAILED는 부작용 확인 전 자동 재시도하지 않으며 old K의 늦은 완료가 새 상태를 덮지 않도록 fence한다. v0.5 service-only State와 observer-only Fault를 확장 C2 전체 이력 소비 완료나 Core APPLIED로 표시하지 않는다. [DOMAIN 수용 정본](../../../sw_detail/functions/can/VSS_STATUS.md#a2-domain-contract)의 조건과 E-S05를 따른다.
+
+Network local OK는 전체 사본 접수일 뿐 TX/DOMAIN 성공이 아니다. 접수 전 terminal 관측 공간과 INPUT sink 준비를 확인하고 미준비는 NOT_READY, 전체 미접수·공간 부족은 NO_CAPACITY다. 기존 M09 terminal 관측의 원 key·BOOT/TX·raw·단계·참조 종료 여부를 INPUT 기존 진단16/loss latch에 보호한 뒤 FLOW의 FOLLOW_UP_REQUIRED/RECOLLECT로 연결한다. 이 bounded drain은 RX/새 CREATED 유무와 독립이며 IRQ에서 FLOW/HEALTH를 호출하지 않는다. 통신 실패를 AUDIO_OUTPUT_FAILURE로 만들거나 옛 보고를 새 평가로 재실행하지 않는다. 실제 sink/직렬화는 E-S04 미검증이다.
 
 <a id="vss-input-recovery"></a>
 ## 입력 상실·복구
 
-INVALID/STALE/NO_DATA 또는 기한이 지난 의미로 새 음향을 시작하지 않는다. 기존 지속 경고는 그 원본 기한·품질 안에서만 제한적으로 유지하며 더 이상 사용할 수 없으면 음향을 중단한다. 음향 중단은 차량 위험 CLEAR가 아니다. 복구 전 일회성 Pending은 폐기하고 중단된 일회성 음향도 자동 재개하지 않는다. 복구 후 새로 수신한 유효 현재 Warning을 기준으로 다시 중재한다. 새 Event는 기존 원 Age·사용한도·품질·가용성을 모두 만족해야 한다. 비주기 Event가 발생하지 않는 상태는 정상이다.
+INVALID/STALE/NO_DATA 또는 원 기한이 지난 의미로 새 음향을 시작하지 않는다. 지속 Warning의 제한 Hold는 아래 A1 조건에 한정되며 정상 유효값의 새 평가가 아니다. 음향 중단은 차량 위험 CLEAR가 아니다. 입력 신뢰 상실 전 일회 Pending의 재생 자격은 닫고 occurrence별 원 이력/ledger와 replayAllowed=false를 보존한다. Started/Interrupted/uncertain final은 자동 재개하지 않는다. 비주기 Event 침묵 자체는 loss가 아니며 실제 DOMAIN 감독 상실·명시 품질·계보·시간 상실과 구별한다. 출력 장치 Fault만 있고 입력 신뢰/replayAllowed가 유지되면 전체 NO_START·retirement·HEALTH 제한 해제·원 L 내 freshness를 모두 확인한 같은 occurrence만 재평가한다.
 
 WINDOW 끼임 제품 연결은 **[구현 보류 — 설계 유지]**다. VSS 단품 후보를 검토해도 WINDOW 실물 E2E PASS를 주장하지 않는다.
+
+<a id="a1-binding"></a>
+## A1 입력 연결·시간·복구의 한정 계약
+
+Event key는 (PRODUCT 또는 TEST, DOMAIN, 수용한 DOMAIN Boot, occurrence_id)다. `event_kind`는 같은 key의 내용 검증에 사용하며 종류만 달라진 입력은 새 사건이 아닌 내용 충돌이다. CAN TX는 전달 순서이고 occurrence·원 센서 sequence에서 DOMAIN 새 판단 순번을 만들지 않는다. related_command_id는 별도 상관 값이다. VSS 재기동 때 이전 ledger의 신뢰 가능한 복원 또는 동기화 이후 DOMAIN의 실제 새 승인 세대 없이 옛 Event를 받지 않는다. 이는 기존 VSS lifecycle 요구이며 CIS Epoch 전환을 다른 노드로 확장하지 않는다.
+
+Network가 callback에 넘기는 Age는 `meta.received_at_ms`의 **RX 기준**이다. 원 생산→송신 대기→검증된 전달 공백을 포함하고, callback 직전 임시 소비 Age는 admission에만 사용한다. INPUT이 RX→owner 소비 경과를 한 번 더하므로 callback payload를 임시 Age로 덮어쓰지 않는다. RX 시각 구간 `[rLo,rHi]`와 RX Age 구간 `[aLo,aHi]`가 확인되면 원 시각은 `[rLo-aHi,rHi-aLo]`이며 65535는 하한 포화다. ECU 절대시각 동기화를 가정하지 않고 구간/epoch/경과 근거가 없으면 해당 시간 사용을 제한한다. CAN 전달5ms/owner10ms는 설계 예산으로 실제 보장이 아니다.
+
+Event 최초 START 직전에는 `now.latestNow-originalAt < L`와 신뢰/replayAllowed/권한이 필요하다. 충분한 물리 actual·당시 권한·같은 clock/epoch를 먼저 확인하고 `actual.earliest >= originalAtLatest` 및 `actual.latest-originalAt < L`일 때만 적법 Started다. 구간 전체가 원 L 밖이면 확정 위반·정리, 경계 걸침/비교 부족은 불확실로 남겨 원 actual/coverage를 보존하고 차단·정리한다. 300ms 수신 뒤700ms 최초 actual은 부적법하지만 이미 적법 Started인 같은 Session의 후속 cue700ms는 최초 gate 대상이 아니다.
+
+세 위험과 후방 활성의 네 lane은 값·quality·원 sequence·AGE를 독립 보존한다. 최초 NO_DATA는 UNASSESSED, 유효 이력 후 NO_DATA는 INVALID로 제한하며 비정상 품질의 state0은 CLEAR가 아니다. 정상값은 OK·reason NONE·유효 출처/시간·허용된 availability를 함께 요구한다. [VSS 한정 제한 투영](../../04_COMMON/30_ENUM_WIRE_MAPPING.md#vss-warning-limited-projection)은 원 raw/사유를 별도 보존하며 다른 노드의 enum 축약을 허용하지 않는다. 원 sourceBoot0의 정규 상실과 frame DOMAIN BOOT0 오류를 구별한다.
+
+증가한 CAN TX의 같은 source sequence라도 새 품질 제한은 전달한다. 의미가 같은 반복은 liveness만 갱신하고 원 기한을 늘리지 않는다. 같은 원 evidence에서 정상값 변경·정상 복귀는 DOMAIN 판단 순서 증거(E01)가 있어야 한다. 후방 활성 상실은 현재 위험을 fence하며 새 활성만으로 옛 후방 위험을 복원하지 않고 엄격히 새 source key의 위험을 요구한다.
+
+Warning no-RX는 구조 검증되고 TX가 전진한 마지막 수신을 기준으로150ms다. Event 무발생은 이 timeout 대상이 아니다. 유효 경고의 최초 상실 시 Hold anchor=`min(최초 상실, 마지막 validUntil)`를 고정하고 반복 상실로 연장하지 않는다. 원 freshness가 끝난 Hold는 이전 유효 경고의 제한 보유이며 새 정상값/새 Event 권한이 아니다. 같은 clock/epoch·경과 근거 아래 `latestNow < anchor+Hold`만 Hold 내, `earliestNow >= anchor+Hold`는 CONFIRMED_EXPIRED다. 경계 걸침·시간/출처 미입증은 UNCERTAIN/newSessionAllowed=false이며 현재 Session 유지 허가로도 쓰지 않는다. 복구 시 새 유효 현재 Warning으로 재중재하거나 같은 세대·신뢰·원 Hold 기한·Rear gate/fence 자격이 남은 후보만 old 전체 retirement 뒤 새 Session 정책 시작점에서 재선택한다. PB의 새 채택·최초 START 직전에도 최신 candidate revision/newSessionAllowed를 재확인한다. 후방 활성은 Hold0이고 WINDOW 끼임은 격리 TEST 전용이다.
+
+Event1/Warning최대4의 Evidence·QualityChange·StateUpdate는 기존 직렬 owner의 동기 borrow bundle이다. STORE는 필요한 원 meta·기한·최초 상실을 복사한 뒤 반환한다. 입력 NULL/새 입력 없음도 기존 INPUT 처리 기회에서18 context의 원 만료·후속 작업을 예산 내 방문하며 새 ISR/Task/Queue를 요구하지 않는다. replay ledger128/진단16의 고정 예산과 overflow 시 첫/최근·count/loss latch는 실제 자원 검증 전이다.
+
+E01(DOMAIN 판단/동일 evidence 순서), E02(원 source/C2 연결), E03(후방 활성 실제 생산), E04(clock·actual/NO_START·자원), E05(lifecycle) 및 E-S01~05는 실제 Binding·Host/Board 미검증으로 유지한다.

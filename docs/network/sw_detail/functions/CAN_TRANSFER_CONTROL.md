@@ -1,6 +1,6 @@
 # CAN 전송 제어 — 접수·시간·순서·Driver 관측
 
-M01/M03/M04/M07/M08/M09는 메시지별 Codec 바깥에서 원 identity와 저장소 수명을 보존한다. 이 문서는 CAN 공통 제어의 정본이며 API별 의미 변환은 메시지 함수 문서가 맡는다. DOMAIN 공개 API는 Task에서 호출한다. ISR은 실제 frame/장치 시각/오류와 짧은 인계만 담당하고 parsing·C2 호출·대기·동적 정책 판정을 하지 않는다. 실제 Worker/Superloop·동기화 primitive·Queue 수/깊이는 확인되지 않았다.
+M01/M03/M04/M07/M08/M09는 메시지별 Codec 바깥에서 원 identity와 저장소 수명을 보존한다. 이 문서는 CAN 공통 제어의 정본이며 API별 의미 변환은 메시지 함수 문서가 맡는다. DOMAIN 공개 API는 ISR 밖의 단일 담당 실행 문맥에서 호출한다. ISR은 실제 frame/장치 시각/오류와 짧은 인계만 담당하고 parsing·C2 호출·대기·동적 정책 판정을 하지 않는다. 실제 Worker/Superloop·동기화 primitive·Queue 수/깊이는 확인되지 않았다.
 
 [CAN 흐름](../flows/CAN_NETWORK_PATHS.md) · [공통 Data](../data/CAN_COMMON_DATA.md) · [M04](../modules/M04_MESSAGE_SERVICE.md) · [M07](../modules/M07_BUFFER_OUTCOME.md) · [M08](../modules/M08_DEVICE_PORT.md) · [M09](../modules/M09_OBSERVATION.md)
 
@@ -125,7 +125,7 @@ NetCanResult NetCan_ClassifyRx(const NetCanRxComparison *c, NetCanRxAction *acti
 }
 ```
 
-NEW_INPUT 및 CIS_OCCUPANT의 CURRENT_RESTRICTION 인계는 typed 자료/meta/보수적 AGE와 실제 제한 사건의 Network 안정 사본, M09 결과 공간 및 consumer 준비를 먼저 확보한다. 실패하면 이전 frame순서·기능관측 상태는 유지하여 같은 프레임 재시도를 막지 않는다. Manager 소유 상태를 Network가 먼저 수정하지 않는다. C2 거부 이후의 복구는 원 반환을 보존하고 consumer의 부분 반영 여부가 확인되지 않으면 재호출 HOLD다. API별 부분 성공의 원자성이 확인되지 않은 VSS_STATUS 복합 state/fault 등의 경계는 정상 복합 인계 전에 HOLD한다.
+NEW_INPUT 및 CIS_OCCUPANT의 CURRENT_RESTRICTION 인계는 typed 자료/meta/보수적 AGE와 실제 제한 사건의 Network 안정 사본, M09 결과 공간 및 consumer 준비를 먼저 확보한다. 실패하면 이전 frame순서·기능관측 상태는 유지하여 같은 프레임 재시도를 막지 않는다. Manager 소유 상태를 Network가 먼저 수정하지 않는다. C2 거부 이후의 복구는 원 반환을 보존하고 consumer의 부분 반영 여부가 확인되지 않으면 재호출 HOLD다. VSS_STATUS는 [A2 per-K 독립 수용](can/VSS_STATUS.md#a2-domain-contract)을 적용한다. 준비된 State를 Fault 미등록으로 전역 차단하지 않고, 수용한 State는 Fault 실패로 재실행하지 않는다. 실제 profile·같은 입력·부분 결과·old K 후속 쓰기 차단이 미입증인 해당 경계만 HOLD한다.
 
 SAME_INPUT은 높은 TX의 raw frame 기준선과 같은 소비시각의 보수적 AGE를 함께 원자적으로 갱신하며 C2 관측을 재발행하지 않는다. CURRENT_RESTRICTION은 별도이며 [CIS_OCCUPANT 검사·호출](can/CIS_OCCUPANT.md#restriction-check)을 거쳐 같은 원 관측의 제한을 기존 C2로 전달한다. allocation/AGE검사 실패면 둘 다 이전 값이다. 수신 TX10→20(동일UPDATE) 뒤15는 adopt된 nonwrap 조건에서 ORDER_HOLD다. TX20을 원장에 반영하지 않고 AGE만 바꾸는 부분 갱신은 금지다. exact duplicate·malformed는 정상수신 시각/heartbeat·의미 freshness를 갱신하지 않는다.
 
@@ -262,3 +262,10 @@ Health Getter의 `link`는 DOMAIN이 실제 보유한 CAN/UART-M 지원 범위�
 모든 기존 M04 caller는 `NetCanRxComparison` 전체를 초기화하고 실제 messageKind와 `occupantRestriction=NULL`을 명시한다. BCM/명령/결과/VSS/WINDOW에는 새 예외를 전달하지 않는다. CIS_OCCUPANT M04만 동일 처리 구간의 old/new 원자료로 제한 증거를 구성한다. 직접 생성·검증·인계 순서는 [CIS_OCCUPANT](can/CIS_OCCUPANT.md#restriction-check)와 [수직 호출부](../flows/NETWORK_TO_DOMAIN.md#cis-current-quality)에 있다.
 
 제한 증거를 관측했으나 M09/인계 공간이 부족한 경우 원 관측과 제한 사건을 보존하고 해당 원 관측의 정상 소비를 HOLD한다. C2 호출 전 안정 보관이 불가하면 호출하지 않는다. 호출 이후 raw 제한·원 rc·Core 단계는 보존하며 성공 여부 불명확을 이전 VALID로 rollback하지 않는다. 동일 원 관측의 낮은 TX는 공통 ORDER_HOLD이고, 더 높은 TX라도 INVALID→VALID는 제한 예외가 아니므로 HOLD다. 새 실제 관측의 회복은 원 순서와 기능 회복 근거를 함께 검증하는 기존 NEW_INPUT 경로에서만 가능하다.
+
+<a id="vss-warning-admission"></a>
+## VSS A1의 Event·Warning 전용 admission
+
+아래 분기는 VSS Event1건/Warning최대4 lane의 기존 직렬 owner 전달을 명시하며 공통 `NetCan_ClassifyRx` 코드·다른 메시지의 immutable-input·CIS_CURRENT_RESTRICTION 예외를 바꾸지 않는다. WARNING60 bundle은 세 위험과 독립 rearActivation을 각 원 source/sequence/quality/reason/availability/AGE로 판정한다. 한 lane의 제한을 다른 유효 lane의 손실이나 정상 CLEAR로 바꾸지 않는다. 같은 source key라도 승인된 제한 품질 변화는 전용 lane에서 전달하고, 같은 원 근거의 정상 판단 변경·승격은 E01 DOMAIN 실제 평가 증거 전 제한한다. exact duplicate는 재소비/정상 liveness 갱신 없음, 적법한 높은 TX의 동일 의미 반복은 전달 건강만 관측하며 원 freshness를 늘리지 않는다.
+
+Decode DTO의 AGE 기산점은 실제 `received_at_ms`다. callback 전 현재 AGE는 admission용 임시값으로만 계산하고 DTO를 현재 AGE로 덮은 뒤 RX시각과 함께 넘기지 않는다. INPUT이 RX→자기 owner 경과를 한 번 더하는 계약과 겹치지 않아야 한다. Event 원 Key는 수용된 DOMAIN Boot+occurrence(생산 문맥 포함), event_kind는 내용 충돌이며 새 재생 key가 아니다. 최초 actual의 원 L과 Warning 각 lane TTL/Hold는 [VSS Data](../../interface/02_NODES/VSS/10_DATA.md)에서 그대로 추적한다. 실제 clock·owner bounded bundle·void callback 복사/누락 관측은 E01~05 Binding 대기다.

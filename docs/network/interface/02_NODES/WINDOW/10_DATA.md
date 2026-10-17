@@ -2,14 +2,14 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**[구현 보류 — 설계 유지]**. DOMAIN은 상위 허용·확정 목표를 만들고 WINDOW는 실제 이동·위치·끝단·끼임 보호·결과·고장 근거를 만든다. State, 새 Event, 원 명령 Result, 현재/복구 Fault를 각각 유지한다. 로컬 STOP·끼임 보호는 CAN 수신·DOMAIN 허용·응답을 기다리지 않는다.
+**[구현 보류 — 설계 유지]**. DOMAIN은 상위 허용·확정 목표를 만들고 WINDOW는 실제 이동·위치·끝단·끼임 보호·결과·고장 근거를 만든다. State, 새 Event, 원본 명령 Result, 현재/복구 Fault를 각각 유지한다. 로컬 STOP·끼임 보호는 CAN 수신·DOMAIN 허용·응답을 기다리지 않는다.
 
 [노드 개요](00_OVERVIEW.md) · [Data](10_DATA.md) · [API](20_API.md) · [전체 시작](../../00_START_HERE.md) · [공통 의미·수명](../../04_COMMON/10_DATA_AND_ID_RULES.md) · [CAN FD](../../03_COMMUNICATION/10_CAN_FD.md)
 
-모든 아래 신규 로컬 타입은 **PROPOSED_DESIGN / BINDING_OPEN**이다. WINDOW 관련 경계는 **[구현 보류 — 설계 유지]**다. `Net*` 별칭의 숫자는 이 초안의 의미 코드이고 실제 C2 enum은 [명시 변환표](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)로 변환한다. C struct padding·enum 폭을 포함한 `memcpy` 전송은 금지한다. `<stdint.h>`와 공통 Net 타입은 [공통 Data](../../04_COMMON/10_DATA_AND_ID_RULES.md)에서 읽는다.
+모든 아래 신규 로컬 타입은 **PROPOSED_DESIGN / BINDING_OPEN**이다. WINDOW 관련 경계는 **[구현 보류 — 설계 유지]**다. `Net*` 별칭의 숫자는 이 초안의 의미 코드이고 실제 C2 enum은 [명시 변환표](../../04_COMMON/30_ENUM_WIRE_MAPPING.md)로 변환한다. C 구조체의 패딩·enum 폭을 포함한 `memcpy` 전송은 금지한다. `<stdint.h>`와 공통 Net 타입은 [공통 Data](../../04_COMMON/10_DATA_AND_ID_RULES.md)에서 읽는다.
 
 <a id="r1-window-deferred"></a>
-**DEFERRED:** VENT 70/80은 목표 위치 충돌로 미확정이다. 목표 숫자·위치 단위·재개 시 Local Safety를 owner가 확인하기 전 어느 값도 배포 기본값으로 적용하지 않는다. END와 AntiPinch를 구분하고 Command ID의 원 귀속·Fault lineage를 유지하며 로컬 STOP/끼임 보호를 우선한다. WINDOW 기능 구현은 보류하며 실제 보호 동작도 검증 전이다.
+**DEFERRED:** VENT 70/80은 목표 위치 충돌로 미확정이다. 목표 숫자·위치 단위·재개 시 로컬 안전 조건을 기능 담당자가 확인하기 전 어느 값도 배포 기본값으로 적용하지 않는다. END와 AntiPinch를 구분하고 Command ID의 원본 귀속과 Fault 발생 이력를 유지하며 로컬 STOP/끼임 보호를 우선한다. WINDOW 기능 구현은 보류하며 실제 보호 동작도 검증 전이다.
 
 ## 타입 색인
 
@@ -56,7 +56,7 @@ typedef struct NetWindowCommand
 ### `NetWindowState`
 
 <a id="r1-window-protection"></a>
-**DEFERRED:** `outputDisabled`와 `movementStopped`는 실제 출력 차단·운동 정지의 물리/기능 근거가 확인된 경우에만 true로 투영한다. 명령 접수·통신 성공·추정 시간 경과를 보호 완료로 바꾸지 않는다. 실제 WINDOW 기능 연결과 검증은 보류한다.
+**DEFERRED:** `outputDisabled`와 `movementStopped`는 실제 출력 차단·운동 정지의 물리적·기능적 근거가 확인된 경우에만 true로 투영한다. 명령 접수·통신 성공·추정 시간 경과를 보호 완료로 바꾸지 않는다. 실제 WINDOW 기능 연결과 검증은 보류한다.
 
 ```c
 typedef struct NetWindowState
