@@ -419,7 +419,7 @@ Issue #47에서 언급한 공통 Network Service 후보는 다음처럼 배치�
 ## 15. 관련 문서
 
 - Network / Protocol contract: [`../network/network_design_draft_v0.1.md`](../network/network_design_draft_v0.1.md)
-- Architecture index: [`README.md`](README.md)
+- Architecture index: [`sw_detail/00_START_HERE.md`](sw_detail/00_START_HERE.md)
 
 본 문서는 Network SW의 **논리 구조와 책임 경계**를 관리한다.
 Wire contract를 변경할 경우 Network 설계 문서를 먼저 갱신하고,
