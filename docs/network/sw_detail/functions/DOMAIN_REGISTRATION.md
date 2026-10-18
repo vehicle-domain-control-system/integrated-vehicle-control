@@ -72,7 +72,7 @@ DomainIf_Status_t DomainIf_SetTxPort( const DomainIf_TxPort_t *port);
 
 `port`는 IN/borrowed `const DomainIf_TxPort_t *`다. [원 table](../../interface/02_NODES/DOMAIN/12_DOMAIN_TYPES.md#type-domainif-txport-t)에는 26개의 함수포인터만 있고 Gateway의 user_context 필드를 추가하지 않는다. source 설명의 table 값 복사와 실행 함수/상태의 수명 보장은 다르다. 함수 주소와 해당 Network 자원은 등록 기간 및 진행 중 호출이 종료될 때까지 유효해야 한다. stack table을 복사했다는 이유로 함수가 참조하는 상태를 해제하지 않는다.
 
-Network Adapter 등록 담당자가 DOMAIN 본체에 요청한다. NULL table 전체의 해제/초기화 의미는 원문에 없어 확인 전 호출하지 않는다. NULL인 개별 callback은 전체 table NULL과 다르며 미연결 경로는 NOT_AVAILABLE로 남긴다. 구현 보류 WINDOW·CF02 경로를 정상 성공하는 no-op 함수로 채우지 않는다. 26개 선언이 존재한다고 26개 route를 모두 활성화해야 하는 것은 아니다.
+Network Adapter 등록 담당자가 DOMAIN 본체에 요청한다. 현재 Production `DomainIf_SetTxPort(NULL)`은 초기화 이후 등록 Port table을 해제하고 `DOMAIN_IF_OK`를 반환한다(초기화 전 `DOMAIN_IF_NOT_INITIALIZED`). 다만 Network가 오류 복구를 위해 임의로 unbind·Init 재호출할 수 있다는 허가는 아니다. NULL인 개별 callback은 전체 table NULL과 다르며 미연결 경로는 NOT_AVAILABLE로 남긴다. 구현 보류 WINDOW·CF02 경로를 정상 성공하는 no-op 함수로 채우지 않는다. 26개 선언이 존재한다고 26개 route를 모두 활성화해야 하는 것은 아니다.
 
 ```c
 /* PROPOSED_PRIVATE_FUNCTION / BINDING_OPEN */
@@ -115,7 +115,7 @@ if (registrationStatus != DOMAIN_IF_OK) {
 DomainIf_Status_t DomainIf_SetRxObserver( const DomainIf_RxObserver_t *observer);
 ```
 
-`observer`는 IN/borrowed `const DomainIf_RxObserver_t *`이고 [11개 원 callback](../../interface/02_NODES/DOMAIN/12_DOMAIN_TYPES.md#type-domainif-rxobserver-t)을 가진다. 등록 요청 주체는 DOMAIN 통합 owner이며 각 소비자 구현·준비의 실제 담당자는 C2/기능 owner와 확인한다. Network가 자동으로 이 table을 만들거나 11개 본체를 대신 구현하지 않는다. NULL table의 해제 의미는 OPEN이고 개별 callback의 미연결과 별개다.
+`observer`는 IN/borrowed `const DomainIf_RxObserver_t *`이고 [11개 원 callback](../../interface/02_NODES/DOMAIN/12_DOMAIN_TYPES.md#type-domainif-rxobserver-t)을 가진다. 등록 요청 주체는 DOMAIN 통합 owner이며 각 소비자 구현·준비의 실제 담당자는 C2/기능 owner와 확인한다. Network가 자동으로 이 table을 만들거나 11개 본체를 대신 구현하지 않는다. 현재 Production `DomainIf_SetRxObserver(NULL)`은 초기화 후 등록 table을 해제하고 `DOMAIN_IF_OK`를 반환한다(초기화 전 `DOMAIN_IF_NOT_INITIALIZED`). 개별 callback 미연결과는 별개이고, 임의의 초기화/복구 시 호출 권한을 뜻하지 않는다.
 
 ```c
 // DOMAIN 통합 owner가 승인한 기존 table을 제공한 경우의 호출 예.
@@ -190,7 +190,7 @@ local reset은 과거 항목을 새 생성 세대로 성공 접수한 사실로 
 | ID | 반례 | 기대 제한 |
 |---|---|---|
 | B15-REG-01 | IsInitialized=true, 특정 txPort=NULL | 미연결 route는 NOT_AVAILABLE; 전체 차량 준비로 확대하지 않음 |
-| B15-REG-02 | SetTxPort(NULL)을 해제로 가정 | source 의미 OPEN; wrapper는 호출 전 제한하고 임의 해제하지 않음 |
+| B15-REG-02 | SetTxPort(NULL)을 임의 장애 복구에 호출 | Production에서는 초기화 후 등록 table 해제 동작이 확인됨. Owner 승인·callback/Driver 수명 확인 전 임의 해제 금지 |
 | B15-REG-03 | table 값 복사 후 callback 상태 메모리 해제 | 함수/상태 수명 위반; 진행 호출 종료 근거 전 해제 금지 |
 | B15-REG-04 | Observer 등록 OK, 필수 LocalFailure sink 없음 | correlated discrete 접수 준비 미충족; Observer로 대체하지 않음 |
 | B15-REG-05 | Observer 실패, Core commit 완료 | 입력/차량 동작을 다시 실행하지 않음 |

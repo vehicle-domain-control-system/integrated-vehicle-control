@@ -113,12 +113,12 @@ CIS 환경 수신은 기존 C2 Rx에 온도·습도·조도별 값/품질/원 Se
 
 DOMAIN이 동기 Private Transition을 제공하는 경우에는 이전 환경값과 순번 비교 문맥의 무효화가 완료됐음을 확인하고 새 BOOT 데이터를 전달한다. BOOT 무효화를 이유로 기존 공개 환경 Rx에 NO_DATA를 다시 보내지 않는다. Private 호출 경로가 연결되지 않았거나 완료 여부가 불명확하면 **해당 환경 입력만 제한**하고 오류 상태를 남긴다. DOMAIN에 저장된 이전 정상값까지 사라졌다고 가정하지 않으며, 실제 VSM·Query 반영은 연결 시험에서 확인한다.
 
-첫 전환과 같은 전환의 중복·충돌 처리에 대해서는 DOMAIN Core Host 시험 완료 보고가 있다. 서로 다른 Epoch는 현재 Core가 `EPOCH_ORDER_UNAVAILABLE`로 거부하므로 **연속 BOOT 전환 자동 복귀는 후속 연결**이다. 구현할 때에는 기존 동기 Private API와 검증된 원 BOOT·순번을 이용하고, 임의의 새 공개 C2 필드·Wire·영속 저장소를 추가하지 않는다. [DOMAIN 동기 Private 전환 경계](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#delta-environment-routing) · [Private 경계](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#delta-environment-routing)
+DOMAIN Production Private Core는 최초 Epoch 1, 완료된 Epoch 이후 정확히 N+1, 완료된 동일 요청의 중복, 동일 Epoch의 ID 충돌, 과거(`STALE`)·건너뜀(`ORDER_ERROR`)을 실제 코드로 처리한다. `EPOCH_ORDER_UNAVAILABLE` 열거자는 호환용으로 남지만 현재 순차 Epoch 계약에서 반환하지 않는다. 다만 **Network→DOMAIN 실제 Private 호출·초기 상태 정합·완료 Receipt 대조·환경 C2/Query 연동은 미검증**이므로 해당 환경 경로의 HOLD는 유지한다. 연결 시 기존 동기 Private API와 검증된 원 BOOT·순번을 이용하고, 새 공개 C2 필드·Wire·영속 저장소를 추가하지 않는다. [DOMAIN 동기 Private 전환 경계](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#delta-environment-routing) · [Private 경계](02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#delta-environment-routing)
 
 <a id="failures"></a>
 ## 7. 접수 실패와 후발 실패
 
-NET_SUBMIT_OK/DOMAIN_IF_OK는 필요한 데이터를 안정적으로 복사·인계했다는 로컬 성공 반환이며 실제 CAN/UART TX·상대 ECU 수용·차량 DONE이 아니다. 접수 전 INVALID_ARGUMENT/NOT_READY/NO_CAPACITY는 미접수 반환이며 그 항목의 후발 실패 사건을 만들지 않는다.
+`NET_SUBMIT_OK`와 `DOMAIN_IF_OK`는 각각 해당 로컬 경계의 성공 반환이며 실제 CAN/UART TX·상대 ECU 수용·차량 DONE을 뜻하지 않는다. 특히 현재 `DomainIf_RxCisRear()`는 VehicleStateManager의 중복 입력도 `DOMAIN_IF_OK`로 변환하므로 이 반환값만으로 새 상태 반영을 단정하지 않는다. 신규성은 원 입력과 연결한 `DomainIf_QueryGetCisRear()` 전후 결과·`updateSequence`·`sourceGeneration`·값/품질로 별도 확인한다. 접수 전 INVALID_ARGUMENT/NOT_READY/NO_CAPACITY는 미접수 반환이며 그 항목의 후발 실패 사건을 만들지 않는다.
 
 정상 접수된 필요한 명령·결과·일회성 이벤트는 driver 제출의 확정 최종 실패, 송신 전 만료, 송신 전 문맥 무효화가 기존 세 reason에 정확히 맞을 때만 DOMAIN LocalFailure에 원 식별자를 전달한다. 미분류 in-flight 오류·callback 부재를 세 reason으로 확장하지 않고 원 식별자·phase·진단과 영향 경로 HOLD를 남긴다. [실패 범위 정본](04_COMMON/20_API_USAGE_AND_FAILURE.md#r1-local-failure-reasons)을 따른다. 주기 상태·Query 실패는 각 통신/Query 경로를 사용하고 CAN 성공 Callback·CIS/Pi용 C2 함수를 추가하지 않는다. BCM_RESULT 수신/DONE만으로 CONFIRMED나 차량 FAILED/DONE을 합성하지 않는다. 실제 확인 근거와 binding은 검증 대기다. Door·Climate·Interior Light별 원 Command ID·세대·새 관측 시각·상태·품질/Fault의 충분조건은 BCM/DOMAIN 확인 대기이며, 근거가 부족한 기능 결과만 UNCONFIRMED로 제한한다.
 
@@ -184,7 +184,7 @@ NET_SUBMIT_OK/DOMAIN_IF_OK는 필요한 데이터를 안정적으로 복사·인
 | 마지막 성공 반복 뒤 실패 / 성공 이력 없음 | 실패 시각으로 AGE0·성공 순번 생성 금지; 미확인 시간 표현 결정 대기 |
 | 평가가 정상 수행되어 DENY 결정 | false/OK는 확정 불허이며 평가 실패가 아님 |
 | 동일 원 평가 반복, 품질 변경, 새 성공 평가 | 원 평가/합성/프레임 번호의 생성 의미 분리, 반복 TX로 원 평가 재발급 금지 |
-| A900 대기 중 B0 수용 | Network의 이전 대기 입력 차단→동기 Private 전환→DOMAIN의 이전 쓰기 배제·무효화 완료 확인→B의 원본 순번 0 전달. 연속 Epoch 수용·실제 연동 확인 대기, 리매핑 금지 |
+| A900 대기 중 B0 수용 | Network의 이전 대기 입력 차단→동기 Private 전환→DOMAIN의 이전 쓰기 배제·무효화 완료 확인→B의 원본 순번 0 전달. DOMAIN Core 순차 Epoch 지원 확인, Network 실제 Private 호출·Receipt/Query 연동 확인 대기, 리매핑 금지 |
 | A 콜백 실행 중 B 수용 | 이전 BOOT(A)의 쓰기가 무효화 이후 끼어들지 않음; 임의 취소·owner 교착 없이 직렬 경계 확인 |
 | 콜백 반환 후 A 비동기 쓰기 대기 | Network 콜백 반환만으로 완료 판정 금지; DOMAIN이 동기 private 완료 뒤 구 쓰기의 재저장을 막는 경계 확인 |
 | Private 무효화 실패·완료 미확인 | 새 환경 전달 차단·오류 보고, 자동 재시도 없음. 과거 OK가 이미 지워졌다고 판정 금지 |

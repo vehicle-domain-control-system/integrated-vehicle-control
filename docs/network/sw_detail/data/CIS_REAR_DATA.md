@@ -7,7 +7,7 @@ CIS가 관측한 후방 거리와 품질을 CAN으로 운송하고 DOMAIN의 typ
 <a id="declared"></a>
 ## 기존 선언과 선언 상태
 
-아래 선언은 S4A Data 정본을 그대로 인용한다. Net 타입은 `PROPOSED_DESIGN/BINDING_OPEN`, C2 타입은 외부 제공 선언 `DECLARED_SOURCE`다. 제품 헤더·ABI·컴파일·보드 검증을 뜻하지 않는다. C2 v0.6/Vehicle v0.3은 미승인 후보이며 이 흐름의 CisRearState_t/API 원형을 변경하지 않는다.
+아래 선언은 S4A Data 정본을 그대로 인용한다. Net 타입은 `PROPOSED_DESIGN/BINDING_OPEN`이다. C2의 `CisRearState_t`·`DomainIf_RxCisRear`는 현재 `develop` Production v0.5 Target 헤더와 Core 구현에서 확인됐다. 다만 Network Target Adapter의 실제 제품 ABI·컴파일·보드 검증까지 뜻하지 않는다. C2 v0.6/Vehicle v0.3은 미승인 후보이며 이 흐름의 CisRearState_t/API 원형을 변경하지 않는다.
 
 <a id="type-NetSubmitResult"></a>
 ### `NetSubmitResult`

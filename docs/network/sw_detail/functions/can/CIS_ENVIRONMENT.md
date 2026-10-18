@@ -225,7 +225,7 @@ OK 뒤 해당 인계를 다시 호출하지 않는다. 실패 시 원 사본은 
 NetCanResult NetCan_InvalidateCisEnvironment(const NetCisEnvironmentLocalEvent *event);
 ```
 
-이 `PROPOSED_PRIVATE_FUNCTION`은 M09의 기존 관측 단계가 M03/F08의 직렬 문맥으로 전달한 [사건 사본](../../data/CAN_NODE_DATA.md#type-NetCisEnvironmentLocalEvent)을 읽는다. event는 NULL 불가·호출 중 불변이며 raw/meta를 새 수신으로 제출하지 않는다. M09가 만료 채널/수신중단/검증된 Boot 전이의 실제 원자료와 원 기록을 함께 확보한다. ORIGIN_EXPIRED/RX_STOPPED만 기존 공개 환경 Rx 품질 경로로 인계한다. BOOT_CHANGED에서는 Network 자체 환경 gate를 유지한 채 DOMAIN 소유 단일 동기 private 전환을 목표로 하며 전환용 Rx NO_DATA를 중복 호출하지 않는다. 실제 private 선언·결과 ABI가 미제공이고 다른 Epoch는 현재 미지원이므로 아래 BOOT 분기는 CONTRACT_HOLD다. M01은 새 BOOT 검증 시 자체 전달을 먼저 닫고, 사건·시간·binding 검사 실패로 일찍 반환해도 이를 해제하지 않는다. 실제 Task 공급·C2→VSM/Query Binding은 미검증이다.
+이 `PROPOSED_PRIVATE_FUNCTION`은 M09의 기존 관측 단계가 M03/F08의 직렬 문맥으로 전달한 [사건 사본](../../data/CAN_NODE_DATA.md#type-NetCisEnvironmentLocalEvent)을 읽는다. event는 NULL 불가·호출 중 불변이며 raw/meta를 새 수신으로 제출하지 않는다. M09가 만료 채널/수신중단/검증된 Boot 전이의 실제 원자료와 원 기록을 함께 확보한다. ORIGIN_EXPIRED/RX_STOPPED만 기존 공개 환경 Rx 품질 경로로 인계한다. BOOT_CHANGED에서는 Network 자체 환경 gate를 유지한 채 DOMAIN 소유 단일 동기 private 전환을 목표로 하며 전환용 Rx NO_DATA를 중복 호출하지 않는다. DOMAIN Production Private API 선언·결과 Receipt 및 첫 Epoch 1/연속 N+1 처리 코드는 확인됐으나 Network의 실제 호출·초기 정합·반환 대조·환경 VSM/Query 연동은 미검증이므로 아래 BOOT 분기는 CONTRACT_HOLD다. M01은 새 BOOT 검증 시 자체 전달을 먼저 닫고, 사건·시간·binding 검사 실패로 일찍 반환해도 이를 해제하지 않는다. 실제 Task 공급·C2→VSM/Query Binding은 미검증이다.
 
 ```c
 /* PSEUDOCODE_ONLY: 기존 Network 내부 후보의 분기 설명. DOMAIN private C 원형이 아니다. */
@@ -265,8 +265,8 @@ NetCanResult NetCan_InvalidateCisEnvironment(const NetCisEnvironmentLocalEvent *
             return NET_CAN_ORDER_HOLD;
         if (실행 중 Network callback과 전환 요청의 기존 owner 직렬 문맥이 미확인이면)
             return NET_CAN_NOT_READY;
-        // 현재: 실제 DOMAIN private 원형/결과 ABI·Binding 미제공.
-        // 담당자 보고상 다른 Epoch는 EPOCH_ORDER_UNAVAILABLE이며 성공으로 치환하지 않는다.
+        // DOMAIN Private 원형/Receipt ABI는 Production에 존재. Network 실제 Binding은 미확인.
+        // Core는 첫 Epoch1, 완료 후 N+1과 STALE/ORDER_ERROR를 구현. 실제 Receipt 없이 성공으로 간주 금지.
         // 향후 Binding 목표(실제 C 호출/결과 필드를 여기서 발명하지 않음):
         // - 기존 record/event와 원 old/new BOOT·요청 내용·제안 Epoch를 같은 전환으로 고정.
         // - CALL_IN_PROGRESS는 기존 eventRevision의 시도 기록일 뿐, 완료가 아니다.
@@ -279,7 +279,7 @@ NetCanResult NetCan_InvalidateCisEnvironment(const NetCisEnvironmentLocalEvent *
         // 구 작업 객체의 물리적 소멸이나 DOMAIN 내부 Queue drain을 Network가 요구하지 않는다.
         // 후속 commit 봉쇄와 무효화/Query/완료가 확인되면 잔존 작업이 있어도 조건 충족 가능.
         // BOOT는 아래 일반 품질용 공개 Rx로 내려가지 않는다. 새 timeout/enum/Token 없음.
-        return NET_CAN_CONTRACT_HOLD; // 현재의 실제 미지원/미검증 경로. B gate는 열지 않는다.
+        return NET_CAN_CONTRACT_HOLD; // Network→DOMAIN Private 호출/완료 대조 미검증. B gate는 열지 않는다.
     default: return NET_CAN_INVALID_ARGUMENT;
     }
     if (M09의 원 사건·전체 인계 결과 공간 또는 기존 C2 소비 문맥이 준비되지 않았으면)
@@ -345,7 +345,7 @@ NetCanResult NetCan_InvalidateCisEnvironment(const NetCisEnvironmentLocalEvent *
 | 순서·직접 caller | 실제 근거와 목표 동작 | 미충족 시 보존·반환 |
 |---|---|---|
 | 1. M01/M04가 B 전이 검증 | 원 출처·형식·수용 세대·원 기록을 검증한다. CRC/처음 본 BOOT만으로 최신 승인 금지. 자기 소유 A 환경 대기·미실행 callback·미시작 Query 응답 재게시를 차단하고 B 원 DTO/meta를 보존 | 실행 중 Network callback은 기존 owner 문맥으로 직렬화. 다른 노드 Queue/Query 전체 차단이나 Driver 참조 frame 취소 없음 |
-| 2. M03/F08가 요청 고정 | 같은 recordRevision/eventRevision과 원 old/new BOOT·내용·제안 Epoch의 연결을 고정하고 기존 M09 시도/결과 공간을 확보 | 실제 선언/ABI·양쪽 초기 정합·호출 수명·현재 Epoch 지원 근거가 없으면 CONTRACT_HOLD. 한쪽 상태를 임의 초기화하지 않음 |
+| 2. M03/F08가 요청 고정 | 같은 recordRevision/eventRevision과 원 old/new BOOT·내용·제안 Epoch의 연결을 고정하고 기존 M09 시도/결과 공간을 확보 | Private 선언/ABI는 확인됐지만 Network 바인딩·양쪽 초기 정합·호출 수명·Receipt/Query 완료 대조가 없으면 CONTRACT_HOLD. 한쪽 상태를 임의 초기화하지 않음 |
 | 3. DOMAIN 소유 동기 private 경계 | M03/F08가 고정 요청을 한 번 제출. DOMAIN이 이미 인계된 A 작업의 후속 commit을 막고 환경 VSM/독립 Meta·관련 순서 문맥을 무효화하여 Getter/Query 구 GOOD 재노출을 방지 | Network는 DOMAIN 내부 Queue를 직접 drain하거나 VSM을 수정하지 않음. 구 작업 객체가 남아도 후속 commit이 확실히 봉쇄되고 나머지 완료 조건이 충족되면 가능 |
 | 4. M03/F08·M09 완료 대조 | 실제 결과의 현재 요청 내용·수용 BOOT·적용 Epoch·명확한 완료를 대조해 원 사실과 함께 기록. 일반 C2 OK/Queue 접수/단순 callback 반환과 구분 | 확정 거부·부분 적용·불명·모순·불일치는 관련 환경 B 차단·오류 보고. 원 요청/결과를 보존하며 자동 재호출·rollback·다음 Epoch 발급 없음. Network gate가 A GOOD 제거 증거는 아님 |
 | 5. M03→기존 공개 환경 Rx | 일치한 private 완료 뒤 B의 원 출처·Sequence·AGE·품질·수신 순서를 재검증해 실제 새 관측을 전달. A900→B0은0 그대로이며901로 재발급하지 않음 | 미반영 대기는 원 생성 기준에서 한 번 누적. 온습도2499ms도 품질 검증 필요,2500/2501ms 비사용. 새 온도만 습도/조도를 회복시키지 않음. 조도1000ms 후보 유지 |
@@ -356,15 +356,15 @@ NetCanResult NetCan_InvalidateCisEnvironment(const NetCisEnvironmentLocalEvent *
 적용 완료와 optional Observer/부가 진단 오류는 별개다. 명확한 완료 뒤 부가 오류로 재무효화하지 않고, 모순/불명은 원 사실을 보존하여 HOLD한다. 일반 같은 BOOT의 센서 NO_DATA·원 만료·수신중단은 기존 공개 Rx·시간·품질 경로이며 private 전환/Epoch 사건이 아니다. RX_STOPPED의 STALE/NO_DATA 선택은 별도 POLICY_OPEN이다.
 
 <a id="sw-b-epoch-proposal"></a>
-### SW-B — Epoch 운영 제안과 현재 지원 한계
+### SW-B — DOMAIN Core 순차 Epoch 구현과 실제 Network 연결 한계
 
-**NETWORK_PROPOSAL_SENT / DOMAIN_ACCEPTANCE_PENDING:** Network의 Epoch 운영안은 발송됐으며 DOMAIN 회신 대기다. DOMAIN 담당자의 첫 전환·동일 Epoch 중복/충돌·환경 동기 무효화 구현/Host 시험 완료는 **DOMAIN_OWNER_REPORTED_HOST_PARTIAL**이다. 현재 다른 Epoch는 **EPOCH_ORDER_UNAVAILABLE**로 거부한다. 아래 연속 전환 목표를 현재 구현 완료·독립 Host PASS로 처리하지 않는다.
+**DOMAIN_CORE_SOURCE_VERIFIED / NETWORK_BINDING_NOT_VERIFIED:** `develop`의 `domain_cis_environment_private.h/.c`는 최초 Epoch 1, 완료된 Epoch 뒤 N+1, 동일 완료 요청 `DUPLICATE_APPLIED`, 충돌 `ID_CONFLICT`, 과거 `STALE`, 건너뜀 `ORDER_ERROR`, 실패 차단을 구현한다. 레거시 `EPOCH_ORDER_UNAVAILABLE` enum은 순차 계약에서 반환하지 않는다. Host 시험 PASS는 DOMAIN 담당자의 보고이며 여기서 독립 재실행하지 않았다. **Network의 실제 Private 호출·완료 Receipt 대조·환경 VSM/Query 정합은 미검증**으로 해당 환경 경로의 HOLD는 유지한다.
 
-제안 범위는 DOMAIN과 Network가 정상 실행을 계속하고 초기 상태가 서로 맞는 동안의 CIS 환경 연속 전환이다. 양쪽 적용 상태·진행 요청·구 작업을 정합한 명시적 초기화 뒤 첫 Epoch1, Network가 직전 완료를 현재 요청과 대조한 뒤 검증된 새 BOOT에 정확히 다음+1을 한 번 발급한다. 같은 BOOT의 센서 갱신·일반 NO_DATA·CAN 반복은 발급 사건이 아니다. 미완료 중 선발급·동시 승인·자동 다음 요청을 하지 않는다. 실행 중 감소/reset/wrap 재사용 금지, 실제 타입 최대값은 오류·차단이며 폭·Epoch0 예약 의미는 새로 정하지 않는다.
+제안 범위는 DOMAIN과 Network가 정상 실행을 계속하고 초기 상태가 서로 맞는 동안의 CIS 환경 연속 전환이다. 양쪽 적용 상태·진행 요청·구 작업을 정합한 명시적 초기화 뒤 첫 Epoch1, Network가 직전 완료를 현재 요청과 대조한 뒤 검증된 새 BOOT에 정확히 다음+1을 한 번 발급한다. 같은 BOOT의 센서 갱신·일반 NO_DATA·CAN 반복은 발급 사건이 아니다. 미완료 중 선발급·동시 승인·자동 다음 요청을 하지 않는다. 실행 중 감소/reset/wrap 재사용 금지, 현재 DOMAIN Private 타입은 `uint64_t`이고 Epoch0은 INVALID_ARGUMENT, UINT64_MAX에서 다음 Epoch로의 증가를 허용하지 않는다. 이를 새 공개 필드·Wire·영속 정보로 승격하지 않는다.
 
 | 제안 요청 판정 | 목표 / 현재 한계 |
 |---|---|
-| 정합 초기 상태의 첫1 / 직전 완료 후 정확히 다음+1 | 원 BOOT·내용·구 작업 경계를 확인한 동기 적용 목표. 실제 ABI 미확인과 현재 다른 Epoch 거부는 HOLD |
+| 정합 초기 상태의 첫1 / 직전 완료 후 정확히 다음+1 | Private Core는 첫 1/완료 후 N+1 순차 적용을 지원. Network 호출·초기 정합·Receipt/Query Binding 미검증으로 해당 환경 경로 HOLD |
 | 현재 마지막 적용 Epoch·동일 완료 내용 | 기존 완료 결과만 재사용, 이후 B 정상값을 다시 지우지 않음. 진행 중·실패·불명은 완료된 중복이 아니며 자동 재호출하지 않음 |
 | 같은 Epoch·다른 내용 / 과거 Epoch / 건너뜀 | 충돌·과거·strict-next 위반 거부 목표. 과거에 완료한 요청도 현재 gate 승인으로 사용하지 않음 |
 | 진행 중 새 BOOT / 결과 내용·Epoch 불일치 | 새 선발급·무한 Queue 없음. 관련 환경 차단·오류/원 사실 보존 |
@@ -374,8 +374,8 @@ NetCanResult NetCan_InvalidateCisEnvironment(const NetCisEnvironmentLocalEvent *
 <a id="boot-binding-gap"></a>
 ### BG-R05-BOOT — r1 조건부 순서는 존재, 실제 DOMAIN 저장 경계 근거 부족
 
-`BLOCKED_DESIGN`을 유지한다. 기존 `CisCabinEnvironmentState_t` 여섯 멤버와 `DomainIf_RxCisCabinEnvironment(const ... *state)`에는 공개 Boot/generation·완료 입력이 없다. 최종 IF-A-R에는 단일 동기 private 방향과 조건부 연속 전환 목표가 있으며 담당자 부분 Core/Host 완료 보고도 있다. 문서 근거가 없거나 전부 구현 전이라고 기록하지 않는다.
+환경 BOOT 전환의 `BLOCKED_DESIGN`/국소 HOLD는 **Network–DOMAIN 실제 Binding 미검증**으로 유지한다. Private Core의 순서 검사는 구현되어 있다. 기존 `CisCabinEnvironmentState_t` 여섯 멤버와 `DomainIf_RxCisCabinEnvironment(const ... *state)`에는 공개 Boot/generation·완료 입력이 없다. 최종 IF-A-R에는 단일 동기 private 방향과 조건부 연속 전환 목표가 있으며 담당자 부분 Core/Host 완료 보고도 있다. 문서 근거가 없거나 전부 구현 전이라고 기록하지 않는다.
 
-남은 근거는 정확한 DOMAIN private 원형/결과 ABI, 첫/다음 Epoch의 실제 수용·초기 정합/수명, DOMAIN 구 쓰기 후속 commit 봉쇄·VSM/독립 Meta·순서 문맥 무효화·Query 구 GOOD 차단의 동기 완료 결과, 이후 B 원 낮은seq의 공개 Rx 실제 반영과 같은 원 입력의 Getter 연결이다. 현재 다른 Epoch의 EPOCH_ORDER_UNAVAILABLE와 Rx→VSM→Query BINDING_NOT_VERIFIED는 그대로다. Network가 완료 bool·C2 OK·빈 Queue로 대신하지 않으며 IF 문서 PASS만으로 BINDING_ONLY/RESOLVED/PASS로 낮추지 않는다.
+DOMAIN Private 원형·Receipt ABI와 Core의 첫 1/완료 후 N+1 처리 자체는 Production 소스로 확인됐다. 남은 것은 Network가 이 Private 함수를 실제 직렬 문맥에서 호출해 반환·BOOT·Epoch·Barrier Revision을 대조하는지, 양쪽 초기 정합·수명을 보장하는지, DOMAIN 구 쓰기 후속 commit 봉쇄와 VSM/독립 Meta/Query 구 GOOD 차단이 실제로 완결되는지, 이후 B의 원 낮은 seq가 기존 공개 환경 Rx·Getter에 같은 입력으로 연결되는지에 대한 증거다. 레거시 `EPOCH_ORDER_UNAVAILABLE`는 enum 호환용으로 남지만 현재 순차 Epoch Core의 반환 상태가 아니다. Rx→VSM→Query `BINDING_NOT_VERIFIED`는 그대로다. Network가 완료 bool·C2 OK·빈 Queue로 대신하지 않으며 IF 문서 PASS만으로 BINDING_ONLY/RESOLVED/PASS로 낮추지 않는다.
 
 무효화 거부·완료 불명에서는 B 정상 전달을 차단하되 A의 GOOD가 이미 지워졌다고 기록하지 않는다. 구 A/seq901을 기억된 종료 Boot 범위에서 거부하며 B0은0 그대로 보존한다. 실제 기존 연결로 순서를 증명할 수 없다는 근거가 나올 때만 최소 Environment Generation/완료 경계 계약 변경을 별도 검토한다. 이번에는 공개 타입/API/Wire/Header를 변경하지 않는다. 기존 IM-026/027/028·RV-R05-03/07과 Owner/S6Q 연결은 하나의 같은 blocker로 유지한다.

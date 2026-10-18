@@ -21,7 +21,7 @@ sequenceDiagram
     R->>R: 소비시점 AGE·품질·세대 투영
     R->>D: DomainIf_RxCisRear(CisRearState_t)
     D-->>R: 로컬 C2 반환
-    Note over R,D: C2 OK와 Manager 반영·위험 판단은 별도
+    Note over R,D: C2 OK에는 VSM 중복도 포함. 새 반영은 Query 전후 비교
 ```
 
 Wire를 가로질러 C 함수를 직접 호출하지 않는다. CIS 내부 함수와 DOMAIN 내부 함수는 서로 다른 MCU에서 실행된다.
@@ -46,7 +46,7 @@ Wire를 가로질러 C 함수를 직접 호출하지 않는다. CIS 내부 함�
 2. 접수 뒤 CIS에서 아직 반영하지 않은 대기4ms가 확인되면 최종 encode AGE는24ms다. TX_SEQUENCE11은 예시 프레임 번호이며 UPDATE9와 독립이다.
 3. ID0x0A0/DLC11/20B에 B0 Boot7, B4 TX11, B8 UPDATE9, B12 AGE24, B14 거리123, B16 VALID1, B17 NONE0, B18 VALID_DISTANCE0, B19 padding0을 **고정 폭 LE**로 기록한다. 본문에 응용 CRC·버전 byte를 추가하지 않는다.
 4. DOMAIN은 실제 수신시각을 보존한다. 미반영 전달 구간5ms와 DOMAIN 수신 후3ms가 각각 입증됐다면 소비 AGE32ms다. **예시5ms의 가정은 후보 hop5ms가 실제 지연 상한임을 입증하지 않는다.** Driver 뒤 대기가 미관측이면32ms를 정확한 전체 AGE/상한으로 확정하지 않는다.
-5. 원 세대·품질 투영이 확인된 조건에서 rearDistanceMm=123, 원 UPDATE9, 누적 AGE32ms를 같은 입력으로 DOMAIN에 전달한다. DOMAIN_IF_OK는 그 로컬 호출의 성공이며 Manager의 실제 반영·위험 판정·VSS 실행은 별도다.
+5. 원 세대·품질 투영이 확인된 조건에서 rearDistanceMm=123, 원 UPDATE9, 누적 AGE32ms를 같은 입력으로 DOMAIN에 전달한다. 현재 DOMAIN `DomainIf_RxCisRear()`는 VSM 중복도 `DOMAIN_IF_OK`로 반환한다. 신규 반영 여부는 호출 전후 `DomainIf_QueryGetCisRear()`의 `updateSequence`·`sourceGeneration`·품질·거리와 원 입력을 대조해야 하며, 위험 판단·VSS 실행은 별도다.
 
 같은 관측이 TX12로 반복되어도 UPDATE9가 새 관측10이 되지 않는다. DOMAIN 로컬 Boot가 바뀌었다고 원 CIS Boot7을 덮어쓰지 않는다. AGE가 더 작게 보이는 반복은 같은 소비시점에서 기존 나이와 비교한다.
 

@@ -80,7 +80,7 @@ F02/F03은 DOMAIN의 후방 활성 Power 실제 재평가 약200ms와 원500ms/�
 
 검증된 B 전이에서 M01/M04는 자기 소유 A 환경 대기·미실행 패킷/callback·미시작 환경 Query 응답의 재게시를 차단하고 실행 중 Network callback을 기존 owner 문맥으로 직렬화한다. M03/F08 Adapter가 고정 요청을 DOMAIN 소유 단일 동기 private 경계에 한 번 제출하고 현재 요청 내용·수용 BOOT·적용 Epoch·명확한 완료를 실제 응답과 대조하는 목표다. DOMAIN은 이미 인계된 구 작업의 후속 commit 봉쇄·VSM/Meta·순서 문맥 무효화·Query 구 GOOD 방지를 책임진다. 구 객체가 남아도 미래 commit이 확실히 봉쇄되고 나머지 완료 조건이 성립하면 가능하며 M01이 DOMAIN 내부 Queue를 drain하거나 VSM을 수정하지 않는다. B 원자료는 원 seq/수신시각/AGE로 보존하고 실제 Binding/완료 근거 전 정상 gate를 열지 않는다. [환경 저장 정본](../functions/can/CIS_ENVIRONMENT.md#environment-storage-order)을 따르며 Queue/반환 OK는 완료가 아니다.
 
-원 key는 `(CIS Boot, 센서, 원 Sequence)`다. A900→B0을901로 재번호하지 않는다. 제안 `transitionEpoch`는 원 BOOT·센서seq·CAN TX·recordRevision/eventRevision과 다르며 폭/새 struct 필드/영속 저장을 추가하지 않는다. [첫1·완료 후 다음+1 운영안](../functions/can/CIS_ENVIRONMENT.md#sw-b-epoch-proposal)은 발송된 Network 제안·DOMAIN 회신 대기이며 현재 다른 Epoch는 EPOCH_ORDER_UNAVAILABLE다. 지연 A는 기존 종료 BOOT 기억/검증 범위에서 막되 재사용·기억 상실에 영구 차단을 약속하지 않는다. 일반 NO_DATA는 BOOT/seq reset/Epoch 사건이 아니다. Network 단독 재시작 자동복구 제외는 제안 범위이며 양단 초기 정합·실제 호출 근거 전 영향 환경 경로 HOLD다. 다른 노드 BOOT에 확대하지 않는다.
+원 key는 `(CIS Boot, 센서, 원 Sequence)`다. A900→B0을901로 재번호하지 않는다. 제안 `transitionEpoch`는 원 BOOT·센서seq·CAN TX·recordRevision/eventRevision과 다르며 폭/새 struct 필드/영속 저장을 추가하지 않는다. [첫1·완료 후 다음+1 운영안](../functions/can/CIS_ENVIRONMENT.md#sw-b-epoch-proposal)은 DOMAIN Private Core에서 첫 1/완료 후 N+1·`STALE`·`ORDER_ERROR` 처리까지 소스로 확인됐다. Network 실제 Private 연결과 초기 정합·Receipt/Query 검증은 미완료이므로 환경 경로만 HOLD한다. 지연 A는 기존 종료 BOOT 기억/검증 범위에서 막되 재사용·기억 상실에 영구 차단을 약속하지 않는다. 일반 NO_DATA는 BOOT/seq reset/Epoch 사건이 아니다. Network 단독 재시작 자동복구 제외는 제안 범위이며 양단 초기 정합·실제 호출 근거 전 영향 환경 경로 HOLD다. 다른 노드 BOOT에 확대하지 않는다.
 
 ## PG6-SW02 — Permission 번호 공간
 

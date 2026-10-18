@@ -90,10 +90,10 @@ case NET_ENV_RX_STOPPED: {
 case NET_ENV_BOOT_CHANGED: {
     // M01이 자기 구 환경 대기/콜백·미시작 Query 재게시를 막고 자체 callback을 직렬화.
     NetCanResult invalidated = NetCan_InvalidateCisEnvironment(&observedEnvironmentEvent);
-    // 이 분기는 공개 Rx NO_DATA를 호출하지 않는다. 현재 ABI/Binding 미확인으로 CONTRACT_HOLD.
+    // 공개 Rx NO_DATA는 호출하지 않는다. Private 원형은 확인됐지만 Network Binding 미검증으로 CONTRACT_HOLD.
     // 향후 DOMAIN 소유 동기 private 한 번 제출·미래 commit 봉쇄/무효화/구 Query 차단 후
     // 현재 요청 내용·수용 BOOT·적용 Epoch·명확한 완료를 대조해야 B 정상 gate 검토 가능.
-    // 현재 다른 Epoch EPOCH_ORDER_UNAVAILABLE를 성공/다음 요청으로 바꾸지 않는다.
+    // Core 순차 Epoch 지원과 실제 호출/Receipt 수용은 별개. 검증 전 환경 gate를 열지 않는다.
     // 원 결과·불명 상태를 보존하고 자동 재시도하지 않는다.
     break;
 }
@@ -103,7 +103,7 @@ default:
 }
 ```
 
-온습도 만료는 기존 유효 채널의 품질을 INVALID/STALE로 제한하고 기존 비유효 채널의 원 사유를 보존한다. 일반 같은 BOOT 수신중단의 STALE/NO_DATA 선택은 별도 미결이다. BOOT 무효화는 단일 동기 private 전환 목표이며 같은 전환을 공개 Rx NO_DATA로 중복 전달하지 않는다. 원 raw·sequence를 보존하고 AGE는 입증한 미반영 경과만 한 번 더한다. 새 유효 온도만 온도를 회복시키며 조도 정책을 온습도2500ms에서 추정하지 않는다. **BG-R05-BOOT / BLOCKED_DESIGN:** [해당 분기](../../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)는 담당자 부분 Core/Host 완료 보고와 별개로 실제 private ABI·연속 Epoch 수용·Rx/Query Binding 미검증 때문에 현재 HOLD다. 일반 NO_DATA로 BOOT/순번 reset이나 새 Epoch를 만들지 않는다.
+온습도 만료는 기존 유효 채널의 품질을 INVALID/STALE로 제한하고 기존 비유효 채널의 원 사유를 보존한다. 일반 같은 BOOT 수신중단의 STALE/NO_DATA 선택은 별도 미결이다. BOOT 무효화는 단일 동기 private 전환 목표이며 같은 전환을 공개 Rx NO_DATA로 중복 전달하지 않는다. 원 raw·sequence를 보존하고 AGE는 입증한 미반영 경과만 한 번 더한다. 새 유효 온도만 온도를 회복시키며 조도 정책을 온습도2500ms에서 추정하지 않는다. **BG-R05-BOOT / BLOCKED_DESIGN:** [해당 분기](../../functions/can/CIS_ENVIRONMENT.md#boot-binding-gap)는 담당자 부분 Core/Host 완료 보고와 별개로 Private Core 순차 Epoch 구현은 확인됐지만 Network 실제 Private 호출·Receipt 대조·Rx/Query Binding은 미검증이므로 환경 경로는 계속 HOLD다. 일반 NO_DATA로 BOOT/순번 reset이나 새 Epoch를 만들지 않는다.
 
 BOOT A/seq900 → 검증된 새 B/seq0 → 늦은 A/seq901에서는 DOMAIN private 경계가 A의 미래 commit을 봉쇄하고 실제 환경 무효화·구 GOOD Query 방지를 완료해야 한다. 구 객체가 남아도 그 보장과 요청/Epoch/완료 대조가 성립하면 가능하다. B0을901로 바꾸거나 A900과 전역비교하지 않는다. 현재 미바인딩 상태에서 B 정상 소비·회복을 성공으로 만들지 않으며 기억된 지연 A는 재인계·정상수신/복구 근거로 쓰지 않는다.
 
@@ -312,11 +312,11 @@ SC10의 상태 송신 정확 선언은 `DomainIf_Status_t DomainIf_TxMobileCisSt
 <a id="sc05-r1-storage-order"></a>
 ## PG6-SW02 SC05 — Boot 전이의 실제 저장 순서
 
-[r1 조건부 저장 순서](../../functions/can/CIS_ENVIRONMENT.md#environment-storage-order)를 SC05의 기존 M01→M03/F08→M09→DOMAIN 동기 private 목표→무효화/Query 완료 대조→새 원 관측의 공개 환경 Rx→Getter 경로에 적용한다. DOMAIN 첫 전환·동일 Epoch 중복/충돌·동기 무효화 Host 완료는 담당자 보고이며 현재 다른 Epoch는 EPOCH_ORDER_UNAVAILABLE다. 연속 운영안은 발송된 Network 제안/DOMAIN 회신 대기이고 실제 private ABI·Rx/Query Binding이 없어 BG-R05-BOOT를 유지한다. 새 공개 API/완료 bool·callback·환경 generation을 만들지 않는다.
+[r1 조건부 저장 순서](../../functions/can/CIS_ENVIRONMENT.md#environment-storage-order)를 SC05의 기존 M01→M03/F08→M09→DOMAIN 동기 private 목표→무효화/Query 완료 대조→새 원 관측의 공개 환경 Rx→Getter 경로에 적용한다. DOMAIN Production Private Core의 첫 Epoch1·완료 후 N+1·중복/충돌·STALE/ORDER_ERROR 구현은 소스로 확인됐다(Host 시험은 담당자 보고). Network의 실제 Private 호출·초기 정합·Receipt 대조·Rx/Query Binding은 아직 입증되지 않아 BG-R05-BOOT를 유지한다. 새 공개 API/완료 bool·callback·환경 generation을 만들지 않는다.
 
 | 입력·경계 | 연결된 실제 분기와 남길 사실 |
 |---|---|
-| A900 queued, 검증된 B0 수용 | M01이 자기 A 환경 대기·미실행 callback·미시작 Query 재게시를 차단하고 B 원자료 보존. M03/F08가 고정 요청을 단일 동기 private에 한 번 제출하는 목표이며 ABI 미확인은 HOLD |
+| A900 queued, 검증된 B0 수용 | M01이 자기 A 환경 대기·미실행 callback·미시작 Query 재게시를 차단하고 B 원자료 보존. M03/F08가 고정 요청을 단일 동기 private에 한 번 제출하는 목표. Private 원형은 확인됐지만 Network 실제 호출·Receipt/Query 검증 전 해당 환경 경로 HOLD |
 | A callback 실행 중 | Network 자기 callback을 owner 문맥에서 직렬화. 이미 DOMAIN에 인계된 A 후속 commit 봉쇄는 DOMAIN 책임. 단순 callback 반환/빈 Queue로 완료를 대신하지 않음 |
 | A callback 반환, async VSM write pending | 객체가 남아도 미래 commit이 확실히 봉쇄되고 무효화/Query/완료 대조가 충족되면 가능. 봉쇄 여부 불명이면 B HOLD. 물리적 소멸 무한 대기/임의취소 없음 |
 | DOMAIN 단일 동기 private 무효화 완료 | 고정 요청 내용/수용 BOOT/적용 Epoch/명확한 완료를 대조. VSM/Meta·순서 문맥과 구 GOOD Query 차단 근거 필요. BOOT용 공개 Rx NO_DATA를 중복 호출하지 않음 |
@@ -326,4 +326,4 @@ SC10의 상태 송신 정확 선언은 `DomainIf_Status_t DomainIf_TxMobileCisSt
 | B 뒤 지연 A frame/callback | 기억된 종료 Boot의 전달·재저장을 차단. 처음 본 임의 Boot를 최신으로 수용하지 않으며 Boot 재사용/Network 재시작/이력상실은 재동기화 근거별 HOLD |
 | 같은 Boot 일반 NO_DATA | 재부팅/seq reset/새 Epoch로 해석하지 않음. 일반 만료·수신중단은 기존 공개 Rx·시간·품질 규칙이며 STALE/NO_DATA 선택 미결을 BOOT private로 확정하지 않음 |
 
-이 단계는 조건부 목표 설계이며 실제 Host/Board 시험 결과가 아니다. 현재 다른 Epoch 미지원·실제 private 선언/결과 ABI와 Rx/Query Binding 미검증을 유지한다. BG-R05-BOOT, RV-R05-03/07 및 IM-026/027/028은 같은 차단 이력이며 문서 정합화만으로 닫지 않는다.
+이 단계는 조건부 Network 통합 목표 설계이며 실제 Network Host/Board 시험 결과가 아니다. DOMAIN Production Private Core의 첫 Epoch 1·완료 후 N+1·중복/오류 처리는 소스로 확인됐으나, Network가 해당 Private API를 실제 호출하여 Receipt·환경 Rx/Query 연동을 검증한 증거는 없다. BG-R05-BOOT, RV-R05-03/07 및 IM-026/027/028은 같은 차단 이력이며 문서 정합화만으로 닫지 않는다.

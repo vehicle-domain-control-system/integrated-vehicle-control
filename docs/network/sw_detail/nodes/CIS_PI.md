@@ -68,7 +68,7 @@ CIS/Pi의 Network 경계를 설명하는 정적 상세설계다. CIS는 센서 �
 
 CIS 송신은 타입 검사→동일 생산 세대·원 AGE 확인→완전 사본/공간 확보→원자 게시→기존 Codec→Driver 순서다. Rear의 B11 Admission과 B12 공통 Admission을 같은 입력에 중복 적용하지 않는다. 수신 DOMAIN은 실제 CAN flags/ID/DLC/길이/padding·필드→Boot/순서→같은 관측/AGE·품질→C2 인계 순서로 처리한다. CAN ACK·Decode 성공·C2 반환을 원 센서의 정상 판정이나 DOMAIN Core commit으로 확장하지 않는다. [B15 Rx Adapter](../functions/DOMAIN_RX_ADAPTER.md)와 [원 관측/Getter](../functions/DOMAIN_QUERY_PROVENANCE.md)의 실제 동일 관측 결합 HOLD를 그대로 적용한다.
 
-온도와 습도 각각의 원 사용기한2500ms/도달 시 비사용은 확정 합의이며 독립 만료·복구를 적용한다. 조도1000ms와 CIS local5000ms는 이 합의로 확정하지 않는다. 새 CIS BOOT 전환은 DOMAIN 소유 단일 동기 Private 경로를 목표로 하여 BOOT용 공개 Rx NO_DATA를 중복 호출하지 않고 일반 만료·수신중단은 기존 공개 C2 품질 경로로 처리하되, 수신중단의 STALE/NO_DATA 정책 미결·연속 Epoch의 DOMAIN 수용 대기(현재 다른 Epoch는 EPOCH_ORDER_UNAVAILABLE)·실제 Rx→VSM→Getter 연결의 BINDING_NOT_VERIFIED 상태를 유지한다. 200ms CAN 보고·600ms 수신 중단 후보는 원 센서 TTL이 아니다. DataQuality 산출, 공통 대 센서별 Generation, C2 Generation0 정책을 B16에서 확정하지 않는다. 습도 실패를 다른 정상 센서의 무효화 이유로 사용하지 않는다.
+온도와 습도 각각의 원 사용기한2500ms/도달 시 비사용은 확정 합의이며 독립 만료·복구를 적용한다. 조도1000ms와 CIS local5000ms는 이 합의로 확정하지 않는다. 새 CIS BOOT 전환은 DOMAIN 소유 단일 동기 Private 경로를 목표로 하여 BOOT용 공개 Rx NO_DATA를 중복 호출하지 않고 일반 만료·수신중단은 기존 공개 C2 품질 경로로 처리하되, 수신중단의 STALE/NO_DATA 정책은 미결로 유지한다. DOMAIN Private Core의 순차 Epoch 지원은 확인됐지만 Network의 실제 Private 호출·Receipt 대조와 Rx→VSM→Getter 연결은 BINDING_NOT_VERIFIED이므로 해당 환경 경로의 HOLD를 유지한다. 200ms CAN 보고·600ms 수신 중단 후보는 원 센서 TTL이 아니다. DataQuality 산출, 공통 대 센서별 Generation, C2 Generation0 정책을 B16에서 확정하지 않는다. 습도 실패를 다른 정상 센서의 무효화 이유로 사용하지 않는다.
 
 <a id="vision-flow"></a>
 ## R06 — Pi Vision → CIS → DOMAIN의 관측 전환

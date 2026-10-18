@@ -5,7 +5,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 <a id="production-c2-compatibility"></a>
 ## 운영 코드의 참고 C2와 설계 후보 사이의 연결 제한
 
-담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며, 아래 C 선언·공개 API는 **v0.3/v0.6 후보**다. `docs/Domain/architecture/2_Domain_interface/Domain_Interface_v0.5.h`는 참고 파일이며 실제 ECU 빌드 경로·SHA와의 동일성은 미확인이다.
+현재 `develop`의 Production C2 Target 헤더 `firmware/DOMAIN/src/interface/Domain_Interface_v0.5_C2_target.h` 및 `Vehicle_Types_v0.2.h`는 PR #85 병합 소스로 확인됐다. 아래 C 선언·공개 API는 별도의 **v0.3/v0.6 후보**이며 Production과 자동 ABI 호환된다고 보지 않는다. `docs/Domain/architecture/2_Domain_interface/Domain_Interface_v0.5.h`는 현재 Target 헤더가 아닌 과거 참고 파일이다. Target 빌드/실보드 검증은 별도다.
 
 | 선언 경계 | v0.5 참고 헤더 | v0.6 후보 헤더 |
 |---|---|---|
@@ -14,7 +14,7 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 | TxPort Callback | 15개 | 26개 |
 | RxObserver Callback | 12개 | 11개 |
 
-위 표는 저장소에 남아 있는 **과거 v0.5 참고 헤더와 v0.6 후보**의 비교다. DOMAIN 담당자는 현재 Production v0.5가 공개 API 72개·Query 18개·TxPort 26개·Observer 11개라고 별도로 보고했다. 이 보고는 실제 빌드에 사용된 헤더의 SHA·함수 원형/ABI 검증과 구분한다. 참고 헤더 차이를 이유로 아래 API를 삭제하거나 구형 Port로 되돌리지 않는다. **실제 설치 선언·Adapter 연결·ABI 검증은 대기** 상태다.
+위 표는 **과거 v0.5 참고 헤더(41개)와 v0.6 후보** 비교로, 현재 Production v0.5 C2 Target과는 다른 비교다. 현재 `develop`의 C2 Target에는 공개 API 72개·Query 18개·TxPort 26개·RxObserver 11개 선언이 있으며, 해당 PR의 실제 본체 구현은 44개로 확인됐다. 선언만 존재하는 API를 사용 가능한 구현으로 계산하지 않는다. 기존 후보 API를 임의로 자동 채택·삭제하거나 구형 Port로 되돌리지 않는다. **Network Adapter 연결·Target 빌드/ABI·실보드 검증은 대기** 상태다.
 
 | 차이 범위 | 호환 검토 대상 |
 |---|---|

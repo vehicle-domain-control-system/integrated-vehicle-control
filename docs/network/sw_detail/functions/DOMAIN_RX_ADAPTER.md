@@ -179,7 +179,7 @@ DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState
 
 **반환 이후:** 원 C2 7값은 [공통 결과](#common)로 보존한다. 전용 Observer 없음. 실제 commit과 전달 결과를 분리하며 미확인 단계를 완료로 기록하지 않는다.
 
-**미결·반례:** IF-O09·IF-O24; 온습도 각2500ms는 합의 완료, 조도 TTL은 별도 미합의다. 환경 generation 필드를 추가하지 않는다. [r1 조건부 순서](can/CIS_ENVIRONMENT.md#environment-storage-order)는 Network 자기 환경 대기·콜백/미시작 Query 차단 → 단일 동기 private 목표 → DOMAIN 구 작업 후속 commit 봉쇄·VSM/Meta·순서 문맥/구 Query 무효화 → 현재 요청/수용 BOOT/적용 Epoch/명확한 완료 대조 → B 원 낮은seq의 공개 Rx다. 구 작업 객체가 남아도 확실한 후속 commit 차단과 나머지 완료 조건이 성립하면 가능하며 Network가 DOMAIN 내부 Queue를 지우지 않는다. 담당자 부분 Core/Host 완료 보고와 별개로 실제 private 선언·연속 Epoch 수용·Rx/Query Binding이 미확인이므로 [BG-R05-BOOT](can/CIS_ENVIRONMENT.md#boot-binding-gap)를 유지한다. Queue/일반 C2 OK로 B를 열지 않으며 실패/불명에서 구 GOOD 제거를 주장하지 않는다. 명확한 Core 완료 뒤 Observer 오류로 재실행하지 않는다. [역방향 추적](../flows/NETWORK_TO_DOMAIN.md)에서 해당 원 수신으로 돌아간다.
+**미결·반례:** IF-O09·IF-O24; 온습도 각2500ms는 합의 완료, 조도 TTL은 별도 미합의다. 환경 generation 필드를 추가하지 않는다. [r1 조건부 순서](can/CIS_ENVIRONMENT.md#environment-storage-order)는 Network 자기 환경 대기·콜백/미시작 Query 차단 → 단일 동기 private 목표 → DOMAIN 구 작업 후속 commit 봉쇄·VSM/Meta·순서 문맥/구 Query 무효화 → 현재 요청/수용 BOOT/적용 Epoch/명확한 완료 대조 → B 원 낮은seq의 공개 Rx다. 구 작업 객체가 남아도 확실한 후속 commit 차단과 나머지 완료 조건이 성립하면 가능하며 Network가 DOMAIN 내부 Queue를 지우지 않는다. DOMAIN Private Core의 첫 1/완료 후 N+1·Private API는 소스로 확인됐지만 Network 실제 호출·Receipt 대조·환경 Rx/Query Binding이 미검증이므로 [BG-R05-BOOT](can/CIS_ENVIRONMENT.md#boot-binding-gap)를 유지한다. Queue/일반 C2 OK로 B를 열지 않으며 실패/불명에서 구 GOOD 제거를 주장하지 않는다. 명확한 Core 완료 뒤 Observer 오류로 재실행하지 않는다. [역방향 추적](../flows/NETWORK_TO_DOMAIN.md)에서 해당 원 수신으로 돌아간다.
 
 <a id="api-DomainIf_RxCisRear"></a>
 ### DomainIf_RxCisRear

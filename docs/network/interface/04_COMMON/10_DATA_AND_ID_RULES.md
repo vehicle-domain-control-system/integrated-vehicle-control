@@ -172,16 +172,16 @@ Network는 CIS BOOT와 온도·습도·조도별 Sequence·AGE·품질을 보존
 환경 C2 구조는 우선 유지한다. 현재 구조로 필요한 무효화·세대 전이를 표현하거나 연결할 수 없다는 구체적인 근거가 나오면 최소 계약 변경을 검토할 수 있다. 이는 영구 확장 금지가 아니다. Network 원 수신 기록을 임의의 최신 Getter 결과에 붙이지 않고, DOMAIN이 실제 처리한 입력과 같은 관측인지 확인해야 한다.
 
 <a id="delta-environment-order"></a>
-**CIS 환경 연속 전환 목표 / DOMAIN 추가 수용 대기:** transitionEpoch는 Wire나 센서 관측 번호가 아닌 로컬 전환 순서다. 유일성은 DOMAIN과 Network가 정상 실행을 지속하고 초기 상태가 맞는 현재 구간에 한정한다. 양쪽 적용 상태·진행 요청·구 작업을 맞춘 명시적 초기화 뒤 첫 Epoch1, Network가 직전 적용 완료를 현재 요청과 대조하고 새 CIS BOOT를 검증한 뒤 다음 +1을 한 번 발급한다. 미완료 중 다음 번호 선발급·동시 승인과 실행 중 감소·reset·wrap 재사용은 금지한다. 실제 타입 최대값은 오류·환경 전달 차단이며 타입 폭이나 Epoch0 예약 의미를 새로 정하지 않는다. 같은 BOOT 센서 갱신·일반 NO_DATA·CAN 재전송은 발급 사건이 아니다.
+**CIS 환경 연속 전환 — DOMAIN 순차 Epoch 구현 확인 / Network 바인딩 대기:** transitionEpoch는 Wire나 센서 관측 번호가 아닌 로컬 전환 순서다. 유일성은 DOMAIN과 Network가 정상 실행을 지속하고 초기 상태가 맞는 현재 구간에 한정한다. 양쪽 적용 상태·진행 요청·구 작업을 맞춘 명시적 초기화 뒤 첫 Epoch1, Network가 직전 적용 완료를 현재 요청과 대조하고 새 CIS BOOT를 검증한 뒤 다음 +1을 한 번 발급한다. 미완료 중 다음 번호 선발급·동시 승인과 실행 중 감소·reset·wrap 재사용은 금지한다. 실제 타입 최대값은 오류·환경 전달 차단이며 타입 폭이나 Epoch0 예약 의미를 새로 정하지 않는다. 같은 BOOT 센서 갱신·일반 NO_DATA·CAN 재전송은 발급 사건이 아니다.
 
-환경 C2에는 BOOT/sourceGeneration이 없다. Network는 자기 소유 구 대기·콜백·미시작 환경 Query 응답을 차단/직렬 처리하고 고정 요청을 동기 private API로 한 번 전달한다. DOMAIN은 이미 인계받은 구 쓰기의 완료 후 재저장을 막고 VSM·독립 Meta·관련 순서 문맥을 무효화한다. Network는 현재 요청 내용·적용 Epoch·명확한 완료를 확인한 뒤 새 원 관측을 기존 Rx로 전달한다. Queue 접수·호출 사실·일반 C2 OK는 완료 증거가 아니다. 현재 마지막 적용 Epoch·동일 내용만 기존 완료 결과를 재사용하며 이후 정상값을 다시 지우지 않는다. 충돌·과거·건너뜀·실패 판정과 실제 선언 미결은 [private 전환 정본](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#delta-environment-routing)을 따른다. DOMAIN의 첫 전환·동일 Epoch 중복/충돌·동기 무효화 Host 시험은 담당자 보고이고 현재 다른 Epoch는 `EPOCH_ORDER_UNAVAILABLE`로 거부한다. 연속 전환 수용·보완 및 실제 Rx/Query 연결은 완료 전이다.
+환경 C2에는 BOOT/sourceGeneration이 없다. Network는 자기 소유 구 대기·콜백·미시작 환경 Query 응답을 차단/직렬 처리하고 고정 요청을 동기 private API로 한 번 전달한다. DOMAIN은 이미 인계받은 구 쓰기의 완료 후 재저장을 막고 VSM·독립 Meta·관련 순서 문맥을 무효화한다. Network는 현재 요청 내용·적용 Epoch·명확한 완료를 확인한 뒤 새 원 관측을 기존 Rx로 전달한다. Queue 접수·호출 사실·일반 C2 OK는 완료 증거가 아니다. 현재 마지막 적용 Epoch·동일 내용만 기존 완료 결과를 재사용하며 이후 정상값을 다시 지우지 않는다. 충돌·과거·건너뜀·실패의 Core 판정 구현과 실제 Network 호출·Receipt 바인딩 미검증은 [private 전환 정본](../02_NODES/DOMAIN/25_PRIVATE_ROUTING.md#delta-environment-routing)을 따른다. DOMAIN Production Private Core의 첫 Epoch 1·완료 후 N+1·중복/충돌·STALE/ORDER_ERROR 처리는 소스로 확인됐으며 Host 시험은 담당자 보고다. Network의 실제 Private 호출·Receipt 대조와 환경 Rx/VSM/Query 연결은 미검증이므로 해당 환경 경로만 HOLD한다.
 
 Network는 `(원 CIS BOOT, 센서, 원 관측 Sequence)`로 A900→B0을 구분하고 원 번호를 재발급·리매핑하지 않는다. DOMAIN도 이를 세대 없는 전역 Sequence 비교로 거절하지 않고 검증 입력 순서를 저장까지 수용해야 한다. 일반 NO_DATA는 데이터 부재이며 재부팅/Sequence 리셋 명령이 아니다. 새 입력 대기 AGE는 한 번 누적하고 온습도2500ms 만료를 정상으로 되돌리지 않는다. 종료 BOOT 차단은 기존 기억 범위에 한정하며 Epoch가 CIS BOOT_ID 재사용·구분 근거 부족을 해결하지 않는다. 실패·단독 재시작에서 자동 재시도·복구·영속 완료 승계를 하지 않고 구 작업 정리와 양쪽 초기 정합 전 환경 전달을 보류한다. 실제 초기화 호출·수명 및 CIS BOOT 생성 조건은 확인 대기다. 일반 링크 단절의 STALE/NO_DATA·조도 TTL은 미결이다. [전체 조건과 C2 변경 검토 대안](../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)을 따른다.
 
 <a id="section-failure-boundary"></a>
 ## 접수와 실행·실패의 구분
 
-NET_SUBMIT_OK / DOMAIN_IF_OK는 필요한 필드를 안정되게 복사해 로컬 경로에 인계했다는 의미다. CAN/UART 송신 완료, 상대 수용 또는 차량 DONE을 의미하지 않는다. 접수 전 INVALID_ARGUMENT·NOT_READY·NO_CAPACITY는 미접수 반환이며 해당 거절을 접수 후 LocalFailure로 다시 만들지 않는다.
+NET_SUBMIT_OK / DOMAIN_IF_OK는 각각 해당 로컬 경계의 성공을 뜻하며 신규 Manager 저장까지 보증하지 않는다. 현재 `DomainIf_RxCisRear()`는 중복 관측도 DOMAIN_IF_OK로 매핑하므로 새 반영은 원 입력 및 Query 결과로 구분한다. CAN/UART 송신 완료, 상대 수용 또는 차량 DONE을 의미하지 않는다. 접수 전 INVALID_ARGUMENT·NOT_READY·NO_CAPACITY는 미접수 반환이며 해당 거절을 접수 후 LocalFailure로 다시 만들지 않는다.
 
 정상 접수된 필요한 명령·결과·일회성 이벤트의 LocalFailure는 **driver 제출의 확정 최종 실패**, **송신 전 만료**, **송신 전 문맥 무효화**의 기존 세 사유와 정확히 맞을 때만 원 ID와 함께 전달한다. 이미 제출한 뒤의 미분류 in-flight 오류나 callback 부재를 이 세 사유로 넓혀 해석하지 않는다. [세 reason과 실패 인계 조건](20_API_USAGE_AND_FAILURE.md#r1-local-failure-reasons)을 따른다. 주기 상태·Query 실패는 각 통신·Query 경로를 사용한다. CIS·Pi에 같은 C2 API를 새로 추가하지 않는다. 정상 형식의 INVALID/STALE 보고는 품질 보고이며 형식 거절과 구분한다.
 

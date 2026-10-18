@@ -2,7 +2,7 @@
 
 Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#status)
 
-**이 API 목록은 v0.3/v0.6 Network 후보 계약이다.** DOMAIN 담당자는 Production v0.5에 공개 API 72개·Query 18개·TxPort 26개·Observer 11개가 있다고 보고했다. 저장소의 과거 v0.5 참고 헤더(41개·TxPort15·Observer12)와는 다른 시점의 선언일 수 있다. 실제 Production에 포함된 헤더 경로·Commit·SHA를 대조하기 전에는 후보 원형을 그대로 include하거나 구형 포트와 혼용하지 않는다. [C2 호환 조건](12_DOMAIN_TYPES.md#production-c2-compatibility).
+**이 API 목록은 v0.3/v0.6 Network 후보 계약이다.** DOMAIN 담당자는 Production v0.5에 공개 API 72개·Query 18개·TxPort 26개·Observer 11개가 있다고 보고했다. 저장소의 과거 v0.5 참고 헤더(41개·TxPort15·Observer12)와는 다른 시점의 선언일 수 있다. 현재 Production C2 Target 헤더는 `develop`의 `firmware/DOMAIN/src/interface/Domain_Interface_v0.5_C2_target.h`에서 확인됐으며 Network Target Adapter는 이를 기준으로 실제 사용 함수의 원형을 대조한다. 후보 v0.6 원형을 그대로 include하거나 구형 Port와 혼용하지 않는다. Target 컴파일/링크는 별도다. [C2 호환 조건](12_DOMAIN_TYPES.md#production-c2-compatibility).
 
 **DECLARED_SOURCE / BINDING_OPEN.** 제공된 원 헤더에서 읽은 정확한 반환형·함수명·인자다. 선언 보존은 실제 펌웨어 구현·연결·컴파일 완료를 의미하지 않는다.
 
@@ -411,7 +411,7 @@ DomainIf_Status_t DomainIf_RxCisCabinEnvironment( const CisCabinEnvironmentState
 <a id="delta-environment-completion"></a>
 **환경 BOOT 변경 시 C2 Rx 사용:** 평상시에는 기존 `DomainIf_RxCisCabinEnvironment()`로 원 환경값·품질·AGE를 전달한다. CIS BOOT가 변경되면 Network는 이전 BOOT에 속한 입력의 전달을 차단하며, DOMAIN의 동기 Private Transition이 이전 저장값·순번 비교 문맥·Query의 이전 상태를 무효화했음이 확인되면 새 BOOT 입력을 재개한다. 전환용 NO_DATA를 이 공개 Rx로 중복 제출하지 않는다.
 
-Private API의 설치 선언과 실제 Rx→VSM→Query 연결은 확인 대상이다. 첫 전환 Core Host 시험 완료 보고와 연속 BOOT 전환 자동 복귀 미구현 상태를 구분한다. 완료를 확인할 수 없으면 해당 환경값 인계는 제한하며 기존 공개 API와 CAN Wire는 변경하지 않는다. [Private 경계](25_PRIVATE_ROUTING.md#delta-environment-routing) · [환경 BOOT 전환 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
+DOMAIN Private API 원형·Receipt 및 첫 Epoch 1/완료 후 N+1 Core 구현은 Production 소스로 확인됐다(Host 시험은 담당자 보고). Network의 실제 Private 호출·완료 대조·환경 Rx→VSM→Query 연결과 연속 BOOT 자동 복귀는 아직 미검증이다. 완료를 확인할 수 없으면 해당 환경값 인계는 제한하며 기존 공개 API와 CAN Wire는 변경하지 않는다. [Private 경계](25_PRIVATE_ROUTING.md#delta-environment-routing) · [환경 BOOT 전환 공통 규칙](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 <a id="api-domainif_rxcisrear"></a>
 ## `DomainIf_RxCisRear()`

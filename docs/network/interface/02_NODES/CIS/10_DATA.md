@@ -394,7 +394,7 @@ CIS의 참고 코드에는 약 2000ms 측정 주기와 `ENV_STALE_MS=5000ms` 후
 환경 C2는 현재 구조를 유지하고 Network는 CIS BOOT와 센서별 Sequence·AGE를 보존한다. 새 BOOT를 확인하면 이전 BOOT에서 대기 중인 환경 데이터의 전달을 차단한다. DOMAIN의 동기 Private Transition이 연결되어 이전 저장값의 무효화 완료를 확인할 수 있는 경우에만 새 BOOT 값을 기존 환경 Rx에 전달한다. 완료를 확인하지 못하면 해당 환경 입력은 제한한다. 일반 환경 NO_DATA·STALE은 재부팅 신호로 사용하지 않는다.
 
 <a id="delta-cis-environment"></a>
-연속 BOOT 전환의 자동 복귀는 DOMAIN의 다음 전환 수용 및 VSM/Query Binding 확인 후 연결한다. DOMAIN은 첫 전환과 같은 요청 중복/충돌 처리에 대한 Host 시험 완료를 보고했지만, 현재 서로 다른 Epoch는 거부한다. 환경 수명 2500ms, 기존 공개 C2/Wire, 원 Sequence의 유지 원칙은 그대로 적용한다. [환경 BOOT 처리](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
+연속 BOOT 자동 복귀는 DOMAIN Core의 순차 Epoch 지원과 별개로 Network의 실제 Private 호출·Receipt 대조 및 환경 VSM/Query 연동을 확인한 후에만 허용한다. DOMAIN Production Private Core는 첫 Epoch 1·완료 후 N+1·중복/충돌·STALE/ORDER_ERROR를 구현한다(Host 시험은 담당자 보고). 다만 실제 Network Private Binding은 확인되지 않았다. 환경 수명 2500ms, 기존 공개 C2/Wire, 원 Sequence의 유지 원칙은 그대로 적용한다. [환경 BOOT 처리](../../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)
 
 ## 구현 전 결정
 

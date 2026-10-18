@@ -327,7 +327,7 @@ C2 `DomainIf_BcmCommandResult_t.confirmation`은 이 Wire/`NetBcmResult`에 별�
 
 **CIS → DOMAIN · 40 B 사용 / 48 B CAN 전송 / DLC 14 · WIRE_PROPOSED.**
 
-**CIS 환경 수신 후 동기 전환 / 연속 Epoch 목표 수용 대기:** 기존 BOOT_ID와 센서별 원 Sequence로 A900→B0을 검증하며 새 전역번호로 이어 붙이지 않는다. 양쪽 정상 실행·초기 정합 구간에서 Network 자기 소유 구 환경 대기·콜백·미시작 Query 응답 차단/직렬 처리 → 단일 동기 private 요청 → DOMAIN 내부 구 쓰기 배제·VSM/Meta·관련 순서 문맥 무효화 → 현재 요청·적용 Epoch·명확한 완료 대조 → 새 원 관측을 기존 Rx로 전달하는 순서다. BOOT 무효화용 Rx NO_DATA는 중복 호출하지 않는다. 같은 BOOT의 센서 NO_DATA·만료·수신 중단은 기존 Rx·품질·시간 정책을 유지하며 BOOT/Sequence 리셋이나 새 Epoch 사건이 아니다. 첫1/완료 후 다음+1은 목표이며 현재 Core의 다른 Epoch 거부 보고·실제 연결 미검증을 구분하는 [완료 경계](../02_NODES/DOMAIN/20_API.md#delta-environment-completion)를 따른다. 실패·완료 불명은 환경 차단·오류 보고 대상으로 자동 재시도하지 않는다. BOOT 재사용·단독 재시작·기억 상실의 자동 복구는 보장하지 않는다. 아래 ID·길이·필드 바이트와 공개 C2는 유지한다.
+**CIS 환경 수신 후 동기 전환 / DOMAIN 순차 Epoch Core 확인·Network 바인딩 대기:** 기존 BOOT_ID와 센서별 원 Sequence로 A900→B0을 검증하며 새 전역번호로 이어 붙이지 않는다. 양쪽 정상 실행·초기 정합 구간에서 Network 자기 소유 구 환경 대기·콜백·미시작 Query 응답 차단/직렬 처리 → 단일 동기 private 요청 → DOMAIN 내부 구 쓰기 배제·VSM/Meta·관련 순서 문맥 무효화 → 현재 요청·적용 Epoch·명확한 완료 대조 → 새 원 관측을 기존 Rx로 전달하는 순서다. BOOT 무효화용 Rx NO_DATA는 중복 호출하지 않는다. 같은 BOOT의 센서 NO_DATA·만료·수신 중단은 기존 Rx·품질·시간 정책을 유지하며 BOOT/Sequence 리셋이나 새 Epoch 사건이 아니다. 첫1/완료 후 다음+1은 DOMAIN Private Core에서 구현 확인됐지만 Network 실제 호출·Receipt·환경 Rx/Query 연결은 미검증임을 구분하는 [완료 경계](../02_NODES/DOMAIN/20_API.md#delta-environment-completion)를 따른다. 실패·완료 불명은 환경 차단·오류 보고 대상으로 자동 재시도하지 않는다. BOOT 재사용·단독 재시작·기억 상실의 자동 복구는 보장하지 않는다. 아래 ID·길이·필드 바이트와 공개 C2는 유지한다.
 
 의미 타입 `NetCisEnvironment`: [CIS Data](../02_NODES/CIS/10_DATA.md) · [CIS API](../02_NODES/CIS/20_API.md) · [DOMAIN API](../02_NODES/DOMAIN/20_API.md) · [양 끝 명명 함수](../05_MESSAGE_INDEX.md).
 

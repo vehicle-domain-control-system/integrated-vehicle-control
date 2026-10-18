@@ -224,9 +224,9 @@ NetSubmitResult DomainNetPriv_SendQueryEnd(const NetMobileQueryEnd *message);
 | 처음 확인한 새 BOOT | 해당 환경에서 이전 BOOT에 속한 대기 입력 차단 → Private 적용 완료 확인 → 새 입력 전달 |
 | Private API 미연결·실패·완료 불명 | 환경 입력 제한 및 오류 보고. 다른 메시지 경로는 유지 |
 | 같은 전환 요청이 다시 입력됨 | 기존 완료 여부 확인. 새 환경값을 무조건 다시 지우지 않음 |
-| 추가 BOOT 변경 | DOMAIN의 다음 전환 수용이 확인될 때까지 환경 자동 복귀 보류 |
+| 추가 BOOT 변경 | DOMAIN Private Core는 완료 Epoch의 N+1을 수용한다. Network 실제 호출·초기 정합·Receipt 및 저장/Query 대조 전에는 환경 자동 복귀를 보류 |
 
-DOMAIN 담당자는 첫 전환·동일 Epoch 중복/충돌·동기 무효화 Core Host 시험 완료를 보고했다. **현재 Core는 서로 다른 Epoch를 거부**하며, 다음 전환 수용과 C2 Rx→VSM→Query Binding은 미확인이다. `transitionEpoch`는 설치된 Private API가 사용하는 내부 전환 식별값이며 새 CAN/UART 필드가 아니다. 초기 연결에서는 영속 Epoch, 자동 재시작 동기화, 공통 BOOT 관리자 및 추가 Retry/Handshake를 사용하지 않는다. 실제 다음 전환을 연결할 때 단일 담당 문맥에서의 호출·동기 완료·이전 저장값 재사용 차단을 검증한다.
+DOMAIN Production Private Core는 최초 Epoch 1, 완료된 Epoch 뒤 N+1과 `STALE`/`ORDER_ERROR`, 완료 중복·충돌 처리를 구현한다(Production 소스 확인; Host 시험은 담당자 보고). 단, 실제 Network Private 호출·동기 결과 Receipt 대조·초기 정합·환경 C2 Rx→VSM/Meta→Query Binding은 미확인이다. `transitionEpoch`는 설치된 Private API가 사용하는 내부 전환 식별값이며 새 CAN/UART 필드가 아니다. 초기 연결에서는 영속 Epoch, 자동 재시작 동기화, 공통 BOOT 관리자 및 추가 Retry/Handshake를 사용하지 않는다. 실제 다음 전환을 연결할 때 단일 담당 문맥에서의 호출·동기 완료·이전 저장값 재사용 차단을 검증한다.
 
 <a id="r2-origin-join"></a>
 ### PROPOSED — 수신 Evidence와 C2 Snapshot의 결합

@@ -5,13 +5,13 @@ Interface v2 · r1 · [규격과 연동 조건](../../07_CROSS_NODE_INTERFACE_RU
 <a id="production-compatibility"></a>
 ## Production 참고 타입과 후보의 호환 조건
 
-담당자 보고상 Production은 Vehicle Types v0.2 / Domain Interface v0.5이며 아래 전체 C 선언은 **Vehicle Types v0.3 후보**다. Production 기준 참고 경로 `docs/Domain/architecture/1_Vehicle_Types/Vehicle_Types_v0.2.h`와 실제 ECU 빌드 입력의 동일성은 확인 대기다. 다음 차이는 참고 v0.2와 후보 v0.3의 선언 차이이며, 이행 승인이나 실제 ABI 검증 결과가 아니다.
+현재 `develop`의 Production C2 Target 소스는 `firmware/DOMAIN/src/interface/Vehicle_Types_v0.2.h`와 `Domain_Interface_v0.5_C2_target.h`로 확인됐다. 아래 전체 C 선언은 별도의 **Vehicle Types v0.3 후보**다. 과거 참고 `docs/Domain/architecture/1_Vehicle_Types/Vehicle_Types_v0.2.h`와 현재 Target v0.2가 같은 필드 구성이라고 가정하지 않는다. Target 빌드/ABI·실보드 검증은 별도다. 다음 차이는 참고 v0.2와 후보 v0.3의 선언 차이이며, 이행 승인이나 실제 ABI 검증 결과가 아니다.
 
 | 대상 | v0.2 참고 → v0.3 후보의 차이 | 연결 전 확인 |
 |---|---|---|
 | `SessionId_t` | uint32_t → uint64_t | Session 절단·확장과 이를 포함한 모든 Request/Context/Result의 배치. 기존 Wire 폭 유지 |
 | `CisCabinEnvironmentState_t.cabinIlluminance` | uint16_t → uint32_t | 조도 표현 범위·절단·정렬. 센서별 독립 품질 유지 |
-| `CisRearState_t` | rearDistanceCm → rearDistanceMm, sourceGeneration 추가 | CAN raw 0.1cm=mm에서 Production cm 소비로의 명시 변환·반올림·경계 처리 확인. Wire 단위 변경 금지 |
+| `CisRearState_t` | rearDistanceCm → rearDistanceMm, sourceGeneration 추가 | 현재 Production Target v0.2 `rearDistanceMm`에는 CAN raw 0.1cm=1mm를 그대로 전달한다. 과거 cm 참고 타입과 혼용 금지, Wire 단위 변경 금지 |
 | `CisOccupantState_t` | 단일 quality → presenceQuality/countQuality, sourceGeneration·visionFunctionStatus 추가 | 필드별 부분 무효화·기능 상태·원 세대 보존 |
 | `DoorState_t`, `ClimateState_t` | 필드별 DataQuality와 sourceGeneration 추가 | 실제 생산 세대와 CAN BOOT의 동일성 가정 금지 |
 | `InteriorLightState_t` | bool commandApplied → applyState enum, 필드별 품질·sourceGeneration 추가 | 적용 성공·실패·미확인 의미 및 실제 피드백 구분 |
