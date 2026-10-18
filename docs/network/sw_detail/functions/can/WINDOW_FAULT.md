@@ -136,7 +136,7 @@ NetCanResult NetCan_DecodeWindowFault(const NetCanFrame *frame,
 <a id="receive"></a>
 ## 기존 private 수신의 적용 경계
 
-`DomainNetPriv_OnWindowFault`는 S4A에 있는 DOMAIN Network 소유 선언이다. 새로운 공개 API나 차량 상태 cache를 추가하지 않는다. admission에 성공한 같은 DTO/meta가 caller이며 실행은 DOMAIN Task 문맥이다. 둘 다 NULL 불가 IN, 호출 중만 유효하다. 이후 보관할 자료는 반환 전에 전체 사본을 확보한다.
+`DomainNetPriv_OnWindowFault`는 S4A에 있는 DOMAIN Network 소유 선언이다. 새로운 공개 API나 차량 상태 cache를 추가하지 않는다. admission에 성공한 같은 DTO/meta가 caller이며 실행은 DOMAIN의 ISR 밖 단일 담당 문맥이다. 둘 다 NULL 불가 IN, 호출 중만 유효하다. 이후 보관할 자료는 반환 전에 전체 사본을 확보한다.
 
 <a id="api-DomainIf_RxWindowFault"></a>
 ```c

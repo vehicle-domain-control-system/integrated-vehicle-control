@@ -2,7 +2,7 @@
 
 [B17 전체](../../09_E2E_FAILURE_RECOVERY.md) · [공통 실패·복구](COMMON_FAILURE_RECOVERY.md) · [CIS·Pi 경계](../../nodes/CIS_PI.md) · [DOMAIN](../../nodes/DOMAIN.md) · [ESP32·MOBILE](../../nodes/ESP32_MOBILE.md) · [VSS](../../nodes/VSS.md)
 
-센서·Vision·Permission 경계의 정적 설계다. 각 화살표는 다음 Owner에게 넘길 계약이며 실제 실행·채택 증거가 아니다. 아래 조건부 정상 경로의 `HOLD_CONTRACT / BINDING_OPEN`을 통과한 것으로 표시하지 않는다. G6 당시 Interface39 봉인본과 현재 별도 후보의 고정 r1 Interface40개 참조를 구분한다. Owner35, Wire48/Rx51, C2 v0.6·Vehicle v0.3 후보와 외부 HOLD를 보존한다.
+센서·Vision·Permission 경계의 정적 설계다. 각 화살표는 다음 Owner에게 넘길 계약이며 실제 실행·채택 증거가 아니다. 아래 조건부 정상 경로의 `HOLD_CONTRACT / BINDING_OPEN`을 통과한 것으로 표시하지 않는다. G6 당시 Interface39 봉인본과 현재 검토 중인 Interface40개 후보의 출처·해시 기준 참조를 구분한다. Owner35, Wire48/Rx51, C2 v0.6·Vehicle v0.3 후보와 외부 HOLD를 보존한다.
 
 ## 공통 인계와 결과의 독립성
 

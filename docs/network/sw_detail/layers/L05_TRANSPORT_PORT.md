@@ -37,7 +37,7 @@ ISR은 최소 관측·저장 요청만 처리한다. Network 소비 문맥에서
 
 ## CAN 저장소·Driver 관측
 
-accepted/최종 결과/released를 분리한다. ISR은 짧은 raw 인계만 수행하고 DOMAIN에서는 Task에서, 다른 ECU에서는 합의된 Task/Superloop에서 typed 경계를 호출한다. 실제 Driver/복구·동기화는 바인딩 전 후보로 남긴다.
+accepted/최종 결과/released를 분리한다. ISR은 짧은 raw 인계만 수행하고 DOMAIN에서는 초기 Network Superloop의 ISR 밖 단일 소유자 문맥에서, 다른 ECU에서는 합의된 Task/Superloop에서 typed 경계를 호출한다. 실제 Driver/복구·동기화는 바인딩 전 후보로 남긴다.
 
 [담당 Module](../modules/M07_BUFFER_OUTCOME.md) · [공통 함수](../functions/CAN_TRANSFER_CONTROL.md#port) · [22종 상세](../04_CAN_FD_OVERVIEW.md#messages) · [공통 흐름](../flows/CAN_NETWORK_PATHS.md)
 

@@ -19,7 +19,7 @@ L01/M01/F01~02는 원 Boot·관측·C2 반영의 연결, L02/M03/F07~10은 DOMAI
 | VSS→DOMAIN | [VSS_STATUS](../../functions/can/VSS_STATUS.md), [VSS Status 흐름](../../nodes/VSS.md#status-flow): `VssNet_PublishStatus`, `DomainNetPriv_OnVssStatus`, `DomainIf_RxVssState`, `DomainIf_RxVssFault` | 실제 서비스·현재/최근 고장. Event별 재생 ACK가 아님 |
 | DOMAIN→표시 | [M_WARNING](../../functions/uart_m/M_WARNING.md), [M_AVAILABILITY](../../functions/uart_m/M_AVAILABILITY.md), [M_VSS_STATUS](../../functions/uart_m/M_VSS_STATUS.md), [M_WINDOW_STATE](../../functions/uart_m/M_WINDOW_STATE.md), [M_WINDOW_FAULT](../../functions/uart_m/M_WINDOW_FAULT.md) | DOMAIN 확정 의미/같은 CAN 관측만 투영. WINDOW 표시 HOLD |
 
-정확한 전체 원형과 인자·enum·Byte 표는 위 정본을 따른다. `NetSubmitResult ... (const Net... *message)` 입력은 호출 중 borrowed, 로컬 OK 전에 전체 사본을 확보한다. Rx의 `message/meta`는 같은 검증 수신의 NULL 불가 borrowed IN이며 지연 소비자는 복사한다. 실패 OUT·Driver가 참조 중인 frame을 재사용하지 않는다. DOMAIN C2는 Owner Task 문맥이다. void callback의 반환, Queue 접수, Driver terminal, release, 상대 typed 수용, 실제 기능 결과, App 소비는 각각 다른 관측이다.
+정확한 전체 원형과 인자·enum·Byte 표는 위 정본을 따른다. `NetSubmitResult ... (const Net... *message)` 입력은 호출 중 borrowed, 로컬 OK 전에 전체 사본을 확보한다. Rx의 `message/meta`는 같은 검증 수신의 NULL 불가 borrowed IN이며 지연 소비자는 복사한다. 실패 OUT·Driver가 참조 중인 frame을 재사용하지 않는다. DOMAIN C2는 초기 Superloop의 ISR 밖 단일 담당 문맥에서 호출한다. void callback의 반환, Queue 접수, Driver terminal, release, 상대 typed 수용, 실제 기능 결과, App 소비는 각각 다른 관측이다.
 
 <a id="sc11"></a>
 ## SC11 — 보류 WINDOW 이동·STOP·실제 결과·상태
@@ -110,4 +110,4 @@ if (ageRc == NET_CAN_OK) {
 | current fault0, 과거 occurrence5/Age1000 | 이력 삭제·Age0 갱신 없음 | 새 service 평가와 과거 이력 분리 |
 | RxVssState 반영 후 RxVssFault 실패 | A2 State 수용 유지·State 중복 호출0, Fault 불명 결과 자동 재시도0 | 실제 profile/부분 결과·old K fence 증거는 E-S05 대기 |
 
-모든 반례는 문서 정적 추적이며 Driver/보드/실제 음향·보호 시험은 NOT_EXECUTED다. 기존 S6 이후 협의 큐의 ID·이력과 G6 당시 Interface39 봉인본을 보존한다. 현재 별도 후보는 고정 r1 Interface40개를 참조하며, 이 문서 동기화로 Owner35·외부 HOLD를 변경하지 않는다.
+모든 반례는 문서 정적 추적이며 Driver/보드/실제 음향·보호 시험은 NOT_EXECUTED다. 기존 S6 이후 협의 큐의 ID·이력과 G6 당시 Interface39 봉인본을 보존한다. 현재 별도 후보는 Interface40개 후보의 출처·해시 기준을 따라 참조하며, 이 문서 동기화로 Owner35·외부 HOLD를 변경하지 않는다.

@@ -6,11 +6,11 @@
 
 ## 시작 조건과 소유 경계
 
-1. DOMAIN이 원 CommandContext와 판단을 생성한다. Network는 공개 DomainIf_Tx 본체를 소유하지 않고 기존 TxPort callback 본체·등록 요청을 제공한다. 등록 ABI·Task 문맥·반환값 의미·실제 실패 sink가 연결되어야 실제 송신 경로를 개방한다.
+1. DOMAIN이 원 CommandContext와 판단을 생성한다. Network는 공개 DomainIf_Tx 본체를 소유하지 않고 기존 TxPort callback 본체·등록 요청을 제공한다. 등록 ABI·ISR 밖 단일 소유자 직렬 문맥·반환값 의미·실제 실패 sink가 연결되어야 실제 송신 경로를 개방한다.
 2. Network는 호출 중 원 자료를 빌려 검증하고 자기 소유 item에 복사한다. NetSubmitResult OK 또는 DomainIf OK는 이 로컬 접수 경계다. command/result/event item은 원 identity를 보존하며 queue 공간 부족 시 다른 discrete 항목을 조용히 교체하지 않는다. 상태 latest 교체는 공통 규칙에서 아직 시작하지 않은 같은 의미 키와 유효 순서인 경우만 허용한다.
 3. 공통 dispatcher가 원 기동·문맥·AGE를 다시 검증하고 Codec이 만든 frame snapshot을 driver에 인계한다. 최종 전송 결과와 driver 참조 해제를 독립 관리한다. 참조 해제 근거 없이 timeout만으로 buffer를 재사용하지 않는다.
 4. 수신 Network는 Frame 형식·필드, 기동·순서·시간, typed 의미·실행 문맥을 모두 확인한다. malformed·미확정 admission·원본 시간 부재는 진단/격리 경로이며 정상 heartbeat·관측 cache·허용 상태를 새로 만들지 않는다.
-5. C2 수신은 DOMAIN Task에서 실행하고 각 BCM/CIS/WINDOW/VSS callback은 해당 MCU의 합의된 로컬 문맥에서 호출한다. 다른 ECU의 함수 포인터를 버스 너머로 직접 호출하지 않는다. C2 접수 OK와 Domain snapshot 적용은 다른 경계다.
+5. C2 수신은 DOMAIN 초기 Network Superloop의 ISR 밖 단일 소유자 문맥에서 직렬 실행하고 각 BCM/CIS/WINDOW/VSS callback은 해당 MCU의 합의된 로컬 문맥에서 호출한다. 다른 ECU의 함수 포인터를 버스 너머로 직접 호출하지 않는다. C2 접수 OK와 Domain snapshot 적용은 다른 경계다.
 
 ## 10 Wire와 13 Rx의 별도 종단
 

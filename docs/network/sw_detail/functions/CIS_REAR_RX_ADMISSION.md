@@ -10,7 +10,7 @@ NetRearResult NetRear_ReceiveFrame(const NetRearFrame *frame,
 
 `PROPOSED_PRIVATE_FUNCTION`, S2 F20의 후방 프레임 소비 경계다. Driver Port가 수명을 보장하는 rear 전용 프레임 view를 호출 동안 빌려 받아 Network 소유의 bounded 사본을 확보한다. 이 사본을 Codec와 admission에 전달하며 원 Driver 주소를 이후 처리에 남기지 않는다.
 
-Caller는 M08의 Driver 관측을 소비하는 DOMAIN Network 소유자 Task다. ISR이 직접 의미 API를 호출하지 않는다. Called는 [NetRear_Decode](CIS_REAR_CODEC.md#decode)와 아래 NetRear_Admit이며, C2 인계는 접수 성공 뒤 같은 소유자의 [NetRear_Deliver](DOMAIN_CIS_REAR_INGRESS.md#adapter)가 수행한다.
+Caller는 M08의 Driver 관측을 소비하는 DOMAIN Network의 ISR 밖 단일 소유자 처리 문맥이다. ISR이 직접 의미 API를 호출하지 않는다. Called는 [NetRear_Decode](CIS_REAR_CODEC.md#decode)와 아래 NetRear_Admit이며, C2 인계는 접수 성공 뒤 같은 소유자의 [NetRear_Deliver](DOMAIN_CIS_REAR_INGRESS.md#adapter)가 수행한다.
 
 | 인자 | C 타입·방향·범위·단위 | NULL·수명 |
 |---|---|---|
@@ -63,7 +63,7 @@ NetRearResult NetRear_Admit(const NetCisRear *message,
 
 ## Caller·Called·인자·반환
 
-Caller는 DOMAIN Network 수신 소유자 Task의 위 NetRear_ReceiveFrame이다. 즉시 ISR에서 호출하지 않는다. 후속 Called는 동일 소유자에서 실행할 [NetRear_Deliver](DOMAIN_CIS_REAR_INGRESS.md#adapter)이며 queue 접수와 실제 C2 호출은 별도 단계다. 별도 가상 Boot 승인 API나 SDK 함수를 만들지 않는다.
+Caller는 DOMAIN Network 수신의 단일 소유자 문맥에서 실행한 위 NetRear_ReceiveFrame이다. 즉시 ISR에서 호출하지 않는다. 후속 Called는 동일 소유자에서 실행할 [NetRear_Deliver](DOMAIN_CIS_REAR_INGRESS.md#adapter)이며 queue 접수와 실제 C2 호출은 별도 단계다. 별도 가상 Boot 승인 API나 SDK 함수를 만들지 않는다.
 
 | 인자 | C 타입·방향·단위 | NULL·수명·범위 |
 |---|---|---|

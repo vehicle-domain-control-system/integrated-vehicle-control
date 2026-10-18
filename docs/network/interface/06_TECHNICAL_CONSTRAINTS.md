@@ -153,12 +153,13 @@ Pi 원 판정의 값·필드별 품질·사유와 원 Pi BOOT/VISION_SEQUENCE/AG
 
 Gateway의 기존 반환 enum에는 용량 부족 전용 값이 없다. NOT_READY/INTERNAL_ERROR로 변환하는 책임이 미정이다.
 
-기존 enum을 변경하지 않는다. 로컬 용량 부족를 UART 실행 결과로 바꾸지 않는다.
+기존 enum을 변경하지 않는다. 로컬 용량 부족을 UART 실행 결과로 바꾸지 않는다.
 
 [관련 계약](02_NODES/ESP32/20_API.md)
 
 **PROPOSED:** [기존 반환형과 port 규칙](02_NODES/ESP32/20_API.md#ports)를 따른다. 일시적인 용량 부족의 NOT_READY와 인자/내부 오류를 구분하는 후보다. 호출자/Adapter가 현재 원 ID·문맥·수명을 재검증하는 재제출과 후발 실패 관측을 함께 확인해야 한다. 상태는 제안이며 실제 채택·바인딩 근거는 없다.
 
+<a id="fault-bithelper-projection"></a>
 ## Fault 비트·보조 투영
 
 **CONTRACT_OPEN** · 담당: DOMAIN + BCM/CIS/VSS/WINDOW

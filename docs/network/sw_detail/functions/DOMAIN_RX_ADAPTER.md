@@ -2,7 +2,7 @@
 
 [B15 개요](../07_DOMAIN_ADAPTER_SERVICE.md) · [M03](../modules/M03_TYPED_HANDOFF.md) · [수직 흐름](../flows/NETWORK_TO_DOMAIN.md) · [Query 원본 연결](DOMAIN_QUERY_PROVENANCE.md)
 
-이 문서는 Network가 기존 C2 수신 함수를 호출하기 전후의 변환·수명·결과 경계를 명세한다. 공개 Rx22 본체와 DOMAIN snapshot/Manager는 DOMAIN 소유다. `DECLARED_SOURCE`는 실제 헤더·등록·ABI·실행 채택 증거가 아니다. G6 당시 Interface39는 역사적 봉인 기준선으로 보존하고, 현재 별도 후보의 문서 정본 참조는 고정 r1 Interface40개로 구분한다. C2 v0.6/Vehicle v0.3은 미승인 후보다. 새 Wire/API/Manager를 만들지 않는다.
+이 문서는 Network가 기존 C2 수신 함수를 호출하기 전후의 변환·수명·결과 경계를 명세한다. 공개 Rx22 본체와 DOMAIN snapshot/Manager는 DOMAIN 소유다. `DECLARED_SOURCE`는 실제 헤더·등록·ABI·실행 채택 증거가 아니다. G6 당시 Interface39는 역사적 봉인 기준선으로 보존하고, 현재 검토 중인 Interface40개 후보의 출처·해시 기준 참조를 별도로 구분한다. C2 v0.6/Vehicle v0.3은 미승인 후보다. 새 Wire/API/Manager를 만들지 않는다.
 
 <a id="common"></a>
 ## 공통 호출 계약
@@ -433,7 +433,7 @@ bool NetDomain_ClassifyRxCompletion(DomainIf_Status_t callStatus,
 
 **명명된 설계 호출자:** [NETWORK_TO_DOMAIN의 결과 관측 단계](../flows/NETWORK_TO_DOMAIN.md#rx-outcome-callsite)가 `NetCan_RxBcmResult` 등 기존 typed 경로의 실제 C2 반환과 Owner 단계 증거를 받아 이 분류기를 호출한다. 함수명·반환만으로 Core 증거를 추정하지 않으며 실제 관측 공급/Task 바인딩은 OPEN이다.
 
-세 값 인자는 IN이다. `out`은 NULL 불가 caller-owned OUT이며 호출 동안 유효해야 한다. false이면 OUT 불변, true이면 원 값과 단계 증거의 일관성 분류 사본만 얻는다. true는 C2 성공·차량 성공이 아니며 Core 미반영 판정도 자체 생성하지 않는다. 이 함수는 allocation/queue/lock/시계/콜백 없이 M03 Task 문맥에서 호출하며 스스로 입력을 재호출하지 않는다. 알려지지 않은 callStatus도 원 값을 보존한다. signed/unsigned enum의 숫자 크기로 성공을 판단하지 않는다.
+세 값 인자는 IN이다. `out`은 NULL 불가 caller-owned OUT이며 호출 동안 유효해야 한다. false이면 OUT 불변, true이면 원 값과 단계 증거의 일관성 분류 사본만 얻는다. true는 C2 성공·차량 성공이 아니며 Core 미반영 판정도 자체 생성하지 않는다. 이 함수는 allocation/queue/lock/시계/콜백 없이 M03의 ISR 밖 단일 소유자 문맥(초기 Network Superloop)에서 호출하며 스스로 입력을 재호출하지 않는다. 알려지지 않은 callStatus도 원 값을 보존한다. signed/unsigned enum의 숫자 크기로 성공을 판단하지 않는다.
 
 | 자체검수 사례 | 예상 결과 |
 |---|---|

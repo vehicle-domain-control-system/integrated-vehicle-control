@@ -20,7 +20,7 @@ flowchart LR
 
 ## 정상 처리
 
-CIS 측 접수는 입력을 Network 수명으로 복사한다. DOMAIN 측에서는 원형을 유지한 채 단위·enum·품질을 명시 변환하고 Task 문맥에서 공개 Rx를 호출한다.
+CIS 측 접수는 입력을 Network 수명으로 복사한다. DOMAIN 측에서는 원형을 유지한 채 단위·enum·품질을 명시 변환하고 ISR 밖 단일 담당 문맥에서 공개 Rx를 호출한다.
 
 ## 예외와 실행 문맥
 

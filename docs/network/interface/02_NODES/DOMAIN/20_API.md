@@ -120,7 +120,7 @@ Application TX는 `DomainIf_Tx...`를 호출한다. Network 수신은 Codec 검�
 <a id="ports"></a>
 ## 공통 호출·반환·수명 계약
 
-C2는 **Task/owner 처리 문맥에서 비차단 호출**한다. ISR 에서 직접 호출하지 않는다. RX const 객체는 반환 때까지 borrowed 다. TX는 local OK 전에 Network 소유 bounded 값복사/deep copy 또는 동기 encode를 확보하고 송신 직전 AGE/CRC를 갱신한다. caller pointer 보관은 금지한다. Core commit은 optional RxObserver 보다 먼저이며 observer 실패는 commit 재실행 근거가 아니다.
+C2는 **ISR 밖 단일 소유자 문맥(초기 Network Superloop)에서 비차단 호출**한다. ISR 에서 직접 호출하지 않는다. RX const 객체는 반환 때까지 borrowed 다. TX는 local OK 전에 Network 소유 bounded 값복사/deep copy 또는 동기 encode를 확보하고 송신 직전 AGE/CRC를 갱신한다. caller pointer 보관은 금지한다. Core commit은 optional RxObserver 보다 먼저이며 observer 실패는 commit 재실행 근거가 아니다.
 
 | source 상태 | 뜻·처리 |
 |---|---|

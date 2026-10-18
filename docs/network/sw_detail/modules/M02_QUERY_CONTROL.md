@@ -36,7 +36,7 @@ Device별 최대8건 보관은 DOMAIN ResultManager 책임이며 Network는 Rece
 
 실패 Getter OUT을 빈 결과로 바꾸지 않고 enqueue 수를 ITEM_COUNT로 세지 않는다. Driver accepted·final UART TX·참조 해제·ESP32 RX·BLE/App 목록 완료를 분리한다. partial/빈 집합/기록 부재/문맥 거부는 원 후보 의미를 유지하며 IF-O12/IF-O25/D-03/D-05가 미해소이면 정상 종료 실행은 제한한다. Query 실패는 새로운 NetworkLocalFailure kind가 아니다.
 
-실제 양단 profile 채택·scope/권한·직렬화·저장소·최종 callback·결과 집계 바인딩은 미검증이다. 전문 함수·반례·정확한 Getter 원형은 [단일 정본](../functions/UART_M_QUERY_CONTROL.md)에 둔다. G6 당시 Interface39 봉인본은 보존하며, 현재 별도 후보는 고정 r1 Interface40개를 참조한다. 이번 보완은 Query 계약·동작을 바꾸지 않는다.
+실제 양단 profile 채택·scope/권한·직렬화·저장소·최종 callback·결과 집계 바인딩은 미검증이다. 전문 함수·반례·정확한 Getter 원형은 [단일 정본](../functions/UART_M_QUERY_CONTROL.md)에 둔다. G6 당시 Interface39 봉인본은 보존하며, 현재 별도 후보는 Interface40개 후보의 출처·해시 기준을 따라 참조한다. 이번 보완은 Query 계약·동작을 바꾸지 않는다.
 
 [Data/API](../data/UART_M_DATA.md) · [입력 M_QUERY](../functions/uart_m/M_QUERY.md) · [종료 M_QUERY_END](../functions/uart_m/M_QUERY_END.md) · [Query flow](../flows/UART_M_QUERY_AND_PROJECTION.md) · [상향 flow](../flows/UART_M_UPLINK.md)
 

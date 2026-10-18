@@ -2,7 +2,7 @@
 
 [Network](01_NETWORK_OVERVIEW.md) · [노드/링크](02_NODE_LINK_MAP.md) · [Layer/Module](03_LAYER_MODULE_INDEX.md) · [M06](modules/M06_UART_CODEC.md) · [M02](modules/M02_QUERY_CONTROL.md)
 
-이 문서는 DOMAIN↔ESP32 UART-M23 Wire/23 Rx 문서 설계다. VERSION2 및 C2 v0.6/Vehicle v0.3은 미승인 후보이며, 문서 작성만으로 실제 실행·양단 채택 또는 Driver·보드 검증 완료를 주장할 수 없다. 전체 요구103·Owner35·Wire48/Rx51·시나리오18과 기존 외부 HOLD를 유지한다. 기존 Interface 기준 S6/G6 검수 후 현재 별도 후보에는 PR #68의 고정 r1 Interface40개 참조를 동기화했다. 남은 협의 차이와 실제 양단·제품 채택은 별도 근거·승인 대상으로 유지한다.
+이 문서는 DOMAIN↔ESP32 UART-M23 Wire/23 Rx 문서 설계다. VERSION2 및 C2 v0.6/Vehicle v0.3은 미승인 후보이며, 문서 작성만으로 실제 실행·양단 채택 또는 Driver·보드 검증 완료를 주장할 수 없다. 전체 요구103·Owner35·Wire48/Rx51·시나리오18과 기존 외부 HOLD를 유지한다. 기존 Interface 기준 S6/G6 검수 후 별도 SW 후보는 PR #68의 r1 Interface 40개와 최초 동기화한 뒤, 2026-10-17 커밋 `00a43414`의 문서 변경사항을 별도로 반영했다. 남은 협의 차이와 실제 양단·제품 채택은 별도 근거·승인 대상으로 유지한다.
 
 ESP32→DOMAIN 상향4, DOMAIN→ESP32 기능 보고/투영17, private ALIVE/QueryEnd2의 합이23이다. 하향17에는 DOMAIN 보고6과 원 CAN 투영11이 포함된다. Window state/fault2는 문서 추적에 포함하지만 실제 TX/RX·표시·timeout·liveness는 HOLD다. ESP32 Core/Transport·BLE/App 내부 구현은 해당 Owner 소유다.
 

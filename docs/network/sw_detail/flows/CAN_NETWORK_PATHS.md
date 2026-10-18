@@ -36,7 +36,7 @@ flowchart TD
   Order -->|같은 관측·전체 의미 동일의 높은 TX| Same[raw 순서와 보수적 AGE 함께 갱신 / C2 재발행 없음]
   Order -->|CIS_OCCUPANT만 검증된 현재 제한| Stable
   Order -->|새 수용 입력| Stable[Network 안정 사본과 consumer 준비]
-  Stable --> Consumer[기존 typed API / DOMAIN은 Task 호출]
+  Stable --> Consumer[기존 typed API / DOMAIN은 ISR 밖 단일 담당 문맥]
   Consumer --> Result[원 반환과 반영 증거 보존]
 ```
 
@@ -50,7 +50,7 @@ flowchart TD
 | 명령 | 원 commandId·생성 계보·target BOOT·command AGE·acceptLimit 보존 | 새 Session/Boot로 재명명, 지연만료를 reset |
 | 결과/사건 | 원 command/request/occurrence identity를 독립 보관. 중복과 늦은 상태를 검증 | 이전 결과 덮어쓰기, terminal 뒤 ACCEPTED로 후퇴 |
 | Permission | 세 입력의 원 평가·품질·AGE를 따로 보관, 합성 계약 전 HOLD | 한 입력만 새로 왔다고 전체 fresh |
-| WARNING_STATE | CF02 양단 profile과 원 위험·활성근거 보존 | 64B 길이/뒤0바이트로 51/60 자동 선택 |
+| WARNING_STATE | A1 WARNING60 내부 선택·CF02 실제 양단 지원과 원 위험·활성근거 확인 | 64B 길이/DLC/B51로 WARNING51/60 자동 선택 |
 
 ## 오류·복구와 실행 보류
 

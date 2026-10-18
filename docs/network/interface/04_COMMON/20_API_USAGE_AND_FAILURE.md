@@ -53,11 +53,11 @@ INVALID/STALE/NO_DATA라는 **유효한 품질 보고**는 인자 오류가 아�
 <a id="section-ownership"></a>
 ## 포인터 수명과 호출 시점
 
-초기화는 DOMAIN Manager → C2 Init → 필요한 Observer → Network TxPort 등록 → 통신 시작 순서를 따른다. 실제 등록 실패·재초기화·호출 큐는 연결 시 검증한다. C2 Rx/Query의 직렬 Task 문맥을 CIS·Pi 전체에 동일 RTOS를 강제하는 조건으로 확대하지 않는다.
+초기화는 DOMAIN Manager → C2 Init → 필요한 Observer → Network TxPort 등록 → 통신 시작 순서를 따른다. 실제 등록 실패·재초기화·호출 큐는 연결 시 검증한다. C2 Rx/Query/Private Transition은 ISR 밖 단일 담당 문맥에서 직렬 처리한다. 초기 DOMAIN Network는 Superloop를 사용하며, CIS·Pi 등 다른 노드에 동일 RTOS 구성을 강제하지 않는다.
 
 TX const 포인터는 호출 중 유효하면 된다. OK 반환 전 Network가 크기가 제한된 값 복사 또는 Network 소유 프레임의 동기 인코딩을 마친다. 호출자 포인터·문자열·외부 버퍼 주소를 비동기 보관하지 않는다. 동기 encode도 실제 송신 전 AGE/CRC를 갱신해야 한다. 실패 시 일부만 접수된 상태를 만들지 않는다.
 
-RX의 message/meta 포인터는 콜백이 반환될 때까지 읽기 전용이다. 이후 처리에 필요하면 값·identity·수신시각을 함께 복사한다. Getter out 객체는 호출자 소유이며 성공일 때만 사용한다. 콜백은 담당 주체의 처리 문맥에서 호출한다. S32K C2는 Task-only이고 새 노드 PROPOSED는 superloop owner도 가능하다. ISR에서 parsing·차량 기능 판단을 수행하지 않는다. 여러 태스크의 동시 호출 안전성을 이 문서에서 보장하지 않으며 실제 Task/Queue/priority/capacity는 OPEN이다.
+RX의 message/meta 포인터는 콜백이 반환될 때까지 읽기 전용이다. 이후 처리에 필요하면 값·identity·수신시각을 함께 복사한다. Getter out 객체는 호출자 소유이며 성공일 때만 사용한다. 콜백은 담당 주체의 처리 문맥에서 호출한다. 초기 S32K DOMAIN C2는 Superloop의 단일 담당 문맥에서 호출하며, 후속 RTOS 전환 시에도 ISR 밖 직렬 호출 계약을 유지한다. 다른 노드의 실행 방식은 각 담당자가 정한다. ISR에서 parsing·차량 기능 판단을 수행하지 않는다. 여러 태스크의 동시 호출 안전성을 이 문서에서 보장하지 않으며 실제 Task/Queue/priority/capacity는 OPEN이다.
 
 <a id="delta-rx-completion"></a>
 **환경 BOOT 저장 완료:** 이전 BOOT의 환경 입력 차단과 DOMAIN의 이전 저장값 무효화는 다른 동작이다. 실제 동기 Private Transition이 연결된 경우 DOMAIN 적용 완료가 확인돼야 새 BOOT의 정상 환경 데이터를 인계한다. 전환용 NO_DATA를 공개 Rx에 중복 호출하지 않는다. Private 호출 실패·완료 불명 시에는 해당 환경 데이터 사용을 제한하며, 일반 CAN/UART 메시지의 정상 처리는 계속한다. [환경 BOOT 전환 규칙](../07_CROSS_NODE_INTERFACE_RULES.md#environment-delta)

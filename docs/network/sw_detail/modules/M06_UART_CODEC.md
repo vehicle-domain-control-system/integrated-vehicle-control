@@ -2,7 +2,7 @@
 
 [L04](../layers/L04_FRAME_CODEC.md) · [UART-M23](../05_UART_M_OVERVIEW.md) · [기존9 Module](00_MODULE_INDEX.md) · [M02 Query](M02_QUERY_CONTROL.md)
 
-기존 F16/F17/F18은 UART-M의 byte 조립·재동기화, 정확한 frame/필드 검증, 명시 byte 변환을 맡는다. 별도 Task·Queue·공개 API를 만들지 않는다. UART-M과 UART-C의 Type/schema·소비 경로는 각 절의 독립 계약을 따른다. DOMAIN의 실행 문맥은 Network Task, ESP32는 담당자가 확인한 소유자 문맥이며 ISR에서 parser/CRC/C2를 수행하지 않는다.
+기존 F16/F17/F18은 UART-M의 byte 조립·재동기화, 정확한 frame/필드 검증, 명시 byte 변환을 맡는다. 별도 Task·Queue·공개 API를 만들지 않는다. UART-M과 UART-C의 Type/schema·소비 경로는 각 절의 독립 계약을 따른다. DOMAIN의 초기 실행 문맥은 Network Superloop의 ISR 밖 단일 소유자 문맥, ESP32는 담당자가 확인한 소유자 문맥이며 ISR에서 parser/CRC/C2를 수행하지 않는다.
 
 | 책임 | 입력 → 출력 | 보관/실패 |
 |---|---|---|

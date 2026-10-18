@@ -2,7 +2,7 @@
 
 [B17 전체](../../09_E2E_FAILURE_RECOVERY.md) · [공통 실패·복구](COMMON_FAILURE_RECOVERY.md) · [DOMAIN 경계](../../nodes/DOMAIN.md) · [BCM 경계](../../nodes/BCM.md) · [ESP32/MOBILE 경계](../../nodes/ESP32_MOBILE.md)
 
-이 문서는 SC01~SC04와 SC09의 **조건부 정상 경로와 실패·복구 경로를 연결하는 B17 설계**다. 이 설계는 제품 실행·실제 채택의 증거가 아니다. 원 시나리오 제목·직접 Wire/Rx·Owner ID는 제출물 `B17_E2E_SCENARIO_18_COVERAGE.csv`의 canonical 열과 같고, 아래 보조 경로는 그 직접 집합에 더하지 않는다. G6 당시 Interface39 봉인본과 현재 별도 후보의 고정 r1 Interface40개 참조를 구분한다. Owner 미결35·외부 HOLD와 C2 v0.6/Vehicle v0.3 후보 지위를 유지한다.
+이 문서는 SC01~SC04와 SC09의 **조건부 정상 경로와 실패·복구 경로를 연결하는 B17 설계**다. 이 설계는 제품 실행·실제 채택의 증거가 아니다. 원 시나리오 제목·직접 Wire/Rx·Owner ID는 제출물 `B17_E2E_SCENARIO_18_COVERAGE.csv`의 canonical 열과 같고, 아래 보조 경로는 그 직접 집합에 더하지 않는다. G6 당시 Interface39 봉인본과 현재 검토 중인 Interface40개 후보의 출처·해시 기준 참조를 구분한다. Owner 미결35·외부 HOLD와 C2 v0.6/Vehicle v0.3 후보 지위를 유지한다.
 
 ## 다섯 흐름에 공통인 관측 단계
 
@@ -16,7 +16,7 @@
 | 원 결과의 DOMAIN 귀속 | P01/R01→M01·M03/F08 / [BCM_RESULT](../../functions/can/BCM_RESULT.md#rx) | 원 DOMAIN Boot/commandId/kind와 송신 BCM Boot를 확인. confirmation 없는 Wire에서 CONFIRMED 생성 금지 |
 | 표시·음향 | P02/R05→P04, 조건부 P01/R03 / [하향](../UART_M_DOWNLINK.md), [VSS](../../nodes/VSS.md) | DOMAIN 결과, UART 송신, ESP32 유효 수신, BLE 인계, App 표시, VSS 실제 재생은 서로 다른 종료 근거 |
 
-DOMAIN의 C2 호출은 Task 문맥이며 ISR에서 의미 API를 실행하지 않는다. 다른 MCU의 `BcmApp_*`·`VssApp_*`·`Gateway_Interface_*`는 각 MCU 안의 경계다. DOMAIN이 원격 C 함수를 직접 호출하는 설명이 아니다. 실제 Task/직렬화·Core/Observer·TxPort26 및 필수 실패 sink·Driver epoch/token 바인딩은 OPEN이다. 새 Task, Queue, 타이머, 공통 FSM 또는 공개 API를 추가하지 않는다. [5 Layer·9 Module·F01~F25 색인](../../03_LAYER_MODULE_INDEX.md)을 그대로 사용한다.
+DOMAIN의 C2 호출은 초기 Superloop의 ISR 밖 단일 담당 문맥에서 직렬 실행하고 ISR에서 의미 API를 실행하지 않는다. 다른 MCU의 `BcmApp_*`·`VssApp_*`·`Gateway_Interface_*`는 각 MCU 안의 경계다. DOMAIN이 원격 C 함수를 직접 호출하는 설명이 아니다. 실제 Task/직렬화·Core/Observer·TxPort26 및 필수 실패 sink·Driver epoch/token 바인딩은 OPEN이다. 새 Task, Queue, 타이머, 공통 FSM 또는 공개 API를 추가하지 않는다. [5 Layer·9 Module·F01~F25 색인](../../03_LAYER_MODULE_INDEX.md)을 그대로 사용한다.
 
 ### 원본과 메모리의 수명
 

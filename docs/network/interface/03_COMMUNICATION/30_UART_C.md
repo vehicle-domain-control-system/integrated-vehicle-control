@@ -29,7 +29,7 @@ P_PERMISSION은 CIS private relay가 검증한 원 DOMAIN 허용을 전달한다
 
 `P_PERMISSION`은 새 원 평가·수용한 세대 변경·실제 품질 제한 시 중계 기록을 갱신하여 가능한 한 즉시 제출한다. 반복 전송에서는 기존 relay revision과 증가한 원 AGE를 유지한다. DOMAIN–Network가 유지하기로 한 UART-C 500ms 반복/1500ms 수신 중단은 원 사용 기한과 별개다.
 
-`USE_LIMIT` 필드 값은 기존 1500ms 후보를 유지한다. 같은 후방 Power 원본임을 확인한 경우 500ms로 전달하는 조건부 권장 프로필이 있지만, 전송값은 양단 검증 전 미확정이다. 수신 해석은 검증된 원본 Permission의 사용 기한과 전달된 USE_LIMIT 중 더 짧은 기한를 따르므로 1500ms 후보가 원 500ms를 연장하지 않는다. 기한에 도달하면 ALLOW로 사용하지 않는다.
+`USE_LIMIT` 필드 값은 기존 1500ms 후보를 유지한다. 같은 후방 Power 원본임을 확인한 경우 500ms로 전달하는 조건부 권장 프로필이 있지만, 전송값은 양단 검증 전 미확정이다. 수신 해석은 검증된 원본 Permission의 사용 기한과 전달된 USE_LIMIT 중 더 짧은 기한을 따르므로 1500ms 후보가 원 500ms를 연장하지 않는다. 기한에 도달하면 ALLOW로 사용하지 않는다.
 
 원 판단 AGE와 현재 Quality를 검사하며 UART-C 반복 송신을 새 판단으로 간주하지 않는다. Permission이 만료되거나 미확인되면 통신 소비자는 이전 ALLOW를 새 허용값으로 전달하지 않는다. Pi 비전 기능에서의 적용은 CIS·Pi 기능 담당 영역이다. [Permission 전달 조건](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)  Power/Operation 생성 주체·공유 AGE 합성 및 실제 기능 연결은 미결이다.
 

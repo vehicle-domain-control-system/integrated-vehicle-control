@@ -64,7 +64,7 @@ flowchart LR
 <a id="검수와-보류-상태"></a>
 ## 적용 제약과 보류 상태
 
-요구103·Owner 미결35·Wire48/Rx51·시나리오18 및 원대장은 변경하지 않는다. G6 당시 Interface39는 역사적 봉인 기준선이며, 현재 별도 SW 후보는 고정 r1 Interface40개를 참조한다. C2 v0.6/Vehicle v0.3 미승인 후보 지위는 보존한다. G55-A01~A06, CF01/CF02, 원 기동/세대·CIS Environment·품질 매핑·Driver/시간원·Query/End·WINDOW·공식 게시 등 외부 HOLD는 별도 통합 승인 전 계속 유지한다.
+요구103·Owner 미결35·Wire48/Rx51·시나리오18 및 원대장은 변경하지 않는다. G6 당시 Interface39는 역사적 봉인 기준선이며, SW 후보는 당시 r1 Interface 40개를 기준으로 최초 동기화했고, 이후 2026-10-17 커밋 `00a43414`의 문장·A1/A2·BOOT 설명 보완을 별도로 반영했다. C2 v0.6/Vehicle v0.3 미승인 후보 지위는 보존한다. G55-A01~A06, CF01/CF02, 원 기동/세대·CIS Environment·품질 매핑·Driver/시간원·Query/End·WINDOW·공식 게시 등 외부 HOLD는 별도 통합 승인 전 계속 유지한다.
 
 정확한 선언·원 Data·호출·수명은 각 노드와 함수 정본을 따른다. 정적 설계의 연결은 제품 실행시험을 대체하지 않으며 실제 Owner·Driver·Clock·Queue·callback 바인딩 근거가 필요한 경계는 계속 미확정이다.
 

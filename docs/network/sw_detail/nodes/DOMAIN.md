@@ -14,7 +14,7 @@ N01은 S32K344이며 P01 CAN FD와 P02 UART-M를 연결한다. R01~R04의 차량
 | 바이트 변환 | L04/M05·M06/F14~F18 | [CAN22](../04_CAN_FD_OVERVIEW.md)·[UART-M23](../05_UART_M_OVERVIEW.md)의 정본 |
 | 장치·저장소·관측 | L05/M07~M09/F19~F25 | Driver 접수·terminal·release → [수명](../functions/NETWORK_SERVICE_LIFETIME.md)·[실패/Health](../functions/NETWORK_FAILURE_HEALTH.md) |
 
-같은 기능을 별도 Task나 Queue로 나누라는 뜻이 아니다. DOMAIN C2 호출은 Task 문맥에서 하며 실제 Core/Observer/TxPort 연결·배제·시간원은 G55-A01/A02의 BINDING_OPEN이다. 문서상의 지원 표와 실제 callback 등록은 다르다.
+같은 기능을 별도 Task나 Queue로 나누라는 뜻이 아니다. DOMAIN C2 호출은 초기 Superloop의 ISR 밖 단일 담당 문맥에서 순차 실행하며 실제 Core/Observer/TxPort 연결·배제·시간원은 G55-A01/A02의 BINDING_OPEN이다. 문서상의 지원 표와 실제 callback 등록은 다르다.
 
 ## Data와 기존 정확 원형
 

@@ -40,7 +40,7 @@ M_RESULT의 원 Request Session 7/ID 9, 현재 recipient Session 12라면 B4..11
 
 ## 나머지 하향13종과 연결
 
-원 CAN 투영11종의 동일 입력 증거와 WINDOW2 실행·표시·timeout HOLD는 [Query와 원본 투영 Flow](UART_M_QUERY_AND_PROJECTION.md)에서 확인한다. CAN used bytes만 보존하고 padding은 복제하지 않는다. VSS_STATUS 투영은 CF02 VSS_WARNING_STATE의 used51/60 충돌 해소가 아니다.
+원 CAN 투영11종의 동일 입력 증거와 WINDOW2 실행·표시·timeout HOLD는 [Query와 원본 투영 Flow](UART_M_QUERY_AND_PROJECTION.md)에서 확인한다. CAN used bytes만 보존하고 padding은 복제하지 않는다. VSS_STATUS 투영은 별도 경로다. VSS_WARNING_STATE는 A1 WARNING60으로 내부 선택했으며 WARNING51은 이력이고, 실제 DOMAIN↔VSS 양단 지원·ABI·시간 검증은 CF02 HOLD다.
 
 private [M_DOMAIN_ALIVE](../functions/uart_m/M_DOMAIN_ALIVE.md)와 [M_QUERY_END](../functions/uart_m/M_QUERY_END.md)는 일반 Gateway relay17종에 포함되지 않는다. 링크 alive는 차량/센서 건강의 증거가 아니고 Query End는 BLE/App 완료의 증거가 아니다. [상향4종](UART_M_UPLINK.md), [M02 Query](../modules/M02_QUERY_CONTROL.md), [공통 TX/RX 수명](../functions/UART_M_TX_RX_CONTROL.md), [보고 필드](../data/UART_M_REPORT_FIELDS.md)로 되돌아간다.
 

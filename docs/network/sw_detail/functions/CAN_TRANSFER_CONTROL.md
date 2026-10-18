@@ -219,7 +219,7 @@ Core commit이 완료된 뒤 **선택 observer만 실패한 경우 Core를 다�
 ```c
 /* 기존 DOMAIN 소유 공개 경계의 호출 절차. Network가 본체를 구현하지 않는다. */
 DomainIf_Status_t DomainIf_RxNetworkLocalFailure(const NetworkLocalFailure_t *failure);
-// Network Task:
+// DOMAIN 초기 Network Superloop의 ISR 밖 단일 소유자 문맥:
 // 1. 접수 원장으로부터 failure를 안정 사본으로 만든다.
 // 2. link/itemKind/reason/원 identityGeneration/존재 플래그를 검증한다.
 // 3. commandId 또는 원 requestDeviceContextId+RequestContext 또는 occurrenceId를 유지한다.

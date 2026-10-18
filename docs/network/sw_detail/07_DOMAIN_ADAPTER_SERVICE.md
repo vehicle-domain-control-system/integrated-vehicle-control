@@ -1,6 +1,6 @@
 # DOMAIN Adapter와 Network 공통 Service
 
-DOMAIN 경계와 Network 책임을 연결한다. 실제 제품 바인딩·컴파일·보드 검증과 공식 게시 승인을 뜻하지 않는다. C2 v0.5는 기존 설계의 역사적 선언 기반으로 보존한다. 현재 별도 SW 후보의 문서 참조는 G6 이후 동기화한 PR #68 고정 r1 Interface40개이며, 그 안의 C2 v0.6/Vehicle v0.3은 여전히 미승인 후보로 실제 제품 Header·ABI 채택과 구분한다. 남은 협의 반영과 공식·제품 통합은 별도 근거·승인이 필요하다.
+DOMAIN 경계와 Network 책임을 연결한다. 실제 제품 바인딩·컴파일·보드 검증과 공식 게시 승인을 뜻하지 않는다. C2 v0.5는 기존 설계의 역사적 선언 기반으로 보존한다. SW 후보는 G6 이후 PR #68의 r1 Interface 40개를 기준으로 최초 동기화했고, 2026-10-17 커밋 `00a43414`의 문서 보완을 추가 반영했으며, 그 안의 C2 v0.6/Vehicle v0.3은 여전히 미승인 후보로 실제 제품 Header·ABI 채택과 구분한다. 남은 협의 반영과 공식·제품 통합은 별도 근거·승인이 필요하다.
 
 ## 읽기 순서와 분모
 
@@ -106,7 +106,7 @@ Query는 [기존 제어 정본](functions/UART_M_QUERY_CONTROL.md)과 [원 CAN �
 
 Generation0·BOOT_ID·CIS Environment 회신 대기, C2 후보 ABI·원 SourceGeneration·실제 Session 타입/동일 버전 바인딩, WINDOW 구현 보류와 VSS profile 차이, UART profile 양단 채택, Queue/timeout/retry/Driver 참조·최종 결과/Health raw 공급·원본 결합의 외부 HOLD를 유지한다. T34/T35 보조 색인의 로컬 정규화 근거는 외부 설계 채택 승인이 아니다. 기존35 Owner 미결을 새 API·가짜 정상 callback·상수 ready로 닫지 않는다.
 
-Queue 깊이·우선순위·Task 구조·reset 순서·등록 해제 의미를 새로 확정하지 않는다. G6 당시 공개 Interface39 봉인본과 현재 후보가 참조하는 고정 r1 Interface40개를 구분해 보존한다. 기존 S6Q-01~14의 append-only 이력과 미결은 유지한다. 별도 후보의 r1 동기화 완료는 남은 협의 확정·공식 게시·제품 통합 권한을 부여하지 않는다. G5-0 공식 게시 HOLD와 G4-TOOL-01 OPEN_BEFORE_REUSE도 유지한다.
+Queue 깊이·우선순위·Task 구조·reset 순서·등록 해제 의미를 새로 확정하지 않는다. G6 당시 공개 Interface39 봉인본과 최초 r1 Interface 40개와 이후 `00a43414`에 반영한 문서 보완을 구분해 보존한다. 기존 S6Q-01~14의 append-only 이력과 미결은 유지한다. 별도 후보의 r1 동기화 완료는 남은 협의 확정·공식 게시·제품 통합 권한을 부여하지 않는다. G5-0 공식 게시 HOLD와 G4-TOOL-01 OPEN_BEFORE_REUSE도 유지한다.
 
 공개72·TxPort26·Observer11의 선언과 반환·OUT/포인터 수명은 원 Interface를 따른다. 실제 원형·소비 준비·호출 문맥·실패·복구·수명은 각 함수 정본에서 구체화하며, 문서 설계만으로 제품 실행 성공을 주장하지 않는다.
 

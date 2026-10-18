@@ -55,7 +55,7 @@
 | M08 accepted 이후 오류/terminal 불명 | 참조·결과를 독립 유지. 미분류 in-flight 오류를 제출실패로 재명명하지 않음 | 실제 Driver 최종 결과·reference·원 token/epoch와 원 제출 연결 |
 | C2 Core 반영 후 Observer 실패 | 원 반영 단계 보존. 공개 Rx 전체 자동 재호출 없음 | 같은 원 입력의 Core/필수 소비 확인; partial unknown이면 영향 경로 HOLD |
 
-ISR에서 Frame parsing·DOMAIN Manager·blocking 호출을 실행하지 않는다. DOMAIN C2는 Task 문맥이며 다른 노드는 실제 Owner의 Worker/Superloop 직렬화 계약을 따른다. [등록](../../functions/DOMAIN_REGISTRATION.md)의 실제 지원·수명·필수 sink는 함수주소 non-NULL 또는 IsInitialized 하나로 증명되지 않는다.
+ISR에서 Frame parsing·DOMAIN Manager·blocking 호출을 실행하지 않는다. 초기 DOMAIN C2는 Superloop의 ISR 밖 단일 담당 문맥에서 호출하며 다른 노드는 각 Owner의 Worker/Superloop 직렬화 계약을 따른다. [등록](../../functions/DOMAIN_REGISTRATION.md)의 실제 지원·수명·필수 sink는 함수주소 non-NULL 또는 IsInitialized 하나로 증명되지 않는다.
 
 <a id="late-failure"></a>
 ## 후발 실패3범위와 원 identity

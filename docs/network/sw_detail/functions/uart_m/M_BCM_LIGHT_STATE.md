@@ -8,7 +8,7 @@
 
 L01/M01/F01~F03은 원 입력 연결, L02/M03/F07·F10은 TxPort/상대 Gateway 경계, L01/M02/F04·F05는 Query, L03/M04/F11~F13은 접수·순서, L04/M06/F17·F18은 typed Codec, L05/M07·M08/F19~F23은 저장소·Driver 수명, M09/F24·F25는 실제 관측이다. 기존5 Layer·9 Module·25 책임 수를 바꾸지 않는다.
 
-DOMAIN 공개 Wrapper/Getter 본체와 Manager 상태는 DOMAIN 소유다. Network는 등록된 TxPort callback 본체에서 해당 private submit을 호출한다. ISR은 이 API/Codec/Getter를 호출하지 않고 실제 소유 Task에서 직렬 처리한다. ESP32 내부 Gateway/BLE 구현은 ESP32 담당자 소유이며 아래 수신 경계는 계약 추적이다.
+DOMAIN 공개 Wrapper/Getter 본체와 Manager 상태는 DOMAIN 소유다. Network는 등록된 TxPort callback 본체에서 해당 private submit을 호출한다. ISR은 이 API/Codec/Getter를 호출하지 않는다. DOMAIN 초기 경로는 Network Superloop의 ISR 밖 단일 소유자 문맥에서 직렬 처리한다. 다른 ECU는 담당자가 합의한 Task 또는 Superloop 문맥을 사용한다. ESP32 내부 Gateway/BLE 구현은 ESP32 담당자 소유이며 아래 수신 경계는 계약 추적이다.
 
 자료 정본: [NetMobileBcmLightState](../../data/UART_M_DATA.md#type-NetMobileBcmLightState), [InteriorLightState_t](../../data/CAN_BCM_DATA.md#type-InteriorLightState_t), [NetCanSource](../../data/CIS_REAR_DATA.md#type-NetCanSource), [DomainQueryResponseContext_t](../../data/UART_M_DATA.md#type-DomainQueryResponseContext_t), [NetUartRxMeta](../../data/UART_M_DATA.md#type-NetUartRxMeta), [NetSubmitResult](../../data/CIS_REAR_DATA.md#type-NetSubmitResult), [DomainIf_Status_t](../../data/CIS_REAR_DATA.md#type-DomainIf_Status_t). private Frame/결과는 [UART Frame 자료](../../data/UART_FRAME_DATA.md).
 

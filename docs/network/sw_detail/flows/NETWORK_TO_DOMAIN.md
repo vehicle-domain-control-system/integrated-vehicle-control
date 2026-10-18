@@ -32,7 +32,7 @@ sequenceDiagram
 | L05/M08 F22·M07 F20 수신 보관 | Driver가 실제로 관측한 flags/길이/수신시각 → 안정 프레임 사본 | ISR에서 C2/Manager/Getter 호출 없음; 원 pointer를 반환 후 사용하지 않음 |
 | L04/M05 F14 또는 M06 F16/F17 | [CAN Codec](../functions/CAN_COMMON_CODEC.md), [UART frame/stream](../functions/UART_FRAME_STREAM.md) → 같은 수신의 DTO/meta | 실패 임시 OUT 미게시. UART CRC와 CAN 장치 CRC를 혼동하지 않음 |
 | L03/M04 F13·L01/M01 F01/F02 | [CAN 수용](../functions/CAN_TRANSFER_CONTROL.md), [UART Router](../functions/UART_M_ROUTER.md) | 원 Boot/순서/AGE/현재 Session·자원 연결 미확인 시 영향 경로만 HOLD |
-| L02/M03 F08 | [Rx22](../functions/DOMAIN_RX_ADAPTER.md#rx22), 기존 각 leaf의 typed 변환 | 임시 typed 전체 필드 완성 뒤 DOMAIN Task/Owner 문맥에서 호출; 미확정 meta를 0으로 채우지 않음 |
+| L02/M03 F08 | [Rx22](../functions/DOMAIN_RX_ADAPTER.md#rx22), 기존 각 leaf의 typed 변환 | 임시 typed 전체 필드 완성 뒤 DOMAIN의 ISR 밖 단일 소유자 문맥(초기 Network Superloop)에서 호출; 미확정 meta를 0으로 채우지 않음 |
 | DOMAIN 공개 본체·선택 소비자 | Core → [Observer11](../functions/DOMAIN_RX_ADAPTER.md#observer11) | Network가 구현하지 않음. optional 실패가 이전 commit을 rollback하지 않음 |
 | L01/M02 F04/F05·M01 원본 연결 | [기존 Query 정본](../functions/UART_M_QUERY_CONTROL.md)와 [provenance](../functions/DOMAIN_QUERY_PROVENANCE.md#association) | 성공 OUT도 원 입력 association 별도. Getter 실패 OUT/flag/count 소비 금지 |
 | L05/M08 F23·M09 F24/F25 및 원 Owner | [후발 실패/Health](../functions/NETWORK_FAILURE_HEALTH.md), [수명](../functions/NETWORK_SERVICE_LIFETIME.md) | Driver 결과·참조 해제·기능 완료 구분. 선택 observer가 필수 failure sink를 대체하지 않음 |

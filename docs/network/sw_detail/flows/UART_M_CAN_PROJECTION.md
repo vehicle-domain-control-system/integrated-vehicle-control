@@ -85,7 +85,7 @@ Driver accepted 후 결과가 미상인 항목은 원 Query 귀속을 보존한�
 | CIS Occupant | Pi와 CIS identity 분리. presence255·count255를 false/0으로 바꾸지 않음. [원 관측의 현재 제한 근거](../data/CAN_NODE_DATA.md#type-NetCanOccupantRestrictionEvidence)를 Getter 품질과 연결하며 raw VALID로 회복 금지. C2 bool의 표현 손실이 있으면 원 association 없이는 중계 불가 |
 | CIS Rear | 1raw=1mm. NO_OBJECT65535와 무효/FAULT를 상태·품질로 구분 |
 | CIS Status | CIS_READY와 센서 건강, UART/CAN interface 상태는 별개. 지원되지 않는 C2 interface 값은 새 raw로 매핑하지 않음 |
-| VSS Status | 최근 고장 품질0/3 한정. C2 state/fault 분리 반영의 같은 입력 증거 필요. CF02 warning51/60 문제를 해결한 것으로 취급하지 않음 |
+| VSS Status | 최근 고장 품질0/3 한정. C2 state/fault 분리 반영의 같은 입력 증거 필요. A1 VSS_WARNING_STATE WARNING60 내부 선택과 별개이며 CF02 실제 양단 지원 HOLD를 해결한 것으로 취급하지 않음 |
 | WINDOW State/Fault | 문서와 Rx ID 추적만 유지. 실제 Codec/Router/submit에서 명시 HOLD. 표시/감시/물리 동작 미활성 |
 
 현재 UART-M v2 profile 전역 채택 증거가 없다는 CF01과 각 projection의 association 미입증은 서로 다른 제한이다. S6 후 회신이 확보되어도 명시 승인·전체 영향 재검수 없이 프로필·헤더·Wire·Callback을 적용하지 않는다.

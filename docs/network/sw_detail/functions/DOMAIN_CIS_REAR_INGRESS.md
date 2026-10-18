@@ -13,7 +13,7 @@ S2 F01/F08에 대응하는 `PROPOSED_PRIVATE_FUNCTION`이다. DOMAIN Network의 
 |---|---|---|
 | nowMs | IN `uint32_t`, DOMAIN 단조 ms, 수신시각과 같은 기동·비교 가능한 시계 | 값 전달. NULL 해당 없음 |
 
-Caller는 [수신 수용](CIS_REAR_RX_ADMISSION.md) 뒤 pending을 소비하는 동일 Task다. Called는 아래 실제 선언 `DomainIf_RxCisRear` 한 개다. ISR 호출·재진입은 제외하는 설계이며 정확한 Task/직렬화 연결은 D-05/G06에서 확인해야 한다.
+Caller는 [수신 수용](CIS_REAR_RX_ADMISSION.md) 뒤 pending을 소비하는 ISR 밖 동일 단일 소유자 문맥이다. Called는 아래 실제 선언 `DomainIf_RxCisRear` 한 개다. ISR 호출·재진입은 제외하는 설계이며 정확한 Task/직렬화 연결은 D-05/G06에서 확인해야 한다.
 
 읽는 상태는 M07/ST10의 같은 Net/meta 사본과 M01/ST01의 원 관측 연결이다. C2 OK 뒤 Network의 전달 기록을 남길 수 있지만 DOMAIN cache 반영이라고 쓰지 않는다. 함수가 만든 CisRearState_t 임시는 호출 동안만 유효하며 DOMAIN이 이후 필요하면 반환 전에 복사한다.
 
@@ -85,7 +85,7 @@ T16:407/S4A `api/domain_rx.md`의 `DECLARED_SOURCE` 원형이다. **본체는 DO
 | state | IN `const CisRearState_t *`, NULL 불가. 전체 필드·단위·상태는 [Data](../data/CIS_REAR_DATA.md#meaning). 호출 동안 borrow, 이후 필요한 자료는 DOMAIN이 반환 전 복사 |
 | 반환 | `DomainIf_Status_t`: OK, INVALID_ARGUMENT, NOT_INITIALIZED, NOT_AVAILABLE, QUEUE_FULL, REJECTED, UNSUPPORTED의 공통 의미. 이 API가 모든 값을 실제 지원하는지 미검증 |
 | 상태·선후조건 | Network의 형식·원본·시간·품질 투영이 완료돼야 호출. DOMAIN은 공개 API 본체/기능 State를 소유. OK는 로컬 성공이며 같은 입력의 cache commit을 자동 증명하지 않음 |
-| 실행 문맥 | DOMAIN Task/Owner 직렬 처리, ISR 직접 호출 제외. 비차단·초기화·지원·실제 복사/내부 오류 원자성은 Owner 확인 대상 |
+| 실행 문맥 | DOMAIN 초기 Superloop의 단일 담당 문맥에서 직렬 처리, ISR 직접 호출 제외. 비차단·초기화·지원·실제 복사/내부 오류 원자성은 Owner 확인 대상 |
 | Called | DOMAIN 내부 소비자/Manager 연결은 외부 소유이며 실제 이름·순서 미확인. Network에서 허구의 Manager 함수나 BoardRuntime을 호출하지 않음 |
 
 | 기존 C2 반환 | Network가 관측할 의미 |

@@ -74,6 +74,6 @@ flowchart LR
 
 Boot, producer generation, update/occurrence, TX/LINK_SEQUENCE, Request/Session/Query는 다른 축이다. 같은 TX 반복으로 원 AGE/발생/품질을 갱신하지 않는다. 원 시각과 로컬 단조시간을 섞어 빼지 않고, 이미 반영한 대기를 다시 더하지 않는다. epoch/wrap/바인딩 미확인은 HOLD이며 새 timeout 숫자를 만들지 않는다. C2 v0.6/Vehicle v0.3 후보의 sourceGeneration 필드가 있어도 Generation0·BOOT_ID lifecycle·CIS Environment 정책은 회신 대기다.
 
-WINDOW 구현·표시·timeout, CF01 UART-M VERSION2, CF02 VSS Warning used51/60, 실제 Driver·Clock·Owner 소비·same-observation·App/BLE 바인딩, G5-0 공식 게시 HOLD를 유지한다. 모든 기능을 일괄 막는 대신 근거가 없는 해당 투영/실행 경계를 표시하고 원 자료와 별개의 유효 경로를 보존한다. 실제 이식·실행 시험을 정적 설계 PASS로 대체하지 않는다.
+WINDOW 구현·표시·timeout, CF01 UART-M VERSION2, VSS A1 WARNING60(used60/frame64/DLC15) 내부 선택·WARNING51 이력·CF02 실제 양단 지원/ABI/시간 검증 HOLD, 실제 Driver·Clock·Owner 소비·same-observation·App/BLE 바인딩, G5-0 공식 게시 HOLD를 유지한다. 모든 기능을 일괄 막는 대신 근거가 없는 해당 투영/실행 경계를 표시하고 원 자료와 별개의 유효 경로를 보존한다. 실제 이식·실행 시험을 정적 설계 PASS로 대체하지 않는다.
 
-이 문서의 조건부 경로는 실제 Owner·Driver·App 바인딩과 실행 검증을 대신하지 않는다. 기존 Interface 기준 S6/G6 검수 후 고정 r1 Interface40개에 맞춘 별도 후보 문서 동기화는 완료했다. 남은 협의 변경과 공식·제품 통합은 별도 확정·승인 및 실제 검증 대상으로 유지한다.
+이 문서의 조건부 경로는 실제 Owner·Driver·App 바인딩과 실행 검증을 대신하지 않는다. 기존 Interface 기준 S6/G6 검수 후 당시 r1 Interface 40개와의 최초 동기화를 완료했고, 이후 문서 변경은 `00a43414`에 별도로 반영했다. 남은 협의 변경과 공식·제품 통합은 별도 확정·승인 및 실제 검증 대상으로 유지한다.

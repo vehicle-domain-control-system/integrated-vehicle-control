@@ -32,7 +32,7 @@ flowchart LR
 
 ## 첫 송수신 경로
 
-CIS 기능 모듈은 원 관측 번호와 품질을 붙인 후방 자료를 `CisNet_PublishRear`로 제출한다. Network는 호출 중 자료 전체를 복사하고, 실제 송신 시 AGE에 아직 반영되지 않은 로컬 대기 시간만 한 번 더한다. Codec가 필드별 프레임을 만들고 장치 Port가 이를 인계한다. 접수 뒤 Driver가 참조하는 동안 프레임은 불변이다.
+CIS 기능 모듈은 원 관측 번호와 품질을 붙인 후방 자료를 `CisNet_PublishRear`로 제출한다. Network는 호출 중 자료 전체를 복사하고, 실제 송신 시 AGE에 아직 반영되지 않은 로컬 대기 시간만 한 번 더한다. Codec이 필드별 프레임을 만들고 장치 Port가 이를 인계한다. 접수 뒤 Driver가 참조하는 동안 프레임은 불변이다.
 
 DOMAIN Network는 Driver가 확보한 프레임·수신 시각을 함께 인수한다. 형식·필드 검증 후 원 기동과 순서를 확인한다. 같은 관측의 값·품질·AGE·번호를 한 묶음으로 C2 자료에 투영한 다음 `DomainIf_RxCisRear`를 호출한다. 함수 본체와 Manager 상태는 DOMAIN이 소유한다. 호출 성공 이후의 위험 판단과 VSS 경고 출력은 이 Network 인계의 완료 조건이 아니다.
 
