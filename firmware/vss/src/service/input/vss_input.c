@@ -395,7 +395,7 @@ static VssInputApplication process(const VssInputEvidence *in, const VssTimeEvid
      * This does not apply a semantic context or create a STORE record. */
     remember_delivery(s, in);
     if (s->monitorLost) {
-        Store_ProtectRejectedEvent(key, in->signal);
+        Store_ProtectRejectedEvent(key, in->signal, now);
         diagnose(VSS_DIAG_TIME, in, now);
         r.validation = VSS_VALIDATION_REJECTED;
         return r;
@@ -415,7 +415,7 @@ static VssInputApplication process(const VssInputEvidence *in, const VssTimeEvid
         return r;
     }
     if (in->value != VSS_VALUE_EVENT) {
-        Store_ProtectRejectedEvent(key, in->signal);
+        Store_ProtectRejectedEvent(key, in->signal, now);
         diagnose(VSS_DIAG_VALUE, in, now);
         r.validation = VSS_VALIDATION_REJECTED;
         return r;
@@ -424,7 +424,7 @@ static VssInputApplication process(const VssInputEvidence *in, const VssTimeEvid
     if (!project(in, now, &event.meta) ||
         now->earliest < event.meta.original.latest ||
         now->latest - event.meta.original.earliest >= event.meta.useLimit) {
-        Store_ProtectRejectedEvent(key, in->signal);
+        Store_ProtectRejectedEvent(key, in->signal, now);
         diagnose(VSS_DIAG_TIME, in, now);
         r.validation = VSS_VALIDATION_REJECTED;
         return r;

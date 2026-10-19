@@ -293,8 +293,12 @@ size_t Store_Count(void);
 /* Read-only FIRST-start opportunity. Not actual/NO_START/retirement evidence. */
 bool Store_FirstStartAllowed(const VssOccurrenceKey *key, const VssTimeEvidence *now);
 
-/* INPUT-only rejection protection. Not an additional Core or Network API. */
-void Store_ProtectRejectedEvent(const VssOccurrenceKey *key, VssInputSignal signal);
+/* INPUT-only rejection protection. Not an additional Core or Network API.
+ * at is the processing time of the rejection; it is kept as the tombstone's
+ * time so that the slot can be reclaimed once the occurrence is too old to be
+ * accepted again (see Store_Reclaim). */
+void Store_ProtectRejectedEvent(const VssOccurrenceKey *key, VssInputSignal signal,
+                                const VssTimeEvidence *at);
 
 /* Private typed adapter/test observations, NOT additional public Core APIs.
  * Callers may arbitrate only after this synchronous whole-bundle return. */

@@ -115,16 +115,21 @@ VssStoreAdmission Store_ApplyInput(const VssOneShotEvent *event,
     return VSS_STORE_UPDATED;
 }
 
-void Store_ProtectRejectedEvent(const VssOccurrenceKey *key, VssInputSignal signal)
+void Store_ProtectRejectedEvent(const VssOccurrenceKey *key, VssInputSignal signal,
+                                const VssTimeEvidence *at)
 {
     if (key == NULL || !valid_key(key) || signal < VSS_SIGNAL_WELCOME ||
         signal > VSS_SIGNAL_LOCK_ERROR || find(key) < count ||
         count == VSS_LEDGER_CAPACITY) { return; }
+    memset(&records[count], 0, sizeof records[count]);
     records[count].event.meta.key = *key;
     records[count].event.signal = signal;
+    /* A tombstone has no original occurrence time of its own; its time is the
+     * rejection time, which is what the reclaim age is measured from. */
+    if (at != NULL) { records[count].event.meta.original = *at; }
     records[count].rejectedTombstone = true;
     records[count].revision = 1u;
-    ++count; /* Never reused, including after generation loss. */
+    ++count; /* Never reused while it exists, including after generation loss. */
 }
 
 size_t Store_Count(void) { return count; }
@@ -133,6 +138,17 @@ bool StorePriv_ReadAt(size_t index, VssOccurrenceObservation *out)
 {
     if (index >= count || out == NULL) { return false; }
     *out = records[index];
+    return true;
+}
+
+bool StorePriv_RemoveAt(size_t index)
+{
+    if (index >= count) { return false; }
+    --count;
+    if (index < count) {
+        memmove(&records[index], &records[index + 1u], (count - index) * sizeof records[0]);
+    }
+    memset(&records[count], 0, sizeof records[count]);
     return true;
 }
 

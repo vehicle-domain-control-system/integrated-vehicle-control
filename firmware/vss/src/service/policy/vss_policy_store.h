@@ -106,8 +106,21 @@ bool Store_MarkPlaybackAttempted(const VssOccurrenceKey *key, uint64_t session,
 bool Store_MarkPlaybackRetired(const VssOccurrenceKey *key, uint64_t session,
                               uint64_t attempt, bool noStart);
 
+/* Frees ledger slots, bindings and facts that can no longer matter: every
+ * record (terminated, tombstone, replay lost after a DOMAIN generation change,
+ * or still pending) whose original time interval ended
+ * VSS_CFG_STORE_RECLAIM_MS or more before now, provided none of its bindings
+ * is still live. Such a record cannot start again (the use limit is at most
+ * 500 ms) and a repeat of the same occurrence is rejected by INPUT as too old.
+ * All origins are swept in one call: there is a single system clock, so
+ * now's time values apply to every origin. Store_ReadRevision never decreases
+ * across a reclaim. Returns the number of records removed. */
+size_t Store_Reclaim(const VssTimeEvidence *now);
+
 /* STORE companion implementation only; expected revision rejects stale writes. */
 bool StorePriv_ReadAt(size_t index, VssOccurrenceObservation *out);
+/* Removes the record at index; later records move down one slot. */
+bool StorePriv_RemoveAt(size_t index);
 bool StorePriv_ApplyRecord(const VssOccurrenceKey *key, uint64_t expectedRevision,
     VssOccurrenceState state, bool replayAllowed,
     const VssReservedPlaybackFact *first, const VssReservedPlaybackFact *final);
