@@ -5,6 +5,8 @@
    |          |           |
    +----------+-----------+------>  infra
   service/input/vss_input_net.{c,h}, app  ->  net_if
+  service/input/vss_input_net.h  <-  vss_input_net.c and app only (it carries
+                                     the Network API types)
   net_if/net_stub.c  ->  infra (build switches); other net_if files -> net_if only
   hal/s32k344  ->  vendor driver headers (the only place they may appear)
 
@@ -50,6 +52,10 @@ ALLOWED = {
 
 # service files that may reach the Network API headers (app may as well)
 NET_IF_USERS = {'service/input/vss_input_net.c', 'service/input/vss_input_net.h'}
+# the adapter header exposes the Network API types; besides app only its own
+# source may include it, so no other service depends on them indirectly
+NET_ADAPTER_HEADER = 'service/input/vss_input_net.h'
+NET_ADAPTER_HEADER_USERS = {'service/input/vss_input_net.c'}
 # net_if files that may read the build switches; the Network API header is
 # replaced by the Network module's own header and must stay self-contained
 NET_IF_INFRA_USERS = {'net_if/net_stub.c'}
@@ -173,6 +179,9 @@ def check(src):
                 if tlayer not in allowed:
                     bad(rel, line, '%s -> %s is not allowed ("%s")' % (layer, tlayer, name))
                     continue
+                if trel == NET_ADAPTER_HEADER and layer != 'app' and rel not in NET_ADAPTER_HEADER_USERS:
+                    bad(rel, line, '"%s" carries the Network API types; only app and %s may include it'
+                        % (name, ', '.join(sorted(NET_ADAPTER_HEADER_USERS))))
                 if layer == 'app' and tlayer == 'hal_include' and base != 'hal_board.h':
                     bad(rel, line, 'app may include only hal_board.h from hal/include, not "%s"' % name)
                 if layer == 'service' and tlayer == 'driver' and not (
@@ -242,6 +251,14 @@ def selftest():
         ('net_if from store', {'service/store/s.c': '#include "../../net_if/n.h"\n', 'net_if/n.h': ''}, 'service -> net_if'),
         ('net_if->service', {'net_if/n.h': '#include "../service/s.h"\n', 'service/s.h': ''}, 'net_if -> service'),
         ('net_if from input_net', {'service/input/vss_input_net.c': '#include "../../net_if/n.h"\n', 'net_if/n.h': ''}, None),
+        ('input_net.h from store', {'service/store/s.c': '#include "../input/vss_input_net.h"\n',
+                                    'service/input/vss_input_net.h': ''}, 'carries the Network API types'),
+        ('input_net.h from input', {'service/input/vss_input.c': '#include "vss_input_net.h"\n',
+                                    'service/input/vss_input_net.h': ''}, 'carries the Network API types'),
+        ('input_net.h own source ok', {'service/input/vss_input_net.c': '#include "vss_input_net.h"\n',
+                                       'service/input/vss_input_net.h': ''}, None),
+        ('input_net.h from app ok', {'app/a.c': '#include "../service/input/vss_input_net.h"\n',
+                                     'service/input/vss_input_net.h': ''}, None),
         ('net_stub->infra ok', {'net_if/net_stub.c': '#include "../infra/vss_config.h"\n',
                                 'infra/vss_config.h': ''}, None),
         ('net_if header->infra', {'net_if/vss_net_api.h': '#include "../infra/vss_config.h"\n',

@@ -615,11 +615,12 @@ static void generation_clock_fences_and_origin_isolation(void)
         test.occurrenceId = 2u; e = event(&test, 2u, 1200u, 100u);
         CHECK(submit(&e, 1200u).storeAdmission == VSS_STORE_ACCEPTED);
     }
-    /* A closed bootstrap does not consume untrusted TX100 before proof. */
+    /* A closed bootstrap does not consume untrusted TX100 before proof.
+     * The event originated at 1000, when INPUT opened. */
     {
         VssOccurrenceKey k = key(1u);
         VssInputEvidence e = event(&k, 100u, 1100u, 100u);
-        VssTimeEvidence sync = at(VSS_PRODUCT, 1100u);
+        VssTimeEvidence sync = at(VSS_PRODUCT, 1000u);
         Input_TestReset(); Store_TestReset();
         CHECK(submit(&e, 1100u).validation == VSS_VALIDATION_REJECTED);
         CHECK(Input_OpenAfterSynchronization(VSS_PRODUCT, 7u, &sync));

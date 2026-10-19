@@ -13,11 +13,16 @@
  * DOMAIN generation: the first message of an origin opens INPUT for its
  * boot_id; a message with another boot_id is a DOMAIN restart that the
  * Network already accepted, and INPUT takes the new generation over before
- * the message is processed.
+ * the message is processed. Only a message INPUT can take does either: TX
+ * not 0, a usable receive time, occurrence not 0 for an Event, structure
+ * verified for a Warning. Boot ids are unique per sender boot (the sender's
+ * obligation); a reused boot id is refused like a replaced one.
  *
- * Time: received_at_ms is on the VssTime_NowMs32 clock. The receive time is
- * extended to 64 bits against VssTime_NowMs, which is also the processing
- * time handed to INPUT. A receive time in the future is unusable time.
+ * Time: received_at_ms is on the VssTime_NowMs32 clock, stamped in the owner
+ * context. The receive time is extended to 64 bits against VssTime_NowMs,
+ * which is also the processing time handed to INPUT. A receive time in the
+ * future is unusable time. A message that arrives before the clock is
+ * registered is dropped.
  *
  * All functions run in the super-loop owner context, never from an ISR, and
  * do not keep the caller's pointers. */
@@ -63,6 +68,14 @@ typedef struct
     uint32_t eventsDiscarded;
     uint32_t warningFramesForwarded;
     uint32_t warningFramesUnverified; /* forwarded with structureVerified false */
+    uint32_t inputsWithoutClock;    /* dropped before VssTime_Init */
+    uint32_t txRestartsSameBoot;    /* Event or Warning TX back to 1 within acceptedBoot */
+    /* Raw quality and reason of the last Warning frame per lane, in the lane
+     * order of VssWarningFrame (activation, rear risk, occupant, anti-pinch).
+     * INPUT receives the reason reduced to NONE / NO_DATA / STALE /
+     * DATA_INVALID. */
+    NetValueQuality warningRawQuality[4];
+    NetQualityReason warningRawReason[4];
     VssInputApplication lastEvent;
     VssWarningBundleResult lastWarning;
 } VssInputNetObservation;

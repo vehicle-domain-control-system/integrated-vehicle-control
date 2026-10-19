@@ -37,6 +37,13 @@ INPUT_NET_SAME(kinds_fit_mask, VSS_FAULT_KINDS, 5);
 #define INPUT_NET_FAULT_MASK_ALL ((1u << VSS_FAULT_KINDS) - 1u)
 
 static VssInputNetObservation s_obs[2];
+/* Highest TX seen per message within the accepted boot. */
+typedef struct
+{
+    uint32_t eventTx;
+    uint32_t warningTx;
+} InputNetTx;
+static InputNetTx s_tx[2];
 /* Scratch for the converted frame (too large for the stack). */
 static VssWarningFrame s_frame;
 
@@ -326,14 +333,19 @@ bool VssInputNet_ConvertWarning(VssOrigin origin, const NetVssWarningState *m,
 }
 
 /* First message of an origin opens INPUT for its boot; another boot is a
- * DOMAIN restart the Network accepted. A refusal (boot 0, the boot INPUT last
- * replaced, unusable time) leaves the generation as it is; INPUT then rejects
- * the message itself. */
-static void follow_generation(VssOrigin origin, uint32_t boot, const VssTimeEvidence *now)
+ * DOMAIN restart the Network accepted. Only a message INPUT can take opens or
+ * changes the generation: TX not 0 and a receive time placed on the clock
+ * (the caller adds its own message rule). A refusal (boot 0, a boot INPUT
+ * replaced, unusable time) leaves the generation as it is; INPUT then
+ * rejects the message itself. */
+static void follow_generation(VssOrigin origin, const NetCanRxMeta *rx, const VssFactTime *receivedAt,
+                              const VssTimeEvidence *now)
 {
     VssInputNetObservation *o = &s_obs[(size_t)origin];
+    uint32_t boot = rx->source.boot_id;
 
-    if (boot == 0u)
+    if ((boot == 0u) || (rx->source.tx_sequence == 0u) ||
+        (receivedAt->continuity != VSS_CONTINUITY_COMPARABLE))
     {
         return;
     }
@@ -343,6 +355,7 @@ static void follow_generation(VssOrigin origin, uint32_t boot, const VssTimeEvid
         {
             o->generationOpen = true;
             o->acceptedBoot = boot;
+            memset(&s_tx[(size_t)origin], 0, sizeof s_tx[(size_t)origin]);
         }
         return;
     }
@@ -350,6 +363,29 @@ static void follow_generation(VssOrigin origin, uint32_t boot, const VssTimeEvid
     {
         o->acceptedBoot = boot;
         count(&o->generationChanges);
+        memset(&s_tx[(size_t)origin], 0, sizeof s_tx[(size_t)origin]);
+    }
+}
+
+/* TX_SEQUENCE starts at 1 in each sender boot. Back at 1 within the accepted
+ * boot means the sender restarted without a new boot id: INPUT then rejects
+ * the stream as out of order until it passes the old TX. Counted to name the
+ * cause. */
+static void watch_tx(VssInputNetObservation *o, uint32_t *highest, const NetCanRxMeta *rx)
+{
+    uint32_t tx = rx->source.tx_sequence;
+
+    if (!o->generationOpen || (rx->source.boot_id != o->acceptedBoot) || (tx == 0u))
+    {
+        return;
+    }
+    if ((tx == 1u) && (*highest > 1u))
+    {
+        count(&o->txRestartsSameBoot);
+    }
+    if (tx > *highest)
+    {
+        *highest = tx;
     }
 }
 
@@ -371,6 +407,11 @@ void VssInputNet_OnEvent(VssOrigin origin, const NetVssEvent *m, const NetCanRxM
         count(&o->eventsDiscarded);
         return;
     }
+    if (!VssTime_IsRegistered())
+    {
+        count(&o->inputsWithoutClock);
+        return;
+    }
     now = now_evidence(origin);
     receivedAt = receive_time(origin, rx->received_at_ms, now.latest);
     if (!VssInputNet_ConvertEvent(origin, m, rx, &receivedAt, &key, &evidence))
@@ -378,7 +419,11 @@ void VssInputNet_OnEvent(VssOrigin origin, const NetVssEvent *m, const NetCanRxM
         count(&o->eventsDiscarded);
         return;
     }
-    follow_generation(origin, rx->source.boot_id, &now);
+    if (m->occurrence_id != 0u)
+    {
+        follow_generation(origin, rx, &receivedAt, &now);
+    }
+    watch_tx(o, &s_tx[(size_t)origin].eventTx, rx);
     o->lastEvent = Input_Process(&evidence, &now, NULL, 0u, NULL);
     count(&o->eventsForwarded);
 }
@@ -400,14 +445,28 @@ void VssInputNet_OnWarningState(VssOrigin origin, const NetVssWarningState *m, c
         count(&o->warningFramesUnverified);
         return;
     }
+    if (!VssTime_IsRegistered())
+    {
+        count(&o->inputsWithoutClock);
+        return;
+    }
     now = now_evidence(origin);
     receivedAt = receive_time(origin, rx->received_at_ms, now.latest);
     verified = VssInputNet_ConvertWarning(origin, m, rx, &receivedAt, &s_frame);
+    o->warningRawQuality[0] = m->rear_activation_quality;
+    o->warningRawReason[0] = m->rear_activation_reason;
+    o->warningRawQuality[1] = m->rear_obstacle_quality;
+    o->warningRawReason[1] = m->rear_obstacle_reason;
+    o->warningRawQuality[2] = m->occupant_hazard_quality;
+    o->warningRawReason[2] = m->occupant_hazard_reason;
+    o->warningRawQuality[3] = m->antipinch_quality;
+    o->warningRawReason[3] = m->antipinch_reason;
     /* A frame that failed the structure rule does not change the generation;
      * INPUT rejects it without consuming its order. */
     if (verified)
     {
-        follow_generation(origin, rx->source.boot_id, &now);
+        follow_generation(origin, rx, &receivedAt, &now);
+        watch_tx(o, &s_tx[(size_t)origin].warningTx, rx);
     }
     else
     {
@@ -447,7 +506,9 @@ bool VssInputNet_ToNetStatus(const VssStatusSnapshot *s, const VssTimeEvidence *
     out->vss_state = s->state;
     out->vss_availability = s->availability;
     out->vss_accepting_events = s->accepting ? NET_FLAG_YES : NET_FLAG_NO;
-    out->vss_fault_active = (s->currentMask != 0u) ? NET_FLAG_YES : NET_FLAG_NO;
+    /* Only the output path fault is an active output fault; fault_mask
+     * carries every current fault. */
+    out->vss_fault_active = ((s->currentMask & (1u << VSS_FAULT_OUTPUT)) != 0u) ? NET_FLAG_YES : NET_FLAG_NO;
     out->fault_mask = s->currentMask;
     if (s->lastFaultPresent)
     {
@@ -492,6 +553,7 @@ void VssApp_OnDomainWarningState(const NetVssWarningState *message, const NetCan
 void VssInputNet_ResetForTest(void)
 {
     memset(s_obs, 0, sizeof s_obs);
+    memset(s_tx, 0, sizeof s_tx);
     memset(&s_frame, 0, sizeof s_frame);
 }
 #endif

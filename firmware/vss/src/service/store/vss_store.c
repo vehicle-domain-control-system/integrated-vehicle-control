@@ -250,8 +250,9 @@ static void close_rear(VssOrigin origin)
     VssRearObservation *g = &rear[(size_t)origin];
     VssWarningObservation *r = &warnings[warning_index(origin, VSS_SIGNAL_REAR_RISK)];
     bool changed = g->riskApplicable;
-    if (r->lastValidPresent && (!g->fencePresent ||
-        newer_warning(&r->lastValidMeta, &g->riskFence))) {
+    /* The fence moves to any rear evidence that would pass it, so each
+     * generation fences its own last evaluation. */
+    if (r->lastValidPresent && passes_rear_fence(&r->lastValidMeta, g)) {
         g->riskFence = r->lastValidMeta;
         g->fencePresent = true;
         changed = true;

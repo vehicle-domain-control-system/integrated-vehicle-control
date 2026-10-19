@@ -30,7 +30,8 @@ static void Reset(uint64_t nowMs)
     Store_TestReset();
     VssInputNet_ResetForTest();
     s_ticks = 0u;
-    VssTime_Init(ReadTicks);
+    VssTime_ResetForTest();
+    (void)VssTime_Init(ReadTicks);
     SetNowMs(nowMs);
 }
 
@@ -227,13 +228,18 @@ static void test_event_field_rows(void)
 /* The same rows observed after INPUT and STORE accepted the event. */
 static void test_event_rows_reach_store(void)
 {
-    NetVssEvent m = Event(NET_VSS_EVENT_LOCK_COMPLETE, 77u);
-    NetCanRxMeta meta = Meta(3u, 12u, 1995u);
+    NetVssEvent m = Event(NET_VSS_EVENT_WELCOME, 76u);
+    NetCanRxMeta meta = Meta(3u, 11u, 1800u);
     VssOccurrenceKey key = Key(VSS_TEST, 3u, 77u);
     VssOccurrenceObservation r;
     VssInputContextObservation c;
 
-    Reset(2000u);
+    /* INPUT opens before the event below originated */
+    Reset(1800u);
+    VssInputNet_OnEvent(VSS_TEST, &m, &meta);
+    SetNowMs(2000u);
+    m = Event(NET_VSS_EVENT_LOCK_COMPLETE, 77u);
+    meta = Meta(3u, 12u, 1995u);
     m.original_age_ms = 100u;
     m.use_limit_ms = 400u;
     m.input_availability = NET_AVAILABILITY_LIMITED;
@@ -274,31 +280,43 @@ static void test_receive_time_row(void)
     VssOccurrenceKey key = Key(VSS_TEST, 1u, 1u);
     VssOccurrenceObservation r;
 
-    Reset(2000u);
-    meta = Meta(1u, 1u, 1990u);
+    Reset(1990u);
+    m.occurrence_id = 9u;
+    meta = Meta(1u, 1u, 1990u); /* opens INPUT */
+    VssInputNet_OnEvent(VSS_TEST, &m, &meta);
+    SetNowMs(2000u);
+    m.occurrence_id = 1u;
+    meta = Meta(1u, 2u, 1990u);
     VssInputNet_OnEvent(VSS_TEST, &m, &meta);
     CHECK(Store_ReadOccurrence(&key, &r));
     CHECK_EQ_U(r.event.meta.original.latest, 1990u);
     CHECK_EQ_U(r.event.meta.original.epoch, 1u);
 
     m.occurrence_id = 2u;
-    meta = Meta(1u, 2u, 2010u); /* received after now */
+    meta = Meta(1u, 3u, 2010u); /* received after now */
     VssInputNet_OnEvent(VSS_TEST, &m, &meta);
     CHECK_EQ_U(Obs(VSS_TEST).lastEvent.validation, VSS_VALIDATION_REJECTED);
     key.occurrenceId = 2u;
     CHECK(!Store_ReadOccurrence(&key, &r));
 
     /* now = 4 294 967 500 ms (204 ms past 2^32), received 400 ms earlier,
-     * before the wrap */
+     * before the wrap; INPUT opened at 4 294 967 095 ms */
     Input_TestReset();
     Store_TestReset();
     VssInputNet_ResetForTest();
+    s_ticks = 3435973676u;
+    VssTime_ResetForTest();
+    CHECK(VssTime_Init(ReadTicks));
+    CHECK_EQ_U(VssTime_NowMs(), 4294967095ull);
+    m.occurrence_id = 4u;
+    meta = Meta(1u, 1u, 4294967095u);
+    VssInputNet_OnEvent(VSS_TEST, &m, &meta);
+    CHECK(Obs(VSS_TEST).generationOpen);
     s_ticks = 3435974000u;
-    VssTime_Init(ReadTicks);
     CHECK_EQ_U(VssTime_NowMs(), 4294967500ull);
     CHECK_EQ_U(VssTime_NowMs32(), 204u);
     m.occurrence_id = 3u;
-    meta = Meta(1u, 1u, 4294967100u);
+    meta = Meta(1u, 2u, 4294967100u);
     VssInputNet_OnEvent(VSS_TEST, &m, &meta);
     key.occurrenceId = 3u;
     CHECK(Store_ReadOccurrence(&key, &r));
@@ -805,7 +823,7 @@ static void test_status_row(void)
     CHECK_EQ_U(out.vss_state, NET_VSS_STATE_PLAYING);
     CHECK_EQ_U(out.vss_availability, NET_VSS_AVAILABILITY_DEGRADED);
     CHECK_EQ_U(out.vss_accepting_events, NET_FLAG_YES);
-    CHECK_EQ_U(out.vss_fault_active, NET_FLAG_YES);
+    CHECK_EQ_U(out.vss_fault_active, NET_FLAG_NO); /* no output fault among the current ones */
     CHECK_EQ_U(out.fault_mask, NET_VSS_FAULT_SOUND_ASSET_UNAVAILABLE | NET_VSS_FAULT_PLAYBACK_STATE_FAILURE);
     CHECK_EQ_U(out.vss_last_fault, NET_VSS_FAULT_CODE_PLAYBACK_STATE_FAILURE);
     CHECK_EQ_U(out.last_fault_occurrence, 3u);
@@ -821,7 +839,13 @@ static void test_status_row(void)
         CHECK(VssInputNet_ToNetStatus(&s, &now, &out));
         CHECK_EQ_U(out.vss_last_fault, k + 1u);
         CHECK_EQ_U(out.fault_mask, 1u << k);
+        CHECK_EQ_U(out.vss_fault_active, (k == (unsigned)VSS_FAULT_OUTPUT) ? NET_FLAG_YES : NET_FLAG_NO);
     }
+    s = Snapshot();
+    s.currentMask = (uint8_t)((1u << VSS_FAULT_ASSET) | (1u << VSS_FAULT_OUTPUT));
+    CHECK(VssInputNet_ToNetStatus(&s, &now, &out));
+    CHECK_EQ_U(out.vss_fault_active, NET_FLAG_YES);
+    CHECK_EQ_U(out.fault_mask, NET_VSS_FAULT_SOUND_ASSET_UNAVAILABLE | NET_VSS_FAULT_AUDIO_OUTPUT_FAILURE);
     /* ages saturate at 65535 */
     s = Snapshot();
     now = Rx(VSS_PRODUCT, 200000u);
@@ -912,12 +936,23 @@ static void test_net_stub(void)
     CHECK(!NetStub_ReadLastStatus(NULL));
 }
 
+static uint32_t OtherTicks(void)
+{
+    return 0u;
+}
+
+/* One registration per run: NULL and a second registration are refused and
+ * leave the clock running on. */
 static void test_clock(void)
 {
-    VssTime_Init(NULL);
+    VssTime_ResetForTest();
+    CHECK(!VssTime_Init(NULL));
+    CHECK(!VssTime_IsRegistered());
     CHECK_EQ_U(VssTime_NowMs(), 0u);
+    CHECK_EQ_U(VssTime_NowMs32(), 0u);
     s_ticks = 800u;
-    VssTime_Init(ReadTicks);
+    CHECK(VssTime_Init(ReadTicks));
+    CHECK(VssTime_IsRegistered());
     CHECK_EQ_U(VssTime_NowMs(), 1000u);
     s_ticks = 801u;
     CHECK_EQ_U(VssTime_NowMs(), 1001u); /* 1001.25 rounded down */
@@ -926,6 +961,10 @@ static void test_clock(void)
     s_ticks = 0x100u; /* tick counter wrapped */
     CHECK_EQ_U(VssTime_NowMs(), ((0x100000000ull + 0x100u) * 5u) / 4u);
     CHECK_EQ_U(VssTime_NowMs32(), (uint32_t)(((0x100000000ull + 0x100u) * 5u) / 4u));
+    CHECK(!VssTime_Init(OtherTicks));
+    CHECK(!VssTime_Init(ReadTicks));
+    s_ticks = 0x200u;
+    CHECK_EQ_U(VssTime_NowMs(), ((0x100000000ull + 0x200u) * 5u) / 4u);
 }
 
 int main(void)

@@ -11,11 +11,21 @@ uint64_t VssTime_TicksToMs(uint64_t ticks)
     return (ticks * 1000u) / VSS_TIME_TICK_HZ;
 }
 
-void VssTime_Init(VssTimeTickSource readTicks)
+bool VssTime_Init(VssTimeTickSource readTicks)
 {
+    if ((readTicks == NULL) || (s_readTicks != NULL))
+    {
+        return false;
+    }
     s_readTicks = readTicks;
-    s_lastTicks = (readTicks != NULL) ? readTicks() : 0u;
+    s_lastTicks = readTicks();
     s_tickWraps = 0u;
+    return true;
+}
+
+bool VssTime_IsRegistered(void)
+{
+    return s_readTicks != NULL;
 }
 
 uint64_t VssTime_NowMs(void)
@@ -39,3 +49,12 @@ uint32_t VssTime_NowMs32(void)
 {
     return (uint32_t)VssTime_NowMs();
 }
+
+#if VSS_CFG_HOST_TEST
+void VssTime_ResetForTest(void)
+{
+    s_readTicks = NULL;
+    s_lastTicks = 0u;
+    s_tickWraps = 0u;
+}
+#endif

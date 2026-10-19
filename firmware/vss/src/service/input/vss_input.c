@@ -14,11 +14,16 @@ typedef struct {
     uint32_t last;
     VssWarningFrame lastFrame; /* pointer-free typed duplicate identity */
 } InputWarningOrder;
+/* Boot ids carry no order, so a late frame of any recently replaced boot
+ * would look like a new DOMAIN restart. The last replaced boots are kept. */
+#define INPUT_RETIRED_BOOTS 4u
 typedef struct {
     bool configured;
     bool open;
     uint32_t boot;
-    uint32_t retiredBoot; /* boot replaced by the last new generation; 0 = none */
+    uint32_t retiredBoots[INPUT_RETIRED_BOOTS]; /* ring of replaced boots; 0 = empty */
+    size_t retiredNext;
+    uint64_t openedAt; /* first opening; older events may have played before a VSS restart */
     VssTimeEvidence lastTime;
     InputEventOrder eventOrder;
     InputWarningOrder warningOrder;
@@ -189,8 +194,18 @@ bool Input_OpenAfterSynchronization(VssOrigin origin, uint32_t domainBoot,
     s->configured = true;
     s->open = true;
     s->boot = domainBoot;
+    s->openedAt = synchronizedAt->earliest;
     s->lastTime = *synchronizedAt;
     return true;
+}
+
+static bool retired(const InputSource *s, uint32_t boot)
+{
+    size_t i;
+    for (i = 0u; i < INPUT_RETIRED_BOOTS; ++i) {
+        if (boot != 0u && s->retiredBoots[i] == boot) { return true; }
+    }
+    return false;
 }
 
 static VssInputApplication lose_context(size_t lane, VssInputQuality quality,
@@ -245,7 +260,7 @@ bool Input_AcceptNewGeneration(VssOrigin origin, uint32_t newBoot,
         return false;
     }
     s = &sources[(size_t)origin];
-    if (!s->configured || newBoot == s->boot || newBoot == s->retiredBoot ||
+    if (!s->configured || newBoot == s->boot || retired(s, newBoot) ||
         clock_discontinuous(s, at)) { return false; }
     if (s->open) {
         /* No source-generation time proof: preserve UNKNOWN loss basis. */
@@ -256,7 +271,8 @@ bool Input_AcceptNewGeneration(VssOrigin origin, uint32_t newBoot,
     /* The new generation starts its own transport order, receive monitor and
      * per-lane provenance; the old generation's warnings stay fenced in STORE
      * until a new-generation evaluation replaces them. */
-    s->retiredBoot = s->boot;
+    s->retiredBoots[s->retiredNext] = s->boot;
+    s->retiredNext = (s->retiredNext + 1u) % INPUT_RETIRED_BOOTS;
     s->boot = newBoot;
     s->open = true;
     s->lastTime = *at;
@@ -341,10 +357,21 @@ static VssInputApplication process(const VssInputEvidence *in, const VssTimeEvid
         r.validation = VSS_VALIDATION_REJECTED;
         return r;
     }
+    /* Confirm the typed delivery's RX clock context before its generation
+     * and TX: a delivery without usable RX time neither consumes TX nor
+     * closes the current generation. Upstream wire/source association remains
+     * the adapter's proof obligation; this check does not require the EVENT's
+     * age or semantic value to be valid. */
+    if (!valid_time(&in->receivedAt) || in->receivedAt.domain != now->domain ||
+        in->receivedAt.epoch != now->epoch || in->receivedAt.latest > now->earliest) {
+        diagnose(VSS_DIAG_TIME, in, now);
+        r.validation = VSS_VALIDATION_REJECTED;
+        return r;
+    }
     if (!s->open || key->generation == 0u || key->generation != s->boot) {
-        /* A late delivery of the replaced boot cannot close the new one. */
+        /* A late delivery of a replaced boot cannot close the new one. */
         if (s->open && key->generation != 0u && key->generation != s->boot &&
-            key->generation != s->retiredBoot) {
+            !retired(s, key->generation)) {
             /* No source-generation time proof: preserve UNKNOWN loss basis. */
             VssFactTime loss = *now;
             loss.continuity = VSS_CONTINUITY_UNKNOWN;
@@ -352,15 +379,6 @@ static VssInputApplication process(const VssInputEvidence *in, const VssTimeEvid
         }
         diagnose(VSS_DIAG_GENERATION, in, now);
         if (!r.contextApplied) { r.validation = VSS_VALIDATION_REJECTED; }
-        return r;
-    }
-    /* Confirm the typed delivery's RX clock context before consuming its TX.
-     * Upstream wire/source association remains the adapter's proof obligation;
-     * this check does not require the EVENT's age or semantic value to be valid. */
-    if (!valid_time(&in->receivedAt) || in->receivedAt.domain != now->domain ||
-        in->receivedAt.epoch != now->epoch || in->receivedAt.latest > now->earliest) {
-        diagnose(VSS_DIAG_TIME, in, now);
-        r.validation = VSS_VALIDATION_REJECTED;
         return r;
     }
     if (s->eventOrder.present && in->deliveryOrder <= s->eventOrder.last) {
@@ -402,9 +420,12 @@ static VssInputApplication process(const VssInputEvidence *in, const VssTimeEvid
         return r;
     }
     event.signal = in->signal;
+    /* Without the ledger of a VSS run before this one, an event that
+     * originated before INPUT opened may already have played. */
     if (!project(in, now, &event.meta) ||
         now->earliest < event.meta.original.latest ||
-        now->latest - event.meta.original.earliest >= event.meta.useLimit) {
+        now->latest - event.meta.original.earliest >= event.meta.useLimit ||
+        event.meta.original.latest < s->openedAt) {
         Store_ProtectRejectedEvent(key, in->signal);
         diagnose(VSS_DIAG_TIME, in, now);
         r.validation = VSS_VALIDATION_REJECTED;
@@ -712,7 +733,7 @@ static VssWarningBundleResult process_warning_frame(const VssWarningFrame *f, co
         diagnose(VSS_DIAG_ARGUMENT, NULL, now); return result;
     }
     if (!s->open || f->domainBoot != s->boot) {
-        if (s->open && f->domainBoot != s->boot && f->domainBoot != s->retiredBoot) {
+        if (s->open && f->domainBoot != s->boot && !retired(s, f->domainBoot)) {
             VssFactTime loss = *now; loss.continuity = VSS_CONTINUITY_UNKNOWN;
             (void)close_source(f->origin, &loss);
         }
