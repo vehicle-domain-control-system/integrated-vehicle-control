@@ -15,7 +15,11 @@ Besides #include edges it checks:
   * the interrupt callbacks that the generated configuration binds by name are
     defined only under hal/s32k344,
   * no extern data declarations anywhere (modules share state only through
-    functions; extern is allowed on function declarations).
+    functions; extern is allowed on function declarations and extern "C").
+
+Unmodified third-party files (THIRD_PARTY) skip the standard and vendor
+header rules: their extra includes sit behind feature switches the build
+turns off. Instead they must not call an allocator.
 
 Usage: check_layers.py [--src DIR] [--selftest]
 Exit status 0 = no violation.
@@ -54,6 +58,11 @@ STD_HEADERS = {
 FORBIDDEN_STD = {'stdlib.h', 'malloc.h'}  # no dynamic allocation
 HAL_INCLUDE_STD = {'stdint.h', 'stdbool.h'}
 
+# minimp3.h: <stdlib.h>, and SIMD intrinsics headers in branches that
+# MINIMP3_NO_SIMD turns off
+THIRD_PARTY = {'service/audio_stream/decoder/minimp3.h'}
+ALLOC_CALL = re.compile(r'\b(?:malloc|calloc|realloc|free)\s*\(')
+
 GENERATED_SYMBOLS = re.compile(
     r'\b(?:Clock_Ip_aClockConfig|g_pin_mux_InitConfigArr\w*|NUM_OF_CONFIGURED_PINS\w*'
     r'|intCtrlConfig|I2c_Lpi2cMaster\w*|PIT_0_(?:InitConfig|ChannelConfig|CH)\w*'
@@ -67,7 +76,7 @@ CALLBACK_NAMES = re.compile(
     r'|AudioPlayer_Sai0IrqHandler|Cs2100Ref_Callback)\b')
 
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.M)
-EXTERN_RE = re.compile(r'\bextern\b([^;{]*)[;{]')
+EXTERN_RE = re.compile(r'\bextern\b(?!\s*"C")([^;{]*)[;{]')
 COMMENT_RE = re.compile(r'/\*.*?\*/|//[^\n]*', re.S)
 
 
@@ -133,6 +142,8 @@ def check(src):
             kind, name = m.group(1), m.group(2)
             base = os.path.basename(name)
             if kind == '<':
+                if rel in THIRD_PARTY:
+                    continue
                 if name in FORBIDDEN_STD:
                     bad(rel, line, '<%s> is not allowed (no dynamic allocation)' % name)
                 elif name in STD_HEADERS:
@@ -174,6 +185,11 @@ def check(src):
                 line = clean.count('\n', 0, m.start()) + 1
                 bad(rel, line, 'extern data declaration "%s" (share state through functions)'
                     % ' '.join(m.group(0).split()))
+
+        if rel in THIRD_PARTY:
+            for m in ALLOC_CALL.finditer(clean):
+                bad(rel, clean.count('\n', 0, m.start()) + 1,
+                    'allocation call "%s" in third-party source' % m.group(0).rstrip('( '))
 
         is_cfg = rel == 'hal/s32k344/hal_s32k344_cfg.h'
         for lineno, ln in enumerate(clean.split('\n'), 1):
@@ -231,6 +247,13 @@ def selftest():
         ('extern function ok', {'driver/d.h': 'extern void Driver_Run(void);\n'
                                               'extern int Driver_Get(int a, int (*cb)(int));\n'}, None),
         ('extern in comment ok', {'driver/d.c': '/* extern int g_x; */\n// extern int g_y;\n'}, None),
+        ('extern "C" ok', {'driver/d.h': '#ifdef __cplusplus\nextern "C" {\n#endif\n'}, None),
+        ('third-party includes ok', {'service/audio_stream/decoder/minimp3.h':
+                                     '#include <stdlib.h>\n#include <immintrin.h>\n'}, None),
+        ('third-party alloc', {'service/audio_stream/decoder/minimp3.h': 'void *p = malloc(4);\n'},
+         'allocation call'),
+        ('stdlib next to third-party', {'service/audio_stream/decoder/port.c': '#include <stdlib.h>\n'},
+         'no dynamic allocation'),
         ('rtd in service', {'service/s.c': '#include "Sai_Ip.h"\n'}, 'does not resolve relative'),
         ('rtd angle in driver', {'driver/d.c': '#include <Sai_Ip.h>\n'}, 'vendor header'),
         ('rtd in hal ok', {'hal/s32k344/x.c': '#include "Sai_Ip.h"\nvoid f(void){ Sai_Ip_Send(0,0,0); }\n'}, None),

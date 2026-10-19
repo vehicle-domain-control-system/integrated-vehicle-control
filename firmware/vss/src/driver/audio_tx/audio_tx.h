@@ -6,6 +6,11 @@
 
 #include "../../infra/vss_config.h"
 
+/* One half-buffer: AUDIO_TX_HALF_FRAMES stereo frames of interleaved int16
+ * samples (left, right), 21.3 ms at 48 kHz. */
+#define AUDIO_TX_HALF_FRAMES 1024u
+#define AUDIO_TX_HALF_WORDS  (2u * AUDIO_TX_HALF_FRAMES)
+
 typedef enum {
     AUDIO_TX_EVENT_NONE = 0,
     AUDIO_TX_EVENT_HALF_FREE,
@@ -16,7 +21,7 @@ typedef struct {
     AudioTxEventKind kind;
     uint8_t  freeHalf;       /* 0 = A, 1 = B; valid for HALF_FREE */
     uint32_t generation;     /* count of half-buffer boundaries so far */
-    uint32_t boundaryTick;   /* HalTimer tick captured at the boundary */
+    uint32_t boundaryTick;   /* timer tick captured at the boundary (VSS_TIME_TICK_HZ) */
     uint32_t faultMask;      /* valid for FAULT */
 } AudioTxEvent;
 
@@ -62,7 +67,7 @@ bool AudioTx_Start(void);
  * is detected here. After a fault every call returns FAULT. */
 bool AudioTx_Advance(AudioTxEvent *ev);
 
-/* Copies one half's worth of PCM (HAL_AUDIO_HALF_WORDS words) into the ring.
+/* Copies one half's worth of PCM (AUDIO_TX_HALF_WORDS words) into the ring.
  * pcm == NULL writes silence. The request is rejected unless generation is
  * the current one and the half is the free half reported for it, not yet
  * written. AUDIO_TX_LATE: a boundary occurred during the write, or a fault

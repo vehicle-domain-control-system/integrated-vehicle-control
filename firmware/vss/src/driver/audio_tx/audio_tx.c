@@ -1,8 +1,14 @@
 #include "audio_tx.h"
 #include "../../hal/include/hal_audio_tx.h"
 #include "../../hal/include/hal_timer.h"
+#include "../../infra/vss_time.h"
 
 #include <stddef.h>
+
+/* Callers size their PCM by the driver header and convert boundary ticks
+ * with the system time rate; both must match the HAL. */
+typedef char AudioTx_HalfWordsMatchHal[(AUDIO_TX_HALF_WORDS == HAL_AUDIO_HALF_WORDS) ? 1 : -1];
+typedef char AudioTx_TickRateMatchesHal[(VSS_TIME_TICK_HZ == HAL_TIMER_TICK_HZ) ? 1 : -1];
 
 #define AUDIO_TX_HALF_A     0U
 #define AUDIO_TX_HALF_B     1U
