@@ -838,6 +838,55 @@ static void test_report_numbers(void)
     CHECK(!Health_BuildStatus(NULL, &s_status) && !Health_BuildStatus(&now, NULL));
 }
 
+/* Neither the evaluation counter nor the report number stops the reports:
+ * the counter saturates as a diagnostic only, and the number after
+ * UINT32_MAX is 1 (0 is not a report number). */
+static void test_counters_never_stop_reports(void)
+{
+    VssTimeEvidence now;
+    NetVssStatus net;
+
+    Setup(true);
+    Evaluate();
+    CHECK(Build());
+    CHECK_EQ_U(s_status.reportSequence, 1u);
+
+    /* Evaluation counter at its limit. */
+    Health_SeedCountersForTest(UINT32_MAX - 1u, 10u);
+    JumpToMs(300u);
+    Evaluate();
+    CHECK(Build());
+    CHECK_EQ_U(s_status.reportSequence, 11u);
+    JumpToMs(600u);
+    Evaluate();
+    CHECK_EQ_U(s_health.evaluations, UINT32_MAX);
+    CHECK(Build());
+    CHECK_EQ_U(s_status.reportSequence, 12u);
+    JumpToMs(900u);
+    Evaluate();
+    CHECK(Build());
+    CHECK_EQ_U(s_status.reportSequence, 13u);
+
+    /* Report number wraps past UINT32_MAX to 1. */
+    Health_SeedCountersForTest(5u, UINT32_MAX - 1u);
+    JumpToMs(1200u);
+    Evaluate();
+    CHECK(Build());
+    CHECK_EQ_U(s_status.reportSequence, UINT32_MAX);
+    JumpToMs(1500u);
+    Evaluate();
+    CHECK(Build());
+    CHECK_EQ_U(s_status.reportSequence, 1u);
+    now = Now();
+    memset(&net, 0, sizeof net);
+    CHECK(VssInputNet_ToNetStatus(&s_status, &now, &net));
+    CHECK_EQ_U(net.update_sequence, 1u);
+    JumpToMs(1800u);
+    Evaluate();
+    CHECK(Build());
+    CHECK_EQ_U(s_status.reportSequence, 2u);
+}
+
 /* ---- last fault ---------------------------------------------------------- */
 
 static void ExpectLast(VssFaultKind kind, uint32_t occurrence, uint64_t atMs, int line)
@@ -998,6 +1047,7 @@ int main(void)
     test_full_ledger_is_a_state_fault();
     test_store_refusal_clears_after_a_clean_session();
     test_report_numbers();
+    test_counters_never_stop_reports();
     test_last_fault_selection();
     test_resubmission_keeps_the_number();
     TEST_FINISH();

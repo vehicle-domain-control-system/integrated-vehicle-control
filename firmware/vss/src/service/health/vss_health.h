@@ -47,7 +47,7 @@ typedef struct
     VssFaultKind lastFaultKind;
     uint32_t lastFaultOccurrence;
     uint64_t lastFaultAtMs;
-    uint32_t reportSequence;  /* +1 per new evaluation, from 1 */
+    uint32_t reportSequence;  /* +1 per new evaluation, from 1; after UINT32_MAX comes 1 */
     uint64_t evaluatedAtMs;
 } VssStatusSnapshot;
 
@@ -161,5 +161,12 @@ typedef struct
 } VssHealthObservation;
 
 bool Health_Read(VssHealthObservation *out);
+
+#if VSS_CFG_HOST_TEST
+/* Host tests only: sets the evaluation counter and the number of the last
+ * report (when one exists) to reach their limits without running that many
+ * evaluations. Not built for the target. */
+void Health_SeedCountersForTest(uint32_t evaluations, uint32_t lastReportSequence);
+#endif
 
 #endif /* VSS_HEALTH_H */

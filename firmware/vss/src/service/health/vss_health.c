@@ -43,11 +43,11 @@ static bool s_assetMissing;
 static uint32_t s_supportedRows;
 static uint32_t s_presentRows;
 
-static uint32_t s_evaluation;        /* Health_Evaluate calls that ran */
+static bool s_evaluated;             /* Health_Evaluate ran at least once */
 static uint64_t s_evaluatedMs;
 
 static bool s_reportPresent;
-static uint32_t s_reportEvaluation;  /* s_evaluation the report was made from */
+static bool s_evaluatedSinceReport;  /* an evaluation ran after the last report */
 static VssStatusSnapshot s_report;
 
 /* Scratch: too large for the stack. */
@@ -296,10 +296,10 @@ void Health_Init(void)
     s_assetMissing = false;
     s_supportedRows = 0u;
     s_presentRows = 0u;
-    s_evaluation = 0u;
+    s_evaluated = false;
     s_evaluatedMs = 0u;
     s_reportPresent = false;
-    s_reportEvaluation = 0u;
+    s_evaluatedSinceReport = false;
     memset(&s_report, 0, sizeof s_report);
     s_obs.state = (uint8_t)VSS_SERVICE_STARTUP;
     s_obs.availability = (uint8_t)VSS_SERVICE_UNAVAILABLE;
@@ -346,7 +346,7 @@ void Health_Evaluate(const VssTimeEvidence *now)
     uint8_t mask = 0u;
     size_t k;
 
-    if (!valid_time(now) || ((s_evaluation != 0u) && (now->earliest < s_evaluatedMs)))
+    if (!valid_time(now) || (s_evaluated && (now->earliest < s_evaluatedMs)))
     {
         count_up(&s_obs.invalidTimes);
         return;
@@ -415,10 +415,8 @@ void Health_Evaluate(const VssTimeEvidence *now)
     s_obs.muteRequested = control.muteLatched;
     s_obs.muteAccepted = control.muteAccepted;
     count_up(&s_obs.evaluations);
-    if (s_evaluation != UINT32_MAX)
-    {
-        ++s_evaluation;
-    }
+    s_evaluated = true;
+    s_evaluatedSinceReport = true;
     s_evaluatedMs = nowMs;
 }
 
@@ -469,7 +467,7 @@ bool Health_BuildStatus(const VssTimeEvidence *now, VssStatusSnapshot *out)
         count_up(&s_obs.invalidTimes);
         return false;
     }
-    if ((s_evaluation == 0u) || (s_reportPresent && (s_reportEvaluation == s_evaluation)))
+    if (!s_evaluatedSinceReport)
     {
         return false;   /* no evaluation since the last report */
     }
@@ -492,14 +490,18 @@ bool Health_BuildStatus(const VssTimeEvidence *now, VssStatusSnapshot *out)
     {
         return false;
     }
-    if (s_reportPresent && (s_report.reportSequence == UINT32_MAX))
+    /* 0 is not a report number: after UINT32_MAX the numbers go on at 1. */
+    if (!s_reportPresent || (s_report.reportSequence == UINT32_MAX))
     {
-        return false;
+        s_next.reportSequence = 1u;
     }
-    s_next.reportSequence = s_reportPresent ? (s_report.reportSequence + 1u) : 1u;
+    else
+    {
+        s_next.reportSequence = s_report.reportSequence + 1u;
+    }
     s_report = s_next;
     s_reportPresent = true;
-    s_reportEvaluation = s_evaluation;
+    s_evaluatedSinceReport = false;
     *out = s_report;
     return true;
 }
@@ -528,3 +530,14 @@ bool Health_Read(VssHealthObservation *out)
     *out = s_obs;
     return true;
 }
+
+#if VSS_CFG_HOST_TEST
+void Health_SeedCountersForTest(uint32_t evaluations, uint32_t lastReportSequence)
+{
+    s_obs.evaluations = evaluations;
+    if (s_reportPresent)
+    {
+        s_report.reportSequence = lastReportSequence;
+    }
+}
+#endif
