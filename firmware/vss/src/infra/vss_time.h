@@ -10,6 +10,10 @@
  * system clock (1 tick = 1.25 ms). */
 #define VSS_TIME_TICK_HZ 800u
 
+/* Epoch of every time taken from this clock: it never restarts within a
+ * run, so all of them are comparable. */
+#define VSS_TIME_EPOCH 1u
+
 /* Milliseconds covered by a tick count, rounded down. */
 uint64_t VssTime_TicksToMs(uint64_t ticks);
 

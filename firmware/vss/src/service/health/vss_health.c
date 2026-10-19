@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../asset/audio_asset.h"
+#include "../asset/vss_cue_table.h"
 #include "../playback/vss_playback.h"
 #include "../../driver/audio_control/audio_control.h"
 #include "../../driver/audio_tx/audio_tx.h"
@@ -36,6 +37,11 @@ static uint64_t s_lastSeenSession;
 
 static bool s_assetsChecked;
 static bool s_assetMissing;
+
+/* Cue rows (bit i = row i of the cue table) of the supported service set,
+ * and those whose asset had data at the first evaluation. */
+static uint32_t s_supportedRows;
+static uint32_t s_presentRows;
 
 static uint32_t s_evaluation;        /* Health_Evaluate calls that ran */
 static uint64_t s_evaluatedMs;
@@ -116,6 +122,50 @@ static bool assets_present(void)
     return true;
 }
 
+/* The supported set is every cue row except the window anti-pinch warning,
+ * which the product input path does not carry. */
+static void check_cue_rows(void)
+{
+    size_t i;
+
+    s_supportedRows = 0u;
+    s_presentRows = 0u;
+    for (i = 0u; i < AUDIO_ASSET_CUE_ROWS; ++i)
+    {
+        const AudioAsset_CueRow *row = AudioAsset_CueAt(i);
+        uint32_t size = 0u;
+
+        if ((row == NULL) || (row->signal == AUDIO_ASSET_CUE_SIGNAL_ANTI_PINCH))
+        {
+            continue;
+        }
+        s_supportedRows |= 1UL << i;
+        if ((AudioAsset_GetSize(row->asset, &size) == AUDIO_ASSET_STATUS_OK) && (size != 0u))
+        {
+            s_presentRows |= 1UL << i;
+        }
+    }
+}
+
+/* Supported rows that can play: data present at boot, and the asset has not
+ * failed to decode since. */
+static uint32_t ready_rows(uint32_t failedAssets)
+{
+    uint32_t ready = s_presentRows & s_supportedRows;
+    size_t i;
+
+    for (i = 0u; i < AUDIO_ASSET_CUE_ROWS; ++i)
+    {
+        const AudioAsset_CueRow *row = AudioAsset_CueAt(i);
+
+        if ((row != NULL) && (row->asset < 32u) && ((failedAssets & (1UL << row->asset)) != 0u))
+        {
+            ready &= ~(1UL << i);
+        }
+    }
+    return ready;
+}
+
 static uint64_t latest_session(const VssPlaybackObservation *pb)
 {
     uint64_t s = pb->present ? pb->session : 0u;
@@ -157,8 +207,9 @@ static void take_reports(uint64_t nowMs)
 }
 
 /* Playback refusals and stream faults since the previous evaluation, and
- * the clearing of refusals by later sessions. True when a session the
- * stream reported STARTED for is still running. */
+ * the clearing of refusals by later sessions. True when a session is
+ * playing: a stateful session the stream reported STARTED for, or an event
+ * session whose start STORE accepted, that has not ended. */
 static bool poll_playback(uint64_t nowMs, bool *outputFailed)
 {
     const VssPlaybackObservation *pb = &s_pb;
@@ -224,7 +275,7 @@ static bool poll_playback(uint64_t nowMs, bool *outputFailed)
         s_stateActive = false;
     }
     *outputFailed = pb->outputFailed;
-    return pb->present && (pb->session != 0u) && (pb->lastStartedSession == pb->session);
+    return pb->present && (pb->session != 0u) && pb->started;
 }
 
 void Health_Init(void)
@@ -243,6 +294,8 @@ void Health_Init(void)
     s_lastSeenSession = 0u;
     s_assetsChecked = false;
     s_assetMissing = false;
+    s_supportedRows = 0u;
+    s_presentRows = 0u;
     s_evaluation = 0u;
     s_evaluatedMs = 0u;
     s_reportPresent = false;
@@ -288,6 +341,7 @@ void Health_Evaluate(const VssTimeEvidence *now)
     bool playing;
     bool playbackOutput;
     bool ledgerFull;
+    uint32_t readyRows;
     bool condition[VSS_FAULT_KINDS];
     uint8_t mask = 0u;
     size_t k;
@@ -302,9 +356,11 @@ void Health_Evaluate(const VssTimeEvidence *now)
     {
         s_assetsChecked = true;
         s_assetMissing = !assets_present();
+        check_cue_rows();
     }
     take_reports(nowMs);
     playing = poll_playback(nowMs, &playbackOutput);
+    readyRows = ready_rows(s_pb.failedAssets);
 
     txMask = AudioTx_FaultMask();
     memset(&control, 0, sizeof control);
@@ -331,7 +387,10 @@ void Health_Evaluate(const VssTimeEvidence *now)
     }
 
     s_obs.currentMask = mask;
-    if ((mask & SERVICE_STOPPING_BITS) != 0u)
+    s_obs.supportedCueRows = s_supportedRows;
+    s_obs.readyCueRows = readyRows;
+    /* No supported cue can play: a confirmed fault leaves no new start. */
+    if (((mask & SERVICE_STOPPING_BITS) != 0u) || (readyRows == 0u))
     {
         s_obs.state = (uint8_t)VSS_SERVICE_FAULT;
         s_obs.availability = (uint8_t)VSS_SERVICE_UNAVAILABLE;
@@ -343,8 +402,10 @@ void Health_Evaluate(const VssTimeEvidence *now)
     }
     else
     {
+        /* FULL needs every supported cue ready, not only an empty mask. */
         s_obs.state = (uint8_t)(playing ? VSS_SERVICE_PLAYING : VSS_SERVICE_READY);
-        s_obs.availability = (uint8_t)((mask != 0u) ? VSS_SERVICE_DEGRADED : VSS_SERVICE_FULL);
+        s_obs.availability = (uint8_t)(((mask == 0u) && (readyRows == s_supportedRows))
+                                       ? VSS_SERVICE_FULL : VSS_SERVICE_DEGRADED);
     }
     /* Not tied to the INPUT admission: the DOMAIN may wait for this flag
      * before it sends, and INPUT opens only with the first DOMAIN message. */

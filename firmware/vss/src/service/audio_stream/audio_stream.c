@@ -364,3 +364,8 @@ bool AudioStream_IsIdle(void)
 {
     return s_phase == STREAM_PHASE_IDLE;
 }
+
+bool AudioStream_OutputFailed(void)
+{
+    return s_outputFailed || (AudioTx_FaultMask() != 0U);
+}

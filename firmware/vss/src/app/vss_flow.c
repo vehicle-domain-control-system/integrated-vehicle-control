@@ -8,6 +8,7 @@
 #include "../service/health/vss_health.h"
 #include "../service/input/vss_input_net.h"
 #include "../service/policy/vss_policy_store.h"
+#include "../infra/vss_time.h"
 
 #define FLOW_NO_START_BITS ((uint8_t)((1u << (unsigned)VSS_FAULT_INIT) | (1u << (unsigned)VSS_FAULT_OUTPUT)))
 
@@ -15,6 +16,8 @@ static VssOrigin s_origin;
 static VssFlowObservation s_obs;
 static bool s_reclaimed;
 static uint64_t s_lastReclaimMs;
+static VssTimeEvidence s_now;
+static bool s_statusWaiting;     /* s_status was refused and waits */
 
 /* Scratch: too large for the stack. */
 static VssPlanDescriptor s_catalog[AUDIO_ASSET_CUE_ROWS];
@@ -40,10 +43,22 @@ static void count_add(uint32_t *counter, size_t n)
     *counter = ((uint32_t)n > UINT32_MAX - *counter) ? UINT32_MAX : (*counter + (uint32_t)n);
 }
 
-static bool valid_now(const VssTimeEvidence *now)
+/* The pass time on the clock every input time is taken from. */
+static bool read_now(VssTimeEvidence *now)
 {
-    return (now != NULL) && (now->domain == s_origin) && (now->epoch != 0u) &&
-           (now->continuity == VSS_CONTINUITY_COMPARABLE) && (now->earliest <= now->latest);
+    uint64_t ms;
+
+    if (!VssTime_IsRegistered())
+    {
+        return false;
+    }
+    ms = VssTime_NowMs();
+    now->domain = s_origin;
+    now->epoch = VSS_TIME_EPOCH;
+    now->earliest = ms;
+    now->latest = ms;
+    now->continuity = VSS_CONTINUITY_COMPARABLE;
+    return true;
 }
 
 static void build_catalog(void)
@@ -81,6 +96,7 @@ void Flow_Init(VssOrigin activeOrigin)
     s_obs.origin = activeOrigin;
     s_reclaimed = false;
     s_lastReclaimMs = 0u;
+    s_statusWaiting = false;
     build_catalog();
     Playback_Init();
 }
@@ -97,43 +113,63 @@ static void reclaim(const VssTimeEvidence *now)
     s_lastReclaimMs = now->earliest;
 }
 
+/* Submits a new evaluation, or else the refused report that waits. A
+ * refused report stays for the next pass; a new evaluation replaces it. */
 static void publish_status(const VssTimeEvidence *now)
 {
     NetSubmitResult result;
 
-    if (!Health_BuildStatus(now, &s_status))
+    if (Health_BuildStatus(now, &s_status))
     {
-        return;
+        count_up(&s_obs.statusBuilt);
+        if (s_statusWaiting)
+        {
+            count_up(&s_obs.statusReplaced);
+        }
     }
-    count_up(&s_obs.statusBuilt);
-    if (!VssInputNet_ToNetStatus(&s_status, now, &s_netStatus))
+    else if (s_statusWaiting)
     {
-        count_up(&s_obs.statusUnconvertible);
-        return;
-    }
-    result = VssNet_PublishStatus(&s_netStatus);
-    if (result == NET_SUBMIT_OK)
-    {
-        count_up(&s_obs.statusPublished);
-        s_obs.lastPublishedSequence = s_netStatus.update_sequence;
+        count_up(&s_obs.statusResubmitted);
     }
     else
     {
-        count_up(&s_obs.statusRefused);
-        s_obs.lastRefusal = result;
+        return;
     }
+    s_statusWaiting = false;
+    if (!VssInputNet_ToNetStatus(&s_status, now, &s_netStatus))
+    {
+        count_up(&s_obs.statusUnconvertible);
+    }
+    else
+    {
+        result = VssNet_PublishStatus(&s_netStatus);
+        if (result == NET_SUBMIT_OK)
+        {
+            count_up(&s_obs.statusPublished);
+            s_obs.lastPublishedSequence = s_netStatus.update_sequence;
+        }
+        else
+        {
+            count_up(&s_obs.statusRefused);
+            s_obs.lastRefusal = result;
+            s_statusWaiting = true;
+        }
+    }
+    s_obs.statusWaiting = s_statusWaiting;
+    s_obs.waitingSequence = s_statusWaiting ? s_status.reportSequence : 0u;
 }
 
-VssFlowProgress Flow_Process(VssProcessingOpportunity opp, const VssTimeEvidence *now)
+VssFlowProgress Flow_Process(VssProcessingOpportunity opp)
 {
+    const VssTimeEvidence *now = &s_now;
     VssRequestDisposition disposition;
     uint64_t playbackRevision;
     size_t count = 0u;
     bool complete;
 
-    if (!valid_now(now))
+    if (!read_now(&s_now))
     {
-        count_up(&s_obs.refusedTimes);
+        count_up(&s_obs.passesWithoutClock);
         return VSS_FLOW_RECOLLECT_OBSERVATIONS;
     }
     count_up(&s_obs.passes);

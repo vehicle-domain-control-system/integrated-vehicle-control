@@ -79,4 +79,9 @@ size_t AudioStream_Advance(StreamFact *out, size_t capacity);
 
 bool AudioStream_IsIdle(void);
 
+/* True once the output has failed: the stream's own latched failure, or a
+ * fault the transmit driver latched that the stream has not handled yet.
+ * Both last until reset; Prepare is refused from the next service on. */
+bool AudioStream_OutputFailed(void);
+
 #endif /* AUDIO_STREAM_H */

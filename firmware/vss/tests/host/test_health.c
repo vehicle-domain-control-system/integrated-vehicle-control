@@ -192,6 +192,7 @@ static void Setup(bool bootComplete)
     AudioTx_ResetForTest();
     AudioControl_ResetForTest();
     AudioAsset_OverrideForTest(0u, NULL, 0u);
+    AudioAsset_HideForTest(0u);
     AudioAsset_Init();
     VssTime_ResetForTest();
     CHECK(VssTime_Init(HalTimer_GetTicks));
@@ -235,6 +236,28 @@ static VssOccurrenceKey AddEvent(uint32_t id, VssInputSignal signal)
     e.meta.receivedUseLimit = 500u;
     e.meta.useLimit = 500u;
     e.meta.validUntil = now + 500u;
+    e.meta.availability = VSS_AVAILABLE;
+    CHECK_EQ_U(Store_ApplyInput(&e, NULL, NULL), VSS_STORE_ACCEPTED);
+    return e.meta.key;
+}
+
+/* An event that occurred ageMs before now. */
+static VssOccurrenceKey AddAgedEvent(uint32_t id, VssInputSignal signal, uint64_t ageMs)
+{
+    VssOneShotEvent e;
+    uint64_t original = VssTime_NowMs() - ageMs;
+
+    memset(&e, 0, sizeof e);
+    e.signal = signal;
+    e.meta.key.origin = VSS_TEST;
+    e.meta.key.source = VSS_SOURCE_DOMAIN;
+    e.meta.key.generation = 1u;
+    e.meta.key.occurrenceId = id;
+    e.meta.deliveryOrder = id;
+    e.meta.original = At(original);
+    e.meta.receivedUseLimit = 500u;
+    e.meta.useLimit = 500u;
+    e.meta.validUntil = original + 500u;
     e.meta.availability = VSS_AVAILABLE;
     CHECK_EQ_U(Store_ApplyInput(&e, NULL, NULL), VSS_STORE_ACCEPTED);
     return e.meta.key;
@@ -378,6 +401,75 @@ static void test_ready_playing_ready(void)
     EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
     CHECK(s_health.accepting);
     CHECK_EQ_U(s_health.occurrences, 0u);
+}
+
+/* PLAYING needs a start that STORE accepted: output that began after the
+ * event's use limit is stopped as uncertain, and the service stays READY
+ * while it fades out. */
+static void test_uncertain_start_is_not_playing(void)
+{
+    uint32_t i;
+
+    Setup(true);
+    while (VssTime_NowMs() < 1000u)
+    {
+        Boundary();
+    }
+    (void)AddAgedEvent(1u, VSS_SIGNAL_WELCOME, 490u);
+    Pass();
+    CHECK_EQ_U(s_disposition, VSS_REQUEST_ADOPTED);
+    CHECK(RunUntilStarted(4u));
+    CHECK(s_view.startUncertain);
+    CHECK(!s_view.started);
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
+    for (i = 0u; (i < 4u) && s_view.present; ++i)
+    {
+        Boundary();
+        EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
+    }
+    CHECK(!s_view.present);
+    CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_START_UNCERTAIN);
+}
+
+/* FULL needs every supported cue ready, not only an empty fault mask. With
+ * no supported cue left nothing can start: FAULT / UNAVAILABLE. The window
+ * anti-pinch cue is not in the supported set. A cue that failed to decode
+ * is no longer ready. */
+static void test_availability_follows_the_supported_cues(void)
+{
+    const uint32_t all = (1u << AUDIO_ASSET_COUNT) - 1u;
+    uint32_t size = BuildBadFrames();
+    uint32_t i;
+
+    Setup(true);
+    AudioAsset_HideForTest(all & ~(1u << AUDIO_ASSET_ID_ANTI_PINCH));
+    Evaluate();
+    EXPECT_STATE(VSS_SERVICE_FAULT, VSS_SERVICE_UNAVAILABLE, BIT(VSS_FAULT_ASSET));
+    CHECK(!s_health.accepting);
+
+    Setup(true);
+    AudioAsset_HideForTest(all & ~(1u << AUDIO_ASSET_ID_WELCOME));
+    Evaluate();
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_DEGRADED, BIT(VSS_FAULT_ASSET));
+    CHECK(s_health.accepting);
+
+    /* The one ready cue fails to decode: none is left. */
+    Setup(true);
+    AudioAsset_HideForTest(all & ~(1u << AUDIO_ASSET_ID_WELCOME));
+    AudioAsset_OverrideForTest(AUDIO_ASSET_ID_WELCOME, s_badAsset, size);
+    Evaluate();
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_DEGRADED, BIT(VSS_FAULT_ASSET));
+    (void)AddEvent(1u, VSS_SIGNAL_WELCOME);
+    Pass();
+    CHECK_EQ_U(s_disposition, VSS_REQUEST_ADOPTED);
+    for (i = 0u; (i < 10u) && (s_view.assetFaults == 0u); ++i)
+    {
+        Boundary();
+    }
+    CHECK_EQ_U(s_view.assetFaults, 1u);
+    EXPECT_STATE(VSS_SERVICE_FAULT, VSS_SERVICE_UNAVAILABLE, BIT(VSS_FAULT_ASSET));
+    AudioAsset_OverrideForTest(0u, NULL, 0u);
+    AudioAsset_HideForTest(0u);
 }
 
 /* A cue without data at the first evaluation is an asset fault until reset:
@@ -894,6 +986,8 @@ int main(void)
     test_startup_until_boot_complete();
     test_accepting_rule();
     test_ready_playing_ready();
+    test_uncertain_start_is_not_playing();
+    test_availability_follows_the_supported_cues();
     test_missing_cue_degrades();
     test_decode_failure_is_an_asset_fault();
     test_start_refusal_clears_after_a_start();

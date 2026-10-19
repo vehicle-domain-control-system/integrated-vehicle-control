@@ -74,34 +74,38 @@ static int original_order(const VssCandidateObservation *a, const VssCandidateOb
     }
     return 2;
 }
+/* Scratch for the decision: too large for the stack. Select_Choose is not
+ * reentrant (single owner context). */
+static VssSelectionDecision s_result;
+
 VssSelectionDecision Select_Choose(const VssCandidateObservation *candidates,
     size_t count, const VssPolicyCurrent *current,
     const VssPlanDescriptor *plans, size_t planCount, const VssReadBasis *basis)
 {
-    VssSelectionDecision result;
+    VssSelectionDecision *const result = &s_result;
     const VssCandidateObservation *winner = NULL;
     const VssPlanDescriptor *plan = NULL;
     size_t i;
     unsigned rank = 0u;
-    memset(&result, 0, sizeof result);
-    result.action = VSS_SELECTION_RECOLLECT;
+    memset(result, 0, sizeof *result);
+    result->action = VSS_SELECTION_RECOLLECT;
     if (basis == NULL || current == NULL || count > VSS_CANDIDATE_CAPACITY || planCount > 9u ||
-        (count != 0u && candidates == NULL) || (planCount != 0u && plans == NULL)) { return result; }
-    result.basis = *basis;
+        (count != 0u && candidates == NULL) || (planCount != 0u && plans == NULL)) { return *result; }
+    result->basis = *basis;
     if (basis->validity != VSS_READ_VALID || !valid_time(&basis->time) ||
         basis->origin != basis->time.domain || basis->pbRevision == 0u ||
-        basis->storeRevision == 0u || basis->storeRevision != Store_ReadRevision(basis->origin)) { return result; }
-    if (current->present && (current->session == 0u || current->candidate.origin != basis->origin)) { return result; }
+        basis->storeRevision == 0u || basis->storeRevision != Store_ReadRevision(basis->origin)) { return *result; }
+    if (current->present && (current->session == 0u || current->candidate.origin != basis->origin)) { return *result; }
     for (i = 0u; i < count; ++i) {
         const VssCandidateObservation *c = &candidates[i];
         unsigned p;
         bool sameCurrent = current->present && VssPolicy_SameCandidate(c, &current->candidate);
-        if (c->origin != basis->origin) { return result; }
+        if (c->origin != basis->origin) { return *result; }
         if (c->validity != VSS_CANDIDATE_APPLICABLE || (!c->newSessionAllowed && !sameCurrent)) { continue; }
-        if (c->revision == 0u || (c->mode != VSS_MODE_EVENT && c->mode != VSS_MODE_STATEFUL)) { return result; }
+        if (c->revision == 0u || (c->mode != VSS_MODE_EVENT && c->mode != VSS_MODE_STATEFUL)) { return *result; }
         if (c->origin == VSS_PRODUCT && c->signal == VSS_SIGNAL_ANTI_PINCH) { continue; }
         p = VssPolicy_Priority(c->signal, c->value);
-        if (p == 0u) { return result; }
+        if (p == 0u) { return *result; }
         if (winner == NULL || p > rank) { winner = c; rank = p; }
         else if (p == rank && c->mode == VSS_MODE_EVENT && winner->mode == VSS_MODE_EVENT) {
             /* Provisional minimum only, by the same order the validation
@@ -115,16 +119,16 @@ VssSelectionDecision Select_Choose(const VssCandidateObservation *candidates,
                   key_order(&c->key, &winner->key) < 0)))) { winner = c; }
         }
     }
-    if (current->present && current->stopping) { result.action = VSS_SELECTION_WAIT; return result; }
+    if (current->present && current->stopping) { result->action = VSS_SELECTION_WAIT; return *result; }
     if (current->present && current->valid && current->candidate.mode == VSS_MODE_EVENT &&
         (winner == NULL || rank <= VssPolicy_Priority(current->candidate.signal, current->candidate.value))) {
-        if (!VssPolicy_ValidPlan(&current->plan)) { return result; }
-        result.action = VSS_SELECTION_KEEP;
-        result.candidatePresent = true; result.candidate = current->candidate; result.plan = current->plan;
-        return result;
+        if (!VssPolicy_ValidPlan(&current->plan)) { return *result; }
+        result->action = VSS_SELECTION_KEEP;
+        result->candidatePresent = true; result->candidate = current->candidate; result->plan = current->plan;
+        return *result;
     }
-    result.action = VSS_SELECTION_WAIT;
-    if (winner == NULL) { return result; }
+    result->action = VSS_SELECTION_WAIT;
+    if (winner == NULL) { return *result; }
     for (i = 0u; i < count; ++i) {
         const VssCandidateObservation *c = &candidates[i];
         bool sameCurrent = current->present && VssPolicy_SameCandidate(c, &current->candidate);
@@ -133,21 +137,21 @@ VssSelectionDecision Select_Choose(const VssCandidateObservation *candidates,
             VssPolicy_Priority(c->signal, c->value) != rank || VssPolicy_SameCandidate(c, winner)) { continue; }
         if (c->mode != VSS_MODE_EVENT || winner->mode != VSS_MODE_EVENT ||
             original_order(winner, c) != -1) {
-            result.action = VSS_SELECTION_RECOLLECT; return result;
+            result->action = VSS_SELECTION_RECOLLECT; return *result;
         }
     }
     for (i = 0u; i < planCount; ++i) {
         if (plans[i].signal == winner->signal && plans[i].value == winner->value) {
-            if (plan != NULL) { result.action = VSS_SELECTION_RECOLLECT; return result; }
+            if (plan != NULL) { result->action = VSS_SELECTION_RECOLLECT; return *result; }
             plan = &plans[i];
         }
     }
-    if (!VssPolicy_ValidPlan(plan)) { return result; }
-    result.candidatePresent = true; result.candidate = *winner; result.plan = *plan;
-    if (!plan->available || !basis->startsAllowed) { return result; }
+    if (!VssPolicy_ValidPlan(plan)) { return *result; }
+    result->candidatePresent = true; result->candidate = *winner; result->plan = *plan;
+    if (!plan->available || !basis->startsAllowed) { return *result; }
     if (current->present && current->valid && VssPolicy_SameCandidate(winner, &current->candidate) &&
         winner->value == current->candidate.value && plan->key == current->plan.key) {
-        result.action = VSS_SELECTION_KEEP;
-    } else { result.action = current->present ? VSS_SELECTION_REPLACE : VSS_SELECTION_CHOOSE; }
-    return result;
+        result->action = VSS_SELECTION_KEEP;
+    } else { result->action = current->present ? VSS_SELECTION_REPLACE : VSS_SELECTION_CHOOSE; }
+    return *result;
 }

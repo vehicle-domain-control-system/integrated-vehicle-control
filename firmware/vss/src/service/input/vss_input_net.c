@@ -4,9 +4,6 @@
 #include "vss_input_net.h"
 #include "../../infra/vss_time.h"
 
-/* The VssTime clock never restarts while VSS runs: one epoch. */
-#define INPUT_NET_EPOCH 1u
-
 /* Receive times further back than this are taken as received in the future
  * (the 32-bit difference wrapped). */
 #define INPUT_NET_MAX_RX_BACK_MS 0x7FFFFFFFu
@@ -66,7 +63,7 @@ static VssTimeEvidence now_evidence(VssOrigin origin)
     uint64_t now = VssTime_NowMs();
 
     t.domain = origin;
-    t.epoch = INPUT_NET_EPOCH;
+    t.epoch = VSS_TIME_EPOCH;
     t.earliest = now;
     t.latest = now;
     t.continuity = VSS_CONTINUITY_COMPARABLE;
@@ -80,7 +77,7 @@ static VssFactTime receive_time(VssOrigin origin, uint32_t rxMs32, uint64_t now)
     uint32_t back = (uint32_t)((uint32_t)now - rxMs32);
 
     t.domain = origin;
-    t.epoch = INPUT_NET_EPOCH;
+    t.epoch = VSS_TIME_EPOCH;
     if ((back > INPUT_NET_MAX_RX_BACK_MS) || ((uint64_t)back > now))
     {
         t.earliest = now;

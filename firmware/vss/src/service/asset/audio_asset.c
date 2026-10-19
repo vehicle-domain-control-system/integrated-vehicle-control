@@ -34,11 +34,17 @@ volatile uint8_t  g_assetLastId = 0xFFU;
 #if VSS_CFG_HOST_TEST
 static AudioAsset_IdType s_overrideId = AUDIO_ASSET_COUNT;
 static AudioAsset_InternalFlashEntryType s_override;
+static uint32_t s_hiddenMask;
+static const AudioAsset_InternalFlashEntryType s_hidden = { (const uint8_t *)0, 0U };
 #endif
 
 static const AudioAsset_InternalFlashEntryType *AudioAsset_Entry(AudioAsset_IdType assetId)
 {
 #if VSS_CFG_HOST_TEST
+    if ((s_hiddenMask & (1UL << assetId)) != 0U)
+    {
+        return &s_hidden;
+    }
     if (assetId == s_overrideId)
     {
         return &s_override;
@@ -175,5 +181,10 @@ void AudioAsset_OverrideForTest(AudioAsset_IdType assetId, const uint8_t *data, 
     s_overrideId = assetId;
     s_override.data = data;
     s_override.sizeBytes = sizeBytes;
+}
+
+void AudioAsset_HideForTest(uint32_t assetMask)
+{
+    s_hiddenMask = assetMask;
 }
 #endif

@@ -10,6 +10,7 @@ static uint64_t s_revision = 1u;
 static uint64_t s_nextSession = 1u;
 static uint64_t s_nextFact = 1u;
 static uint64_t s_firstStartLatest;    /* end of the FIRST_ACTUAL_START interval */
+static uint64_t s_adoptedAtMs;         /* when the current session was adopted */
 
 /* Scratch: these are too large for the stack. */
 static StreamFact s_facts[AUDIO_STREAM_FACT_CAPACITY];
@@ -134,15 +135,20 @@ static void request_stop(void)
 /* The event session ended without a first start accepted by STORE. With
  * retry allowed the record stays selectable within its use limit; without
  * it the record is closed for good (the only final fact STORE accepts
- * before a first start is START_OUTCOME_UNCERTAIN). */
+ * before a first start is START_OUTCOME_UNCERTAIN).
+ *
+ * The stream dates a stop or fault before any output at the last boundary,
+ * which can lie before the event was received. Nothing reached the output,
+ * so the fact is dated no earlier than the adoption of the session, which
+ * followed the event. */
 static void close_without_start(uint64_t atMs, bool retryAllowed)
 {
-    if (retryAllowed && apply_fact(VSS_FACT_NO_START_REEVALUATE, atMs, 0u))
+    if (retryAllowed && apply_fact(VSS_FACT_NO_START_REEVALUATE, atMs, s_adoptedAtMs))
     {
         retire_binding(true);
         return;
     }
-    if (!retryAllowed && apply_fact(VSS_FACT_START_OUTCOME_UNCERTAIN, atMs, 0u))
+    if (!retryAllowed && apply_fact(VSS_FACT_START_OUTCOME_UNCERTAIN, atMs, s_adoptedAtMs))
     {
         retire_binding(false);
         return;
@@ -224,6 +230,10 @@ static void on_fault(const StreamFact *f)
     else if (decodeOnly)
     {
         count_up(&s_view.assetFaults);
+        if (s_view.plan.cues[0].asset < 32u)
+        {
+            s_view.failedAssets |= 1UL << s_view.plan.cues[0].asset;
+        }
     }
     else
     {
@@ -306,6 +316,7 @@ void Playback_Init(void)
     s_nextSession = 1u;
     s_nextFact = 1u;
     s_firstStartLatest = 0u;
+    s_adoptedAtMs = 0u;
 }
 
 /* Stops a stateful session whose warning is no longer an applicable
@@ -366,6 +377,7 @@ static bool start_session(const VssCandidateObservation *c, const VssPlanDescrip
     s_view.stopRequested = false;
     s_view.startUncertain = false;
     s_firstStartLatest = 0u;
+    s_adoptedAtMs = now->earliest;
 
     if (is_event())
     {
@@ -462,7 +474,11 @@ VssRequestDisposition Playback_RequestTransition(const VssSelectionDecision *dec
     {
         return VSS_REQUEST_WAIT;
     }
-    if (s_view.outputFailed || !AudioStream_IsIdle() || (s_nextSession >= UINT32_MAX))
+    /* The output is checked here, not only through the basis: a transmit
+     * fault may have been latched since the health evaluation the basis
+     * came from, and starting into it would count as a start refusal. */
+    if (s_view.outputFailed || AudioStream_OutputFailed() ||
+        !AudioStream_IsIdle() || (s_nextSession >= UINT32_MAX))
     {
         return VSS_REQUEST_WAIT;
     }

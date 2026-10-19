@@ -55,6 +55,10 @@ uint32_t AudioAsset_ReadErrorCount(void);
 /* Host tests only: serves data in place of one asset until restored with
  * data == NULL. Not built for the target. */
 void AudioAsset_OverrideForTest(AudioAsset_IdType assetId, const uint8_t *data, uint32_t sizeBytes);
+
+/* Host tests only: every asset whose bit (1 << id) is set reads as empty
+ * (size 0) until the mask is cleared. Takes precedence over the override. */
+void AudioAsset_HideForTest(uint32_t assetMask);
 #endif
 
 #endif /* AUDIO_ASSET_H */

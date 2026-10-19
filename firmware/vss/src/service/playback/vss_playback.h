@@ -29,7 +29,10 @@
  *   COMPLETED          WHOLE_COMPLETED, binding retired
  *   STOPPED, started   WHOLE_INTERRUPTED, binding retired
  *   STOPPED, no start  NO_START_REEVALUATE, binding retired as no-start, so
- *                      the record can be selected again within its use limit
+ *                      the record can be selected again within its use limit;
+ *                      dated no earlier than the session's adoption (the
+ *                      stream dates it at the last boundary, which can lie
+ *                      before the event was received)
  *   FAULT              as STOPPED, plus the fault observation below; a
  *                      decode failure before the start closes the record
  *                      instead (START_OUTCOME_UNCERTAIN): the asset is
@@ -41,6 +44,10 @@
  * Stop requests come from a REPLACE decision, a basis that no longer allows
  * starts, a stateful candidate that disappeared or changed value, and the
  * stream's FAULT.
+ *
+ * No session is adopted while the output has failed - a transmit fault
+ * latched by the driver or the stream's latched output failure, checked at
+ * the request itself: the request waits, and no start refusal is counted.
  *
  * Fact times: the stream reports the output boundary in system-clock ms,
  * rounded down to the tick (1.25 ms); the output itself follows the boundary
@@ -83,7 +90,8 @@ typedef struct {
     uint32_t token;               /* stream token of the session */
     VssCandidateObservation candidate;  /* of the current, else the last, session */
     VssPlanDescriptor plan;
-    bool started;                 /* the stream reported STARTED (and STORE accepted it) */
+    bool started;                 /* the stream reported STARTED and, for an event,
+                                     STORE accepted it as the first start */
     bool stopRequested;
     bool startUncertain;          /* START_OUTCOME_UNCERTAIN was recorded */
     uint64_t revision;            /* +1 on every change */
@@ -98,6 +106,7 @@ typedef struct {
     uint32_t storeRefusals;       /* STORE refused a binding, fact or retirement */
     uint32_t outputFaults;        /* stream FAULT with a transmit or refill fault */
     uint32_t assetFaults;         /* stream FAULT from decoding alone */
+    uint32_t failedAssets;        /* bit (1 << asset id) per asset that failed to decode */
     bool outputFailed;            /* a transmit fault was seen: no new session is started */
     uint32_t lastFaultMask;
     uint64_t lastFaultAtMs;

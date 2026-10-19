@@ -10,6 +10,7 @@
 
 /* One pass of the VSS service chain for the active input origin:
  *
+ *   VssTime_NowMs            the pass time, read once at the start
  *   AudioStream_Service      refill and output facts
  *   Input_Process(NULL)      input deadlines and receive monitor
  *   Store_AdvanceDeadlines   expired one-shot records, warning deadlines
@@ -19,15 +20,24 @@
  *   Select_Choose            against the cue plan catalog
  *   Playback_RequestTransition
  *   Health_Evaluate
- *   Health_BuildStatus       on a new evaluation only:
+ *   Health_BuildStatus       a new evaluation, or the report still waiting:
  *     VssInputNet_ToNetStatus -> VssNet_PublishStatus
  *
- * A status report the Network does not accept is not kept for a retry: the
- * next evaluation (at the latest VSS_CFG_STATUS_PERIOD_MS later, sooner when
- * the state changes) is submitted with its own number. Refusals are counted.
+ * Call order in the super-loop: deliver the inputs of this loop first
+ * (Net_MainFunction, the built-in test input), then call Flow_Process. The
+ * pass reads its time itself, after the inputs, so no input it processes
+ * carries a time later than the pass; a pass time taken before a delivery
+ * would make a just-received warning look not yet valid and stop it.
+ *
+ * A status report the Network does not accept is kept, one report and no
+ * queue: every following pass submits it again, with the same number and
+ * content and its ages measured to that pass, until the Network takes it.
+ * A new evaluation made while one waits takes its place; the waiting one is
+ * never sent.
  *
  * New sessions are not started while HEALTH reports an initialization or
- * output fault. Runs in the super-loop owner context. */
+ * output fault, nor while the output has failed since that evaluation
+ * (checked by playback). Runs in the super-loop owner context. */
 
 typedef enum
 {
@@ -48,7 +58,7 @@ typedef struct
     VssOrigin origin;
     uint32_t passes;
     uint32_t inputPasses;
-    uint32_t refusedTimes;        /* passes refused for their time argument */
+    uint32_t passesWithoutClock;  /* refused: VssTime has no tick source yet */
     uint32_t incompleteReads;     /* candidate reads that were not complete */
     uint32_t recollects;
     uint32_t adoptions;
@@ -60,9 +70,13 @@ typedef struct
     uint32_t statusBuilt;         /* new evaluations */
     uint32_t statusPublished;     /* accepted by the Network */
     uint32_t statusRefused;       /* VssNet_PublishStatus returned other than OK */
+    uint32_t statusResubmitted;   /* submissions of a report refused before */
+    uint32_t statusReplaced;      /* waiting reports replaced by a newer evaluation */
     NetSubmitResult lastRefusal;
     uint32_t statusUnconvertible;
     uint32_t lastPublishedSequence;
+    bool statusWaiting;           /* a refused report waits for the next pass */
+    uint32_t waitingSequence;
 } VssFlowObservation;
 
 /* Builds the plan catalog from the cue table (one cue, played once; a cue
@@ -71,7 +85,9 @@ typedef struct
  * AudioStream_Init and Health_Init. */
 void Flow_Init(VssOrigin activeOrigin);
 
-VssFlowProgress Flow_Process(VssProcessingOpportunity opp, const VssTimeEvidence *now);
+/* One pass at VssTime_NowMs. RECOLLECT_OBSERVATIONS without any work when
+ * no tick source is registered yet. */
+VssFlowProgress Flow_Process(VssProcessingOpportunity opp);
 
 bool Flow_Read(VssFlowObservation *out);
 

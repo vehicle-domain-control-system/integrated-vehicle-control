@@ -492,6 +492,122 @@ static void test_stop_before_output_allows_reselection(void)
     CHECK_EQ_U(s_view.storeRefusals, 0u);
 }
 
+/* Boundaries until the clock reaches ms. */
+static void RunToMs(uint64_t ms)
+{
+    while (BoundaryMs(s_boundary) < ms)
+    {
+        Boundary();
+    }
+}
+
+/* Adopts an event received 10 ms after the last boundary, a while after
+ * boot. */
+static VssOccurrenceKey AdoptAfterBoundary(uint32_t id, VssInputSignal signal)
+{
+    VssOccurrenceKey k;
+
+    RunToMs(3000u);
+    HalMock_SetTicks(BoundaryTick(s_boundary) + 8u);
+    k = AddEvent(id, signal);
+    Pass();
+    CHECK_EQ_U(s_disposition, VSS_REQUEST_ADOPTED);
+    CHECK_EQ_U(s_view.phase, PLAYBACK_STARTING);
+    return k;
+}
+
+/* The same stop, with the event received after the last boundary: the
+ * no-start fact is dated no earlier than the adoption, so STORE takes it
+ * and the record is selected again. */
+static void test_stop_before_output_after_a_boundary_allows_reselection(void)
+{
+    VssOccurrenceKey k;
+    VssOccurrenceObservation r;
+    const VssCandidateObservation *c;
+
+    Setup();
+    k = AdoptAfterBoundary(1u, VSS_SIGNAL_LOCK_COMPLETE);
+    s_startsAllowed = false;
+    Pass();
+    CHECK(AudioStream_IsIdle());
+    Pass();
+    CHECK(!s_view.present);
+    CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_NO_START);
+    CHECK_EQ_U(s_view.storeRefusals, 0u);
+    CHECK(Record(&k, &r));
+    CHECK_EQ_U(r.state, VSS_OCCURRENCE_PENDING);
+    CHECK(r.replayAllowed);
+    c = Candidate(&k);
+    CHECK((c != NULL) && c->newSessionAllowed);
+
+    s_startsAllowed = true;
+    Pass();
+    CHECK_EQ_U(s_disposition, VSS_REQUEST_ADOPTED);
+    CHECK_EQ_U(s_view.session, 2u);
+    CHECK(RunUntilIdle(40u));
+    CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_COMPLETED);
+    CHECK(Record(&k, &r));
+    CHECK_EQ_U(r.state, VSS_OCCURRENCE_COMPLETED);
+    CHECK_EQ_U(s_view.storeRefusals, 0u);
+}
+
+/* A transmit fault before the event's first PCM: the stream dates the
+ * fault at the last boundary, before the event was received. The record
+ * still takes the no-start fact and stays selectable. */
+static void test_output_fault_before_output_keeps_the_record(void)
+{
+    VssOccurrenceKey k;
+    VssOccurrenceObservation r;
+
+    Setup();
+    k = AdoptAfterBoundary(1u, VSS_SIGNAL_WELCOME);
+    HalMock_SaiError();
+    Pass();
+    CHECK(!s_view.present);
+    CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_FAULT);
+    CHECK(s_view.outputFailed);
+    CHECK_EQ_U(s_view.storeRefusals, 0u);
+    CHECK(Record(&k, &r));
+    CHECK_EQ_U(r.state, VSS_OCCURRENCE_PENDING);
+    CHECK(r.replayAllowed);
+}
+
+/* The output failed while no session ran. A waiting event is not started,
+ * no start refusal is counted and STORE is not touched - both before the
+ * stream has seen the driver's fault and after. */
+static void test_output_failure_while_idle_waits(void)
+{
+    VssTimeEvidence now;
+    VssPolicyCurrent current;
+    uint64_t revision;
+
+    Setup();
+    Boundary();
+    Boundary();
+    HalMock_SaiError();
+    (void)AddEvent(1u, VSS_SIGNAL_WELCOME);
+    revision = Store_ReadRevision(VSS_TEST);
+
+    /* Selection without a stream service since the fault. */
+    now = Now();
+    Collect(&now);
+    Playback_ReadPolicyCurrent(&current);
+    s_decision = Select_Choose(s_candidates, s_count, &current, s_catalog, AUDIO_ASSET_CUE_ROWS, &s_basis);
+    s_disposition = Playback_RequestTransition(&s_decision, s_candidates, s_count, &s_basis, &now);
+    View();
+    CHECK_EQ_U(s_decision.action, VSS_SELECTION_CHOOSE);
+    CHECK_EQ_U(s_disposition, VSS_REQUEST_WAIT);
+    CHECK(!s_view.present);
+
+    Pass();
+    CHECK_EQ_U(s_decision.action, VSS_SELECTION_CHOOSE);
+    CHECK_EQ_U(s_disposition, VSS_REQUEST_WAIT);
+    CHECK(!s_view.present);
+    CHECK_EQ_U(s_view.startRefusals, 0u);
+    CHECK_EQ_U(s_view.lastSession, 0u);
+    CHECK_EQ_U(Store_ReadRevision(VSS_TEST), revision);
+}
+
 /* A higher-rank warning replaces the running event: the event is stopped
  * after its start (WHOLE_INTERRUPTED), the warning loops until it is no
  * longer an applicable candidate, then stops. */
@@ -890,6 +1006,9 @@ int main(void)
     test_same_rank_event_is_kept();
     test_first_start_refused_after_use_limit();
     test_stop_before_output_allows_reselection();
+    test_stop_before_output_after_a_boundary_allows_reselection();
+    test_output_fault_before_output_keeps_the_record();
+    test_output_failure_while_idle_waits();
     test_replace_interrupts_event_and_stateful_runs_until_cleared();
     test_stateful_stops_when_evaluations_stop();
     test_transmit_fault_latches_output();

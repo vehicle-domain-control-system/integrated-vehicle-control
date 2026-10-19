@@ -81,12 +81,18 @@ typedef struct
  * reports stay current until reset, START and STATE reports clear like the
  * polled ones.
  *
- * State: INIT or OUTPUT current -> FAULT / UNAVAILABLE; boot not complete
- * -> STARTUP / UNAVAILABLE; a session the stream reported STARTED for and
- * that has not ended -> PLAYING; otherwise READY. PLAYING and READY are
- * DEGRADED while any fault is current, FULL otherwise. accepting = boot
- * complete, state not FAULT and a free ledger slot; it does not depend on
- * whether a DOMAIN message has opened INPUT yet.
+ * Supported service set: every cue row of the cue table except the window
+ * anti-pinch warning. A row is ready when its asset had data at the first
+ * evaluation and has not failed to decode since.
+ *
+ * State: INIT or OUTPUT current, or no supported row ready -> FAULT /
+ * UNAVAILABLE; boot not complete -> STARTUP / UNAVAILABLE; a session that
+ * is playing and has not ended -> PLAYING (a stateful session the stream
+ * reported STARTED for; an event session only once STORE accepted its first
+ * start); otherwise READY. PLAYING and READY are FULL when every supported
+ * row is ready and no fault is current, DEGRADED otherwise. accepting =
+ * boot complete, state not FAULT and a free ledger slot; it does not depend
+ * on whether a DOMAIN message has opened INPUT yet.
  *
  * All calls run in the super-loop owner context. Times come from the
  * caller (the VssTime clock); HEALTH reads no clock itself. */
@@ -140,6 +146,8 @@ typedef struct
     uint8_t state;
     uint8_t availability;
     bool accepting;
+    uint32_t supportedCueRows;    /* bit i = cue table row i */
+    uint32_t readyCueRows;
     VssFaultRecord current[VSS_FAULT_KINDS];
     VssFaultRecord recent[VSS_FAULT_KINDS];
     uint32_t occurrences;         /* instances begun in this run */
