@@ -186,6 +186,8 @@ static bool RunUntilStarted(uint32_t maxBoundaries)
 
 /* Power-on state of every module; bootComplete as the boot sequence would
  * leave it. No evaluation has run yet. */
+static VssOrigin s_healthOrigin = VSS_TEST;
+
 static void Setup(bool bootComplete)
 {
     HalMock_Reset();
@@ -201,7 +203,7 @@ static void Setup(bool bootComplete)
     StorePlayback_TestReset();
     AudioStream_Init();
     Playback_ResetForTest();
-    Health_Init();
+    Health_Init(s_healthOrigin);
     CHECK(AudioTx_Init());
     CHECK(AudioTx_Start());
     BuildCatalog();
@@ -433,19 +435,41 @@ static void test_uncertain_start_is_not_playing(void)
 
 /* FULL needs every supported cue ready, not only an empty fault mask. With
  * no supported cue left nothing can start: FAULT / UNAVAILABLE. The window
- * anti-pinch cue is not in the supported set. A cue that failed to decode
- * is no longer ready. */
+ * anti-pinch cue is in the supported set of the test origin, which plays it,
+ * and not in that of the product origin, which does not carry it. A cue
+ * that failed to decode is no longer ready. */
 static void test_availability_follows_the_supported_cues(void)
 {
     const uint32_t all = (1u << AUDIO_ASSET_COUNT) - 1u;
     uint32_t size = BuildBadFrames();
     uint32_t i;
 
+    /* The test origin plays the anti-pinch cue: it is in the supported set. */
+    Setup(true);
+    Evaluate();
+    CHECK_EQ_U(s_health.supportedCueRows, (1u << AUDIO_ASSET_CUE_ROWS) - 1u);
+    CHECK_EQ_U(s_health.readyCueRows, (1u << AUDIO_ASSET_CUE_ROWS) - 1u);
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
+    Setup(true);
+    AudioAsset_HideForTest(all & ~(1u << AUDIO_ASSET_ID_ANTI_PINCH));
+    Evaluate();
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_DEGRADED, BIT(VSS_FAULT_ASSET));
+    CHECK(s_health.accepting);
+
+    /* The product origin: anti-pinch is not supported, so it alone is no
+     * service. Every other cue ready is FULL. */
+    s_healthOrigin = VSS_PRODUCT;
+    Setup(true);
+    Evaluate();
+    CHECK_EQ_U(s_health.supportedCueRows,
+               ((1u << AUDIO_ASSET_CUE_ROWS) - 1u) & ~(1u << AUDIO_ASSET_ID_ANTI_PINCH));
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
     Setup(true);
     AudioAsset_HideForTest(all & ~(1u << AUDIO_ASSET_ID_ANTI_PINCH));
     Evaluate();
     EXPECT_STATE(VSS_SERVICE_FAULT, VSS_SERVICE_UNAVAILABLE, BIT(VSS_FAULT_ASSET));
     CHECK(!s_health.accepting);
+    s_healthOrigin = VSS_TEST;
 
     Setup(true);
     AudioAsset_HideForTest(all & ~(1u << AUDIO_ASSET_ID_WELCOME));

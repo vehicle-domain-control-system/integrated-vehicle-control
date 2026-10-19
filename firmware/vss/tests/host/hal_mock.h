@@ -75,6 +75,7 @@ void HalMock_SetBoundaryProbe(void (*probe)(void));
 void HalMock_SaiErrorOnTickRead(uint32_t nthRead);
 
 void HalMock_SetBoardInitResult(bool ok);
+void HalMock_SetTimerInitResult(bool ok);
 void HalMock_SetAudioInitResult(bool ok);
 
 /* Interrupt entry points: call the callbacks registered by HalAudioTx_Init. */

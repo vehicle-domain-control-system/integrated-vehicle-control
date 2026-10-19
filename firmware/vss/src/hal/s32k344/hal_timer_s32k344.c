@@ -5,13 +5,14 @@
 static volatile uint32_t s_ticks = 0U;
 static volatile Pit_Ip_StatusType s_startStatus = PIT_IP_ERROR;
 
-void HalTimer_Init(void)
+bool HalTimer_Init(void)
 {
     Pit_Ip_Init(HAL_CFG_PIT_INSTANCE, HAL_CFG_PIT_INIT_CONFIG);
     Pit_Ip_InitChannel(HAL_CFG_PIT_INSTANCE, HAL_CFG_PIT_CHANNEL_CONFIG);
     Pit_Ip_EnableChannelInterrupt(HAL_CFG_PIT_INSTANCE, HAL_CFG_PIT_CHANNEL);
     s_startStatus = Pit_Ip_StartChannel(HAL_CFG_PIT_INSTANCE, HAL_CFG_PIT_CHANNEL,
                                         HAL_CFG_PIT_PERIOD_COUNT);
+    return s_startStatus == PIT_IP_SUCCESS;
 }
 
 uint32_t HalTimer_GetTicks(void)

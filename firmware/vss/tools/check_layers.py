@@ -8,6 +8,8 @@
   service/input/vss_input_net.h  <-  vss_input_net.c and app only (it carries
                                      the Network API types)
   net_if/net_stub.c  ->  infra (build switches); other net_if files -> net_if only
+  app  ->  hal/include/hal_board.h only; app/vss_main.c also hal_timer.h (it
+           starts the tick and registers it as the system clock source)
   hal/s32k344  ->  vendor driver headers (the only place they may appear)
 
 hal/include headers include nothing but <stdint.h> and <stdbool.h>.
@@ -59,6 +61,10 @@ NET_ADAPTER_HEADER_USERS = {'service/input/vss_input_net.c'}
 # net_if files that may read the build switches; the Network API header is
 # replaced by the Network module's own header and must stay self-contained
 NET_IF_INFRA_USERS = {'net_if/net_stub.c'}
+# hal/include headers app may reach: the board init, and for the boot
+# sequence the timer it starts and registers as the system clock source
+APP_HAL_HEADERS = {'hal_board.h'}
+APP_HAL_HEADERS_BOOT = {'app/vss_main.c': {'hal_board.h', 'hal_timer.h'}}
 
 STD_HEADERS = {
     'assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h',
@@ -182,8 +188,10 @@ def check(src):
                 if trel == NET_ADAPTER_HEADER and layer != 'app' and rel not in NET_ADAPTER_HEADER_USERS:
                     bad(rel, line, '"%s" carries the Network API types; only app and %s may include it'
                         % (name, ', '.join(sorted(NET_ADAPTER_HEADER_USERS))))
-                if layer == 'app' and tlayer == 'hal_include' and base != 'hal_board.h':
-                    bad(rel, line, 'app may include only hal_board.h from hal/include, not "%s"' % name)
+                if layer == 'app' and tlayer == 'hal_include' and \
+                        base not in APP_HAL_HEADERS_BOOT.get(rel, APP_HAL_HEADERS):
+                    bad(rel, line, 'app may include only hal_board.h from hal/include '
+                                   '(app/vss_main.c also hal_timer.h), not "%s"' % name)
                 if layer == 'service' and tlayer == 'driver' and not (
                         trel.startswith('driver/') and
                         (rel.startswith('service/audio_stream/') or rel.startswith('service/health/'))):
@@ -247,6 +255,12 @@ def selftest():
         ('service->app', {'service/s.c': '#include "../app/a.h"\n', 'app/a.h': ''}, 'service -> app'),
         ('service->hal', {'service/s.c': '#include "../hal/include/h.h"\n', 'hal/include/h.h': ''}, 'service -> hal_include'),
         ('app->hal other', {'app/a.c': '#include "../hal/include/hal_i2c.h"\n', 'hal/include/hal_i2c.h': ''}, 'only hal_board.h'),
+        ('main->hal_timer ok', {'app/vss_main.c': '#include "../hal/include/hal_timer.h"\n',
+                                'hal/include/hal_timer.h': ''}, None),
+        ('app->hal_timer', {'app/a.c': '#include "../hal/include/hal_timer.h"\n',
+                            'hal/include/hal_timer.h': ''}, 'only hal_board.h'),
+        ('main->hal other', {'app/vss_main.c': '#include "../hal/include/hal_i2c.h"\n',
+                             'hal/include/hal_i2c.h': ''}, 'only hal_board.h'),
         ('service/input->driver', {'service/input/i.c': '#include "../../driver/d.h"\n', 'driver/d.h': ''}, 'only service/audio_stream'),
         ('net_if from store', {'service/store/s.c': '#include "../../net_if/n.h"\n', 'net_if/n.h': ''}, 'service -> net_if'),
         ('net_if->service', {'net_if/n.h': '#include "../service/s.h"\n', 'service/s.h': ''}, 'net_if -> service'),

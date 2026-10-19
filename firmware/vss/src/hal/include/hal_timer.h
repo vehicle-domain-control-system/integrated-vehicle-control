@@ -8,7 +8,10 @@
  * One tick is 1.25 ms. */
 #define HAL_TIMER_TICK_HZ 800u
 
-void     HalTimer_Init(void);
+/* Starts the tick. False when the timer channel did not start: nothing that
+ * needs time can run then. The counter starts at 0 at reset and is not
+ * cleared here. */
+bool     HalTimer_Init(void);
 uint32_t HalTimer_GetTicks(void);
 
 /* Busy-wait for the given number of ticks. Boot sequence only. */

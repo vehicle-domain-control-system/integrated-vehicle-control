@@ -3,7 +3,8 @@
 
   1. Every src/**/*.c that does not touch the vendor drivers is compiled
      (-std=c99 -Wall -Wextra -Werror) and archived into libvss_host.a.
-     Excluded: hal/s32k344/*.c (vendor drivers) and app/vss_main.c (entry point).
+     Excluded: hal/s32k344/*.c (vendor drivers). app/vss_main.c is included;
+     its main() is built only for the target (VSS_CFG_HOST_TEST=0).
   2. Every tests/host/test_*.c is linked with the archive plus the support
      sources in tests/host (any .c whose name does not start with "test_")
      and run. A test program prints "RESULT passed=N failed=M".
@@ -18,7 +19,12 @@
   3. Configuration guards: out-of-range build switches must fail to compile.
   4. tools/check_layers.py --selftest.
 
-Usage: host_test.py [--cc PATH] [--filter SUBSTR] [--build-dir DIR] [-v]
+The host compiler comes from --cc, else from the "host" entry of the local
+environment file named by the environment variable VSS_ENV_JSON, else from
+PATH. Objects go to --build-dir, else to a temporary directory removed at the
+end. --report FILE also writes the result table to FILE.
+
+Usage: host_test.py [--cc PATH] [--filter SUBSTR] [--build-dir DIR] [--report FILE] [-v]
 Exit status 0 = everything passed and at least one check ran.
 """
 
@@ -37,8 +43,8 @@ VSS = os.path.normpath(os.path.join(HERE, '..'))
 SRC = os.path.join(VSS, 'src')
 TESTS = os.path.join(VSS, 'tests', 'host')
 RTD_MOCK = os.path.join(VSS, 'tests', 'rtd_mock')
-REPO = os.path.normpath(os.path.join(VSS, '..', '..'))
-WORK = os.path.join(REPO, '.vss_work')
+# Local environment file (toolchain locations); not part of the sources.
+ENV_VAR = 'VSS_ENV_JSON'
 
 # -funsigned-char matches the target, where plain char is unsigned.
 # VSS_CFG_HOST_TEST=1 adds the drivers' reset functions used between cases.
@@ -52,7 +58,7 @@ CONFIGS = (
 )
 UBSAN_PROBE = ('int main(int argc, char **argv)\n{\n    int a[4] = {0, 1, 2, 3};\n'
                '    (void)argv;\n    return a[argc + 3];\n}\n')
-EXCLUDE_FROM_LIB = ('hal/s32k344/', 'app/vss_main.c')
+EXCLUDE_FROM_LIB = ('hal/s32k344/',)
 # Board adapter tests: file name prefix -> adapter source(s) under src/.
 HAL_TESTS = (
     ('test_hal_audio_tx', ('hal/s32k344/hal_audio_tx_s32k344.c',)),
@@ -63,20 +69,23 @@ EXE = '.exe' if os.name == 'nt' else ''
 
 
 def find_tools(cc_arg):
-    cc, ar = cc_arg, None
-    env_path = os.path.join(WORK, 'env.json')
-    if os.path.isfile(env_path):
+    """Returns (cc, ar, where the compiler came from)."""
+    cc, ar, source = cc_arg, None, '--cc' if cc_arg else None
+    env_path = os.environ.get(ENV_VAR, '')
+    if env_path and os.path.isfile(env_path):
         try:
             host = json.load(open(env_path, encoding='utf-8')).get('host', {})
-            cc = cc or host.get('gcc')
+            if not cc and host.get('gcc'):
+                cc, source = host.get('gcc'), ENV_VAR
             ar = host.get('ar')
         except (OSError, ValueError):
             pass
     if not cc or not os.path.isfile(cc):
         cc = shutil.which('gcc') or shutil.which('clang')
+        source = 'PATH' + ('' if env_path else ' (%s not set)' % ENV_VAR)
     if not ar or not os.path.isfile(ar):
         ar = shutil.which('ar') or (os.path.join(os.path.dirname(cc), 'ar' + EXE) if cc else None)
-    return cc, ar
+    return cc, ar, source
 
 
 def run(cmd, cwd=None, inp=None, timeout=300):
@@ -267,25 +276,22 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--cc', help='host C compiler (default: from the local environment file, then PATH)')
     ap.add_argument('--filter', help='only run tests whose file name contains this text')
-    ap.add_argument('--build-dir', help='where objects and executables go')
+    ap.add_argument('--build-dir', help='where objects and executables go (default: a temporary directory)')
+    ap.add_argument('--report', help='also write the result table to this file')
     ap.add_argument('-v', '--verbose', action='store_true')
     args = ap.parse_args()
 
-    cc, ar = find_tools(args.cc)
+    cc, ar, source = find_tools(args.cc)
     if not cc or not ar:
         print('host_test: no C compiler / ar found (gcc or clang needed)')
         return 2
     ver = run([cc, '--version']).stdout.splitlines()[0]
-    print('host_test: %s' % ver)
+    print('host_test: %s  [compiler from %s]' % (ver, source))
 
     cleanup = None
     if args.build_dir:
         build = os.path.abspath(args.build_dir)
         os.makedirs(build, exist_ok=True)
-    elif os.path.isdir(WORK):
-        build = os.path.join(WORK, 'build', 'host')
-        shutil.rmtree(build, ignore_errors=True)
-        os.makedirs(build)
     else:
         build = tempfile.mkdtemp(prefix='vss_host_')
         cleanup = build
@@ -311,9 +317,8 @@ def main():
     summary = 'host_test: %s  (%d checks passed, %d failed, %d groups)' % (verdict, total_p, total_f, len(rep.rows))
     print(summary)
 
-    reports = os.path.join(WORK, 'reports')
-    if os.path.isdir(reports):
-        with open(os.path.join(reports, 'host_test.log'), 'w', encoding='utf-8') as fh:
+    if args.report:
+        with open(args.report, 'w', encoding='utf-8') as fh:
             fh.write(time.strftime('%Y-%m-%d %H:%M:%S') + '\n' + ver + '\n')
             fh.write('\n'.join(rep.log) + '\n' + summary + '\n')
     if cleanup:

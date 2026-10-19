@@ -2,9 +2,10 @@
 """Cross-compiles firmware/vss/src for the target and reports stack and size.
 
 Toolchain and vendor header locations come from the local environment file
-.vss_work/env.json (S32 Design Studio compiler, driver headers, generated
-configuration). When that file or any listed path is missing, the minimal
-stand-in headers in tests/rtd_mock are used instead and the report says so.
+(S32 Design Studio compiler, driver headers, generated configuration) named
+by the environment variable VSS_ENV_JSON. When the variable is not set, or
+the file or any listed path is missing, the minimal stand-in headers in
+tests/rtd_mock are used instead and the report says so.
 
 Steps
   1. Compile every src/**/*.c with the project's compiler options plus
@@ -23,7 +24,11 @@ Steps
 Limits: main path <= 3072 bytes (the board's stack region is 4096 bytes);
 main path + deepest interrupt chain + exception frame must fit in the region.
 
-Usage: arm_check.py [--mock] [--src DIR] [--no-probe] [--no-vendor-stack] [-v]
+Objects go to --build-dir, else to a temporary directory removed at the end.
+--report FILE also writes the report to FILE.
+
+Usage: arm_check.py [--mock] [--src DIR] [--no-probe] [--no-vendor-stack]
+                    [--build-dir DIR] [--report FILE] [-v]
 Exit status 0 = every compile succeeded and the stack limits hold.
 """
 
@@ -35,6 +40,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -42,9 +48,8 @@ VSS = os.path.normpath(os.path.join(HERE, '..'))
 DEFAULT_SRC = os.path.join(VSS, 'src')
 MOCK_DIR = os.path.join(VSS, 'tests', 'rtd_mock')
 PROBE = os.path.join(HERE, 'arm_rtd_probe.c')
-REPO = os.path.normpath(os.path.join(VSS, '..', '..'))
-WORK = os.path.join(REPO, '.vss_work')
-ENV_FILE = os.path.join(WORK, 'env.json')
+# Local environment file (toolchain and vendor header locations).
+ENV_VAR = 'VSS_ENV_JSON'
 
 MAIN_STACK_LIMIT = 3072
 STACK_REGION_BYTES = 4096
@@ -66,10 +71,13 @@ STACK_FLAGS = ['-fstack-usage', '-fcallgraph-info=su']
 
 def load_env():
     """Returns (env, why_not). env is None unless every needed path exists."""
-    if not os.path.isfile(ENV_FILE):
-        return None, 'local environment file not found'
+    env_file = os.environ.get(ENV_VAR, '')
+    if not env_file:
+        return None, '%s not set' % ENV_VAR
+    if not os.path.isfile(env_file):
+        return None, '%s names no file' % ENV_VAR
     try:
-        env = json.load(open(ENV_FILE, encoding='utf-8'))
+        env = json.load(open(env_file, encoding='utf-8'))
         tc = env['toolchain']
         rtd = env['rtd']
         arm = env['arm_compile']
@@ -251,7 +259,8 @@ def main():
     ap.add_argument('--no-probe', action='store_true', help='skip tools/arm_rtd_probe.c')
     ap.add_argument('--no-vendor-stack', action='store_true',
                     help='do not compile the vendor driver sources for their stack figures')
-    ap.add_argument('--build-dir', help='where objects and stack files go')
+    ap.add_argument('--build-dir', help='where objects and stack files go (default: a temporary directory)')
+    ap.add_argument('--report', help='also write the report to this file')
     ap.add_argument('-v', '--verbose', action='store_true')
     args = ap.parse_args()
 
@@ -263,17 +272,22 @@ def main():
         reason = 'forced with --mock' if args.mock else why
         tc = mock
         if tc is None:
-            print('arm_check: FAIL - no target compiler (%s)' % reason)
+            print('arm_check: FAIL - no target compiler (%s, and no arm-none-eabi-gcc on PATH '
+                  'for the stand-in headers)' % reason)
             return 2
     else:
         tc = real
         reason = ''
     ver = run([tc.gcc, '--version']).stdout.splitlines()[0]
 
-    build = os.path.abspath(args.build_dir) if args.build_dir else (
-        os.path.join(WORK, 'build', 'arm') if os.path.isdir(WORK) else os.path.join(os.environ.get('TEMP', '.'), 'vss_arm'))
-    shutil.rmtree(build, ignore_errors=True)
-    os.makedirs(build)
+    cleanup = None
+    if args.build_dir:
+        build = os.path.abspath(args.build_dir)
+        shutil.rmtree(build, ignore_errors=True)
+        os.makedirs(build)
+    else:
+        build = tempfile.mkdtemp(prefix='vss_arm_')
+        cleanup = build
 
     lines = []          # report lines
     failures = []
@@ -419,10 +433,11 @@ def main():
     out('arm_check: %s%s' % (verdict, ' - ' + '; '.join(failures) if failures else
                               ('' if tc.mode == 'REAL' else ' (MOCK headers: not a substitute for the real-header run)')))
 
-    reports = os.path.join(WORK, 'reports')
-    if os.path.isdir(reports):
-        with open(os.path.join(reports, 'arm_check_report.txt'), 'w', encoding='utf-8') as fh:
+    if args.report:
+        with open(args.report, 'w', encoding='utf-8') as fh:
             fh.write(time.strftime('%Y-%m-%d %H:%M:%S') + '\n' + '\n'.join(lines) + '\n')
+    if cleanup:
+        shutil.rmtree(cleanup, ignore_errors=True)
     return 1 if failures else 0
 
 

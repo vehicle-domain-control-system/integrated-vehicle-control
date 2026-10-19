@@ -540,7 +540,7 @@ static void Boot(void)
     CHECK(AudioTx_Init());
     CHECK(AudioTx_Start());
     Net_Init();
-    Health_Init();
+    Health_Init(VSS_PRODUCT);
     Flow_Init(VSS_PRODUCT);
     memset(&s_domain, 0, sizeof s_domain);
     s_domain.boot = 1u;

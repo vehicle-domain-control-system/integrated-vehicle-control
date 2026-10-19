@@ -708,6 +708,64 @@ static void test_per_message_tx_order(void)
     CHECK_EQ_U(Store_Count(), 2u);
 }
 
+/* A sender's retransmission of one occurrence: same occurrence_id, the next
+ * TX, a new receive time and the age grown by the time since the first
+ * delivery. Within the use limit it describes the same original interval
+ * and STORE keeps it as a duplicate; once the use limit has passed since the
+ * occurrence INPUT refuses it on time. A byte-identical frame delivered again
+ * (same TX, same receive time) changes nothing. None of them adds a record. */
+static void test_event_retransmission(void)
+{
+    NetVssEvent e = Event(NET_VSS_EVENT_WELCOME, 1u);
+    NetCanRxMeta meta = Meta(1u, 5u, 2000u);
+    VssOccurrenceKey key = Key(VSS_TEST, 1u, 1u);
+    VssOccurrenceObservation r;
+
+    Reset(2000u);
+    VssInputNet_OnEvent(VSS_TEST, &e, &meta);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.storeAdmission, VSS_STORE_ACCEPTED);
+
+    /* Retransmitted 200 ms later. */
+    SetNowMs(2200u);
+    e.original_age_ms = 200u;
+    meta = Meta(1u, 6u, 2200u);
+    VssInputNet_OnEvent(VSS_TEST, &e, &meta);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.validation, VSS_VALIDATION_APPLICABLE);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.storeAdmission, VSS_STORE_DUPLICATE);
+
+    /* The same frame again, byte for byte. */
+    SetNowMs(2205u);
+    VssInputNet_OnEvent(VSS_TEST, &e, &meta);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.validation, VSS_VALIDATION_NO_CHANGE);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.storeAdmission, VSS_STORE_NOT_SUBMITTED);
+
+    /* Last retransmission inside the use limit: the interval starts at 1995,
+     * 2490 - 1995 = 495 < 500. */
+    SetNowMs(2490u);
+    e.original_age_ms = 490u;
+    meta = Meta(1u, 7u, 2490u);
+    VssInputNet_OnEvent(VSS_TEST, &e, &meta);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.storeAdmission, VSS_STORE_DUPLICATE);
+
+    /* From the use limit on: refused on time, not a duplicate. */
+    SetNowMs(2495u);
+    e.original_age_ms = 495u;
+    meta = Meta(1u, 8u, 2495u);
+    VssInputNet_OnEvent(VSS_TEST, &e, &meta);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.validation, VSS_VALIDATION_REJECTED);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.storeAdmission, VSS_STORE_NOT_SUBMITTED);
+    SetNowMs(3000u);
+    e.original_age_ms = 1000u;
+    meta = Meta(1u, 9u, 3000u);
+    VssInputNet_OnEvent(VSS_TEST, &e, &meta);
+    CHECK_EQ_U(Obs(VSS_TEST).lastEvent.validation, VSS_VALIDATION_REJECTED);
+
+    CHECK_EQ_U(Store_Count(), 1u);
+    memset(&r, 0, sizeof r);
+    CHECK(Store_ReadOccurrence(&key, &r));
+    CHECK_EQ_U(r.event.meta.deliveryOrder, 5u);
+}
+
 /* boot 1 event plays; a boot 2 frame takes the new generation over; a boot 2
  * event plays; the boot 1 event delivered again does not. */
 static void test_domain_restart(void)
@@ -1014,6 +1072,7 @@ int main(void)
     test_structure_verified_row();
     test_saturated_age_65535();
     test_per_message_tx_order();
+    test_event_retransmission();
     test_domain_restart();
     test_product_callbacks();
     test_status_row();

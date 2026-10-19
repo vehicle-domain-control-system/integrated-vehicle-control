@@ -529,7 +529,10 @@ void Playback_ReadStoreSnapshot(VssOrigin origin, VssStorePlaybackSnapshot *out)
     memset(out, 0, sizeof *out);
     out->origin = origin;
     out->complete = s_revision != UINT64_MAX;
-    out->notificationPending = false;   /* facts are applied as they arrive */
+    /* Stream facts not collected yet may still wait in the stream's queue;
+     * they cannot be lost to a deadline, because STORE never expires a
+     * record that has a live playback binding. */
+    out->notificationPending = false;
     out->revision = s_revision;
     out->storeRevision = Store_ReadRevision(origin);
 }

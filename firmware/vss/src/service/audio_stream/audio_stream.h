@@ -57,8 +57,9 @@ typedef enum {
  * for the FAULT that reports an overflow. */
 #define AUDIO_STREAM_FACT_CAPACITY 8u
 
-/* Idle, no facts, decoder reset. Called once at boot, before the system
- * clock starts counting. */
+/* Idle, no facts, decoder reset. Called once at boot, before the output
+ * starts. Boundary ticks are taken as counted from tick 0, so the timer may
+ * already be running. */
 void AudioStream_Init(void);
 
 /* Selects the asset of a new session. STREAM_BUSY while a session exists;

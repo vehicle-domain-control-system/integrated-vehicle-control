@@ -42,6 +42,7 @@ static bool s_assetMissing;
  * and those whose asset had data at the first evaluation. */
 static uint32_t s_supportedRows;
 static uint32_t s_presentRows;
+static VssOrigin s_origin;           /* the input origin the flow processes */
 
 static bool s_evaluated;             /* Health_Evaluate ran at least once */
 static uint64_t s_evaluatedMs;
@@ -122,8 +123,9 @@ static bool assets_present(void)
     return true;
 }
 
-/* The supported set is every cue row except the window anti-pinch warning,
- * which the product input path does not carry. */
+/* The supported set is every cue row the active origin can play: the
+ * product input path does not carry the window anti-pinch warning, the test
+ * input does. */
 static void check_cue_rows(void)
 {
     size_t i;
@@ -135,7 +137,8 @@ static void check_cue_rows(void)
         const AudioAsset_CueRow *row = AudioAsset_CueAt(i);
         uint32_t size = 0u;
 
-        if ((row == NULL) || (row->signal == AUDIO_ASSET_CUE_SIGNAL_ANTI_PINCH))
+        if ((row == NULL) ||
+            ((s_origin == VSS_PRODUCT) && (row->signal == AUDIO_ASSET_CUE_SIGNAL_ANTI_PINCH)))
         {
             continue;
         }
@@ -278,7 +281,7 @@ static bool poll_playback(uint64_t nowMs, bool *outputFailed)
     return pb->present && (pb->session != 0u) && pb->started;
 }
 
-void Health_Init(void)
+void Health_Init(VssOrigin activeOrigin)
 {
     memset(&s_obs, 0, sizeof s_obs);
     memset(s_reports, 0, sizeof s_reports);
@@ -296,6 +299,7 @@ void Health_Init(void)
     s_assetMissing = false;
     s_supportedRows = 0u;
     s_presentRows = 0u;
+    s_origin = activeOrigin;
     s_evaluated = false;
     s_evaluatedMs = 0u;
     s_reportPresent = false;

@@ -81,9 +81,11 @@ typedef struct
  * reports stay current until reset, START and STATE reports clear like the
  * polled ones.
  *
- * Supported service set: every cue row of the cue table except the window
- * anti-pinch warning. A row is ready when its asset had data at the first
- * evaluation and has not failed to decode since.
+ * Supported service set: every cue row of the cue table the active input
+ * origin can play. The product origin does not carry the window anti-pinch
+ * warning, so its set leaves that row out; the test origin plays every row.
+ * A row is ready when its asset had data at the first evaluation and has not
+ * failed to decode since.
  *
  * State: INIT or OUTPUT current, or no supported row ready -> FAULT /
  * UNAVAILABLE; boot not complete -> STARTUP / UNAVAILABLE; a session that
@@ -97,9 +99,11 @@ typedef struct
  * All calls run in the super-loop owner context. Times come from the
  * caller (the VssTime clock); HEALTH reads no clock itself. */
 
-/* Clears every fault, report and counter; boot not complete. Called once at
- * boot before the first Health_Report. */
-void Health_Init(void);
+/* Clears every fault, report and counter; boot not complete. activeOrigin is
+ * the input origin the flow processes (the one given to Flow_Init); it
+ * selects the supported service set. Called once at boot before the first
+ * Health_Report. */
+void Health_Init(VssOrigin activeOrigin);
 
 /* The boot sequence finished; the service may leave STARTUP. */
 void Health_BootComplete(void);
