@@ -23,7 +23,6 @@ typedef struct {
     uint32_t boot;
     uint32_t retiredBoots[INPUT_RETIRED_BOOTS]; /* ring of replaced boots; 0 = empty */
     size_t retiredNext;
-    uint64_t openedAt; /* first opening; older events may have played before a VSS restart */
     VssTimeEvidence lastTime;
     InputEventOrder eventOrder;
     InputWarningOrder warningOrder;
@@ -194,7 +193,6 @@ bool Input_OpenAfterSynchronization(VssOrigin origin, uint32_t domainBoot,
     s->configured = true;
     s->open = true;
     s->boot = domainBoot;
-    s->openedAt = synchronizedAt->earliest;
     s->lastTime = *synchronizedAt;
     return true;
 }
@@ -294,6 +292,9 @@ bool Input_AcceptNewGeneration(VssOrigin origin, uint32_t newBoot,
 static bool project(const VssInputEvidence *in, const VssTimeEvidence *now, VssInputMeta *m)
 {
     const VssFactTime *rx = &in->receivedAt;
+    /* Clock 0 is the start of this VSS run; the ledger was cleared before
+     * it. An original time that may lie before clock 0 (age beyond the run)
+     * may have played in an earlier run whose ledger is gone: not replayed. */
     if (!valid_time(rx) || rx->domain != now->domain || rx->epoch != now->epoch ||
         rx->latest > now->earliest || !in->ageComplete || in->ageLowMs > in->ageHighMs ||
         in->ageHighMs >= 65535u || rx->earliest < in->ageHighMs ||
@@ -420,12 +421,9 @@ static VssInputApplication process(const VssInputEvidence *in, const VssTimeEvid
         return r;
     }
     event.signal = in->signal;
-    /* Without the ledger of a VSS run before this one, an event that
-     * originated before INPUT opened may already have played. */
     if (!project(in, now, &event.meta) ||
         now->earliest < event.meta.original.latest ||
-        now->latest - event.meta.original.earliest >= event.meta.useLimit ||
-        event.meta.original.latest < s->openedAt) {
+        now->latest - event.meta.original.earliest >= event.meta.useLimit) {
         Store_ProtectRejectedEvent(key, in->signal);
         diagnose(VSS_DIAG_TIME, in, now);
         r.validation = VSS_VALIDATION_REJECTED;

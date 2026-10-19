@@ -1,8 +1,8 @@
 /* DOMAIN generation changes through the adapter: late frames of replaced
  * boots, the rear fence across restarts, a reused boot, the receive monitor
  * of a new generation, the minimum frame a restart needs, events that
- * originated before INPUT opened, and input that arrives before the clock is
- * registered. */
+ * originated before the VSS run started, and input that arrives before the
+ * clock is registered. */
 
 #include <string.h>
 
@@ -85,17 +85,6 @@ static VssOccurrenceKey Key(uint32_t boot, uint32_t occurrence)
     k.generation = boot;
     k.occurrenceId = occurrence;
     return k;
-}
-
-static VssTimeEvidence Now(uint64_t ms)
-{
-    VssTimeEvidence t;
-    t.domain = VSS_PRODUCT;
-    t.epoch = 1u;
-    t.earliest = ms;
-    t.latest = ms;
-    t.continuity = VSS_CONTINUITY_COMPARABLE;
-    return t;
 }
 
 static VssInputNetObservation Obs(void)
@@ -316,43 +305,74 @@ static void restart_needs_a_usable_frame(void)
     CHECK_EQ_U(Obs().generationChanges, 1u);
 }
 
-/* After a VSS start the old ledger is gone: an event that originated before
- * INPUT opened may already have played and is not replayed. */
-static void event_older_than_opening_is_not_replayed(void)
+/* After a VSS restart the old ledger is gone. The ledger starts with this
+ * run, before clock 0: an event whose original time may lie before clock 0
+ * may already have played and is not replayed (tombstone). An event that
+ * originated after it is in the ledger, whenever INPUT opens. */
+static void event_before_vss_start_is_not_replayed(void)
 {
     NetVssWarningState w = Warning(1u);
     NetVssEvent e;
     NetCanRxMeta m;
-    VssOccurrenceKey before = Key(1u, 1u), after = Key(1u, 2u);
-    VssTimeEvidence now = Now(2010u);
+    VssOccurrenceKey k;
+    VssOccurrenceObservation r;
 
-    Reset(2000u);
-    SendWarning(1u, 1u, 2000u, &w); /* opens at 2000 */
-    SetNowMs(2010u);
+    /* 300 ms after the start; the first message originated 30 ms before RX
+     * and opens INPUT */
+    Reset(300u);
     e = Event(1u);
-    e.original_age_ms = 200u; /* originated by 1810 */
-    m = Meta(1u, 1u, 2010u);
-    VssApp_OnDomainEvent(&e, &m);
-    CHECK_EQ_U(Obs().lastEvent.validation, VSS_VALIDATION_REJECTED);
-    CHECK(!Store_FirstStartAllowed(&before, &now));
-    e = Event(2u);
-    e.original_age_ms = 5u; /* originated by 2005 */
-    m = Meta(1u, 2u, 2010u);
-    VssApp_OnDomainEvent(&e, &m);
-    CHECK_EQ_U(Obs().lastEvent.storeAdmission, VSS_STORE_ACCEPTED);
-    CHECK(Store_FirstStartAllowed(&after, &now));
-
-    /* the event that opens INPUT itself */
-    Reset(2000u);
-    e = Event(1u);
-    m = Meta(1u, 1u, 1995u);
+    e.original_age_ms = 30u;
+    m = Meta(1u, 1u, 300u);
     VssApp_OnDomainEvent(&e, &m);
     CHECK(Obs().generationOpen);
+    CHECK_EQ_U(Obs().lastEvent.storeAdmission, VSS_STORE_ACCEPTED);
+    k = Key(1u, 1u);
+    CHECK(Store_ReadOccurrence(&k, &r) && r.replayAllowed && !r.rejectedTombstone);
+
+    /* original interval starts exactly at clock 0 */
+    e = Event(2u);
+    e.original_age_ms = (uint16_t)(300u - VSS_CFG_RX_GAP_BUDGET_MS);
+    m = Meta(1u, 2u, 300u);
+    VssApp_OnDomainEvent(&e, &m);
+    CHECK_EQ_U(Obs().lastEvent.storeAdmission, VSS_STORE_ACCEPTED);
+    k = Key(1u, 2u);
+    CHECK(Store_ReadOccurrence(&k, &r) && r.replayAllowed);
+
+    /* 1 ms more: may have originated before the start */
+    e = Event(3u);
+    e.original_age_ms = (uint16_t)(301u - VSS_CFG_RX_GAP_BUDGET_MS);
+    m = Meta(1u, 3u, 300u);
+    VssApp_OnDomainEvent(&e, &m);
     CHECK_EQ_U(Obs().lastEvent.validation, VSS_VALIDATION_REJECTED);
+    k = Key(1u, 3u);
+    CHECK(Store_ReadOccurrence(&k, &r) && r.rejectedTombstone && !r.replayAllowed);
+
+    /* age beyond the run, still within the use limit */
+    e = Event(4u);
+    e.original_age_ms = 350u;
+    m = Meta(1u, 4u, 300u);
+    VssApp_OnDomainEvent(&e, &m);
+    CHECK_EQ_U(Obs().lastEvent.validation, VSS_VALIDATION_REJECTED);
+    k = Key(1u, 4u);
+    CHECK(Store_ReadOccurrence(&k, &r) && r.rejectedTombstone && !r.replayAllowed);
+
+    /* the same age as first message of a run that started earlier */
     Reset(2000u);
     m = Meta(1u, 1u, 2000u);
     VssApp_OnDomainEvent(&e, &m);
     CHECK_EQ_U(Obs().lastEvent.storeAdmission, VSS_STORE_ACCEPTED);
+
+    /* an event that originated 10 ms before the first Warning opened INPUT */
+    Reset(2000u);
+    SendWarning(1u, 1u, 2000u, &w);
+    SetNowMs(2005u);
+    e = Event(5u);
+    e.original_age_ms = 15u; /* originated by 1990 */
+    m = Meta(1u, 1u, 2005u);
+    VssApp_OnDomainEvent(&e, &m);
+    CHECK_EQ_U(Obs().lastEvent.storeAdmission, VSS_STORE_ACCEPTED);
+    k = Key(1u, 5u);
+    CHECK(Store_ReadOccurrence(&k, &r) && r.replayAllowed);
 }
 
 /* Input before the clock is registered would open INPUT at time 0: dropped. */
@@ -483,7 +503,7 @@ int main(void)
     reused_boot_is_refused();
     new_generation_starts_with_fresh_monitor();
     restart_needs_a_usable_frame();
-    event_older_than_opening_is_not_replayed();
+    event_before_vss_start_is_not_replayed();
     input_before_clock_registration_is_dropped();
     tx_back_to_one_in_same_boot_is_counted();
     raw_lane_quality_and_reason_are_kept();

@@ -21,9 +21,10 @@ typedef uint32_t (*VssTimeTickSource)(void);
 /* The clock below keeps its 64-bit extension in plain variables updated by
  * the readers: every function here runs in the super-loop owner context
  * only, never from an ISR. An ISR that needs a receive time records the raw
- * tick (or a flag) and the owner context converts it.
- * NetCanRxMeta.received_at_ms is therefore stamped with VssTime_NowMs32 in
- * the owner context, never computed from the tick by another module. */
+ * tick and the owner context converts it with VssTime_TickToMs32.
+ * NetCanRxMeta.received_at_ms is therefore VssTime_NowMs32 or
+ * VssTime_TickToMs32 called in the owner context, never computed from the
+ * tick by another module. */
 
 /* Registers the tick source, once at boot. Returns false and changes nothing
  * for NULL or when a source is already registered (a restart of the 64-bit
@@ -40,6 +41,15 @@ uint64_t VssTime_NowMs(void);
 
 /* Low 32 bits of VssTime_NowMs. */
 uint32_t VssTime_NowMs32(void);
+
+/* A tick read earlier (at most the current tick) on the VssTime_NowMs32
+ * axis, rounded down. A tick that cannot be placed - in the future, 2^31
+ * ticks or more back, before tick 0 of the clock, or no clock registered -
+ * gives VssTime_NowMs32 and is counted. */
+uint32_t VssTime_TickToMs32(uint32_t tick);
+
+/* Ticks VssTime_TickToMs32 could not place (saturates). */
+uint32_t VssTime_UnplacedTicks(void);
 
 #if VSS_CFG_HOST_TEST
 /* Forgets the registered source so a test can register another. */

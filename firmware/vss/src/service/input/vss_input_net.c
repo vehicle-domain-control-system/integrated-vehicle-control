@@ -506,9 +506,8 @@ bool VssInputNet_ToNetStatus(const VssStatusSnapshot *s, const VssTimeEvidence *
     out->vss_state = s->state;
     out->vss_availability = s->availability;
     out->vss_accepting_events = s->accepting ? NET_FLAG_YES : NET_FLAG_NO;
-    /* Only the output path fault is an active output fault; fault_mask
-     * carries every current fault. */
-    out->vss_fault_active = ((s->currentMask & (1u << VSS_FAULT_OUTPUT)) != 0u) ? NET_FLAG_YES : NET_FLAG_NO;
+    /* Every fault kind is an internal output fault of VSS. */
+    out->vss_fault_active = (s->currentMask != 0u) ? NET_FLAG_YES : NET_FLAG_NO;
     out->fault_mask = s->currentMask;
     if (s->lastFaultPresent)
     {

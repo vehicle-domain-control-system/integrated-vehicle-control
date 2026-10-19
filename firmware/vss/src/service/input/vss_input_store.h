@@ -262,8 +262,11 @@ typedef struct {
  * the DOMAIN generation after VSS synchronization; default closed. A clock
  * discontinuity closes admission for the rest of the VSS run; a generation
  * change is resumed only through Input_AcceptNewGeneration. Neither clears
- * the ledger. An event that originated before synchronizedAt is not
- * replayed: a VSS run before this one may already have played it. */
+ * the ledger. The ledger starts with the VSS run at clock 0 of the time
+ * domain, whenever the opening happens: an event whose original time may lie
+ * before clock 0 is not replayed (a run before this one may already have
+ * played it); one that originated after it is replayable even when it
+ * arrives as the message that opens INPUT. */
 bool Input_OpenAfterSynchronization(VssOrigin origin, uint32_t domainBoot,
                                    const VssTimeEvidence *synchronizedAt);
 /* A DOMAIN restart that the Network accepted: closes the current generation
