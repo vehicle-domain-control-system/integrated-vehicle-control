@@ -88,6 +88,7 @@ typedef struct {
     bool startUncertain;          /* START_OUTCOME_UNCERTAIN was recorded */
     uint64_t revision;            /* +1 on every change */
 
+    uint64_t lastStartedSession;  /* last session the stream reported STARTED for, 0 before any */
     uint64_t lastSession;         /* last session that ended, 0 before any */
     PlaybackEnd lastEnd;
     uint64_t lastEndAtMs;         /* time of its final fact */
@@ -107,14 +108,17 @@ typedef struct {
 void Playback_Init(void);
 
 /* Applies a selection decision made on basis at now. candidates are the
- * observations the decision was made from. */
+ * observations the decision was made from; when the basis is VALID they are
+ * also checked for the stateful stop condition first. */
 VssRequestDisposition Playback_RequestTransition(const VssSelectionDecision *decision,
                                                  const VssCandidateObservation *candidates,
                                                  size_t count, const VssReadBasis *basis,
                                                  const VssTimeEvidence *now);
 
 /* Consumes the stream's facts and checks the stateful stop condition
- * against candidates (those of now's origin). */
+ * against candidates (those of now's origin). With candidates NULL only the
+ * facts are consumed: a flow that collects candidates once, after the facts,
+ * leaves the check to Playback_RequestTransition. */
 void Playback_Advance(const VssCandidateObservation *candidates, size_t count,
                       const VssTimeEvidence *now);
 

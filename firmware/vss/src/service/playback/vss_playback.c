@@ -153,6 +153,7 @@ static void close_without_start(uint64_t atMs, bool retryAllowed)
 
 static void on_started(const StreamFact *f)
 {
+    s_view.lastStartedSession = s_view.session;
     if (!is_event())
     {
         s_view.started = true;
@@ -307,6 +308,24 @@ void Playback_Init(void)
     s_firstStartLatest = 0u;
 }
 
+/* Stops a stateful session whose warning is no longer an applicable
+ * candidate of the same value. */
+static void check_stateful(const VssCandidateObservation *candidates, size_t count,
+                           const VssTimeEvidence *now)
+{
+    if (live() && !s_view.stopRequested && !is_event() && valid_now(now) &&
+        (now->domain == s_view.candidate.origin))
+    {
+        const VssCandidateObservation *c = find_candidate(candidates, count, &s_view.candidate);
+
+        if ((c == NULL) || (c->validity != VSS_CANDIDATE_APPLICABLE) ||
+            (c->value != s_view.candidate.value))
+        {
+            request_stop();
+        }
+    }
+}
+
 void Playback_Advance(const VssCandidateObservation *candidates, size_t count,
                       const VssTimeEvidence *now)
 {
@@ -322,16 +341,9 @@ void Playback_Advance(const VssCandidateObservation *candidates, size_t count,
         }
     } while (n == AUDIO_STREAM_FACT_CAPACITY);
 
-    if (live() && !s_view.stopRequested && !is_event() && valid_now(now) &&
-        (now->domain == s_view.candidate.origin))
+    if (candidates != NULL)
     {
-        const VssCandidateObservation *c = find_candidate(candidates, count, &s_view.candidate);
-
-        if ((c == NULL) || (c->validity != VSS_CANDIDATE_APPLICABLE) ||
-            (c->value != s_view.candidate.value))
-        {
-            request_stop();
-        }
+        check_stateful(candidates, count, now);
     }
 }
 
@@ -409,6 +421,11 @@ VssRequestDisposition Playback_RequestTransition(const VssSelectionDecision *dec
         (count > VSS_CANDIDATE_CAPACITY) || ((count != 0u) && (candidates == NULL)))
     {
         return VSS_REQUEST_REJECTED;
+    }
+    if (basis->validity == VSS_READ_VALID)
+    {
+        /* A complete candidate list of this pass. */
+        check_stateful(candidates, count, now);
     }
     if ((basis->validity != VSS_READ_VALID) || (basis->origin != now->domain) ||
         (basis->storeRevision == 0u) ||

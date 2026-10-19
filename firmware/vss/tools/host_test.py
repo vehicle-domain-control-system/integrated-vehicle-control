@@ -241,6 +241,7 @@ def config_guards(cc, rep):
         ('VSS_CFG_FLOW_PERIOD_MS=25', 'must be 1..20'),
         ('VSS_CFG_STORE_RECLAIM_MS=2000', 'must exceed'),
         ('VSS_CFG_RX_GAP_BUDGET_MS=500', 'must be 0..100'),
+        ('VSS_CFG_STORE_RECLAIM_PERIOD_MS=5', 'must be 10..1000'),
     ]
     passed = failed = 0
     notes = []

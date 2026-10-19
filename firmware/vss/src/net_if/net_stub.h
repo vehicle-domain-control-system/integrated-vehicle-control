@@ -17,4 +17,15 @@ bool NetStub_ReadLastStatus(NetVssStatus *out);
 /* Number of reports accepted since start. */
 uint32_t NetStub_PublishCount(void);
 
+#if defined(VSS_CFG_HOST_TEST) && (VSS_CFG_HOST_TEST != 0)
+/* Host tests only: the next count submissions return result (not OK) and
+ * are not kept. */
+void NetStub_RefuseForTest(NetSubmitResult result, uint32_t count);
+
+/* Every VssNet_PublishStatus call, refused ones included. */
+uint32_t NetStub_AttemptCount(void);
+
+void NetStub_ResetForTest(void);
+#endif
+
 #endif /* NET_STUB_H */

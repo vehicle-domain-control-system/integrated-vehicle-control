@@ -197,6 +197,11 @@ bool Input_OpenAfterSynchronization(VssOrigin origin, uint32_t domainBoot,
     return true;
 }
 
+bool Input_IsOpen(VssOrigin origin)
+{
+    return valid_origin(origin) && sources[(size_t)origin].open;
+}
+
 static bool retired(const InputSource *s, uint32_t boot)
 {
     size_t i;

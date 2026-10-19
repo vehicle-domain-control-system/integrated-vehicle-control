@@ -52,6 +52,11 @@
 #define VSS_CFG_STORE_RECLAIM_MS 2500
 #endif
 
+/* Interval between two STORE reclaim sweeps run by the flow, in ms. */
+#ifndef VSS_CFG_STORE_RECLAIM_PERIOD_MS
+#define VSS_CFG_STORE_RECLAIM_PERIOD_MS 100
+#endif
+
 /* Period of the built-in input sequence's warning frames, in ms. */
 #ifndef VSS_CFG_TEST_WARNING_PERIOD_MS
 #define VSS_CFG_TEST_WARNING_PERIOD_MS 50
@@ -81,6 +86,9 @@
 #endif
 #if (VSS_CFG_STORE_RECLAIM_MS <= 2000)
 #error "VSS_CFG_STORE_RECLAIM_MS must exceed the 2000 ms use-limit ceiling"
+#endif
+#if (VSS_CFG_STORE_RECLAIM_PERIOD_MS < 10) || (VSS_CFG_STORE_RECLAIM_PERIOD_MS > 1000)
+#error "VSS_CFG_STORE_RECLAIM_PERIOD_MS must be 10..1000"
 #endif
 #if (VSS_CFG_TEST_WARNING_PERIOD_MS < 10)
 #error "VSS_CFG_TEST_WARNING_PERIOD_MS must be at least 10"
