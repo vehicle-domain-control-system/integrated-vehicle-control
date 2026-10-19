@@ -131,18 +131,24 @@ static void request_stop(void)
     changed();
 }
 
-/* The event session ended without a first start accepted by STORE. */
-static void close_without_start(uint64_t atMs)
+/* The event session ended without a first start accepted by STORE. With
+ * retry allowed the record stays selectable within its use limit; without
+ * it the record is closed for good (the only final fact STORE accepts
+ * before a first start is START_OUTCOME_UNCERTAIN). */
+static void close_without_start(uint64_t atMs, bool retryAllowed)
 {
-    if (apply_fact(VSS_FACT_NO_START_REEVALUATE, atMs, 0u))
+    if (retryAllowed && apply_fact(VSS_FACT_NO_START_REEVALUATE, atMs, 0u))
     {
         retire_binding(true);
+        return;
     }
-    else
+    if (!retryAllowed && apply_fact(VSS_FACT_START_OUTCOME_UNCERTAIN, atMs, 0u))
     {
-        store_refused();
         retire_binding(false);
+        return;
     }
+    store_refused();
+    retire_binding(false);
 }
 
 static void on_started(const StreamFact *f)
@@ -175,8 +181,9 @@ static void on_started(const StreamFact *f)
     changed();
 }
 
-/* COMPLETED, STOPPED and FAULT: the session's final fact. */
-static void on_ended(const StreamFact *f, PlaybackEnd end)
+/* COMPLETED, STOPPED and FAULT: the session's final fact. retryAllowed is
+ * false when the occurrence must not be selected again. */
+static void on_ended(const StreamFact *f, PlaybackEnd end, bool retryAllowed)
 {
     if (is_event())
     {
@@ -196,7 +203,7 @@ static void on_ended(const StreamFact *f, PlaybackEnd end)
         }
         else
         {
-            close_without_start(f->atMs);
+            close_without_start(f->atMs, retryAllowed);
         }
     }
     end_session(end, f->atMs);
@@ -204,6 +211,8 @@ static void on_ended(const StreamFact *f, PlaybackEnd end)
 
 static void on_fault(const StreamFact *f)
 {
+    bool decodeOnly = (f->faultMask & ~AUDIO_STREAM_FAULT_DECODE) == 0u;
+
     s_view.lastFaultMask = f->faultMask;
     s_view.lastFaultAtMs = f->atMs;
     if ((f->faultMask & PLAYBACK_OUTPUT_FAULT_BITS) != 0u)
@@ -211,7 +220,7 @@ static void on_fault(const StreamFact *f)
         count_up(&s_view.outputFaults);
         s_view.outputFailed = true;
     }
-    else if ((f->faultMask & AUDIO_STREAM_FAULT_DECODE) != 0u)
+    else if (decodeOnly)
     {
         count_up(&s_view.assetFaults);
     }
@@ -219,7 +228,9 @@ static void on_fault(const StreamFact *f)
     {
         count_up(&s_view.outputFaults);
     }
-    on_ended(f, PLAYBACK_END_FAULT);
+    /* The asset is fixed data: a decode failure would repeat, so its
+     * occurrence is not offered for another attempt. */
+    on_ended(f, PLAYBACK_END_FAULT, !decodeOnly);
 }
 
 static void apply_stream_fact(const StreamFact *f)
@@ -235,20 +246,20 @@ static void apply_stream_fact(const StreamFact *f)
         on_started(f);
         break;
     case STREAM_FACT_COMPLETED:
-        on_ended(f, is_event() ? PLAYBACK_END_COMPLETED : PLAYBACK_END_STOPPED);
+        on_ended(f, is_event() ? PLAYBACK_END_COMPLETED : PLAYBACK_END_STOPPED, true);
         break;
     case STREAM_FACT_STOPPED:
         if (!is_event())
         {
-            on_ended(f, PLAYBACK_END_STOPPED);
+            on_ended(f, PLAYBACK_END_STOPPED, true);
         }
         else if (s_view.startUncertain)
         {
-            on_ended(f, PLAYBACK_END_START_UNCERTAIN);
+            on_ended(f, PLAYBACK_END_START_UNCERTAIN, true);
         }
         else
         {
-            on_ended(f, s_view.started ? PLAYBACK_END_INTERRUPTED : PLAYBACK_END_NO_START);
+            on_ended(f, s_view.started ? PLAYBACK_END_INTERRUPTED : PLAYBACK_END_NO_START, true);
         }
         break;
     case STREAM_FACT_FAULT:
@@ -377,7 +388,7 @@ static bool start_session(const VssCandidateObservation *c, const VssPlanDescrip
         count_up(&s_view.startRefusals);
         if (is_event())
         {
-            close_without_start(now->earliest);
+            close_without_start(now->earliest, true);
         }
         end_session(PLAYBACK_END_NOT_STARTED, now->earliest);
         return false;

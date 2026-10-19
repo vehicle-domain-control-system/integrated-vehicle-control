@@ -244,6 +244,7 @@ static const VssCandidateObservation *Candidate(const VssOccurrenceKey *key)
 #define BAD_FRAME_BYTES 417u
 #define BAD_FRAMES      12u
 static uint8_t s_badAsset[BAD_FRAME_BYTES * BAD_FRAMES];
+static uint8_t s_mixedAsset[20000u + BAD_FRAME_BYTES * BAD_FRAMES];
 
 static uint32_t BuildBadFrames(void)
 {
@@ -639,21 +640,26 @@ static void test_transmit_fault_latches_output(void)
     CHECK_EQ_U(s_view.startRefusals, 0u);
 }
 
-/* A decode failure before any output is an asset fault. The record keeps
- * its start opportunity, so the pass that sees the fault adopts it again;
- * once the asset is readable it plays. */
-static void test_decode_fault_counts_as_asset_fault(void)
+/* A decode failure before any output is an asset fault and closes the
+ * occurrence: the asset is fixed data, so a retry would fail the same way.
+ * The record is final, not selectable again, and a lower-rank event plays
+ * at once. */
+static void test_decode_fault_closes_the_occurrence(void)
 {
-    VssOccurrenceKey k;
+    VssOccurrenceKey failing;
+    VssOccurrenceKey other;
     VssOccurrenceObservation r;
+    const VssCandidateObservation *c;
     uint32_t size = BuildBadFrames();
     uint32_t i;
 
     Setup();
-    AudioAsset_OverrideForTest(AUDIO_ASSET_ID_WELCOME, s_badAsset, size);
-    k = AddEvent(1u, VSS_SIGNAL_WELCOME);
+    AudioAsset_OverrideForTest(AUDIO_ASSET_ID_LOCK_ERROR, s_badAsset, size);
+    other = AddEvent(1u, VSS_SIGNAL_WELCOME);
+    failing = AddEvent(2u, VSS_SIGNAL_LOCK_ERROR);
     Pass();
     CHECK_EQ_U(s_disposition, VSS_REQUEST_ADOPTED);
+    CHECK_EQ_U(s_view.candidate.signal, VSS_SIGNAL_LOCK_ERROR);
     for (i = 0u; i < 4u; ++i)
     {
         Boundary();
@@ -669,27 +675,89 @@ static void test_decode_fault_counts_as_asset_fault(void)
     CHECK(!s_view.outputFailed);
     CHECK_EQ_U(s_view.lastFaultMask, AUDIO_STREAM_FAULT_DECODE);
     CHECK_EQ_U(AudioTx_FaultMask(), 0u);
-    /* Retried at once with the same asset. */
+    CHECK_EQ_U(s_view.storeRefusals, 0u);
+
+    /* The failed occurrence is closed; the other event was adopted in the
+     * same pass. */
+    CHECK(Record(&failing, &r));
+    CHECK_EQ_U(r.state, VSS_OCCURRENCE_UNCERTAIN_FINAL);
+    CHECK(!r.firstStartFact.present);
+    CHECK(r.finalFact.present);
+    CHECK_EQ_U(r.finalFact.kind, VSS_FACT_START_OUTCOME_UNCERTAIN);
+    CHECK_EQ_U(r.finalFact.session, 1u);
+    CHECK(!r.replayAllowed);
+    c = Candidate(&failing);
+    CHECK(c != NULL);
+    if (c != NULL)
+    {
+        CHECK_EQ_U(c->validity, VSS_CANDIDATE_NOT_APPLICABLE);
+        CHECK(!c->newSessionAllowed);
+    }
     CHECK(s_view.present);
     CHECK_EQ_U(s_view.session, 2u);
-    CHECK_EQ_U(s_disposition, VSS_REQUEST_ADOPTED);
-
-    CHECK(Record(&k, &r));
-    CHECK_EQ_U(r.state, VSS_OCCURRENCE_PENDING);
-    CHECK(!r.firstStartFact.present);
-    CHECK(r.replayAllowed);
-
-    /* The decoder reads the asset as it renders: once readable, the retried
-     * session plays. */
-    AudioAsset_OverrideForTest(0u, NULL, 0u);
+    CHECK_EQ_U(s_view.candidate.signal, VSS_SIGNAL_WELCOME);
     CHECK(RunUntilIdle(60u));
     CHECK_EQ_U(s_view.lastSession, 2u);
     CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_COMPLETED);
     CHECK_EQ_U(s_view.assetFaults, 1u);
-    CHECK(Record(&k, &r));
+    CHECK(Record(&other, &r));
     CHECK_EQ_U(r.state, VSS_OCCURRENCE_COMPLETED);
     CHECK_EQ_U(r.firstStartFact.session, 2u);
+    /* Still closed once the asset is readable again. */
+    AudioAsset_OverrideForTest(0u, NULL, 0u);
+    Pass();
+    CHECK(!s_view.present);
+    CHECK_EQ_U(s_decision.action, VSS_SELECTION_WAIT);
     CHECK_EQ_U(s_view.storeRefusals, 0u);
+}
+
+/* A decode failure after the output began is an asset fault and an
+ * interrupted record, like any stop after the start. */
+static void test_decode_fault_after_start_interrupts(void)
+{
+    VssOccurrenceKey k;
+    VssOccurrenceObservation r;
+    uint32_t size;
+    uint32_t i;
+
+    Setup();
+    /* The real cue followed by frames the output cannot play. */
+    CHECK(AudioAsset_GetSize(AUDIO_ASSET_ID_LOCK, &size) == AUDIO_ASSET_STATUS_OK);
+    CHECK(size + BAD_FRAME_BYTES * BAD_FRAMES <= sizeof s_mixedAsset);
+    if (size + BAD_FRAME_BYTES * BAD_FRAMES > sizeof s_mixedAsset)
+    {
+        return;
+    }
+    {
+        uint32_t got = 0u;
+        CHECK(AudioAsset_Read(AUDIO_ASSET_ID_LOCK, 0u, s_mixedAsset, size, &got) == AUDIO_ASSET_STATUS_OK);
+        (void)BuildBadFrames();
+        memcpy(s_mixedAsset + size, s_badAsset, BAD_FRAME_BYTES * BAD_FRAMES);
+    }
+    AudioAsset_OverrideForTest(AUDIO_ASSET_ID_LOCK, s_mixedAsset, size + BAD_FRAME_BYTES * BAD_FRAMES);
+    k = AddEvent(1u, VSS_SIGNAL_LOCK_COMPLETE);
+    Pass();
+    CHECK_EQ_U(s_disposition, VSS_REQUEST_ADOPTED);
+    Boundary();
+    Boundary();
+    CHECK_EQ_U(s_view.phase, PLAYBACK_ACTIVE);
+    for (i = 0u; i < 40u; ++i)
+    {
+        Boundary();
+        if (!s_view.present)
+        {
+            break;
+        }
+    }
+    CHECK(!s_view.present);
+    CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_FAULT);
+    CHECK_EQ_U(s_view.assetFaults, 1u);
+    CHECK_EQ_U(s_view.lastFaultMask, AUDIO_STREAM_FAULT_DECODE);
+    CHECK(Record(&k, &r));
+    CHECK_EQ_U(r.state, VSS_OCCURRENCE_INTERRUPTED);
+    CHECK_EQ_U(r.finalFact.kind, VSS_FACT_WHOLE_INTERRUPTED);
+    CHECK(!r.replayAllowed);
+    AudioAsset_OverrideForTest(0u, NULL, 0u);
 }
 
 /* The stream refuses to prepare the asset: a start refusal, no session, and
@@ -825,7 +893,8 @@ int main(void)
     test_replace_interrupts_event_and_stateful_runs_until_cleared();
     test_stateful_stops_when_evaluations_stop();
     test_transmit_fault_latches_output();
-    test_decode_fault_counts_as_asset_fault();
+    test_decode_fault_closes_the_occurrence();
+    test_decode_fault_after_start_interrupts();
     test_prepare_refusal_releases_the_record();
     test_binding_exhaustion_is_reported_and_reclaim_clears_it();
     test_request_guards();

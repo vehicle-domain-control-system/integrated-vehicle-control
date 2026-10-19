@@ -30,7 +30,10 @@
  *   STOPPED, started   WHOLE_INTERRUPTED, binding retired
  *   STOPPED, no start  NO_START_REEVALUATE, binding retired as no-start, so
  *                      the record can be selected again within its use limit
- *   FAULT              as STOPPED, plus the fault observation below
+ *   FAULT              as STOPPED, plus the fault observation below; a
+ *                      decode failure before the start closes the record
+ *                      instead (START_OUTCOME_UNCERTAIN): the asset is
+ *                      fixed data, a retry would fail the same way
  * Stateful (warning) sessions loop at the stream and touch STORE only
  * through the candidate list: when the warning is no longer an applicable
  * candidate the session is stopped.
