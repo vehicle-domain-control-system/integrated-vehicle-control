@@ -70,6 +70,7 @@ static DomainRuntime_Config_t RuntimeConfig(
     config.resultPolicy.doorEvidenceTtlMs = 500U;
     config.permissionPolicy.reevaluationPeriodMs = 200U;
     config.permissionPolicy.sourceValidityMs = 500U;
+    config.cisOccupantEnabled = true;
     config.cisOccupantPolicy.presenceTtlMs = 500U;
     config.cisOccupantPolicy.countTtlMs = 500U;
     config.stateQueryPolicy.bcmDoorTtlMs = 500U;

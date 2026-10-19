@@ -20,6 +20,14 @@ typedef bool (*DomainIfCisOccupantBinding_TimeProvider_t)(
 void DomainIfCisOccupantBinding_Reset(void);
 
 /*
+ * Establishes an explicit disabled state after C2 initialization. Public
+ * Occupant Rx/Query calls return DOMAIN_IF_NOT_AVAILABLE and never expose an
+ * older binding. Re-enabling is supported only by a later serialized Runtime
+ * initialization and Configure call while Network ingress is closed.
+ */
+DomainIf_Status_t DomainIfCisOccupantBinding_Disable(void);
+
+/*
  * Binds an already initialized manager and private admission context. The
  * caller retains ownership and serializes Transition/Rx/Query calls in one
  * non-ISR context for the binding lifetime. Initial Rx remains blocked until

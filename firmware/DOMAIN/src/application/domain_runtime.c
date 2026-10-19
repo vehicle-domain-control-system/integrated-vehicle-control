@@ -102,21 +102,29 @@ static DomainRuntime_Status_t DomainRuntime_InitManagers(
     }
     runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_PERMISSION_MANAGER;
 
-    if (CisOccupantManager_Init(
-            &runtime->cisOccupantManager,
-            &config->cisOccupantPolicy) != CIS_OCCUPANT_MANAGER_OK)
+    if (config->cisOccupantEnabled &&
+        (CisOccupantManager_Init(
+             &runtime->cisOccupantManager,
+             &config->cisOccupantPolicy) != CIS_OCCUPANT_MANAGER_OK))
     {
         return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
     }
-    runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_MANAGER;
+    if (config->cisOccupantEnabled)
+    {
+        runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_MANAGER;
+    }
 
-    if (DomainCisOccupantPriv_Init(
-            &runtime->cisOccupantPrivate,
-            &runtime->cisOccupantManager) != DOMAIN_CIS_OCCUPANT_PRIV_OK)
+    if (config->cisOccupantEnabled &&
+        (DomainCisOccupantPriv_Init(
+             &runtime->cisOccupantPrivate,
+             &runtime->cisOccupantManager) != DOMAIN_CIS_OCCUPANT_PRIV_OK))
     {
         return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
     }
-    runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_PRIVATE;
+    if (config->cisOccupantEnabled)
+    {
+        runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_PRIVATE;
+    }
     return DOMAIN_RUNTIME_OK;
 }
 
@@ -177,11 +185,18 @@ static DomainRuntime_Status_t DomainRuntime_InitC2AndBindings(
     }
     runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_QUERY_RESULT_BINDING;
 
-    if (DomainIfCisOccupantBinding_Configure(
-            &runtime->cisOccupantManager,
-            &runtime->cisOccupantPrivate,
-            runtime->timeProvider,
-            runtime->timeProviderContext) != DOMAIN_IF_OK)
+    if (config->cisOccupantEnabled)
+    {
+        if (DomainIfCisOccupantBinding_Configure(
+                &runtime->cisOccupantManager,
+                &runtime->cisOccupantPrivate,
+                runtime->timeProvider,
+                runtime->timeProviderContext) != DOMAIN_IF_OK)
+        {
+            return DOMAIN_RUNTIME_BINDING_INIT_FAILED;
+        }
+    }
+    else if (DomainIfCisOccupantBinding_Disable() != DOMAIN_IF_OK)
     {
         return DOMAIN_RUNTIME_BINDING_INIT_FAILED;
     }
@@ -222,6 +237,7 @@ DomainRuntime_Status_t DomainRuntime_Init(
     runtime->integrityMarker = DOMAIN_RUNTIME_INTEGRITY_MARKER;
     runtime->timeProvider = config->timeProvider;
     runtime->timeProviderContext = config->timeProviderContext;
+    runtime->cisOccupantEnabled = config->cisOccupantEnabled;
 
     if (!DomainRuntime_GetTime(runtime, &initialNowMs))
     {
@@ -304,6 +320,7 @@ DomainRuntime_Status_t DomainRuntime_GetSnapshot(
 
     snapshot.initialized = runtime->initialized;
     snapshot.ready = DomainRuntime_IsReady(runtime);
+    snapshot.cisOccupantEnabled = runtime->cisOccupantEnabled;
     snapshot.initStage = runtime->initStage;
     snapshot.hasPolled = runtime->hasPolled;
     snapshot.lastPollAtMs = runtime->lastPollAtMs;
@@ -339,15 +356,17 @@ PermissionManager_t *DomainRuntime_GetPermissionManager(
 CisOccupantManager_t *DomainRuntime_GetCisOccupantManager(
     DomainRuntime_t *runtime)
 {
-    return DomainRuntime_IsReady(runtime) ? &runtime->cisOccupantManager
-                                          : NULL;
+    return DomainRuntime_IsReady(runtime) && runtime->cisOccupantEnabled
+               ? &runtime->cisOccupantManager
+               : NULL;
 }
 
 DomainCisOccupantPriv_t *DomainRuntime_GetCisOccupantPrivate(
     DomainRuntime_t *runtime)
 {
-    return DomainRuntime_IsReady(runtime) ? &runtime->cisOccupantPrivate
-                                          : NULL;
+    return DomainRuntime_IsReady(runtime) && runtime->cisOccupantEnabled
+               ? &runtime->cisOccupantPrivate
+               : NULL;
 }
 
 CisEnvironmentManager_t *DomainRuntime_GetCisEnvironmentManager(

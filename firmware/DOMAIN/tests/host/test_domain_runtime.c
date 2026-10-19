@@ -71,6 +71,7 @@ static DomainRuntime_Config_t NormalConfig(void)
     config.resultPolicy.doorEvidenceTtlMs = 500U;
     config.permissionPolicy.reevaluationPeriodMs = 200U;
     config.permissionPolicy.sourceValidityMs = 500U;
+    config.cisOccupantEnabled = true;
     config.cisOccupantPolicy.presenceTtlMs = 500U;
     config.cisOccupantPolicy.countTtlMs = 500U;
     config.stateQueryPolicy.bcmDoorTtlMs = 500U;
@@ -196,6 +197,7 @@ static void Test_RetryAndInitializationOrder(void)
           DOMAIN_RUNTIME_OK);
     CHECK(snapshot.initialized);
     CHECK(snapshot.ready);
+    CHECK(snapshot.cisOccupantEnabled);
     CHECK(snapshot.initStage == DOMAIN_RUNTIME_INIT_STAGE_READY);
     CHECK(DomainIf_IsInitialized());
     CHECK(g_runtime.vehicleStateManager.initialized);
@@ -507,6 +509,42 @@ static void Test_ZeroOccupantTtlPreventsRuntimeReady(void)
     EndTest(before);
 }
 
+static void Test_DisabledOccupantIsUnavailableAndRuntimeReady(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainRuntime_Snapshot_t runtimeSnapshot;
+    CisOccupantState_t input = NormalOccupant();
+    CisOccupantState_t output;
+    CisOccupantState_t saved;
+    int before = g_failures;
+
+    BeginTest("Test_DisabledOccupantIsUnavailableAndRuntimeReady");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    config.cisOccupantEnabled = false;
+    config.cisOccupantPolicy.presenceTtlMs = 0U;
+    config.cisOccupantPolicy.countTtlMs = 0U;
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainRuntime_IsReady(&runtime));
+    CHECK(DomainRuntime_GetSnapshot(&runtime, &runtimeSnapshot) ==
+          DOMAIN_RUNTIME_OK);
+    CHECK(!runtimeSnapshot.cisOccupantEnabled);
+    CHECK(!runtime.cisOccupantManager.initialized);
+    CHECK(!runtime.cisOccupantPrivate.initialized);
+    CHECK(DomainRuntime_GetCisOccupantManager(&runtime) == NULL);
+    CHECK(DomainRuntime_GetCisOccupantPrivate(&runtime) == NULL);
+
+    (void)memset(&output, 0xA5, sizeof(output));
+    saved = output;
+    CHECK(DomainIf_RxCisOccupant(&input) == DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(DomainIf_QueryGetCisOccupant(0U, &output) ==
+          DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(memcmp(&output, &saved, sizeof(output)) == 0);
+    CHECK(!DomainIfCore_TestHasRxObserver());
+    CHECK(!DomainIfCore_TestHasTxPort());
+    EndTest(before);
+}
+
 int main(void)
 {
     Test_NullAndPreInitialization();
@@ -524,6 +562,7 @@ int main(void)
     Test_GetSnapshotIsReadOnly();
     Test_OccupantFreshnessAndNewRuntimeReset();
     Test_ZeroOccupantTtlPreventsRuntimeReady();
+    Test_DisabledOccupantIsUnavailableAndRuntimeReady();
 
     (void)printf("%d tests, %d failures\n", g_tests, g_failures);
     return (g_failures == 0) ? 0 : 1;

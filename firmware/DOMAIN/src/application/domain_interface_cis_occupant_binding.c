@@ -11,6 +11,7 @@ typedef struct
     DomainIfCisOccupantBinding_TimeProvider_t timeProvider;
     void *timeProviderContext;
     bool configured;
+    bool disabled;
 } DomainIfCisOccupantBinding_Context_t;
 
 static DomainIfCisOccupantBinding_Context_t g_cisOccupantBinding;
@@ -18,6 +19,18 @@ static DomainIfCisOccupantBinding_Context_t g_cisOccupantBinding;
 void DomainIfCisOccupantBinding_Reset(void)
 {
     (void)memset(&g_cisOccupantBinding, 0, sizeof(g_cisOccupantBinding));
+}
+
+DomainIf_Status_t DomainIfCisOccupantBinding_Disable(void)
+{
+    if (!DomainIf_IsInitialized())
+    {
+        return DOMAIN_IF_NOT_INITIALIZED;
+    }
+
+    DomainIfCisOccupantBinding_Reset();
+    g_cisOccupantBinding.disabled = true;
+    return DOMAIN_IF_OK;
 }
 
 static DomainIf_Status_t DomainIfCisOccupantBinding_MapManagerStatus(
@@ -75,6 +88,7 @@ DomainIf_Status_t DomainIfCisOccupantBinding_Configure(
     g_cisOccupantBinding.timeProvider = timeProvider;
     g_cisOccupantBinding.timeProviderContext = timeProviderContext;
     g_cisOccupantBinding.configured = true;
+    g_cisOccupantBinding.disabled = false;
     return DOMAIN_IF_OK;
 }
 
@@ -95,6 +109,10 @@ DomainIf_Status_t DomainIf_RxCisOccupant(const CisOccupantState_t *state)
     if (!DomainIf_IsInitialized())
     {
         return DOMAIN_IF_NOT_INITIALIZED;
+    }
+    if (g_cisOccupantBinding.disabled)
+    {
+        return DOMAIN_IF_NOT_AVAILABLE;
     }
     if (!g_cisOccupantBinding.configured ||
         (g_cisOccupantBinding.occupantManager == NULL) ||
@@ -151,6 +169,10 @@ DomainIf_Status_t DomainIf_QueryGetCisOccupant(
     if (!DomainIf_IsInitialized())
     {
         return DOMAIN_IF_NOT_INITIALIZED;
+    }
+    if (g_cisOccupantBinding.disabled)
+    {
+        return DOMAIN_IF_NOT_AVAILABLE;
     }
     if (!g_cisOccupantBinding.configured ||
         (g_cisOccupantBinding.occupantManager == NULL))

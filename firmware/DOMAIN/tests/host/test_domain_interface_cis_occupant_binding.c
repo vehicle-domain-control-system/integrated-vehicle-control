@@ -139,6 +139,8 @@ static void Test_PreInitializationAndNull(void)
     CHECK(DomainIfCisOccupantBinding_Configure(
               &g_manager, &g_private, GetNow, &g_clock) ==
           DOMAIN_IF_NOT_INITIALIZED);
+    CHECK(DomainIfCisOccupantBinding_Disable() ==
+          DOMAIN_IF_NOT_INITIALIZED);
     CHECK(DomainIf_RxCisOccupant(&state) == DOMAIN_IF_NOT_INITIALIZED);
     EndTest(before);
 }
@@ -410,6 +412,32 @@ static void Test_TimeRolloverAndAgeSaturation(void)
     EndTest(before);
 }
 
+static void Test_ExplicitDisableHidesPreviousSnapshot(void)
+{
+    CisOccupantState_t state = NormalState();
+    CisOccupantState_t output;
+    CisOccupantState_t saved;
+    int before = g_failures;
+
+    BeginTest("Test_ExplicitDisableHidesPreviousSnapshot");
+    Configure();
+    g_clock.nowMs = 2000U;
+    CHECK(DomainIf_RxCisOccupant(&state) == DOMAIN_IF_OK);
+    CHECK(DomainIfCisOccupantBinding_Disable() == DOMAIN_IF_OK);
+    (void)memset(&output, 0xA5, sizeof(output));
+    saved = output;
+    CHECK(DomainIf_RxCisOccupant(&state) == DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(DomainIf_QueryGetCisOccupant(2000U, &output) ==
+          DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(memcmp(&output, &saved, sizeof(output)) == 0);
+
+    /* A later serialized initialization may explicitly enable it again. */
+    Configure();
+    CHECK(DomainIf_QueryGetCisOccupant(2000U, &output) == DOMAIN_IF_OK);
+    CHECK(output.presenceQuality.meta.quality == DATA_QUALITY_NO_DATA);
+    EndTest(before);
+}
+
 int main(void)
 {
     Test_PreInitializationAndNull();
@@ -423,6 +451,7 @@ int main(void)
     Test_InvalidInputAndClockFailureAreAtomic();
     Test_QueryFailureLeavesOutputUnchanged();
     Test_TimeRolloverAndAgeSaturation();
+    Test_ExplicitDisableHidesPreviousSnapshot();
 
     (void)printf(
         "domain_interface_cis_occupant_binding: %d tests, %d failures\n",

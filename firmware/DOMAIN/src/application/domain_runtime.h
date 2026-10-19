@@ -89,6 +89,14 @@ typedef struct
     CommandManager_CommandId_t firstCommandId;
     ResultManager_Policy_t resultPolicy;
     PermissionManager_Policy_t permissionPolicy;
+    /*
+     * Optional startup-only feature selection. A zero-initialized config
+     * keeps CIS Occupant disabled. When false, the policy TTL fields are
+     * ignored and public Occupant Rx/Query return DOMAIN_IF_NOT_AVAILABLE.
+     * When true, both TTL fields must be nonzero and private BOOT admission
+     * is still required before Rx. Runtime toggling is not supported.
+     */
+    bool cisOccupantEnabled;
     CisOccupantManager_Policy_t cisOccupantPolicy;
     DomainIfQueryBinding_StatePolicy_t stateQueryPolicy;
 } DomainRuntime_Config_t;
@@ -105,6 +113,7 @@ typedef struct
 {
     bool initialized;
     bool ready;
+    bool cisOccupantEnabled;
     DomainRuntime_InitStage_t initStage;
     bool hasPolled;
     uint32_t lastPollAtMs;
@@ -149,6 +158,7 @@ typedef struct
     DomainRuntime_InitStage_t initStage;
     bool initialized;
     bool ready;
+    bool cisOccupantEnabled;
     bool hasPolled;
     uint32_t lastPollAtMs;
     uint32_t lastPollElapsedMs;
