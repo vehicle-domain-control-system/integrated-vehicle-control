@@ -9,7 +9,9 @@
  * mute bytes on the bus within the next pass; a refused mute is retried
  * every 50 ms, not every pass; a timer that does not start stops the boot;
  * a clock synthesizer that does not lock leaves the output unstarted and
- * reports an initialization fault. */
+ * reports an initialization fault; an output that does not start after the
+ * unmute gets the mute in the boot; the boot wait is visible in the boot
+ * stage; step 2 pressed inside the use limit is counted as a duplicate. */
 
 #include "test_util.h"
 #include "hal_mock.h"
@@ -230,10 +232,43 @@ static bool MuteBytesLogged(void)
     return (hp != UINT32_MAX) && (FindCodecWrite(hp + 1u, 0x0022u, 0x7F7Fu) != UINT32_MAX);
 }
 
+/* Index of the first logged operation of this kind at or after from. */
+static uint32_t FindOp(uint32_t from, HalMockOpKind kind)
+{
+    const HalMockLog *log = HalMock_Log();
+    uint32_t i;
+
+    for (i = from; i < log->count; ++i)
+    {
+        if (log->ops[i].kind == kind)
+        {
+            return i;
+        }
+    }
+    return UINT32_MAX;
+}
+
+/* True when an I2C transfer or a timer wait is logged after index from. */
+static bool BlockingAfter(uint32_t from)
+{
+    const HalMockLog *log = HalMock_Log();
+    uint32_t i;
+
+    for (i = from + 1u; i < log->count; ++i)
+    {
+        if (log->ops[i].kind != HAL_MOCK_AUDIO_START)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool BootGood(void)
 {
     const HalMockLog *log;
     uint32_t unmute;
+    uint32_t start;
     bool ok;
 
     PowerOn();
@@ -241,10 +276,14 @@ static bool BootGood(void)
     ok = VssMain_Boot();
     log = HalMock_Log();
     CHECK(!log->overflow);
-    /* The unmute is the last transfer: nothing blocks after the start. */
+    /* The unmute comes before the start, and no transfer or wait follows the
+     * start. */
     unmute = FindCodecWrite(0u, 0x0024u, 0x0125u);
+    start = FindOp(0u, HAL_MOCK_AUDIO_START);
     CHECK(unmute != UINT32_MAX);
-    CHECK_EQ_U(unmute + 1u, log->count);
+    CHECK(start != UINT32_MAX);
+    CHECK(unmute < start);
+    CHECK(!BlockingAfter(start));
     CHECK(FindCodecWrite(0u, 0x0022u, 0x4848u) != UINT32_MAX);   /* 70 % level */
     CHECK_EQ_U(HalMock_AudioSubmits(), 1u);
     s_startTick = HalTimer_GetTicks();
@@ -258,9 +297,12 @@ static bool BootGood(void)
 static void test_eighteen_steps(void)
 {
     VssInputNetObservation adapter;
+    VssWarningContextObservation rear;
     NetVssStatus status;
     uint32_t session;
     uint32_t frames;
+    uint32_t heldSequence;
+    uint32_t heldAge;
 
     CHECK(BootGood());
     View();
@@ -357,9 +399,19 @@ static void test_eighteen_steps(void)
     CHECK(!s_view.present);
 
     /* 14: rear quality INVALID - no change (INVALID is not CLEAR, and the
-     * last valid value was CLEAR). */
+     * last valid value was CLEAR). The lost frames keep the source sequence
+     * of the last valid evaluation and an age that keeps growing. */
     Press();
-    RunMs(1000u);
+    RunMs(100u);
+    CHECK(Input_ReadWarningContext(VSS_TEST, VSS_SIGNAL_REAR_RISK, &rear));
+    heldSequence = rear.latestEvidence.evidenceSequence;
+    heldAge = rear.latestEvidence.ageLowMs;
+    CHECK(heldAge >= 100u);
+    RunMs(900u);
+    CHECK(Input_ReadWarningContext(VSS_TEST, VSS_SIGNAL_REAR_RISK, &rear));
+    CHECK_EQ_U(rear.latestEvidence.quality, VSS_INPUT_INVALID);
+    CHECK_EQ_U(rear.latestEvidence.evidenceSequence, heldSequence);
+    CHECK(rear.latestEvidence.ageLowMs >= heldAge + 850u);
     View();
     CHECK(!s_view.present);
     CHECK_EQ_U(s_view.lastSession, session);
@@ -402,7 +454,8 @@ static void test_eighteen_steps(void)
     CHECK_EQ_U(s_main.muteCalls, 0u);
     CHECK(s_main.flowPasses > 0u);
     CHECK(s_main.inputPasses > 0u);
-    CHECK(s_main.loopMaxTicks <= 1u);
+    /* loopMaxTicks is measured on the board only: the stand-in tick does not
+     * move inside a pass. */
     CHECK(NetStub_ReadLastStatus(&status));
     CHECK_EQ_U(status.vss_state, NET_VSS_STATE_READY);
     CHECK_EQ_U(status.vss_availability, NET_VSS_AVAILABILITY_FULL);
@@ -536,7 +589,94 @@ static void test_refused_mute_is_retried(void)
     CHECK_EQ_U(s_main.muteCalls, 2u);
 }
 
+/* Step 2 pressed while the use limit of step 1 still runs: the
+ * retransmission is the same occurrence, taken as a duplicate. */
+static void test_fast_retransmission_is_a_duplicate(void)
+{
+    VssInputNetObservation adapter;
+
+    CHECK(BootGood());
+    RunMs(500u);
+    Press();
+    CHECK(RunUntilPlaying(VSS_SIGNAL_WELCOME, VSS_VALUE_EVENT, 300u));
+    Press();
+    View();
+    CHECK_EQ_U(s_in.step, 2u);
+    CHECK(VssInputNet_Read(VSS_TEST, &adapter));
+    CHECK_EQ_U(adapter.lastEvent.storeAdmission, VSS_STORE_DUPLICATE);
+    CHECK_EQ_U(s_in.accepted, 1u);
+    CHECK_EQ_U(s_in.duplicates, 1u);
+    CHECK_EQ_U(s_in.rejected, 0u);
+    CHECK(RunUntilIdle(8000u));
+    CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_COMPLETED);
+}
+
 /* ---- boot failures --------------------------------------------------------- */
+
+static uint8_t s_waitStage;
+static uint32_t s_waits;
+
+/* Stage at the first wait of the boot. */
+static void RecordWaitStage(void)
+{
+    VssMainObservation m;
+
+    if (s_waits++ == 0u)
+    {
+        CHECK(VssMain_Read(&m));
+        s_waitStage = m.stage;
+    }
+}
+
+/* The reference-clock wait, the first of the boot, runs on the tick: while
+ * it lasts the boot stage says so, apart from the reset value. */
+static void test_boot_wait_has_its_own_stage(void)
+{
+    PowerOn();
+    QueueBringUp(true);
+    s_waitStage = 0xFFu;
+    s_waits = 0u;
+    HalMock_SetWaitProbe(RecordWaitStage);
+    CHECK(VssMain_Boot());
+    HalMock_SetWaitProbe(NULL);
+    CHECK(s_waits >= 1u);
+    CHECK(s_waitStage != (uint8_t)VSS_MAIN_STAGE_RESET);
+    CHECK_EQ_U(s_waitStage, VSS_MAIN_STAGE_TIMER_WAIT);
+}
+
+/* The output does not start after a good unmute: the codec is muted in the
+ * boot, before the super-loop, and not again later. */
+static void test_output_start_failure_mutes_the_codec(void)
+{
+    uint32_t unmute;
+    uint32_t i;
+
+    PowerOn();
+    QueueBringUp(true);
+    Queue2(0x0125u);                      /* ANA_CTRL read by the mute */
+    HalMock_SetAudioInitResult(false);
+    CHECK(VssMain_Boot());
+    View();
+    CHECK(s_main.unmuteOk);
+    CHECK(!s_main.outputStarted);
+    unmute = FindCodecWrite(0u, 0x0024u, 0x0125u);
+    CHECK(unmute != UINT32_MAX);
+    CHECK(FindCodecWrite(unmute + 1u, 0x0024u, 0x0135u) != UINT32_MAX);
+    CHECK(MuteBytesLogged());
+    CHECK_EQ_U(s_main.muteCalls, 1u);
+    CHECK(s_main.muteAccepted);
+    HalMock_ClearLog();
+    s_startTick = HalTimer_GetTicks();
+    for (i = 1u; i <= 40u; ++i)
+    {
+        HalMock_SetTicks(s_startTick + 8u * i);
+        VssMain_LoopOnce();
+    }
+    View();
+    CHECK_EQ_U(s_main.muteCalls, 1u);
+    CHECK_EQ_U(HalMock_Log()->count, 0u);
+    CHECK_EQ_U(Health_CurrentMask(), 1u << (unsigned)VSS_FAULT_INIT);
+}
 
 static void test_timer_failure_stops_the_boot(void)
 {
@@ -584,7 +724,10 @@ int main(void)
     test_interface_error_mutes_in_the_next_pass();
     test_late_refill_mutes_in_the_next_pass();
     test_refused_mute_is_retried();
+    test_fast_retransmission_is_a_duplicate();
     test_timer_failure_stops_the_boot();
     test_clock_not_locked_leaves_the_output_off();
+    test_boot_wait_has_its_own_stage();
+    test_output_start_failure_mutes_the_codec();
     TEST_FINISH();
 }

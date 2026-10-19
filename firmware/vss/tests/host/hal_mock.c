@@ -17,6 +17,7 @@ static uint32_t s_tickReads;
 static uint32_t s_boundaryCountdown;
 static uint32_t s_saiErrorCountdown;
 static void (*s_boundaryProbe)(void);
+static void (*s_waitProbe)(void);
 
 static bool s_boardInitResult;
 static bool s_timerInitResult;
@@ -50,6 +51,7 @@ void HalMock_Reset(void)
     s_boundaryCountdown = 0u;
     s_saiErrorCountdown = 0u;
     s_boundaryProbe = NULL;
+    s_waitProbe = NULL;
     s_boardInitResult = true;
     s_timerInitResult = true;
     s_audioInitResult = true;
@@ -167,7 +169,16 @@ void HalTimer_WaitTicks(uint32_t ticks)
     {
         op->ticks = ticks;
     }
+    if (s_waitProbe != NULL)
+    {
+        s_waitProbe();
+    }
     s_ticks += ticks;
+}
+
+void HalMock_SetWaitProbe(void (*probe)(void))
+{
+    s_waitProbe = probe;
 }
 
 void HalMock_SetTicks(uint32_t ticks)
@@ -263,6 +274,7 @@ bool HalAudioTx_Init(HalAudioTxIsrFn onBoundary, HalAudioTxIsrFn onError)
 
 bool HalAudioTx_Start(void)
 {
+    (void)HalMock_Append(HAL_MOCK_AUDIO_START);
     s_audioStartCalls++;
     if (s_audioStarted || s_audioAborted || !s_audioInitOk)
     {

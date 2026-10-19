@@ -433,6 +433,24 @@ static void test_uncertain_start_is_not_playing(void)
     CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_START_UNCERTAIN);
 }
 
+/* Cue table rows (bit i = row i) that play the anti-pinch cue. */
+static uint32_t AntiPinchRows(void)
+{
+    uint32_t rows = 0u;
+    size_t i;
+
+    for (i = 0u; i < AUDIO_ASSET_CUE_ROWS; ++i)
+    {
+        const AudioAsset_CueRow *row = AudioAsset_CueAt(i);
+
+        if ((row != NULL) && (row->signal == AUDIO_ASSET_CUE_SIGNAL_ANTI_PINCH))
+        {
+            rows |= 1UL << i;
+        }
+    }
+    return rows;
+}
+
 /* FULL needs every supported cue ready, not only an empty fault mask. With
  * no supported cue left nothing can start: FAULT / UNAVAILABLE. The window
  * anti-pinch cue is in the supported set of the test origin, which plays it,
@@ -461,8 +479,8 @@ static void test_availability_follows_the_supported_cues(void)
     s_healthOrigin = VSS_PRODUCT;
     Setup(true);
     Evaluate();
-    CHECK_EQ_U(s_health.supportedCueRows,
-               ((1u << AUDIO_ASSET_CUE_ROWS) - 1u) & ~(1u << AUDIO_ASSET_ID_ANTI_PINCH));
+    CHECK(AntiPinchRows() != 0u);
+    CHECK_EQ_U(s_health.supportedCueRows, ((1u << AUDIO_ASSET_CUE_ROWS) - 1u) & ~AntiPinchRows());
     EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
     Setup(true);
     AudioAsset_HideForTest(all & ~(1u << AUDIO_ASSET_ID_ANTI_PINCH));

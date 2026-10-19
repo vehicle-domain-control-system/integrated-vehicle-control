@@ -17,7 +17,8 @@
  *   AudioControl_Unmute           failure -> OUTPUT fault
  *   Sw2Button_Init, AudioAsset_Init, AudioStream_Init, VssTestInput_Init
  *   Flow_Init, Net_Init
- *   AudioTx_Init, AudioTx_Start   failure -> INIT fault
+ *   AudioTx_Init, AudioTx_Start   failure -> INIT fault, and an unmuted
+ *                                 codec is muted again
  *   Health_BootComplete
  * Every blocking I2C transfer and wait is done before AudioTx_Start: from
  * then on a half-buffer must be refilled before the second boundary
@@ -42,6 +43,7 @@ typedef enum
 {
     VSS_MAIN_STAGE_RESET = 0,
     VSS_MAIN_STAGE_TIMER_FAILED,   /* stopped: no tick, no clock */
+    VSS_MAIN_STAGE_TIMER_WAIT,     /* reference clock wait; stays here if no tick interrupt comes */
     VSS_MAIN_STAGE_AUDIO_CONTROL,
     VSS_MAIN_STAGE_SERVICES,
     VSS_MAIN_STAGE_OUTPUT,
@@ -63,7 +65,7 @@ typedef struct
     uint32_t followUpPasses;       /* flow passes the previous pass asked for */
     uint32_t loopMaxTicks;         /* longest pass, in HalTimer ticks */
     bool outputFailed;
-    uint32_t muteCalls;
+    uint32_t muteCalls;            /* the boot mute after an output that did not start, and the output failure mutes */
     bool muteAccepted;
 } VssMainObservation;
 

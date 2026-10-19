@@ -37,7 +37,10 @@
  * received_at_ms = VssTime_NowMs32. Events: age 0, use limit 500 ms,
  * quality OK, available. Warnings: activation metadata format 1 with the
  * activation ENABLED, every lane from source boot 1 with a sequence that
- * grows each frame (each frame is a new evaluation), age 0.
+ * grows each frame (each frame is a new evaluation), age 0. While the rear
+ * obstacle quality is INVALID its frames keep the sequence of the last valid
+ * evaluation and carry the time since it as age (a lost observation keeps
+ * its original number and age; it is not a new evaluation).
  *
  * Runs in the super-loop owner context. */
 
@@ -47,8 +50,10 @@ typedef struct
 {
     uint8_t step;              /* 0..18 */
     uint32_t presses;          /* every debounced press, ignored ones included */
-    uint32_t accepted;         /* Events INPUT took */
-    uint32_t duplicates;       /* Events INPUT found unchanged */
+    uint32_t accepted;         /* Events INPUT took as a new occurrence */
+    uint32_t duplicates;       /* Events INPUT found unchanged, or STORE took as a
+                                  duplicate of a known occurrence (step 2 pressed
+                                  inside the use limit of step 1) */
     uint32_t rejected;         /* Events INPUT refused */
     uint32_t warningFrames;
     bool fault;                /* the adapter dropped a message (latched) */

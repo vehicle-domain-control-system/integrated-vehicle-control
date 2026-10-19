@@ -79,6 +79,11 @@ typedef struct
     NetRearWarningState rear;
     uint64_t nextWarningMs;
     uint64_t lastSentMs;            /* receive time of the last warning frame */
+    /* Occupant frames that are not OK keep the source sequence of the last
+     * OK evaluation and carry the time since it as their age. */
+    bool occupantKeepsSource;
+    uint32_t occupantSequence;      /* last OK evaluation */
+    uint64_t occupantValidMs;
 } Domain;
 
 static Domain s_domain;
@@ -124,13 +129,29 @@ static void SendWarning(void)
     NetVssWarningState w;
     NetCanRxMeta m;
     uint32_t seq = ++s_domain.laneSequence;
+    uint32_t occupantSeq = seq;
+    uint16_t occupantAge = 0u;
 
+    if (s_domain.occupantKeepsSource && (s_domain.occupantQuality != NET_QUALITY_OK) &&
+        (s_domain.occupantSequence != 0u))
+    {
+        uint64_t age = NowMs() - s_domain.occupantValidMs;
+
+        occupantSeq = s_domain.occupantSequence;
+        occupantAge = (uint16_t)((age < (uint64_t)NET_AGE_SATURATED_MS) ? age : NET_AGE_SATURATED_MS);
+    }
+    else if (s_domain.occupantQuality == NET_QUALITY_OK)
+    {
+        s_domain.occupantSequence = seq;
+        s_domain.occupantValidMs = NowMs();
+    }
     memset(&w, 0, sizeof w);
     w.antipinch_source_boot = 21u;
     w.antipinch_source_sequence = seq;
     w.antipinch_state = s_domain.antipinch;
     w.occupant_hazard_source_boot = 22u;
-    w.occupant_hazard_source_sequence = seq;
+    w.occupant_hazard_source_sequence = occupantSeq;
+    w.occupant_hazard_original_age_ms = occupantAge;
     w.occupant_hazard_state = s_domain.occupant;
     w.occupant_hazard_quality = s_domain.occupantQuality;
     w.occupant_hazard_reason = s_domain.occupantReason;
@@ -828,6 +849,54 @@ static void test_warning_quality_loss_and_hold(void)
     CHECK_EQ_U(LastStatus()->fault_mask, 0u);
 }
 
+/* The same loss in the form a DOMAIN sends it: the INVALID frames keep the
+ * source sequence of the last valid evaluation and carry its age, growing.
+ * The warning still plays for the Hold from the first such frame and then
+ * stops; valid again under a new evaluation, it plays again. */
+static void test_warning_loss_keeps_the_source_evaluation(void)
+{
+    const uint64_t holdMs = 500u;
+    VssWarningContextObservation ctx;
+    uint64_t session;
+    uint64_t lossAt;
+    uint32_t held;
+
+    s_domain.occupantKeepsSource = true;
+    s_domain.occupant = NET_FLAG_YES;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE, 300u));
+    session = s_view.session;
+
+    s_domain.occupantQuality = NET_QUALITY_INVALID;
+    s_domain.occupantReason = NET_QUALITY_REASON_SENSOR_FAULT;
+    lossAt = PassUntilWarningFrame();
+    held = s_domain.occupantSequence;
+    CHECK(held != s_domain.laneSequence);
+    CHECK(Input_ReadWarningContext(VSS_PRODUCT, VSS_SIGNAL_OCCUPANT_HAZARD, &ctx));
+    CHECK_EQ_U(ctx.latestEvidence.evidenceSequence, held);
+    CHECK_EQ_U(ctx.latestEvidence.ageLowMs, lossAt - s_domain.occupantValidMs);
+    ExpectPlayingUntil(session, lossAt + holdMs - 10u);
+    CHECK(RunUntilIdle(100u));
+    CHECK_EQ_U(s_view.lastSession, session);
+    CHECK_EQ_U(s_view.lastEnd, PLAYBACK_END_STOPPED);
+    CHECK(s_view.lastEndAtMs >= lossAt + holdMs);
+    CHECK(Input_ReadWarningContext(VSS_PRODUCT, VSS_SIGNAL_OCCUPANT_HAZARD, &ctx));
+    CHECK_EQ_U(ctx.latestEvidence.evidenceSequence, held);
+    CHECK(ctx.latestEvidence.ageLowMs >= holdMs - 50u);
+
+    s_domain.occupantQuality = NET_QUALITY_OK;
+    s_domain.occupantReason = NET_QUALITY_REASON_NONE;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE, 300u));
+    CHECK(s_view.session != session);
+
+    s_domain.occupant = NET_FLAG_NO;
+    s_domain.occupantKeepsSource = false;
+    CHECK(RunUntilIdle(300u));
+    RunMs(500u);
+    CHECK(Playback_Read(&s_view));
+    CHECK(!s_view.present);
+    CHECK_EQ_U(LastStatus()->fault_mask, 0u);
+}
+
 /* ---- DOMAIN restart ------------------------------------------------------ */
 
 static void test_domain_restart(void)
@@ -951,6 +1020,32 @@ static void test_refused_report(void)
     CHECK(RunUntilIdle(3000u));
 }
 
+/* A report the Network refuses as invalid is dropped: offering the same
+ * report again cannot change that answer. The next evaluation goes out
+ * with the next number. */
+static void test_invalid_report_is_dropped(void)
+{
+    uint32_t lastSequence = LastStatus()->update_sequence;
+    uint32_t attempts;
+    uint32_t i;
+    VssFlowObservation flow;
+
+    NetStub_RefuseForTest(NET_SUBMIT_INVALID_ARGUMENT, 1u);
+    PassUntilAttempt();
+    attempts = NetStub_AttemptCount();
+    CHECK(Flow_Read(&flow));
+    CHECK(!flow.statusWaiting);
+    CHECK_EQ_U(flow.lastRefusal, NET_SUBMIT_INVALID_ARGUMENT);
+    CHECK_EQ_U(flow.statusDropped, 1u);
+    for (i = 0u; i < 6u; ++i)
+    {
+        NextPass();
+        CHECK_EQ_U(NetStub_AttemptCount(), attempts);
+    }
+    PassUntilAttempt();
+    CHECK_EQ_U(LastStatus()->update_sequence, lastSequence + 2u);
+}
+
 /* ---- output stall -------------------------------------------------------- */
 
 static void test_output_stall(void)
@@ -1009,9 +1104,10 @@ static void test_output_stall(void)
 }
 
 /* Over the whole run: every report took the next number, except the one
- * report that a newer evaluation replaced while the Network refused it;
- * only the two reports that waited for a refusal to end were sent after
- * the pass that evaluated them; reports came at least every period. */
+ * report that a newer evaluation replaced while the Network refused it and
+ * the one refused as invalid; only the two reports that waited for a
+ * refusal to end were sent after the pass that evaluated them; reports
+ * came at least every period. */
 static void test_report_stream(void)
 {
     size_t k;
@@ -1039,7 +1135,7 @@ static void test_report_stream(void)
         }
         CHECK((b->fault_mask == 0u) == (b->vss_fault_active == NET_FLAG_NO));
     }
-    CHECK_EQ_U(gaps, 1u);
+    CHECK_EQ_U(gaps, 2u);
     CHECK_EQ_U(aged, 2u);
 }
 
@@ -1219,8 +1315,10 @@ int main(void)
     test_warning_preemption_and_release();
     test_warning_preempts_a_playing_event();
     test_warning_quality_loss_and_hold();
+    test_warning_loss_keeps_the_source_evaluation();
     test_domain_restart();
     test_refused_report();
+    test_invalid_report_is_dropped();
     test_output_stall();
     test_report_stream();
     test_init_fault_blocks_starts();

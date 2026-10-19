@@ -152,7 +152,17 @@ static void publish_status(const VssTimeEvidence *now)
         {
             count_up(&s_obs.statusRefused);
             s_obs.lastRefusal = result;
-            s_statusWaiting = true;
+            /* Only a refusal for want of link or room can end; the same
+             * report offered again would get an invalid-argument answer
+             * again. */
+            if ((result == NET_SUBMIT_NOT_READY) || (result == NET_SUBMIT_NO_CAPACITY))
+            {
+                s_statusWaiting = true;
+            }
+            else
+            {
+                count_up(&s_obs.statusDropped);
+            }
         }
     }
     s_obs.statusWaiting = s_statusWaiting;

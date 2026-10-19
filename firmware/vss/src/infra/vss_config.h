@@ -57,7 +57,8 @@
 #define VSS_CFG_STORE_RECLAIM_PERIOD_MS 100
 #endif
 
-/* Period of the built-in input sequence's warning frames, in ms. */
+/* Period of the built-in input sequence's warning frames, in ms. Below the
+ * 150 ms receive watch, or the warning would be lost between two frames. */
 #ifndef VSS_CFG_TEST_WARNING_PERIOD_MS
 #define VSS_CFG_TEST_WARNING_PERIOD_MS 50
 #endif
@@ -90,8 +91,8 @@
 #if (VSS_CFG_STORE_RECLAIM_PERIOD_MS < 10) || (VSS_CFG_STORE_RECLAIM_PERIOD_MS > 1000)
 #error "VSS_CFG_STORE_RECLAIM_PERIOD_MS must be 10..1000"
 #endif
-#if (VSS_CFG_TEST_WARNING_PERIOD_MS < 10)
-#error "VSS_CFG_TEST_WARNING_PERIOD_MS must be at least 10"
+#if (VSS_CFG_TEST_WARNING_PERIOD_MS < 10) || (VSS_CFG_TEST_WARNING_PERIOD_MS >= 150)
+#error "VSS_CFG_TEST_WARNING_PERIOD_MS must be 10..149 (the warning receive watch is 150 ms)"
 #endif
 
 #endif /* VSS_CONFIG_H */

@@ -29,11 +29,13 @@
  * carries a time later than the pass; a pass time taken before a delivery
  * would make a just-received warning look not yet valid and stop it.
  *
- * A status report the Network does not accept is kept, one report and no
- * queue: every following pass submits it again, with the same number and
- * content and its ages measured to that pass, until the Network takes it.
- * A new evaluation made while one waits takes its place; the waiting one is
- * never sent.
+ * A status report the Network refuses as NOT_READY or NO_CAPACITY is kept,
+ * one report and no queue: every following pass submits it again, with the
+ * same number and content and its ages measured to that pass, until the
+ * Network takes it. A new evaluation made while one waits takes its place;
+ * the waiting one is never sent. A report refused for any other result
+ * (INVALID_ARGUMENT) is counted and dropped; the next evaluation goes out
+ * with the next number.
  *
  * New sessions are not started while HEALTH reports an initialization or
  * output fault, nor while the output has failed since that evaluation
@@ -72,6 +74,7 @@ typedef struct
     uint32_t statusRefused;       /* VssNet_PublishStatus returned other than OK */
     uint32_t statusResubmitted;   /* submissions of a report refused before */
     uint32_t statusReplaced;      /* waiting reports replaced by a newer evaluation */
+    uint32_t statusDropped;       /* refused reports not kept: not NOT_READY or NO_CAPACITY */
     NetSubmitResult lastRefusal;
     uint32_t statusUnconvertible;
     uint32_t lastPublishedSequence;

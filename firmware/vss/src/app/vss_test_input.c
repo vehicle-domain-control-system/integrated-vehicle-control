@@ -22,6 +22,10 @@ static NetFlag s_antipinch;
 static uint32_t s_eventTx;
 static uint32_t s_warningTx;
 static uint32_t s_laneSequence;
+/* Last valid rear obstacle evaluation: a lost frame keeps its sequence and
+ * carries the time since it as age. */
+static uint32_t s_rearSequence;
+static uint32_t s_rearValidMs;
 static uint32_t s_occurrence;
 static uint32_t s_lastEventRxMs;
 static bool s_warningSent;
@@ -75,17 +79,19 @@ static void send_event(const NetVssEvent *e)
         g_vssTestInput.fault = true;
         return;
     }
-    switch (s_adapter.lastEvent.validation)
+    if ((s_adapter.lastEvent.validation == VSS_VALIDATION_NO_CHANGE) ||
+        ((s_adapter.lastEvent.validation == VSS_VALIDATION_APPLICABLE) &&
+         (s_adapter.lastEvent.storeAdmission == VSS_STORE_DUPLICATE)))
     {
-    case VSS_VALIDATION_APPLICABLE:
-        count_up(&g_vssTestInput.accepted);
-        break;
-    case VSS_VALIDATION_NO_CHANGE:
         count_up(&g_vssTestInput.duplicates);
-        break;
-    default:
+    }
+    else if (s_adapter.lastEvent.validation == VSS_VALIDATION_APPLICABLE)
+    {
+        count_up(&g_vssTestInput.accepted);
+    }
+    else
+    {
         count_up(&g_vssTestInput.rejected);
-        break;
     }
 }
 
@@ -125,9 +131,20 @@ static void send_warning(void)
 {
     uint32_t before = dropped();
     NetCanRxMeta m;
+    uint32_t nowMs = VssTime_NowMs32();
+    uint32_t rearAge = 0u;
 
     s_warningTx++;
     s_laneSequence++;
+    if (s_rearQuality == NET_QUALITY_OK)
+    {
+        s_rearSequence = s_laneSequence;
+        s_rearValidMs = nowMs;
+    }
+    else
+    {
+        rearAge = nowMs - s_rearValidMs;
+    }
     memset(&s_frame, 0, sizeof s_frame);
     s_frame.antipinch_source_boot = TEST_INPUT_BOOT_ID;
     s_frame.antipinch_source_sequence = s_laneSequence;
@@ -142,7 +159,9 @@ static void send_warning(void)
     s_frame.occupant_hazard_reason = NET_QUALITY_REASON_NONE;
     s_frame.occupant_hazard_availability = NET_AVAILABILITY_AVAILABLE;
     s_frame.rear_obstacle_source_boot = TEST_INPUT_BOOT_ID;
-    s_frame.rear_obstacle_source_sequence = s_laneSequence;
+    s_frame.rear_obstacle_source_sequence = s_rearSequence;
+    s_frame.rear_obstacle_original_age_ms =
+        (uint16_t)((rearAge < (uint32_t)NET_AGE_SATURATED_MS) ? rearAge : NET_AGE_SATURATED_MS);
     s_frame.rear_obstacle_state = s_rear;
     s_frame.rear_obstacle_quality = s_rearQuality;
     s_frame.rear_obstacle_reason = (s_rearQuality == NET_QUALITY_OK)
@@ -205,6 +224,8 @@ void VssTestInput_Init(void)
     s_eventTx = 0u;
     s_warningTx = 0u;
     s_laneSequence = 0u;
+    s_rearSequence = 0u;
+    s_rearValidMs = 0u;
     s_occurrence = 0u;
     s_lastEventRxMs = 0u;
     s_warningSent = false;

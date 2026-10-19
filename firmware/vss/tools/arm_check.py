@@ -25,6 +25,8 @@ Limits: main path <= 3072 bytes (the board's stack region is 4096 bytes);
 main path + deepest interrupt chain + exception frame must fit in the region.
 
 Objects go to --build-dir, else to a temporary directory removed at the end.
+A --build-dir is emptied before use only when it is empty or holds the
+marker file of an earlier run (BUILD_MARKER); any other folder is refused.
 --report FILE also writes the report to FILE.
 
 Usage: arm_check.py [--mock] [--src DIR] [--no-probe] [--no-vendor-stack]
@@ -67,6 +69,25 @@ WARN_FLAGS = ['-pedantic', '-Wall', '-Wextra', '-Werror', '-Wstrict-prototypes',
               '-Wsign-compare', '-Wundef', '-Wdouble-promotion',
               '-Werror=implicit-function-declaration']
 STACK_FLAGS = ['-fstack-usage', '-fcallgraph-info=su']
+
+
+BUILD_MARKER = '.vss_arm_build'
+
+
+def prepare_build_dir(path):
+    """Empties path for a new run. None when it holds files this tool did not
+    make: a wrong path must not delete sources."""
+    build = os.path.abspath(path)
+    if os.path.exists(build) and not os.path.isdir(build):
+        return None
+    if os.path.isdir(build) and os.listdir(build) and \
+            not os.path.isfile(os.path.join(build, BUILD_MARKER)):
+        return None
+    shutil.rmtree(build, ignore_errors=True)
+    os.makedirs(build)
+    with open(os.path.join(build, BUILD_MARKER), 'w') as fh:
+        fh.write('arm_check build folder: emptied on every run\n')
+    return build
 
 
 def load_env():
@@ -265,6 +286,17 @@ def main():
     args = ap.parse_args()
 
     src_root = os.path.normpath(os.path.abspath(args.src))
+    cleanup = None
+    if args.build_dir:
+        build = prepare_build_dir(args.build_dir)
+        if build is None:
+            print('arm_check: FAIL - --build-dir %s is not empty and has no %s marker; '
+                  'not deleting it' % (args.build_dir, BUILD_MARKER))
+            return 2
+    else:
+        build = tempfile.mkdtemp(prefix='vss_arm_')
+        cleanup = build
+
     env, why = load_env()
     real = make_toolchain(env, args.mock)
     mock = make_mock_toolchain(env)
@@ -274,20 +306,13 @@ def main():
         if tc is None:
             print('arm_check: FAIL - no target compiler (%s, and no arm-none-eabi-gcc on PATH '
                   'for the stand-in headers)' % reason)
+            if cleanup:
+                shutil.rmtree(cleanup, ignore_errors=True)
             return 2
     else:
         tc = real
         reason = ''
     ver = run([tc.gcc, '--version']).stdout.splitlines()[0]
-
-    cleanup = None
-    if args.build_dir:
-        build = os.path.abspath(args.build_dir)
-        shutil.rmtree(build, ignore_errors=True)
-        os.makedirs(build)
-    else:
-        build = tempfile.mkdtemp(prefix='vss_arm_')
-        cleanup = build
 
     lines = []          # report lines
     failures = []

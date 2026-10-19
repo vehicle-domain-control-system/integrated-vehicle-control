@@ -49,7 +49,8 @@ hal/s32k344  →  RTD 헤더 (RTD include·호출은 이 폴더에만)
 ```
 
 - 역방향 include 금지. 하위 → 상위 통지는 등록된 함수 포인터(HAL → driver 인터럽트 콜백) 또는 상위의 폴링으로만 한다.
-- app이 include하는 hal 헤더는 `hal_board.h`뿐이다. 예외로 `app/vss_main.c`는 `hal_timer.h`를 include해 tick을 시작하고 `HalTimer_GetTicks`를 `VssTime_Init`에 시스템 시계 공급원으로 1회 등록한다(infra가 hal을 include하지 않기 위한 유일한 경로).
+- app이 include하는 hal 헤더는 `hal_board.h`뿐이다. 예외로 `app/vss_main.c`는 `hal_timer.h`를 include해 tick을 시작하고 `HalTimer_GetTicks`를 `VssTime_Init`에 시스템 시계 공급원으로 1회 등록한다(infra가 hal을 include하지 않기 위한 유일한 경로). 같은 파일은 `HalTimer_GetTicks`를 직접 읽기도 한다: 한 바퀴 시간(`loopMaxTicks`) 측정과 SW2 샘플 시각(`Sw2Button_Init`, `VssTestInput_Service`)에만 쓴다.
+- app이 부르는 driver 함수는 부팅의 init·unmute, 출력 고장 뒤 mute(`AudioControl_*`, `AudioTx_Init/Start`)다. 예외로 SW2 시험 입력기(`app/vss_test_input.c`)는 `Sw2Button_Process`·`Sw2Button_TakePressEvent`로 SW2를 폴링한다(`VSS_CFG_TEST_INPUT=1`일 때만 부름). 함수 단위 제한은 `check_layers.py`가 검사하지 않는다.
 - driver 헤더를 include하는 service는 `audio_stream`, `health`뿐이다. Network 타입이 든 `vss_input_net.h`는 어댑터 자신과 app만 include한다.
 - 모든 소스에서 extern 데이터 선언 금지(상태는 함수로만 공유). 디버거 관찰 변수는 각 `.c`의 static 변수다.
 - 인터럽트에서는 플래그·카운터·tick 기록만 한다. 디코드·I2C·서비스 호출은 슈퍼루프에서만 한다.
@@ -60,15 +61,15 @@ hal/s32k344  →  RTD 헤더 (RTD include·호출은 이 폴더에만)
 
 | 순서 | 호출 | 실패 시 |
 |---:|---|---|
-| 1 | `HalBoard_Init` (클록·PLL, 핀, 인터럽트, LPI2C) | INIT 고장 보고(5단계 뒤) |
-| 2 | `HalTimer_Init` → 80 tick 대기(코덱 기준 클록 안정) | **진행하지 않고 정지** |
+| 1 | `HalBoard_Init` (클록·PLL, 핀, 인터럽트, LPI2C) | INIT 고장 보고(4단계 바로 뒤, 5단계 전) |
+| 2 | `HalTimer_Init` → 80 tick 대기(코덱 기준 클록 안정) | **진행하지 않고 정지**. 대기는 tick 인터럽트로만 끝나므로, 인터럽트가 오지 않으면 stage `TIMER_WAIT`에 머문다 |
 | 3 | `VssTime_Init(HalTimer_GetTicks)` | — |
 | 4 | `Health_Init(활성 origin)` | — |
 | 5 | `AudioControl_Init` (CS2100 lock, SGTL5000 확인·설정) | INIT 고장, **AUDIO_TX를 시작하지 않음** |
 | 6 | `AudioControl_Unmute(VSS_CFG_VOLUME_PERCENT)` | OUTPUT 고장 |
-| 7 | `Sw2Button_Init`, `AudioAsset_Init`, `AudioStream_Init`, `VssTestInput_Init` | — |
+| 7 | `Sw2Button_Init`(`VSS_CFG_TEST_INPUT=1`일 때만), `AudioAsset_Init`, `AudioStream_Init`, `VssTestInput_Init` | — |
 | 8 | `Flow_Init(활성 origin)`, `Net_Init` | — |
-| 9 | `AudioTx_Init` → `AudioTx_Start` | INIT 고장 |
+| 9 | `AudioTx_Init` → `AudioTx_Start` | INIT 고장. 6단계 unmute가 성공했으면 여기서 `AudioControl_MuteLatched()` 1회(아직 출력 마감이 없어 블로킹 허용) |
 | 10 | `Health_BootComplete` → 슈퍼루프 | — |
 
 - tick 카운터는 리셋 때 0이고 2단계에서 세기 시작한다. **VSS 기동 시각은 VssTime 시계 0**이다.
@@ -88,8 +89,8 @@ hal/s32k344  →  RTD 헤더 (RTD include·호출은 이 폴더에만)
 
 | 변수 | 내용 |
 |---|---|
-| `g_vssMain` | 부팅 단계·결과, 루프 횟수, Flow 실행 횟수(입력·후속 구분), 루프 최대 시간(tick), mute 호출·수용 |
-| `g_vssTestInput` | 시험 단계, press 수, Event 수용·중복·거부 수, Warning 프레임 수, 어댑터 거부 래치 |
+| `g_vssMain` | 부팅 단계(`stage`: 0 RESET, 1 TIMER_FAILED, 2 TIMER_WAIT, 3 AUDIO_CONTROL, 4 SERVICES, 5 OUTPUT, 6 RUNNING)·결과, 루프 횟수, Flow 실행 횟수(입력·후속 구분), 루프 최대 시간(tick, 보드에서만 의미 있음), mute 호출·수용 |
+| `g_vssTestInput` | 시험 단계, press 수, Event 수용·중복·거부 수(중복 = 바이트 동일 재주입, 또는 STORE가 같은 발생으로 받은 재전송: 2단계를 1단계 뒤 사용 한도 약 0.5 s 안에 누른 경우), Warning 프레임 수, 어댑터 거부 래치 |
 | `Health_Read`/`Flow_Read`/`Playback_Read`/`VssInputNet_Read` | 서비스별 관측 구조체 |
 | `NetStub_ReadLastStatus` | stub이 받은 마지막 `NetVssStatus` |
 
@@ -108,7 +109,7 @@ hal/s32k344  →  RTD 헤더 (RTD include·호출은 이 폴더에만)
 | `VSS_CFG_STATUS_PERIOD_MS` | 250 | ≥ 50 | 내용 변화가 없을 때 상태 보고 평가 주기 |
 | `VSS_CFG_STORE_RECLAIM_MS` | 2500 | > 2000 | 원 발생 구간 종료 후 STORE 레코드 회수까지의 시간 |
 | `VSS_CFG_STORE_RECLAIM_PERIOD_MS` | 100 | 10..1000 | STORE 회수 주기 |
-| `VSS_CFG_TEST_WARNING_PERIOD_MS` | 50 | ≥ 10 | 시험 입력기의 Warning 송신 주기 |
+| `VSS_CFG_TEST_WARNING_PERIOD_MS` | 50 | 10..149 | 시험 입력기의 Warning 송신 주기(150 ms 수신 감시보다 짧아야 함) |
 
 ## 4. 빌드·시험
 
@@ -123,7 +124,7 @@ python firmware/vss/tools/check_layers.py  # include 방향·RTD 사용 위치·
 - 툴체인·RTD 헤더·생성 설정 위치는 로컬 환경 파일(JSON)에 두고 환경 변수 `VSS_ENV_JSON`으로 경로를 준다. 리포에는 넣지 않는다.
   - `arm_check.py`: 변수가 없거나 파일·경로가 없으면 `tests/rtd_mock` 대체 헤더로 컴파일하고 보고서 첫머리에 `MOCK`이라고 표시한다(이때 PATH에 `arm-none-eabi-gcc`가 있어야 한다). MOCK 결과는 실제 헤더 확인을 대신하지 않는다.
   - `host_test.py`: 환경 파일의 host 컴파일러를 쓰고, 없으면 PATH의 gcc/clang을 쓴다.
-- 공통 옵션: `--build-dir DIR`(기본은 임시 폴더, 끝나면 삭제), `--report FILE`(결과를 파일로도 저장). `host_test.py --filter 이름일부`로 시험 일부만 실행.
+- 공통 옵션: `--build-dir DIR`(기본은 임시 폴더, 끝나면 삭제. `arm_check.py`는 실행마다 이 폴더를 비우므로, 비어 있지 않은데 이전 실행의 표식 파일 `.vss_arm_build`가 없으면 지우지 않고 실패한다), `--report FILE`(결과를 파일로도 저장). `host_test.py --filter 이름일부`로 시험 일부만 실행.
 - 스택 한도: main 경로 ≤ 3072 B, main 경로 + 가장 깊은 인터럽트 + 예외 프레임 ≤ 4096 B(보드 스택 영역). 256 B 이상 지역 변수는 쓰지 않는다(모듈 static 스크래치).
 
 ## 5. SW2 시험 입력기 18단계 (`VSS_CFG_TEST_INPUT=1`)
@@ -152,8 +153,8 @@ SW2를 한 번 누를 때마다(디바운스된 press) 한 단계 진행한다. 
 | 17 | Event WELCOME (새 occurrence) | WELCOME |
 | 18 | 입력 종료 | 이후 SW2 무시, Warning 송신 중지, 무음 유지 |
 
-- 메시지: `boot_id` 1, Event·Warning TX는 각각 1부터 증가, `received_at_ms = VssTime_NowMs32()`. Event는 Age 0, 사용 한도 500 ms, quality OK, available. Warning은 50 ms마다(경고가 바뀌는 단계에서는 즉시) 보내며, 활성 메타 format 1·활성 ENABLED, 모든 lane source boot 1, lane sequence는 프레임마다 증가(매 프레임이 새 평가).
-- 2단계 분류: 같은 occurrence의 재전송은 원 발생 뒤 사용 한도 안이고 Age가 정확하면 STORE가 중복으로 받아 재생하지 않는다. 사용 한도가 지난 뒤면 INPUT이 시간 조건으로 거부한다. 같은 TX·같은 수신 시각의 바이트 동일 프레임은 INPUT이 변화 없음으로 처리한다. SW2는 WELCOME을 들은 뒤 누르므로 2단계는 항상 거부 경로다.
+- 메시지: `boot_id` 1, Event·Warning TX는 각각 1부터 증가, `received_at_ms = VssTime_NowMs32()`. Event는 Age 0, 사용 한도 500 ms, quality OK, available. Warning은 50 ms마다(경고가 바뀌는 단계에서는 즉시) 보내며, 활성 메타 format 1·활성 ENABLED, 모든 lane source boot 1, lane sequence는 프레임마다 증가(매 프레임이 새 평가), Age 0. 후방 quality가 INVALID인 동안(14단계) 후방 lane은 마지막 유효 평가의 sequence를 유지하고 Age로 그 뒤 경과 시간을 보낸다(품질을 잃은 관측은 원 번호·Age를 유지하며 새 평가가 아니다).
+- 2단계 분류: 같은 occurrence의 재전송은 원 발생 뒤 사용 한도 안이고 Age가 정확하면 STORE가 중복으로 받아 재생하지 않는다. 사용 한도가 지난 뒤면 INPUT이 시간 조건으로 거부한다. 같은 TX·같은 수신 시각의 바이트 동일 프레임은 INPUT이 변화 없음으로 처리한다. WELCOME을 다 들은 뒤 2단계를 누르면 거부 경로(`rejected`)다. 1단계 뒤 약 0.5 s 안에 누르면 중복 경로이며 `duplicates`로 센다.
 - 끼임(창문) 경고는 TEST origin에서만 재생된다. PRODUCT origin은 끼임 입력을 처리하지 않는다.
 - host 시험 `tests/host/test_e2e_test18.c`가 실제 부팅·슈퍼루프로 18단계 전체를 확인한다.
 
@@ -171,7 +172,7 @@ Network 모듈은 별도로 구현된다. VSS는 `net_if/vss_net_api.h`의 선�
 | occurrence_id | DOMAIN 한 기동 안에서 단조 증가한다(같은 순위 Event의 순서 근거) |
 | Network 검사 | DLC·padding·enum 범위·WARNING format 0/1 규칙, BOOT≠0, 메시지별 TX 증가, 완전 중복 폐기, RX 시점까지 Age 누적은 Network가 한다 |
 | accepting | `vss_accepting_events` = 부팅 완료 ∧ 상태가 FAULT 아님 ∧ ledger 여유. 첫 DOMAIN 메시지 수신 여부와 무관하다(첫 메시지 전에 0이면 교착). 재생 시작을 보장하지 않는다 |
-| 상태 보고 | VSS는 새 평가가 있을 때만 제출한다: 상태·가용성·accepting·고장 mask·마지막 고장이 바뀌면 즉시, 바뀌지 않아도 직전 보고 평가로부터 `VSS_CFG_STATUS_PERIOD_MS` 뒤. 거부(NOT_READY/NO_CAPACITY 등)되면 다음 Flow 처리마다 같은 번호·같은 내용으로 다시 제출하고 Age만 다시 계산한다. 그 사이 새 평가가 나오면 그것으로 바꾼다(번호 하나 건너뜀). 번호는 1부터, `UINT32_MAX` 다음은 1(0 없음). BOOT_ID/TX_SEQUENCE 부여, 주기 송신, 대기 Age 누적은 Network 담당 |
+| 상태 보고 | VSS는 새 평가가 있을 때만 제출한다: 상태·가용성·accepting·고장 mask·마지막 고장이 바뀌면 즉시, 바뀌지 않아도 직전 보고 평가로부터 `VSS_CFG_STATUS_PERIOD_MS` 뒤. NOT_READY·NO_CAPACITY로 거부되면 다음 Flow 처리마다 같은 번호·같은 내용으로 다시 제출하고 Age만 다시 계산한다. 그 사이 새 평가가 나오면 그것으로 바꾼다(번호 하나 건너뜀). INVALID_ARGUMENT는 다시 내도 결과가 같으므로 `Flow_Read`의 `statusDropped`만 올리고 버린다(다음 평가가 다음 번호로 나감). 번호는 1부터, `UINT32_MAX` 다음은 1(0 없음). BOOT_ID/TX_SEQUENCE 부여, 주기 송신, 대기 Age 누적은 Network 담당 |
 | 고장 이력 | 고장 종류 5개 각각 현재 1개 + 최근(해제된 것) 1개를 둔다. 같은 종류가 다시 해제되면 최근 기록을 덮어쓴다 |
 
 ## 7. 동작 규칙

@@ -84,6 +84,8 @@ bool VssMain_Boot(void)
         g_vssMain.stage = (uint8_t)VSS_MAIN_STAGE_TIMER_FAILED;
         return false;
     }
+    /* Ends only on tick interrupts: a boot that stops here shows this stage. */
+    g_vssMain.stage = (uint8_t)VSS_MAIN_STAGE_TIMER_WAIT;
     HalTimer_WaitTicks(VSS_MAIN_REF_SETTLE_TICKS);
     (void)VssTime_Init(HalTimer_GetTicks);
     Health_Init(VSS_MAIN_ORIGIN);
@@ -125,6 +127,13 @@ bool VssMain_Boot(void)
         if (!g_vssMain.outputStarted)
         {
             report(VSS_FAULT_INIT);
+            /* Nothing plays and no output failure will mute it later: mute
+             * now. Blocking is allowed, no output deadline runs. */
+            if (g_vssMain.unmuteOk)
+            {
+                count_up(&g_vssMain.muteCalls);
+                g_vssMain.muteAccepted = AudioControl_MuteLatched();
+            }
         }
     }
     Health_BootComplete();

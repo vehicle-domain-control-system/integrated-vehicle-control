@@ -2,9 +2,9 @@
 #define HAL_MOCK_H
 
 /* Host stand-in for every function in src/hal/include. Records I2C
- * transfers and timer waits in one ordered log, serves scripted read data,
- * owns the audio ring and lets a test raise the DMA boundary and SAI error
- * interrupts. The audio transmit stand-in keeps the same start and stop
+ * transfers, timer waits and audio transmit starts in one ordered log,
+ * serves scripted read data, owns the audio ring and lets a test raise the
+ * DMA boundary and SAI error interrupts. The audio transmit stand-in keeps the same start and stop
  * latches as the board adapter: one submission, one stop, no start after a
  * stop or a failed init. */
 
@@ -25,7 +25,8 @@
 typedef enum {
     HAL_MOCK_I2C_WRITE = 0,
     HAL_MOCK_I2C_READ,
-    HAL_MOCK_WAIT
+    HAL_MOCK_WAIT,
+    HAL_MOCK_AUDIO_START                 /* every HalAudioTx_Start call */
 } HalMockOpKind;
 
 typedef struct {
@@ -56,6 +57,10 @@ void HalMock_QueueRead(const uint8_t *bytes, uint32_t len);
 /* The I2C transfer with this 0-based index (counted from the last reset or
  * log clear, writes and reads together) returns HAL_I2C_ERROR. */
 void HalMock_FailI2cAt(uint32_t index);
+
+/* Called inside every HalTimer_WaitTicks, before the wait ends, so a test
+ * can observe the state the waiting code left. NULL disables it. */
+void HalMock_SetWaitProbe(void (*probe)(void));
 
 void     HalMock_SetTicks(uint32_t ticks);
 uint32_t HalMock_TickReads(void);

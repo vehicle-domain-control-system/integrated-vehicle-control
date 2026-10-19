@@ -251,6 +251,8 @@ def config_guards(cc, rep):
         ('VSS_CFG_STORE_RECLAIM_MS=2000', 'must exceed'),
         ('VSS_CFG_RX_GAP_BUDGET_MS=500', 'must be 0..100'),
         ('VSS_CFG_STORE_RECLAIM_PERIOD_MS=5', 'must be 10..1000'),
+        ('VSS_CFG_TEST_WARNING_PERIOD_MS=5', 'must be 10..149'),
+        ('VSS_CFG_TEST_WARNING_PERIOD_MS=150', 'must be 10..149'),
     ]
     passed = failed = 0
     notes = []
@@ -270,6 +272,21 @@ def tools_selftest(rep):
     passed = int(m.group(1)) - int(m.group(2)) if m else 0
     failed = int(m.group(2)) if m else 1
     rep.add('check_layers --selftest', r.returncode == 0, passed, failed, detail=r.stdout)
+
+
+def arm_build_dir_guard(rep):
+    """arm_check must refuse a --build-dir that holds files it did not make."""
+    d = tempfile.mkdtemp(prefix='vss_guard_')
+    keep = os.path.join(d, 'keep.txt')
+    with open(keep, 'w') as fh:
+        fh.write('not a build output\n')
+    try:
+        r = run([sys.executable, '-I', os.path.join(HERE, 'arm_check.py'), '--build-dir', d])
+        ok = r.returncode == 2 and os.path.exists(keep) and 'not deleting it' in r.stdout
+        rep.add('arm_check --build-dir guard', ok, 1 if ok else 0, 0 if ok else 1,
+                note='' if ok else 'a foreign folder was used or deleted', detail=r.stdout + r.stderr)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def main():
@@ -310,6 +327,7 @@ def main():
     if not args.filter:
         config_guards(cc, rep)
         tools_selftest(rep)
+        arm_build_dir_guard(rep)
 
     total_p = sum(r[2] for r in rep.rows)
     total_f = sum(r[3] for r in rep.rows)
