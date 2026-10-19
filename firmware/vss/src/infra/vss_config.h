@@ -16,6 +16,12 @@
 #define VSS_CFG_NET_STUB 1
 #endif
 
+/* 1: host test build. Adds the reset functions that return a driver to its
+ * power-on state between test cases. Always 0 for the target. */
+#ifndef VSS_CFG_HOST_TEST
+#define VSS_CFG_HOST_TEST 0
+#endif
+
 /* Headphone level applied when the codec is unmuted, in percent.
  * The allowed range is enforced below. */
 #ifndef VSS_CFG_VOLUME_PERCENT
@@ -55,6 +61,9 @@
 #endif
 #if (VSS_CFG_NET_STUB != 0) && (VSS_CFG_NET_STUB != 1)
 #error "VSS_CFG_NET_STUB must be 0 or 1"
+#endif
+#if (VSS_CFG_HOST_TEST != 0) && (VSS_CFG_HOST_TEST != 1)
+#error "VSS_CFG_HOST_TEST must be 0 or 1"
 #endif
 #if (VSS_CFG_VOLUME_PERCENT < VSS_CFG_VOLUME_PERCENT_MIN) || \
     (VSS_CFG_VOLUME_PERCENT > VSS_CFG_VOLUME_PERCENT_MAX)

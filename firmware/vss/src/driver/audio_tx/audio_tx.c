@@ -103,11 +103,9 @@ static AudioTxResult AudioTx_FailWrite(void)
     return AUDIO_TX_LATE;
 }
 
-bool AudioTx_Init(void)
+/* Power-on state of every driver variable. */
+static void AudioTx_ClearState(void)
 {
-    uint16_t *ring = HalAudioTx_Ring();
-    uint32_t i;
-
     s_started = false;
     s_running = false;
     s_abortIssued = false;
@@ -122,8 +120,47 @@ bool AudioTx_Init(void)
     s_reportedGeneration = 0U;
     s_boundaryTick = 0U;
     s_writeMaxTicks = 0U;
-    s_ring = ring;
+    s_ring = NULL;
     s_initOk = false;
+}
+
+/* Main context only. More than AUDIO_TX_STALL_TICKS since the last boundary
+ * (or since Start) means the DMA no longer moves: a stopped bit clock or a
+ * submission that never happened raises no error of its own. */
+static void AudioTx_CheckStall(void)
+{
+    uint32_t last;
+
+    if (!s_running || (AudioTx_FaultMask() != 0U))
+    {
+        return;
+    }
+    /* The boundary tick is read before the clock. A boundary in between
+     * leaves the previous tick here, which is at most one half older, so
+     * the age never goes negative. */
+    last = s_boundaryTick;
+    if ((HalTimer_GetTicks() - last) > AUDIO_TX_STALL_TICKS)
+    {
+        s_mainFault |= AUDIO_TX_FAULT_STALL;
+    }
+}
+
+bool AudioTx_Init(void)
+{
+    uint16_t *ring;
+    uint32_t i;
+
+    /* Once started, the vendor init would run again under the moving DMA and
+     * reset the ring controls. Once stopped, the transmit HAL refuses any new
+     * submission; clearing the fault latch here would let Start report a
+     * transfer that never runs. Both last until reset. */
+    if (s_started || s_abortIssued)
+    {
+        return false;
+    }
+    AudioTx_ClearState();
+    ring = HalAudioTx_Ring();
+    s_ring = ring;
 
     if (ring == NULL)
     {
@@ -155,7 +192,13 @@ bool AudioTx_Start(void)
     s_boundaryTick = HalTimer_GetTicks();
     s_running = true;
     s_started = true;
-    HalAudioTx_Start();
+    if (!HalAudioTx_Start())
+    {
+        /* Nothing was submitted, so no boundary will follow. */
+        s_started = false;
+        s_running = false;
+        return false;
+    }
     return true;
 }
 
@@ -176,6 +219,7 @@ bool AudioTx_Advance(AudioTxEvent *ev)
     ev->boundaryTick = 0U;
     ev->faultMask = 0U;
 
+    AudioTx_CheckStall();
     fault = AudioTx_FaultMask();
     if (fault != 0U)
     {
@@ -229,6 +273,10 @@ AudioTxResult AudioTx_Request(uint8_t half, uint32_t generation, const int16_t *
         return AUDIO_TX_REJECTED;
     }
 
+    /* Read before the write is announced, so a boundary up to here is caught
+     * by the check below before any sample is stored. */
+    t0 = HalTimer_GetTicks();
+
     /* From here the interrupt treats a boundary into this half as overlap. */
     s_writingHalf = half;
     if (generation != s_generation)
@@ -240,7 +288,6 @@ AudioTxResult AudioTx_Request(uint8_t half, uint32_t generation, const int16_t *
      * touches the ring. The volatile destination keeps every store ahead of
      * the generation check that follows. */
     dst = &s_ring[HAL_AUDIO_PRIME_WORDS + ((uint32_t)half * HAL_AUDIO_HALF_WORDS)];
-    t0 = HalTimer_GetTicks();
     if (pcm != NULL)
     {
         for (i = 0U; i < HAL_AUDIO_HALF_WORDS; ++i)
@@ -268,6 +315,16 @@ AudioTxResult AudioTx_Request(uint8_t half, uint32_t generation, const int16_t *
     }
     s_free[half] = 0U;
     s_writingHalf = AUDIO_TX_HALF_NONE;
+
+    /* A fault latched while this request ran is reported here rather than
+     * as success: an interface error, or a boundary right after the check
+     * above, which still saw the half as being written (the samples are
+     * complete then, but the latch already stops the transfer). */
+    if (AudioTx_FaultMask() != 0U)
+    {
+        AudioTx_FailClosed();
+        return AUDIO_TX_LATE;
+    }
     return AUDIO_TX_OK;
 }
 
@@ -280,3 +337,20 @@ uint32_t AudioTx_FaultMask(void)
 {
     return s_isrFault | s_mainFault;
 }
+
+AudioTxAbortState AudioTx_AbortState(void)
+{
+    if (!s_abortIssued)
+    {
+        return AUDIO_TX_ABORT_NONE;
+    }
+    return (HalAudioTx_AbortState() == HAL_AUDIO_TX_ABORT_STOPPED) ? AUDIO_TX_ABORT_STOPPED
+                                                                  : AUDIO_TX_ABORT_UNCONFIRMED;
+}
+
+#if VSS_CFG_HOST_TEST
+void AudioTx_ResetForTest(void)
+{
+    AudioTx_ClearState();
+}
+#endif

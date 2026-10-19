@@ -7,6 +7,9 @@
   2. Every tests/host/test_*.c is linked with the archive plus the support
      sources in tests/host (any .c whose name does not start with "test_")
      and run. A test program prints "RESULT passed=N failed=M".
+     Exception: tests/host/test_hal_*.c link one board adapter source from
+     hal/s32k344 with the recording vendor-driver stand-in tests/rtd_mock/*.c
+     instead (no archive, no HAL stand-in).
   3. Configuration guards: out-of-range build switches must fail to compile.
   4. tools/check_layers.py --selftest.
 
@@ -28,13 +31,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VSS = os.path.normpath(os.path.join(HERE, '..'))
 SRC = os.path.join(VSS, 'src')
 TESTS = os.path.join(VSS, 'tests', 'host')
+RTD_MOCK = os.path.join(VSS, 'tests', 'rtd_mock')
 REPO = os.path.normpath(os.path.join(VSS, '..', '..'))
 WORK = os.path.join(REPO, '.vss_work')
 
 # -funsigned-char matches the target, where plain char is unsigned.
+# VSS_CFG_HOST_TEST=1 adds the drivers' reset functions used between cases.
 CFLAGS = ['-std=c99', '-funsigned-char', '-Wall', '-Wextra', '-Werror', '-Wstrict-prototypes',
-          '-Wundef', '-g', '-O0']
+          '-Wundef', '-g', '-O0', '-DVSS_CFG_HOST_TEST=1']
 EXCLUDE_FROM_LIB = ('hal/s32k344/', 'app/vss_main.c')
+# Board adapter tests: file name prefix -> adapter source(s) under src/.
+HAL_TESTS = (
+    ('test_hal_audio_tx', ('hal/s32k344/hal_audio_tx_s32k344.c',)),
+    ('test_hal_board', ('hal/s32k344/hal_board_s32k344.c',)),
+)
 RESULT_RE = re.compile(r'^RESULT passed=(\d+) failed=(\d+)\s*$', re.M)
 EXE = '.exe' if os.name == 'nt' else ''
 
@@ -116,6 +126,16 @@ def build_library(cc, ar, build, rep):
     return lib
 
 
+def hal_test_sources(name):
+    """Adapter sources a test_hal_* program links, or None for a normal test."""
+    for prefix, srcs in HAL_TESTS:
+        if name.startswith(prefix):
+            return [os.path.join(SRC, s) for s in srcs]
+    if name.startswith('test_hal_'):
+        return []
+    return None
+
+
 def build_and_run_tests(cc, build, lib, flt, rep):
     support = []
     tests = []
@@ -123,6 +143,7 @@ def build_and_run_tests(cc, build, lib, flt, rep):
         if not f.endswith('.c'):
             continue
         (tests if f.startswith('test_') else support).append(f)
+    rtd_mock_srcs = [os.path.join(RTD_MOCK, f) for f in sorted(os.listdir(RTD_MOCK)) if f.endswith('.c')]
     if flt:
         tests = [t for t in tests if flt in t]
     support_objs = []
@@ -139,9 +160,17 @@ def build_and_run_tests(cc, build, lib, flt, rep):
     for f in tests:
         name = f[:-2]
         exe = os.path.join(build, name + EXE)
-        cmd = [cc] + CFLAGS + ['-I', TESTS, os.path.join(TESTS, f)] + support_objs
-        if lib:
-            cmd.append(lib)
+        adapter = hal_test_sources(name)
+        if adapter is None:
+            cmd = [cc] + CFLAGS + ['-I', TESTS, os.path.join(TESTS, f)] + support_objs
+            if lib:
+                cmd.append(lib)
+        elif not adapter:
+            rep.add(name, False, 0, 1, note='no adapter source listed in HAL_TESTS')
+            continue
+        else:
+            cmd = [cc] + CFLAGS + ['-I', TESTS, '-I', RTD_MOCK, os.path.join(TESTS, f)] + \
+                adapter + rtd_mock_srcs
         cmd += ['-o', exe]
         r = run(cmd)
         if r.returncode != 0:
@@ -175,6 +204,7 @@ def config_guards(cc, rep):
     bad = [
         ('VSS_CFG_TEST_INPUT=2', 'must be 0 or 1'),
         ('VSS_CFG_NET_STUB=7', 'must be 0 or 1'),
+        ('VSS_CFG_HOST_TEST=2', 'must be 0 or 1'),
         ('VSS_CFG_VOLUME_PERCENT=5', 'outside the allowed range'),
         ('VSS_CFG_VOLUME_PERCENT=90', 'outside the allowed range'),
         ('VSS_CFG_FLOW_PERIOD_MS=25', 'must be 1..20'),

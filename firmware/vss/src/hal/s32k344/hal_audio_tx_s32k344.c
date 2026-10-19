@@ -5,6 +5,13 @@
 #define HAL_AUDIO_TOTAL_WORDS (HAL_AUDIO_PRIME_WORDS + HAL_AUDIO_RING_WORDS)
 #define HAL_AUDIO_RING_BYTES  (HAL_AUDIO_RING_WORDS * 2U)
 
+/* The vendor driver writes words into the transmit FIFO by CPU until it is
+ * full and hands only the rest to the DMA. The FIFO holds 2^(WFP width - 1)
+ * words (the top write-pointer bit is the wrap flag), so the prime area must
+ * be exactly that long for the DMA to start at half A. */
+typedef char HalAudioTx_PrimeIsOneFifoFill[
+    ((1UL << (SAI_TFR_WFP_WIDTH - 1UL)) == HAL_AUDIO_PRIME_WORDS) ? 1 : -1];
+
 /* Transmit ring: [prime 8 words][A 2048 words][B 2048 words].
  * Non-cacheable, so the CPU and the DMA see the same samples without cache
  * maintenance. */
@@ -29,6 +36,7 @@ static volatile Dma_Ip_ReturnType s_dmaRingStatus = DMA_IP_STATUS_ERROR;
 static volatile bool s_started = false;
 static volatile bool s_aborted = false;
 static volatile uint32 s_abortSendingStatus = 0xFFFFFFFFU;
+static volatile HalAudioTxAbortState s_abortState = HAL_AUDIO_TX_ABORT_NONE;
 
 /* Interrupt observations for the debugger. */
 static volatile uint32 s_boundaryIrqCount = 0U;
@@ -81,20 +89,23 @@ bool HalAudioTx_Init(HalAudioTxIsrFn onBoundary, HalAudioTxIsrFn onError)
     return s_dmaRingStatus == DMA_IP_STATUS_SUCCESS;
 }
 
-void HalAudioTx_Start(void)
+bool HalAudioTx_Start(void)
 {
     if (s_started || s_aborted ||
         (s_dmaInitStatus != DMA_IP_STATUS_SUCCESS) ||
         (s_dmaRingStatus != DMA_IP_STATUS_SUCCESS))
     {
-        return;
+        return false;
     }
     s_started = true;
     Sai_Ip_Send(HAL_CFG_SAI_INSTANCE, s_txData, HAL_AUDIO_TOTAL_WORDS);
+    return true;
 }
 
 void HalAudioTx_Abort(void)
 {
+    Sai_Ip_StatusType status;
+
     if (s_aborted)
     {
         return;
@@ -102,8 +113,19 @@ void HalAudioTx_Abort(void)
     /* Latched before the call: the transmitter is never started again. */
     s_aborted = true;
     Sai_Ip_AbortTransfer(HAL_CFG_SAI_INSTANCE);
-    /* ABORTED here is the driver's view only, not proof the output is silent. */
-    s_abortSendingStatus = (uint32)Sai_Ip_GetSendingStatus(HAL_CFG_SAI_INSTANCE, NULL_PTR);
+    /* The vendor abort acts only on a send it still sees as busy. After a DMA
+     * error it has already ended the send (status ERROR) with only the DMA
+     * request disabled, so the transmitter stays enabled: unconfirmed.
+     * ABORTED is the vendor driver's view, not proof the output is silent. */
+    status = Sai_Ip_GetSendingStatus(HAL_CFG_SAI_INSTANCE, NULL_PTR);
+    s_abortSendingStatus = (uint32)status;
+    s_abortState = (status == SAI_IP_STATUS_ABORTED) ? HAL_AUDIO_TX_ABORT_STOPPED
+                                                     : HAL_AUDIO_TX_ABORT_UNCONFIRMED;
+}
+
+HalAudioTxAbortState HalAudioTx_AbortState(void)
+{
+    return s_abortState;
 }
 
 /* DMA channel 0 interrupt callback (half and major loop), bound by name in

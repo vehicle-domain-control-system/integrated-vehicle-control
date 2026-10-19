@@ -4,7 +4,9 @@
 /* Host stand-in for every function in src/hal/include. Records I2C
  * transfers and timer waits in one ordered log, serves scripted read data,
  * owns the audio ring and lets a test raise the DMA boundary and SAI error
- * interrupts. */
+ * interrupts. The audio transmit stand-in keeps the same start and stop
+ * latches as the board adapter: one submission, one stop, no start after a
+ * stop or a failed init. */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -68,6 +70,10 @@ void HalMock_BoundaryOnTickRead(uint32_t nthRead);
  * before the main-context code resumes. NULL disables it. */
 void HalMock_SetBoundaryProbe(void (*probe)(void));
 
+/* Raises the SAI error interrupt the next time HalTimer_GetTicks() has been
+ * called this many more times, like HalMock_BoundaryOnTickRead. */
+void HalMock_SaiErrorOnTickRead(uint32_t nthRead);
+
 void HalMock_SetBoardInitResult(bool ok);
 void HalMock_SetAudioInitResult(bool ok);
 
@@ -75,9 +81,15 @@ void HalMock_SetAudioInitResult(bool ok);
 void HalMock_Boundary(void);
 void HalMock_SaiError(void);
 
+/* Result HalAudioTx_AbortState reports once the transfer was stopped
+ * (default HAL_AUDIO_TX_ABORT_STOPPED). */
+void HalMock_SetAbortResult(HalAudioTxAbortState state);
+
 uint32_t HalMock_AudioInitCalls(void);
-uint32_t HalMock_AudioStartCalls(void);
-uint32_t HalMock_AudioAbortCalls(void);
+uint32_t HalMock_AudioStartCalls(void);   /* every HalAudioTx_Start call */
+uint32_t HalMock_AudioSubmits(void);      /* calls that submitted the ring */
+uint32_t HalMock_AudioAbortCalls(void);   /* every HalAudioTx_Abort call */
+uint32_t HalMock_AudioStops(void);        /* calls that stopped the transfer */
 uint16_t *HalMock_RingWords(void);
 
 void HalMock_SetSw2(bool pressed);

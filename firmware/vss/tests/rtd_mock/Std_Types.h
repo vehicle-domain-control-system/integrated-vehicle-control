@@ -4,7 +4,8 @@
 /* Stand-in for the vendor driver headers. Only the declarations the board
  * adapter uses are reproduced, with the same names, signatures and values as
  * the vendor release it targets. Used to compile-check sources when the
- * vendor headers are not installed; never linked. */
+ * vendor headers are not installed, and by host tests that link a board
+ * adapter source with the recording implementation in rtd_mock.c. */
 
 #include <stdint.h>
 

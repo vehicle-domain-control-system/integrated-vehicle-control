@@ -224,6 +224,7 @@ static void test_bring_up_sequence(void)
     CHECK(st.codecConfigured);
     CHECK(!st.unmuted);
     CHECK(!st.muteLatched);
+    CHECK(!st.muteAccepted);
     CHECK_EQ_U(st.i2cErrors, 0u);
 }
 
@@ -405,7 +406,8 @@ static void test_unmute_i2c_failure(void)
     CHECK(!st.unmuted);
 }
 
-/* Runs last: the mute latch holds until reset. */
+/* The mute latch holds until reset; the cases after this one start from
+ * AudioControl_ResetForTest. */
 static void test_mute_latch(void)
 {
     AudioControlStatus st;
@@ -417,7 +419,7 @@ static void test_mute_latch(void)
     HalMock_ClearLog();
 
     Queue2(0x0125u);
-    AudioControl_MuteLatched();
+    CHECK(AudioControl_MuteLatched());
     ExpectBegin();
     CODEC_SELECT(0x0024u); CODEC_R2();
     CODEC_W(0x0024u, 0x0135u);                  /* headphone mute: set 0x0010 */
@@ -426,11 +428,13 @@ static void test_mute_latch(void)
 
     AudioControl_Read(&st);
     CHECK(st.muteLatched);
+    CHECK(st.muteAccepted);
     CHECK(!st.unmuted);
 
+    /* Later calls do not touch the bus and report the first result. */
     HalMock_ClearLog();
     CHECK(!AudioControl_Unmute(50u));
-    AudioControl_MuteLatched();
+    CHECK(AudioControl_MuteLatched());
     CHECK_EQ_U(HalMock_Log()->count, 0u);
 
     /* A new bring-up does not release the latch. */
@@ -439,6 +443,45 @@ static void test_mute_latch(void)
     CHECK_EQ_U(HalMock_Log()->count, 0u);
     AudioControl_Read(&st);
     CHECK(st.muteLatched);
+}
+
+/* The bus refuses the mute: the caller and the status both see it, and the
+ * latch still blocks every unmute. */
+static void test_mute_bus_failure_is_reported(void)
+{
+    AudioControlStatus st;
+    uint32_t errorsBefore;
+
+    AudioControl_ResetForTest();
+    BringUp();
+    errorsBefore = I2cErrors();
+    HalMock_FailI2cAt(0u);
+    CHECK(!AudioControl_MuteLatched());
+    AudioControl_Read(&st);
+    CHECK(st.muteLatched);
+    CHECK(!st.muteAccepted);
+    CHECK_EQ_U(st.i2cErrors, errorsBefore + 1u);
+
+    HalMock_ClearLog();
+    CHECK(!AudioControl_MuteLatched());
+    CHECK(!AudioControl_Unmute(50u));
+    CHECK_EQ_U(HalMock_Log()->count, 0u);
+}
+
+/* Never configured: nothing reaches the bus and no I2C error is counted, so
+ * only the result tells that the mute did not happen. */
+static void test_mute_without_codec_is_reported(void)
+{
+    AudioControlStatus st;
+
+    AudioControl_ResetForTest();
+    HalMock_Reset();
+    CHECK(!AudioControl_MuteLatched());
+    CHECK_EQ_U(HalMock_Log()->count, 0u);
+    AudioControl_Read(&st);
+    CHECK(st.muteLatched);
+    CHECK(!st.muteAccepted);
+    CHECK_EQ_U(st.i2cErrors, 0u);
 }
 
 int main(void)
@@ -453,5 +496,7 @@ int main(void)
     test_unmute_level_is_capped();
     test_unmute_i2c_failure();
     test_mute_latch();
+    test_mute_bus_failure_is_reported();
+    test_mute_without_codec_is_reported();
     TEST_FINISH();
 }

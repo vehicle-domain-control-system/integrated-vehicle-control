@@ -218,3 +218,12 @@ uint32_t AudioControl_Sgtl5000I2cErrors(void)
 {
     return s_i2cErrors;
 }
+
+#if VSS_CFG_HOST_TEST
+void AudioControl_Sgtl5000ResetForTest(void)
+{
+    s_i2cErrors = 0U;
+    s_configured = false;
+    s_safetyMuteLatched = false;
+}
+#endif

@@ -23,6 +23,10 @@ typedef enum {
 
 typedef struct Sai_Ip_ConfigType Sai_Ip_ConfigType;
 
+/* Transmit FIFO write-pointer field width (device register header); the
+ * FIFO holds 2^(width - 1) words. */
+#define SAI_TFR_WFP_WIDTH (4U)
+
 #define SAICONFIGURATION_1_VS_0_INSTANCE (0U)
 extern const Sai_Ip_ConfigType Sai_Ip_Sa_xInitConfig_0_VS_0;
 

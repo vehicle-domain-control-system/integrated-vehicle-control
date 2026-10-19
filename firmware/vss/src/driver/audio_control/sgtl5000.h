@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "../../infra/vss_config.h"
+
 /* SGTL5000 codec, used only by audio_control.c. */
 
 /* Reads CHIP_ID and checks the part number. */
@@ -23,5 +25,10 @@ bool AudioControl_Sgtl5000StartAudio(uint8_t volumePercent);
 bool AudioControl_Sgtl5000LatchMute(void);
 
 uint32_t AudioControl_Sgtl5000I2cErrors(void);
+
+#if VSS_CFG_HOST_TEST
+/* Host tests only: power-on state. */
+void AudioControl_Sgtl5000ResetForTest(void);
+#endif
 
 #endif /* SGTL5000_H */

@@ -112,3 +112,10 @@ uint32_t AudioControl_Cs2100I2cErrors(void)
 {
     return s_i2cErrors;
 }
+
+#if VSS_CFG_HOST_TEST
+void AudioControl_Cs2100ResetForTest(void)
+{
+    s_i2cErrors = 0U;
+}
+#endif

@@ -35,15 +35,16 @@ bool AudioControl_Unmute(uint8_t volumePercent)
     return s_status.unmuted;
 }
 
-void AudioControl_MuteLatched(void)
+bool AudioControl_MuteLatched(void)
 {
     if (s_status.muteLatched)
     {
-        return;
+        return s_status.muteAccepted;
     }
     s_status.muteLatched = true;
     s_status.unmuted = false;
-    (void)AudioControl_Sgtl5000LatchMute();
+    s_status.muteAccepted = AudioControl_Sgtl5000LatchMute();
+    return s_status.muteAccepted;
 }
 
 void AudioControl_Read(AudioControlStatus *out)
@@ -55,3 +56,17 @@ void AudioControl_Read(AudioControlStatus *out)
     *out = s_status;
     out->i2cErrors = AudioControl_Cs2100I2cErrors() + AudioControl_Sgtl5000I2cErrors();
 }
+
+#if VSS_CFG_HOST_TEST
+void AudioControl_ResetForTest(void)
+{
+    AudioControl_Cs2100ResetForTest();
+    AudioControl_Sgtl5000ResetForTest();
+    s_status.clockLocked = false;
+    s_status.codecConfigured = false;
+    s_status.unmuted = false;
+    s_status.muteLatched = false;
+    s_status.muteAccepted = false;
+    s_status.i2cErrors = 0U;
+}
+#endif

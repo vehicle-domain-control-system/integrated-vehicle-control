@@ -15,6 +15,7 @@ static bool     s_failArmed;
 static uint32_t s_ticks;
 static uint32_t s_tickReads;
 static uint32_t s_boundaryCountdown;
+static uint32_t s_saiErrorCountdown;
 static void (*s_boundaryProbe)(void);
 
 static bool s_boardInitResult;
@@ -23,7 +24,13 @@ static HalAudioTxIsrFn s_onBoundary;
 static HalAudioTxIsrFn s_onError;
 static uint32_t s_audioInitCalls;
 static uint32_t s_audioStartCalls;
+static uint32_t s_audioSubmits;
 static uint32_t s_audioAbortCalls;
+static uint32_t s_audioStops;
+static bool s_audioInitOk;
+static bool s_audioStarted;
+static bool s_audioAborted;
+static HalAudioTxAbortState s_abortResult;
 static uint16_t s_ring[HAL_MOCK_RING_WORDS];
 
 static bool s_sw2;
@@ -40,6 +47,7 @@ void HalMock_Reset(void)
     s_ticks = 0u;
     s_tickReads = 0u;
     s_boundaryCountdown = 0u;
+    s_saiErrorCountdown = 0u;
     s_boundaryProbe = NULL;
     s_boardInitResult = true;
     s_audioInitResult = true;
@@ -47,7 +55,13 @@ void HalMock_Reset(void)
     s_onError = NULL;
     s_audioInitCalls = 0u;
     s_audioStartCalls = 0u;
+    s_audioSubmits = 0u;
     s_audioAbortCalls = 0u;
+    s_audioStops = 0u;
+    s_audioInitOk = false;
+    s_audioStarted = false;
+    s_audioAborted = false;
+    s_abortResult = HAL_AUDIO_TX_ABORT_STOPPED;
     /* Non-zero so a test can see that initialization cleared the ring. */
     memset(s_ring, 0xA5, sizeof(s_ring));
     s_sw2 = false;
@@ -131,6 +145,14 @@ uint32_t HalTimer_GetTicks(void)
             }
         }
     }
+    if (s_saiErrorCountdown != 0u)
+    {
+        s_saiErrorCountdown--;
+        if (s_saiErrorCountdown == 0u)
+        {
+            HalMock_SaiError();
+        }
+    }
     return s_ticks;
 }
 
@@ -163,6 +185,11 @@ void HalMock_BoundaryOnTickRead(uint32_t nthRead)
 void HalMock_SetBoundaryProbe(void (*probe)(void))
 {
     s_boundaryProbe = probe;
+}
+
+void HalMock_SaiErrorOnTickRead(uint32_t nthRead)
+{
+    s_saiErrorCountdown = nthRead;
 }
 
 /* ---- hal_i2c.h ------------------------------------------------------ */
@@ -227,17 +254,41 @@ bool HalAudioTx_Init(HalAudioTxIsrFn onBoundary, HalAudioTxIsrFn onError)
     s_audioInitCalls++;
     s_onBoundary = onBoundary;
     s_onError = onError;
+    s_audioInitOk = s_audioInitResult;
     return s_audioInitResult;
 }
 
-void HalAudioTx_Start(void)
+bool HalAudioTx_Start(void)
 {
     s_audioStartCalls++;
+    if (s_audioStarted || s_audioAborted || !s_audioInitOk)
+    {
+        return false;
+    }
+    s_audioStarted = true;
+    s_audioSubmits++;
+    return true;
 }
 
 void HalAudioTx_Abort(void)
 {
     s_audioAbortCalls++;
+    if (s_audioAborted)
+    {
+        return;
+    }
+    s_audioAborted = true;
+    s_audioStops++;
+}
+
+HalAudioTxAbortState HalAudioTx_AbortState(void)
+{
+    return s_audioAborted ? s_abortResult : HAL_AUDIO_TX_ABORT_NONE;
+}
+
+void HalMock_SetAbortResult(HalAudioTxAbortState state)
+{
+    s_abortResult = state;
 }
 
 void HalMock_SetBoardInitResult(bool ok)
@@ -276,9 +327,19 @@ uint32_t HalMock_AudioStartCalls(void)
     return s_audioStartCalls;
 }
 
+uint32_t HalMock_AudioSubmits(void)
+{
+    return s_audioSubmits;
+}
+
 uint32_t HalMock_AudioAbortCalls(void)
 {
     return s_audioAbortCalls;
+}
+
+uint32_t HalMock_AudioStops(void)
+{
+    return s_audioStops;
 }
 
 uint16_t *HalMock_RingWords(void)

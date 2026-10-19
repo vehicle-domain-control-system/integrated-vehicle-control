@@ -7,11 +7,15 @@
   service/input/vss_input_net.{c,h}, app  ->  net_if
   hal/s32k344  ->  vendor driver headers (the only place they may appear)
 
-Besides #include edges it checks three naming rules:
+hal/include headers include nothing but <stdint.h> and <stdbool.h>.
+
+Besides #include edges it checks:
   * configuration-tool generated symbols appear only in hal_s32k344_cfg.h,
   * vendor driver API calls appear only under hal/s32k344,
   * the interrupt callbacks that the generated configuration binds by name are
-    defined only under hal/s32k344.
+    defined only under hal/s32k344,
+  * no extern data declarations anywhere (modules share state only through
+    functions; extern is allowed on function declarations).
 
 Usage: check_layers.py [--src DIR] [--selftest]
 Exit status 0 = no violation.
@@ -33,7 +37,7 @@ ALLOWED = {
     'app':         {'app', 'service', 'driver', 'hal_include', 'infra', 'net_if'},
     'service':     {'service', 'driver', 'infra'},
     'driver':      {'driver', 'hal_include', 'infra'},
-    'hal_include': {'hal_include', 'infra'},
+    'hal_include': {'hal_include'},
     'hal_s32k344': {'hal_s32k344', 'hal_include', 'infra'},
     'infra':       {'infra'},
     'net_if':      {'net_if'},
@@ -63,12 +67,22 @@ CALLBACK_NAMES = re.compile(
     r'|AudioPlayer_Sai0IrqHandler|Cs2100Ref_Callback)\b')
 
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.M)
+EXTERN_RE = re.compile(r'\bextern\b([^;{]*)[;{]')
 COMMENT_RE = re.compile(r'/\*.*?\*/|//[^\n]*', re.S)
 
 
 def strip_comments(text):
     """Blank out comments but keep line numbering."""
     return COMMENT_RE.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), text)
+
+
+def is_function_declaration(decl):
+    """True for 'T name(args)', false for objects such as 'T x', 'T a[4]' or
+    the function pointer 'T (*p)(args)'."""
+    paren = decl.find('(')
+    if paren < 0:
+        return False
+    return not decl[paren + 1:].lstrip().startswith('*')
 
 
 def layer_of(rel):
@@ -155,6 +169,12 @@ def check(src):
                     bad(rel, line, 'include "%s" does not resolve relative to the file '
                                    '(vendor headers belong in hal/s32k344)' % name)
 
+        for m in EXTERN_RE.finditer(clean):
+            if not is_function_declaration(m.group(1)):
+                line = clean.count('\n', 0, m.start()) + 1
+                bad(rel, line, 'extern data declaration "%s" (share state through functions)'
+                    % ' '.join(m.group(0).split()))
+
         is_cfg = rel == 'hal/s32k344/hal_s32k344_cfg.h'
         for lineno, ln in enumerate(clean.split('\n'), 1):
             if GENERATED_SYMBOLS.search(ln) and not is_cfg:
@@ -201,6 +221,16 @@ def selftest():
         ('net_if->service', {'net_if/n.h': '#include "../service/s.h"\n', 'service/s.h': ''}, 'net_if -> service'),
         ('net_if from input_net', {'service/input/vss_input_net.c': '#include "../../net_if/n.h"\n', 'net_if/n.h': ''}, None),
         ('hal/include std', {'hal/include/h.h': '#include <string.h>\n'}, 'only use stdint.h'),
+        ('hal/include->infra', {'hal/include/h.h': '#include "../../infra/vss_config.h"\n',
+                                'infra/vss_config.h': ''}, 'hal_include -> infra'),
+        ('extern data', {'driver/d.h': 'extern int g_shared;\n'}, 'extern data'),
+        ('extern array', {'service/s.c': 'extern const unsigned char g_tab[4];\n'}, 'extern data'),
+        ('extern fn pointer', {'driver/d.h': 'extern void (*g_hook)(void);\n'}, 'extern data'),
+        ('extern multi-line', {'app/a.c': 'extern unsigned long\n    g_counter;\n'}, 'extern data'),
+        ('extern in hal', {'hal/s32k344/x.c': 'extern volatile int g_flag;\n'}, 'extern data'),
+        ('extern function ok', {'driver/d.h': 'extern void Driver_Run(void);\n'
+                                              'extern int Driver_Get(int a, int (*cb)(int));\n'}, None),
+        ('extern in comment ok', {'driver/d.c': '/* extern int g_x; */\n// extern int g_y;\n'}, None),
         ('rtd in service', {'service/s.c': '#include "Sai_Ip.h"\n'}, 'does not resolve relative'),
         ('rtd angle in driver', {'driver/d.c': '#include <Sai_Ip.h>\n'}, 'vendor header'),
         ('rtd in hal ok', {'hal/s32k344/x.c': '#include "Sai_Ip.h"\nvoid f(void){ Sai_Ip_Send(0,0,0); }\n'}, None),
