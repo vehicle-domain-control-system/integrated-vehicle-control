@@ -346,7 +346,9 @@ void Health_Evaluate(const VssTimeEvidence *now)
         s_obs.state = (uint8_t)(playing ? VSS_SERVICE_PLAYING : VSS_SERVICE_READY);
         s_obs.availability = (uint8_t)((mask != 0u) ? VSS_SERVICE_DEGRADED : VSS_SERVICE_FULL);
     }
-    s_obs.accepting = Input_IsOpen(now->domain) && !ledgerFull;
+    /* Not tied to the INPUT admission: the DOMAIN may wait for this flag
+     * before it sends, and INPUT opens only with the first DOMAIN message. */
+    s_obs.accepting = s_obs.bootComplete && (s_obs.state != (uint8_t)VSS_SERVICE_FAULT) && !ledgerFull;
     s_obs.audioTxFaultMask = txMask;
     s_obs.abortState = (uint8_t)AudioTx_AbortState();
     s_obs.muteRequested = control.muteLatched;

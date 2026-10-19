@@ -383,6 +383,7 @@ static void Boot(void)
 static void test_boot_reports(void)
 {
     const NetVssStatus *s;
+    VssInputNetObservation in;
 
     Boot();
     CHECK_EQ_U(s_logCount, 1u);
@@ -401,17 +402,24 @@ static void test_boot_reports(void)
     CHECK_EQ_U(s->vss_last_fault, NET_VSS_FAULT_CODE_NONE);
     CHECK_EQ_U(s->last_fault_quality, NET_QUALITY_NO_DATA);
 
-    /* READY at once, accepting once the first DOMAIN message opened INPUT. */
+    /* READY and accepting as soon as the boot completed, before any DOMAIN
+     * message reached INPUT. */
     Step();
     s = LastStatus();
+    CHECK(VssInputNet_Read(VSS_PRODUCT, &in));
+    CHECK(!in.generationOpen);
+    CHECK_EQ_U(in.warningFramesForwarded + in.eventsForwarded, 0u);
     CHECK_EQ_U(s->vss_state, NET_VSS_STATE_READY);
     CHECK_EQ_U(s->vss_availability, NET_VSS_AVAILABILITY_FULL);
-    CHECK_EQ_U(s->vss_accepting_events, NET_FLAG_NO);
+    CHECK_EQ_U(s->vss_accepting_events, NET_FLAG_YES);
     CHECK_EQ_U(s->update_sequence, 2u);
+    /* The first DOMAIN message changes nothing in the report. */
     RunMs(150u);
+    CHECK(VssInputNet_Read(VSS_PRODUCT, &in));
+    CHECK(in.generationOpen);
     s = LastStatus();
     CHECK_EQ_U(s->vss_accepting_events, NET_FLAG_YES);
-    CHECK_EQ_U(s->update_sequence, 3u);
+    CHECK_EQ_U(s->update_sequence, 2u);
 }
 
 /* ---- 200 one-shot events ------------------------------------------------- */
@@ -643,6 +651,7 @@ static void test_output_stall(void)
     CHECK_EQ_U(s->vss_state, NET_VSS_STATE_FAULT);
     CHECK_EQ_U(s->vss_availability, NET_VSS_AVAILABILITY_UNAVAILABLE);
     CHECK_EQ_U(s->vss_fault_active, NET_FLAG_YES);
+    CHECK_EQ_U(s->vss_accepting_events, NET_FLAG_NO);
     CHECK_EQ_U(s->fault_mask, NET_VSS_FAULT_AUDIO_OUTPUT_FAILURE);
     CHECK_EQ_U(s->vss_last_fault, NET_VSS_FAULT_CODE_AUDIO_OUTPUT_FAILURE);
     CHECK_EQ_U(s->last_fault_occurrence, 1u);
@@ -717,7 +726,7 @@ static void test_init_fault_blocks_starts(void)
     CHECK_EQ_U(s->vss_state, NET_VSS_STATE_FAULT);
     CHECK_EQ_U(s->fault_mask, NET_VSS_FAULT_INITIALIZATION_FAILURE);
     CHECK_EQ_U(s->vss_last_fault, NET_VSS_FAULT_CODE_INITIALIZATION_FAILURE);
-    CHECK_EQ_U(s->vss_accepting_events, NET_FLAG_YES);
+    CHECK_EQ_U(s->vss_accepting_events, NET_FLAG_NO);
     (void)SendEvent(NET_VSS_EVENT_WELCOME, 1u);
     RunMs(300u);
     CHECK_EQ_U(s_sessionCount, 0u);

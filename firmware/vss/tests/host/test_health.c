@@ -284,28 +284,76 @@ static uint32_t BuildBadFrames(void)
 
 /* ---- state table -------------------------------------------------------- */
 
-/* Boot not complete: STARTUP / UNAVAILABLE, nothing current. accepting
- * follows the INPUT admission and the ledger. */
+/* Boot not complete: STARTUP / UNAVAILABLE, nothing current, not
+ * accepting even with INPUT open. */
 static void test_startup_until_boot_complete(void)
 {
     Setup(false);
     Evaluate();
     EXPECT_STATE(VSS_SERVICE_STARTUP, VSS_SERVICE_UNAVAILABLE, 0u);
-    CHECK(!s_health.accepting);           /* INPUT not opened yet */
+    CHECK(!s_health.accepting);
     CHECK(Build());
     CHECK_EQ_U(s_status.reportSequence, 1u);
     CHECK_EQ_U(s_status.state, VSS_SERVICE_STARTUP);
+    CHECK(!s_status.accepting);
     CHECK(!s_status.lastFaultPresent);
 
     OpenInput();
     Evaluate();
-    CHECK(s_health.accepting);
+    CHECK(!s_health.accepting);
     EXPECT_STATE(VSS_SERVICE_STARTUP, VSS_SERVICE_UNAVAILABLE, 0u);
 
     Health_BootComplete();
     Evaluate();
     EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
     CHECK(s_health.bootComplete);
+    CHECK(s_health.accepting);
+}
+
+/* accepting = boot complete, not FAULT, a free ledger slot. It does not wait
+ * for the first DOMAIN message: the DOMAIN may hold its events until VSS
+ * reports that it accepts them. */
+static void test_accepting_rule(void)
+{
+    VssTimeEvidence now;
+
+    /* Boot complete, no DOMAIN message yet: INPUT is still closed. */
+    Setup(true);
+    Evaluate();
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_FULL, 0u);
+    CHECK(s_health.accepting);
+    CHECK(Build());
+    CHECK(s_status.accepting);
+    now = Now();
+    {
+        NetVssStatus net;
+
+        CHECK(VssInputNet_ToNetStatus(&s_status, &now, &net));
+        CHECK_EQ_U(net.vss_accepting_events, NET_FLAG_YES);
+    }
+
+    /* DEGRADED still accepts. */
+    now = Now();
+    Health_Report(VSS_FAULT_START, &now);
+    Evaluate();
+    EXPECT_STATE(VSS_SERVICE_READY, VSS_SERVICE_DEGRADED, BIT(VSS_FAULT_START));
+    CHECK(s_health.accepting);
+
+    /* FAULT does not. */
+    Health_Report(VSS_FAULT_INIT, &now);
+    Evaluate();
+    CHECK_EQ_U(s_health.state, VSS_SERVICE_FAULT);
+    CHECK(!s_health.accepting);
+
+    /* An output fault while booting is FAULT as well. */
+    Setup(false);
+    CHECK(!AudioControl_MuteLatched());
+    Evaluate();
+    CHECK_EQ_U(s_health.state, VSS_SERVICE_FAULT);
+    CHECK(!s_health.accepting);
+    Health_BootComplete();
+    Evaluate();
+    CHECK(!s_health.accepting);
 }
 
 /* A session is PLAYING from the boundary the stream reported STARTED until
@@ -563,7 +611,6 @@ static void test_full_ledger_is_a_state_fault(void)
     VssTimeEvidence now;
 
     Setup(true);
-    OpenInput();
     Evaluate();
     CHECK(s_health.accepting);
     for (i = 1u; i <= VSS_LEDGER_CAPACITY; ++i)
@@ -639,7 +686,7 @@ static void test_report_numbers(void)
     VssStatusSnapshot read;
     VssTimeEvidence now;
 
-    Setup(true);
+    Setup(false);
     CHECK(!Build());                     /* nothing evaluated yet */
     CHECK(!Health_ReadStatus(&read));
     Evaluate();
@@ -663,10 +710,11 @@ static void test_report_numbers(void)
 
     /* A content change is reported at once. */
     JumpToMs(260u);
-    OpenInput();
+    Health_BootComplete();
     Evaluate();
     CHECK(Build());
     CHECK_EQ_U(s_status.reportSequence, 3u);
+    CHECK_EQ_U(s_status.state, VSS_SERVICE_READY);
     CHECK(s_status.accepting);
 
     /* Time alone without an evaluation never makes a number. */
@@ -844,6 +892,7 @@ static void test_resubmission_keeps_the_number(void)
 int main(void)
 {
     test_startup_until_boot_complete();
+    test_accepting_rule();
     test_ready_playing_ready();
     test_missing_cue_degrades();
     test_decode_failure_is_an_asset_fault();

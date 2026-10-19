@@ -84,8 +84,9 @@ typedef struct
  * State: INIT or OUTPUT current -> FAULT / UNAVAILABLE; boot not complete
  * -> STARTUP / UNAVAILABLE; a session the stream reported STARTED for and
  * that has not ended -> PLAYING; otherwise READY. PLAYING and READY are
- * DEGRADED while any fault is current, FULL otherwise. accepting = INPUT
- * admission open for the evaluated origin and a free ledger slot.
+ * DEGRADED while any fault is current, FULL otherwise. accepting = boot
+ * complete, state not FAULT and a free ledger slot; it does not depend on
+ * whether a DOMAIN message has opened INPUT yet.
  *
  * All calls run in the super-loop owner context. Times come from the
  * caller (the VssTime clock); HEALTH reads no clock itself. */

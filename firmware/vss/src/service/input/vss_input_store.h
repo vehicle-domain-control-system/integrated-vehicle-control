@@ -278,9 +278,6 @@ bool Input_OpenAfterSynchronization(VssOrigin origin, uint32_t domainBoot,
  * current one. A boot id is never reused by the sender. */
 bool Input_AcceptNewGeneration(VssOrigin origin, uint32_t newBoot,
                                const VssTimeEvidence *at);
-/* True while the origin's admission is open: opened for a DOMAIN generation
- * and not closed by a clock discontinuity. */
-bool Input_IsOpen(VssOrigin origin);
 VssInputApplication Input_Process(const VssInputEvidence *input,
                                  const VssTimeEvidence *time,
                                  VssDiagnosticEvidence *diagnostics,
