@@ -71,6 +71,8 @@ static DomainRuntime_Config_t NormalConfig(void)
     config.resultPolicy.doorEvidenceTtlMs = 500U;
     config.permissionPolicy.reevaluationPeriodMs = 200U;
     config.permissionPolicy.sourceValidityMs = 500U;
+    config.cisOccupantPolicy.presenceTtlMs = 500U;
+    config.cisOccupantPolicy.countTtlMs = 500U;
     config.stateQueryPolicy.bcmDoorTtlMs = 500U;
     config.stateQueryPolicy.bcmStatusTtlMs = 500U;
     config.stateQueryPolicy.cisRearTtlMs = 500U;
@@ -107,6 +109,19 @@ static CisCabinEnvironmentState_t NormalEnvironment(void)
     state.humidityQuality = Quality(DATA_QUALITY_OK, 4U, 2U);
     state.cabinIlluminance = 120U;
     state.illuminanceQuality = Quality(DATA_QUALITY_OK, 5U, 3U);
+    return state;
+}
+
+static CisOccupantState_t NormalOccupant(void)
+{
+    CisOccupantState_t state;
+
+    state.occupantPresent = true;
+    state.occupantCount = 1U;
+    state.presenceQuality = Quality(DATA_QUALITY_OK, 0U, 1U);
+    state.countQuality = Quality(DATA_QUALITY_OK, 0U, 1U);
+    state.sourceGeneration = 1U;
+    state.visionFunctionStatus = CIS_FUNCTION_STATUS_ACTIVE;
     return state;
 }
 
@@ -187,6 +202,10 @@ static void Test_RetryAndInitializationOrder(void)
     CHECK(g_runtime.commandManager.initialized);
     CHECK(g_runtime.resultManager.initialized);
     CHECK(g_runtime.permissionManager.initialized);
+    CHECK(g_runtime.cisOccupantManager.initialized);
+    CHECK(g_runtime.cisOccupantPrivate.initialized);
+    CHECK(g_runtime.cisOccupantPrivate.occupantManager ==
+          &g_runtime.cisOccupantManager);
     CHECK(g_runtime.cisEnvironmentManager.initialized);
     CHECK(g_runtime.cisEnvironmentPrivate.initialized);
     CHECK(g_runtime.cisEnvironmentPrivate.environmentManager ==
@@ -217,6 +236,10 @@ static void Test_ManagerStorageOwnershipAndAliases(void)
           &g_runtime.resultManager);
     CHECK(DomainRuntime_GetPermissionManager(&g_runtime) ==
           &g_runtime.permissionManager);
+    CHECK(DomainRuntime_GetCisOccupantManager(&g_runtime) ==
+          &g_runtime.cisOccupantManager);
+    CHECK(DomainRuntime_GetCisOccupantPrivate(&g_runtime) ==
+          &g_runtime.cisOccupantPrivate);
     CHECK(DomainRuntime_GetCisEnvironmentManager(&g_runtime) ==
           &g_runtime.cisEnvironmentManager);
     CHECK(DomainRuntime_GetCisEnvironmentPrivate(&g_runtime) ==
@@ -228,6 +251,7 @@ static void Test_InitialUnknownAndNoData(void)
 {
     PermissionManager_Snapshot_t permission;
     CisCabinEnvironmentState_t environment;
+    CisOccupantState_t occupant;
     size_t index;
     int before = g_failures;
 
@@ -252,6 +276,9 @@ static void Test_InitialUnknownAndNoData(void)
     CHECK(environment.humidityQuality.meta.quality == DATA_QUALITY_NO_DATA);
     CHECK(environment.illuminanceQuality.meta.quality ==
           DATA_QUALITY_NO_DATA);
+    CHECK(DomainIf_QueryGetCisOccupant(100U, &occupant) == DOMAIN_IF_OK);
+    CHECK(occupant.presenceQuality.meta.quality == DATA_QUALITY_NO_DATA);
+    CHECK(occupant.countQuality.meta.quality == DATA_QUALITY_NO_DATA);
     EndTest(before);
 }
 
@@ -355,6 +382,9 @@ static void Test_PollHasNoManagerOrNetworkSideEffects(void)
     CommandManager_t command = g_runtime.commandManager;
     ResultManager_t result = g_runtime.resultManager;
     CisEnvironmentManager_t environment = g_runtime.cisEnvironmentManager;
+    CisOccupantManager_t occupant = g_runtime.cisOccupantManager;
+    DomainCisOccupantPriv_t occupantPrivate =
+        g_runtime.cisOccupantPrivate;
     int before = g_failures;
 
     BeginTest("Test_PollHasNoManagerOrNetworkSideEffects");
@@ -366,6 +396,10 @@ static void Test_PollHasNoManagerOrNetworkSideEffects(void)
     CHECK(memcmp(&result, &g_runtime.resultManager, sizeof(result)) == 0);
     CHECK(memcmp(&environment, &g_runtime.cisEnvironmentManager,
                  sizeof(environment)) == 0);
+    CHECK(memcmp(&occupant, &g_runtime.cisOccupantManager,
+                 sizeof(occupant)) == 0);
+    CHECK(memcmp(&occupantPrivate, &g_runtime.cisOccupantPrivate,
+                 sizeof(occupantPrivate)) == 0);
     CHECK(!DomainIfCore_TestHasRxObserver());
     CHECK(!DomainIfCore_TestHasTxPort());
     EndTest(before);
@@ -408,6 +442,71 @@ static void Test_GetSnapshotIsReadOnly(void)
     EndTest(before);
 }
 
+static void Test_OccupantFreshnessAndNewRuntimeReset(void)
+{
+    DomainRuntime_t replacement;
+    DomainRuntime_Config_t config = NormalConfig();
+    CisOccupantState_t input = NormalOccupant();
+    CisOccupantState_t output;
+    DomainCisOccupantPriv_Transition_t transition;
+    DomainCisOccupantPriv_TransitionReceipt_t receipt;
+    int before = g_failures;
+
+    BeginTest("Test_OccupantFreshnessAndNewRuntimeReset");
+    transition.admittedSourceGeneration = input.sourceGeneration;
+    transition.transitionEpoch = UINT64_C(1);
+    CHECK(DomainIf_RxCisOccupant(&input) == DOMAIN_IF_REJECTED);
+    CHECK(DomainCisOccupantPriv_ApplyBootTransition(
+              &g_runtime.cisOccupantPrivate, &transition, &receipt) ==
+          DOMAIN_CIS_OCCUPANT_PRIV_APPLIED);
+    g_clock.nowMs = 3000U;
+    CHECK(DomainIf_RxCisOccupant(&input) == DOMAIN_IF_OK);
+    CHECK(DomainIf_QueryGetCisOccupant(3499U, &output) == DOMAIN_IF_OK);
+    CHECK(output.presenceQuality.meta.quality == DATA_QUALITY_OK);
+    g_clock.nowMs = 3500U;
+    CHECK(DomainRuntime_Poll(&g_runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainIf_QueryGetCisOccupant(3500U, &output) == DOMAIN_IF_OK);
+    CHECK(output.presenceQuality.meta.quality == DATA_QUALITY_STALE);
+    CHECK(output.countQuality.meta.quality == DATA_QUALITY_STALE);
+
+    /* Network ingress is assumed closed before replacing the owner context. */
+    (void)memset(&replacement, 0, sizeof(replacement));
+    CHECK(DomainRuntime_Init(&replacement, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainIf_QueryGetCisOccupant(3500U, &output) == DOMAIN_IF_OK);
+    CHECK(output.presenceQuality.meta.quality == DATA_QUALITY_NO_DATA);
+    CHECK(output.countQuality.meta.quality == DATA_QUALITY_NO_DATA);
+    EndTest(before);
+}
+
+static void Test_ZeroOccupantTtlPreventsRuntimeReady(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    CisOccupantManager_Snapshot_t occupant;
+    int before = g_failures;
+
+    BeginTest("Test_ZeroOccupantTtlPreventsRuntimeReady");
+    (void)memset(&runtime, 0xA5, sizeof(runtime));
+    config.cisOccupantPolicy.presenceTtlMs = 0U;
+    CHECK(DomainRuntime_Init(&runtime, &config) ==
+          DOMAIN_RUNTIME_MANAGER_INIT_FAILED);
+    CHECK(!DomainRuntime_IsReady(&runtime));
+    CHECK(!runtime.cisOccupantManager.initialized);
+    CHECK(DomainIf_QueryGetCisOccupant(0U, &occupant.effective) ==
+          DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(CisOccupantManager_GetSnapshot(
+              &runtime.cisOccupantManager, 0U, &occupant) ==
+          CIS_OCCUPANT_MANAGER_NOT_INITIALIZED);
+
+    (void)memset(&runtime, 0xA5, sizeof(runtime));
+    config = NormalConfig();
+    config.cisOccupantPolicy.countTtlMs = 0U;
+    CHECK(DomainRuntime_Init(&runtime, &config) ==
+          DOMAIN_RUNTIME_MANAGER_INIT_FAILED);
+    CHECK(!DomainRuntime_IsReady(&runtime));
+    EndTest(before);
+}
+
 int main(void)
 {
     Test_NullAndPreInitialization();
@@ -423,6 +522,8 @@ int main(void)
     Test_PollHasNoManagerOrNetworkSideEffects();
     Test_CisPrivateAndBindingShareOwnedContext();
     Test_GetSnapshotIsReadOnly();
+    Test_OccupantFreshnessAndNewRuntimeReset();
+    Test_ZeroOccupantTtlPreventsRuntimeReady();
 
     (void)printf("%d tests, %d failures\n", g_tests, g_failures);
     return (g_failures == 0) ? 0 : 1;

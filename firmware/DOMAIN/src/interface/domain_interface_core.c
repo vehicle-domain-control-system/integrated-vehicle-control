@@ -466,7 +466,7 @@ static bool DomainIf_IsCisEnvironmentValid(
             (state->cabinHumidity <= 10000U));
 }
 
-static bool DomainIf_IsCisOccupantValid(const CisOccupantState_t *state)
+bool DomainIfCore_IsCisOccupantValid(const CisOccupantState_t *state)
 {
     return DomainIf_IsValueQualityValid(&state->presenceQuality) &&
            DomainIf_IsValueQualityValid(&state->countQuality) &&
@@ -997,7 +997,7 @@ DomainIf_Status_t DomainIf_TxMobileCisEnvironment(
 DomainIf_Status_t DomainIf_TxMobileCisOccupant(
     const CisOccupantState_t *state)
 {
-    DOMAIN_IF_FORWARD_TX(state, DomainIf_IsCisOccupantValid(state),
+    DOMAIN_IF_FORWARD_TX(state, DomainIfCore_IsCisOccupantValid(state),
                          txMobileCisOccupant);
 }
 
