@@ -586,3 +586,101 @@ else()
 endif()
 
 add_test(NAME domain_board_timebase COMMAND test_domain_board_timebase)
+
+add_executable(test_domain_stm0_tick_reader
+    test_domain_stm0_tick_reader.c
+    ../../src/board/domain_stm0_tick_reader.c
+    ../../src/board/domain_board_timebase.c
+)
+
+target_include_directories(test_domain_stm0_tick_reader PRIVATE
+    stubs
+    ../../src/board
+)
+
+set_target_properties(test_domain_stm0_tick_reader PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_domain_stm0_tick_reader PRIVATE /W4)
+else()
+    target_compile_options(test_domain_stm0_tick_reader PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
+add_test(NAME domain_stm0_tick_reader COMMAND test_domain_stm0_tick_reader)
+
+add_executable(test_domain_board_runtime
+    test_domain_board_runtime.c
+    ../../src/board/domain_board_runtime.c
+    ../../src/board/domain_board_timebase.c
+    ../../src/board/domain_stm0_tick_reader.c
+)
+
+target_include_directories(test_domain_board_runtime PRIVATE
+    stubs
+    ../../src/board
+    ../../src/application
+    ../../src/interface
+)
+
+set_target_properties(test_domain_board_runtime PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_domain_board_runtime PRIVATE /W4)
+else()
+    target_compile_options(test_domain_board_runtime PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
+add_test(NAME domain_board_runtime COMMAND test_domain_board_runtime)
+
+add_executable(test_domain_application_entry
+    test_domain_application_entry.c
+    ../../src/application/domain_application_entry.c
+)
+
+target_include_directories(test_domain_application_entry PRIVATE
+    stubs
+    ../../src/application
+    ../../src/board
+    ../../src/interface
+)
+
+set_target_properties(test_domain_application_entry PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_domain_application_entry PRIVATE /W4)
+else()
+    target_compile_options(test_domain_application_entry PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
+add_test(NAME domain_application_entry COMMAND test_domain_application_entry)
+add_test(
+    NAME domain_application_entry_init_failure
+    COMMAND test_domain_application_entry init-failure
+)
