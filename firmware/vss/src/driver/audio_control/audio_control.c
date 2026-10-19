@@ -37,13 +37,14 @@ bool AudioControl_Unmute(uint8_t volumePercent)
 
 bool AudioControl_MuteLatched(void)
 {
-    if (s_status.muteLatched)
-    {
-        return s_status.muteAccepted;
-    }
+    /* The latch is set on the first call; the bus write is repeated on every
+     * call until the codec takes it, because a refused mute leaves sound on. */
     s_status.muteLatched = true;
     s_status.unmuted = false;
-    s_status.muteAccepted = AudioControl_Sgtl5000LatchMute();
+    if (!s_status.muteAccepted)
+    {
+        s_status.muteAccepted = AudioControl_Sgtl5000LatchMute();
+    }
     return s_status.muteAccepted;
 }
 

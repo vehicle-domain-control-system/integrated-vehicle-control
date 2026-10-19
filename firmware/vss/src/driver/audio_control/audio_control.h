@@ -23,8 +23,9 @@ bool AudioControl_Unmute(uint8_t volumePercent);
 
 /* Mutes the output and refuses any later Unmute until reset. Returns true
  * when the codec accepted the mute; false when the I2C transfer failed or
- * the codec was never configured. The latch holds either way. Only the
- * first call talks to the codec; later calls return its result. */
+ * the codec was never configured. The latch holds either way. While the
+ * mute has not been accepted every call tries the codec again; once it has,
+ * calls return true without touching the bus. */
 bool AudioControl_MuteLatched(void);
 
 void AudioControl_Read(AudioControlStatus *out);

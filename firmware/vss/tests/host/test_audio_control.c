@@ -462,10 +462,16 @@ static void test_mute_bus_failure_is_reported(void)
     CHECK(!st.muteAccepted);
     CHECK_EQ_U(st.i2cErrors, errorsBefore + 1u);
 
+    /* The failure stays armed at transfer 0: the retry is refused again and
+     * the unmute never reaches the bus. */
     HalMock_ClearLog();
     CHECK(!AudioControl_MuteLatched());
+    CHECK_EQ_U(HalMock_Log()->count, 1u);
     CHECK(!AudioControl_Unmute(50u));
-    CHECK_EQ_U(HalMock_Log()->count, 0u);
+    CHECK_EQ_U(HalMock_Log()->count, 1u);
+    AudioControl_Read(&st);
+    CHECK(!st.muteAccepted);
+    CHECK_EQ_U(st.i2cErrors, errorsBefore + 2u);
 }
 
 /* Never configured: nothing reaches the bus and no I2C error is counted, so
@@ -484,6 +490,44 @@ static void test_mute_without_codec_is_reported(void)
     CHECK_EQ_U(st.i2cErrors, 0u);
 }
 
+/* The first mute is refused on the bus; the next call tries again and the
+ * codec takes it. Once accepted, later calls stay off the bus. */
+static void test_mute_retries_until_accepted(void)
+{
+    AudioControlStatus st;
+    uint32_t count;
+
+    AudioControl_ResetForTest();
+    BringUp();
+    HalMock_FailI2cAt(0u);
+    CHECK(!AudioControl_MuteLatched());
+    AudioControl_Read(&st);
+    CHECK(st.muteLatched);
+    CHECK(!st.muteAccepted);
+    CHECK(!AudioControl_Unmute(50u));
+
+    /* The failure index counts from the last log clear, so the log is kept:
+     * only transfer 0 fails and the retry starts at transfer 1. */
+    Queue2(0x0125u);
+    CHECK(AudioControl_MuteLatched());
+    ExpectBegin();
+    CODEC_SELECT(0x0024u);                      /* first attempt, refused */
+    CODEC_SELECT(0x0024u); CODEC_R2();
+    CODEC_W(0x0024u, 0x0135u);                  /* headphone mute: set 0x0010 */
+    CODEC_W(0x0022u, 0x7F7Fu);                  /* lowest level */
+    ExpectEnd(__LINE__);
+    CHECK(HalMock_Log()->ops[0].failed);
+    AudioControl_Read(&st);
+    CHECK(st.muteLatched);
+    CHECK(st.muteAccepted);
+
+    count = HalMock_Log()->count;
+    CHECK(AudioControl_MuteLatched());
+    CHECK_EQ_U(HalMock_Log()->count, count);
+    CHECK(!AudioControl_Unmute(50u));
+    CHECK_EQ_U(HalMock_Log()->count, count);
+}
+
 int main(void)
 {
     test_bring_up_sequence();
@@ -498,5 +542,6 @@ int main(void)
     test_mute_latch();
     test_mute_bus_failure_is_reported();
     test_mute_without_codec_is_reported();
+    test_mute_retries_until_accepted();
     TEST_FINISH();
 }
