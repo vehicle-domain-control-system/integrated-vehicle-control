@@ -10,6 +10,11 @@
      Exception: tests/host/test_hal_*.c link one board adapter source from
      hal/s32k344 with the recording vendor-driver stand-in tests/rtd_mock/*.c
      instead (no archive, no HAL stand-in).
+     Steps 1-2 run once per build configuration (CONFIGS): the plain build,
+     then the same sources and tests with the undefined-behaviour and bounds
+     checks in trap mode (no runtime library needed). A trap ends the test
+     program with an illegal-instruction exit and fails it. A probe program
+     with a deliberate out-of-bounds read must trap, proving the checks are on.
   3. Configuration guards: out-of-range build switches must fail to compile.
   4. tools/check_layers.py --selftest.
 
@@ -39,6 +44,14 @@ WORK = os.path.join(REPO, '.vss_work')
 # VSS_CFG_HOST_TEST=1 adds the drivers' reset functions used between cases.
 CFLAGS = ['-std=c99', '-funsigned-char', '-Wall', '-Wextra', '-Werror', '-Wstrict-prototypes',
           '-Wundef', '-g', '-O0', '-DVSS_CFG_HOST_TEST=1']
+# Build configurations: (row prefix, flags added to CFLAGS).
+UBSAN_FLAGS = ['-fsanitize=undefined,bounds', '-fsanitize-undefined-trap-on-error']
+CONFIGS = (
+    ('', []),
+    ('[ubsan] ', UBSAN_FLAGS),
+)
+UBSAN_PROBE = ('int main(int argc, char **argv)\n{\n    int a[4] = {0, 1, 2, 3};\n'
+               '    (void)argv;\n    return a[argc + 3];\n}\n')
 EXCLUDE_FROM_LIB = ('hal/s32k344/', 'app/vss_main.c')
 # Board adapter tests: file name prefix -> adapter source(s) under src/.
 HAL_TESTS = (
@@ -91,7 +104,7 @@ class Report:
         return bool(self.rows) and all(r[1] for r in self.rows)
 
 
-def build_library(cc, ar, build, rep):
+def build_library(cc, ar, build, rep, flags, tag):
     objs = []
     srcs = []
     for d, _, fs in os.walk(SRC):
@@ -102,15 +115,15 @@ def build_library(cc, ar, build, rep):
                     srcs.append((rel, os.path.join(d, f)))
     srcs.sort()
     if not srcs:
-        rep.add('library (src/**/*.c)', True, note='no host-buildable sources yet')
+        rep.add(tag + 'library (src/**/*.c)', True, note='no host-buildable sources yet')
         return None
     failed = 0
     for rel, path in srcs:
         obj = os.path.join(build, 'lib_' + rel.replace('/', '__') + '.o')
-        r = run([cc] + CFLAGS + ['-c', path, '-o', obj])
+        r = run([cc] + flags + ['-c', path, '-o', obj])
         if r.returncode != 0:
             failed += 1
-            rep.add('compile ' + rel, False, 0, 1, detail=r.stdout + r.stderr)
+            rep.add(tag + 'compile ' + rel, False, 0, 1, detail=r.stdout + r.stderr)
         else:
             objs.append(obj)
     if failed:
@@ -120,9 +133,9 @@ def build_library(cc, ar, build, rep):
         os.remove(lib)
     r = run([ar, 'rcs', lib] + objs)
     if r.returncode != 0:
-        rep.add('archive libvss_host.a', False, 0, 1, detail=r.stdout + r.stderr)
+        rep.add(tag + 'archive libvss_host.a', False, 0, 1, detail=r.stdout + r.stderr)
         return None
-    rep.add('library (src/**/*.c)', True, len(objs), 0, note='%d object(s) compiled' % len(objs))
+    rep.add(tag + 'library (src/**/*.c)', True, len(objs), 0, note='%d object(s) compiled' % len(objs))
     return lib
 
 
@@ -136,7 +149,7 @@ def hal_test_sources(name):
     return None
 
 
-def build_and_run_tests(cc, build, lib, flt, rep):
+def build_and_run_tests(cc, build, lib, flt, rep, flags, tag):
     support = []
     tests = []
     for f in sorted(os.listdir(TESTS)):
@@ -149,48 +162,66 @@ def build_and_run_tests(cc, build, lib, flt, rep):
     support_objs = []
     for f in support:
         obj = os.path.join(build, 'sup_' + f + '.o')
-        r = run([cc] + CFLAGS + ['-c', os.path.join(TESTS, f), '-o', obj, '-I', TESTS])
+        r = run([cc] + flags + ['-c', os.path.join(TESTS, f), '-o', obj, '-I', TESTS])
         if r.returncode != 0:
-            rep.add('compile tests/host/' + f, False, 0, 1, detail=r.stdout + r.stderr)
+            rep.add(tag + 'compile tests/host/' + f, False, 0, 1, detail=r.stdout + r.stderr)
             return
         support_objs.append(obj)
     if not tests:
-        rep.add('tests/host/test_*.c', False, 0, 1, note='no test program found')
+        rep.add(tag + 'tests/host/test_*.c', False, 0, 1, note='no test program found')
         return
     for f in tests:
         name = f[:-2]
+        row = tag + name
         exe = os.path.join(build, name + EXE)
         adapter = hal_test_sources(name)
         if adapter is None:
-            cmd = [cc] + CFLAGS + ['-I', TESTS, os.path.join(TESTS, f)] + support_objs
+            cmd = [cc] + flags + ['-I', TESTS, os.path.join(TESTS, f)] + support_objs
             if lib:
                 cmd.append(lib)
         elif not adapter:
-            rep.add(name, False, 0, 1, note='no adapter source listed in HAL_TESTS')
+            rep.add(row, False, 0, 1, note='no adapter source listed in HAL_TESTS')
             continue
         else:
-            cmd = [cc] + CFLAGS + ['-I', TESTS, '-I', RTD_MOCK, os.path.join(TESTS, f)] + \
+            cmd = [cc] + flags + ['-I', TESTS, '-I', RTD_MOCK, os.path.join(TESTS, f)] + \
                 adapter + rtd_mock_srcs
         cmd += ['-o', exe]
         r = run(cmd)
         if r.returncode != 0:
-            rep.add(name, False, 0, 1, note='build failed', detail=r.stdout + r.stderr)
+            rep.add(row, False, 0, 1, note='build failed', detail=r.stdout + r.stderr)
             continue
         t0 = time.time()
         try:
             r = run([exe], cwd=build, timeout=120)
         except subprocess.TimeoutExpired:
-            rep.add(name, False, 0, 1, note='timeout')
+            rep.add(row, False, 0, 1, note='timeout')
             continue
         m = RESULT_RE.search(r.stdout)
         if not m:
-            rep.add(name, False, 0, 1, note='no RESULT line (exit %d)' % r.returncode,
+            rep.add(row, False, 0, 1, note='no RESULT line (exit %d)' % r.returncode,
                     detail=r.stdout + r.stderr)
             continue
         passed, failed = int(m.group(1)), int(m.group(2))
         ok = r.returncode == 0 and failed == 0 and passed > 0
-        rep.add(name, ok, passed, failed, note='%.2fs' % (time.time() - t0),
+        rep.add(row, ok, passed, failed, note='%.2fs' % (time.time() - t0),
                 detail=r.stdout if not ok else '')
+
+
+def ubsan_probe(cc, build, rep, tag):
+    """The trap-mode checks must really be on: a deliberate out-of-bounds read traps."""
+    src = os.path.join(build, 'ubsan_probe.c')
+    exe = os.path.join(build, 'ubsan_probe' + EXE)
+    with open(src, 'w', encoding='utf-8') as fh:
+        fh.write(UBSAN_PROBE)
+    r = run([cc, '-std=c99', '-O0'] + UBSAN_FLAGS + [src, '-o', exe])
+    if r.returncode != 0:
+        rep.add(tag + 'trap probe', False, 0, 1, note='build failed', detail=r.stdout + r.stderr)
+        return
+    r = run([exe], cwd=build, timeout=30)
+    trapped = r.returncode != 0
+    rep.add(tag + 'trap probe', trapped, 1 if trapped else 0, 0 if trapped else 1,
+            note=('out-of-bounds read trapped (exit 0x%X)' % (r.returncode & 0xFFFFFFFF))
+            if trapped else 'did not trap')
 
 
 def config_guards(cc, rep):
@@ -259,9 +290,16 @@ def main():
         cleanup = build
 
     rep = Report(args.verbose)
-    lib = build_library(cc, ar, build, rep)
-    if lib is not None or not any(not r[1] for r in rep.rows):
-        build_and_run_tests(cc, build, lib, args.filter, rep)
+    for tag, extra in CONFIGS:
+        sub = os.path.join(build, tag.strip(' []') or 'base')
+        os.makedirs(sub, exist_ok=True)
+        flags = CFLAGS + extra
+        if extra == UBSAN_FLAGS:
+            ubsan_probe(cc, sub, rep, tag)
+        failures = sum(1 for r in rep.rows if not r[1])
+        lib = build_library(cc, ar, sub, rep, flags, tag)
+        if lib is not None or sum(1 for r in rep.rows if not r[1]) == failures:
+            build_and_run_tests(cc, sub, lib, args.filter, rep, flags, tag)
     if not args.filter:
         config_guards(cc, rep)
         tools_selftest(rep)

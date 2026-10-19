@@ -11,8 +11,8 @@
  * pair; the flow builds its plan catalog from these rows (one cue, played
  * once per plan repeat).
  *
- * signal and value carry the codes of the input path's signal and value
- * enumerations, in their declaration order:
+ * signal and value carry the codes of the input path's VssInputSignal and
+ * VssInputValue enumerations (vss_cue_table.c checks them at compile time):
  *   signal 0 WELCOME, 1 GOODBYE, 2 LOCK_COMPLETE, 3 UNLOCK_COMPLETE,
  *          4 LOCK_ERROR, 5 ANTI_PINCH, 6 OCCUPANT_HAZARD, 7 REAR_RISK
  *   value  0 EVENT, 2 ACTIVE, 4 EMERGENCY, 5 CAUTION */

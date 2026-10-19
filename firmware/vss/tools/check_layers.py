@@ -5,6 +5,7 @@
    |          |           |
    +----------+-----------+------>  infra
   service/input/vss_input_net.{c,h}, app  ->  net_if
+  net_if/net_stub.c  ->  infra (build switches); other net_if files -> net_if only
   hal/s32k344  ->  vendor driver headers (the only place they may appear)
 
 hal/include headers include nothing but <stdint.h> and <stdbool.h>.
@@ -49,6 +50,9 @@ ALLOWED = {
 
 # service files that may reach the Network API headers (app may as well)
 NET_IF_USERS = {'service/input/vss_input_net.c', 'service/input/vss_input_net.h'}
+# net_if files that may read the build switches; the Network API header is
+# replaced by the Network module's own header and must stay self-contained
+NET_IF_INFRA_USERS = {'net_if/net_stub.c'}
 
 STD_HEADERS = {
     'assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h',
@@ -164,6 +168,8 @@ def check(src):
                 allowed = ALLOWED[layer]
                 if rel in NET_IF_USERS:
                     allowed = allowed | {'net_if'}
+                if rel in NET_IF_INFRA_USERS:
+                    allowed = allowed | {'infra'}
                 if tlayer not in allowed:
                     bad(rel, line, '%s -> %s is not allowed ("%s")' % (layer, tlayer, name))
                     continue
@@ -236,6 +242,10 @@ def selftest():
         ('net_if from store', {'service/store/s.c': '#include "../../net_if/n.h"\n', 'net_if/n.h': ''}, 'service -> net_if'),
         ('net_if->service', {'net_if/n.h': '#include "../service/s.h"\n', 'service/s.h': ''}, 'net_if -> service'),
         ('net_if from input_net', {'service/input/vss_input_net.c': '#include "../../net_if/n.h"\n', 'net_if/n.h': ''}, None),
+        ('net_stub->infra ok', {'net_if/net_stub.c': '#include "../infra/vss_config.h"\n',
+                                'infra/vss_config.h': ''}, None),
+        ('net_if header->infra', {'net_if/vss_net_api.h': '#include "../infra/vss_config.h"\n',
+                                  'infra/vss_config.h': ''}, 'net_if -> infra'),
         ('hal/include std', {'hal/include/h.h': '#include <string.h>\n'}, 'only use stdint.h'),
         ('hal/include->infra', {'hal/include/h.h': '#include "../../infra/vss_config.h"\n',
                                 'infra/vss_config.h': ''}, 'hal_include -> infra'),
