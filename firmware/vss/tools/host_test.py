@@ -206,7 +206,7 @@ def config_guards(cc, rep):
         ('VSS_CFG_NET_STUB=7', 'must be 0 or 1'),
         ('VSS_CFG_HOST_TEST=2', 'must be 0 or 1'),
         ('VSS_CFG_VOLUME_PERCENT=5', 'outside the allowed range'),
-        ('VSS_CFG_VOLUME_PERCENT=90', 'outside the allowed range'),
+        ('VSS_CFG_VOLUME_PERCENT=101', 'outside the allowed range'),
         ('VSS_CFG_FLOW_PERIOD_MS=25', 'must be 1..20'),
         ('VSS_CFG_STORE_RECLAIM_MS=2000', 'must exceed'),
         ('VSS_CFG_RX_GAP_BUDGET_MS=500', 'must be 0..100'),

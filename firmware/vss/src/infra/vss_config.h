@@ -23,12 +23,13 @@
 #endif
 
 /* Headphone level applied when the codec is unmuted, in percent.
- * The allowed range is enforced below. */
+ * The allowed range is enforced below. 100 % maps to headphone code 0x30
+ * (-12 dB), so the codec never reaches 0 dB or above; 70 % is -24 dB. */
 #ifndef VSS_CFG_VOLUME_PERCENT
-#define VSS_CFG_VOLUME_PERCENT 50
+#define VSS_CFG_VOLUME_PERCENT 70
 #endif
 #define VSS_CFG_VOLUME_PERCENT_MIN 10
-#define VSS_CFG_VOLUME_PERCENT_MAX 50
+#define VSS_CFG_VOLUME_PERCENT_MAX 100
 
 /* Receive-path allowance added to a message's reported age, in ms. */
 #ifndef VSS_CFG_RX_GAP_BUDGET_MS

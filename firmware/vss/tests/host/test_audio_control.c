@@ -383,6 +383,21 @@ static void test_unmute_sequence_and_level(void)
     CHECK(AudioControl_Unmute(10u));
     /* 10 %: 0x7F - ((9 * 79 + 49) / 99) = 0x78 */
     ExpectUnmute(0x7878u);
+
+    BringUp();
+    Queue2(0x020Cu);
+    Queue2(0x0135u);
+    CHECK(AudioControl_Unmute(VSS_CFG_VOLUME_PERCENT));
+    /* default 70 %: 0x7F - ((69 * 79 + 49) / 99) = 0x48 (-24 dB) */
+    CHECK_EQ_U(VSS_CFG_VOLUME_PERCENT, 70u);
+    ExpectUnmute(0x4848u);
+
+    BringUp();
+    Queue2(0x020Cu);
+    Queue2(0x0135u);
+    CHECK(AudioControl_Unmute(100u));
+    /* 100 %: headphone code 0x30 (-12 dB) */
+    ExpectUnmute(0x3030u);
 }
 
 static void test_unmute_level_is_capped(void)
@@ -390,9 +405,10 @@ static void test_unmute_level_is_capped(void)
     BringUp();
     Queue2(0x020Cu);
     Queue2(0x0135u);
-    CHECK(AudioControl_Unmute(90u));
-    ExpectUnmute(0x5858u);
-    CHECK_EQ_U(VSS_CFG_VOLUME_PERCENT_MAX, 50u);
+    CHECK(AudioControl_Unmute(255u));
+    /* capped at VSS_CFG_VOLUME_PERCENT_MAX = 100 %: code 0x30, never 0 dB (0x18) or louder */
+    ExpectUnmute(0x3030u);
+    CHECK_EQ_U(VSS_CFG_VOLUME_PERCENT_MAX, 100u);
 }
 
 static void test_unmute_i2c_failure(void)
