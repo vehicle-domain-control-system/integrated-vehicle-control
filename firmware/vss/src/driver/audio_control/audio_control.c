@@ -1,0 +1,57 @@
+#include "audio_control.h"
+#include "cs2100.h"
+#include "sgtl5000.h"
+#include "../../infra/vss_config.h"
+
+#include <stddef.h>
+
+static AudioControlStatus s_status;
+
+bool AudioControl_Init(void)
+{
+    /* The codec runs from the synthesizer's clock: it is touched only after
+     * the PLL reports lock. */
+    s_status.codecConfigured = false;
+    s_status.unmuted = false;
+    s_status.clockLocked = AudioControl_Cs2100Init();
+    if (s_status.clockLocked && AudioControl_Sgtl5000Probe())
+    {
+        s_status.codecConfigured = AudioControl_Sgtl5000Configure();
+    }
+    return s_status.clockLocked && s_status.codecConfigured;
+}
+
+bool AudioControl_Unmute(uint8_t volumePercent)
+{
+    if (s_status.muteLatched || !s_status.codecConfigured)
+    {
+        return false;
+    }
+    if (volumePercent > VSS_CFG_VOLUME_PERCENT_MAX)
+    {
+        volumePercent = VSS_CFG_VOLUME_PERCENT_MAX;
+    }
+    s_status.unmuted = AudioControl_Sgtl5000StartAudio(volumePercent);
+    return s_status.unmuted;
+}
+
+void AudioControl_MuteLatched(void)
+{
+    if (s_status.muteLatched)
+    {
+        return;
+    }
+    s_status.muteLatched = true;
+    s_status.unmuted = false;
+    (void)AudioControl_Sgtl5000LatchMute();
+}
+
+void AudioControl_Read(AudioControlStatus *out)
+{
+    if (out == NULL)
+    {
+        return;
+    }
+    *out = s_status;
+    out->i2cErrors = AudioControl_Cs2100I2cErrors() + AudioControl_Sgtl5000I2cErrors();
+}
