@@ -43,6 +43,9 @@ int main(void)
     CHECK(VSS_CFG_STORE_RECLAIM_MS > 2000);
     CHECK_EQ_U(VSS_CFG_RX_GAP_BUDGET_MS, 5UL);
 
+    /* The target's plain char is unsigned; the host build must match. */
+    CHECK((char)0xFF > 0);
+
     /* Zero values are the "nothing happened" states. */
     CHECK_EQ_U(AUDIO_TX_EVENT_NONE, 0UL);
     CHECK_EQ_U(AUDIO_TX_OK, 0UL);

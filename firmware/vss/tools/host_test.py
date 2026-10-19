@@ -31,7 +31,9 @@ TESTS = os.path.join(VSS, 'tests', 'host')
 REPO = os.path.normpath(os.path.join(VSS, '..', '..'))
 WORK = os.path.join(REPO, '.vss_work')
 
-CFLAGS = ['-std=c99', '-Wall', '-Wextra', '-Werror', '-Wstrict-prototypes', '-Wundef', '-g', '-O0']
+# -funsigned-char matches the target, where plain char is unsigned.
+CFLAGS = ['-std=c99', '-funsigned-char', '-Wall', '-Wextra', '-Werror', '-Wstrict-prototypes',
+          '-Wundef', '-g', '-O0']
 EXCLUDE_FROM_LIB = ('hal/s32k344/', 'app/vss_main.c')
 RESULT_RE = re.compile(r'^RESULT passed=(\d+) failed=(\d+)\s*$', re.M)
 EXE = '.exe' if os.name == 'nt' else ''
@@ -166,7 +168,7 @@ def config_guards(cc, rep):
     """Out-of-range build switches must be rejected by vss_config.h."""
     source = '#include "vss_config.h"\nint main(void) { return 0; }\n'
     inc = os.path.join(SRC, 'infra')
-    base = [cc, '-std=c99', '-Wall', '-Wextra', '-Werror', '-fsyntax-only', '-I', inc, '-x', 'c', '-']
+    base = [cc, '-std=c99', '-funsigned-char', '-Wall', '-Wextra', '-Werror', '-fsyntax-only', '-I', inc, '-x', 'c', '-']
     good = run(base, inp=source)
     rep.add('config: defaults accepted', good.returncode == 0, 1 if good.returncode == 0 else 0,
             0 if good.returncode == 0 else 1, detail=good.stderr)
