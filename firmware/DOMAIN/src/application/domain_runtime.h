@@ -5,7 +5,10 @@
 #include <stdint.h>
 
 #include "command_manager.h"
+#include "cis_occupant_manager.h"
+#include "domain_cis_occupant_private.h"
 #include "domain_cis_environment_private.h"
+#include "domain_interface_cis_occupant_binding.h"
 #include "domain_interface_cis_environment_binding.h"
 #include "domain_interface_query_binding.h"
 #include "domain_interface_result_binding.h"
@@ -58,12 +61,15 @@ typedef enum
     DOMAIN_RUNTIME_INIT_STAGE_COMMAND_MANAGER,
     DOMAIN_RUNTIME_INIT_STAGE_RESULT_MANAGER,
     DOMAIN_RUNTIME_INIT_STAGE_PERMISSION_MANAGER,
+    DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_MANAGER,
+    DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_PRIVATE,
     DOMAIN_RUNTIME_INIT_STAGE_C2_CORE,
     DOMAIN_RUNTIME_INIT_STAGE_C2_UNBOUND,
     DOMAIN_RUNTIME_INIT_STAGE_STATE_BINDING,
     DOMAIN_RUNTIME_INIT_STAGE_RESULT_BINDING,
     DOMAIN_RUNTIME_INIT_STAGE_QUERY_STATE_BINDING,
     DOMAIN_RUNTIME_INIT_STAGE_QUERY_RESULT_BINDING,
+    DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_BINDING,
     DOMAIN_RUNTIME_INIT_STAGE_CIS_ENVIRONMENT_BINDING,
     DOMAIN_RUNTIME_INIT_STAGE_READY
 } DomainRuntime_InitStage_t;
@@ -83,6 +89,15 @@ typedef struct
     CommandManager_CommandId_t firstCommandId;
     ResultManager_Policy_t resultPolicy;
     PermissionManager_Policy_t permissionPolicy;
+    /*
+     * Optional startup-only feature selection. A zero-initialized config
+     * keeps CIS Occupant disabled. When false, the policy TTL fields are
+     * ignored and public Occupant Rx/Query return DOMAIN_IF_NOT_AVAILABLE.
+     * When true, both TTL fields must be nonzero and private BOOT admission
+     * is still required before Rx. Runtime toggling is not supported.
+     */
+    bool cisOccupantEnabled;
+    CisOccupantManager_Policy_t cisOccupantPolicy;
     DomainIfQueryBinding_StatePolicy_t stateQueryPolicy;
 } DomainRuntime_Config_t;
 
@@ -98,6 +113,7 @@ typedef struct
 {
     bool initialized;
     bool ready;
+    bool cisOccupantEnabled;
     DomainRuntime_InitStage_t initStage;
     bool hasPolled;
     uint32_t lastPollAtMs;
@@ -134,12 +150,15 @@ typedef struct
     ResultManager_Slot_t resultSlots[DOMAIN_RUNTIME_RESULT_CAPACITY];
 
     PermissionManager_t permissionManager;
+    CisOccupantManager_t cisOccupantManager;
+    DomainCisOccupantPriv_t cisOccupantPrivate;
     CisEnvironmentManager_t cisEnvironmentManager;
     DomainCisEnvironmentPriv_t cisEnvironmentPrivate;
 
     DomainRuntime_InitStage_t initStage;
     bool initialized;
     bool ready;
+    bool cisOccupantEnabled;
     bool hasPolled;
     uint32_t lastPollAtMs;
     uint32_t lastPollElapsedMs;
@@ -184,6 +203,10 @@ VehicleStateManager_t *DomainRuntime_GetVehicleStateManager(
 CommandManager_t *DomainRuntime_GetCommandManager(DomainRuntime_t *runtime);
 ResultManager_t *DomainRuntime_GetResultManager(DomainRuntime_t *runtime);
 PermissionManager_t *DomainRuntime_GetPermissionManager(
+    DomainRuntime_t *runtime);
+CisOccupantManager_t *DomainRuntime_GetCisOccupantManager(
+    DomainRuntime_t *runtime);
+DomainCisOccupantPriv_t *DomainRuntime_GetCisOccupantPrivate(
     DomainRuntime_t *runtime);
 CisEnvironmentManager_t *DomainRuntime_GetCisEnvironmentManager(
     DomainRuntime_t *runtime);

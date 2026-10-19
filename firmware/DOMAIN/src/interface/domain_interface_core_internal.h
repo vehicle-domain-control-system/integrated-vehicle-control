@@ -26,6 +26,7 @@ bool DomainIfCore_IsDoorStateValid(const DoorState_t *state);
 bool DomainIfCore_IsBcmStatusValid(
     const DomainIf_BcmStatusReport_t *state);
 bool DomainIfCore_IsCisRearValid(const CisRearState_t *state);
+bool DomainIfCore_IsCisOccupantValid(const CisOccupantState_t *state);
 bool DomainIfCore_IsCisStatusValid(
     const DomainIf_CisStatusReport_t *state);
 

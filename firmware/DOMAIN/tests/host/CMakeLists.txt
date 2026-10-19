@@ -338,6 +338,99 @@ endif()
 
 add_test(NAME cis_environment_manager COMMAND test_cis_environment_manager)
 
+add_executable(test_cis_occupant_manager
+    test_cis_occupant_manager.c
+    ../../src/application/cis_occupant_manager.c
+)
+
+target_include_directories(test_cis_occupant_manager PRIVATE
+    ../../src/application
+    ../../src/interface
+)
+
+set_target_properties(test_cis_occupant_manager PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_cis_occupant_manager PRIVATE /W4)
+else()
+    target_compile_options(test_cis_occupant_manager PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
+add_test(NAME cis_occupant_manager COMMAND test_cis_occupant_manager)
+
+add_executable(test_domain_cis_occupant_private
+    test_domain_cis_occupant_private.c
+    ../../src/application/domain_cis_occupant_private.c
+    ../../src/application/cis_occupant_manager.c
+)
+
+target_include_directories(test_domain_cis_occupant_private PRIVATE
+    ../../src/application
+    ../../src/interface
+)
+
+set_target_properties(test_domain_cis_occupant_private PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_domain_cis_occupant_private PRIVATE /W4)
+else()
+    target_compile_options(test_domain_cis_occupant_private PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
+add_test(NAME domain_cis_occupant_private
+    COMMAND test_domain_cis_occupant_private)
+
+add_executable(test_domain_interface_cis_occupant_binding
+    test_domain_interface_cis_occupant_binding.c
+    ../../src/application/domain_interface_cis_occupant_binding.c
+    ../../src/application/domain_cis_occupant_private.c
+    ../../src/application/cis_occupant_manager.c
+    ../../src/interface/domain_interface_core.c
+)
+
+target_include_directories(test_domain_interface_cis_occupant_binding PRIVATE
+    ../../src/application
+    ../../src/interface
+)
+
+set_target_properties(test_domain_interface_cis_occupant_binding PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_domain_interface_cis_occupant_binding PRIVATE /W4)
+else()
+    target_compile_options(test_domain_interface_cis_occupant_binding PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
+add_test(NAME domain_interface_cis_occupant_binding
+    COMMAND test_domain_interface_cis_occupant_binding)
+
 add_executable(test_domain_cis_environment_private
     test_domain_cis_environment_private.c
     ../../src/application/domain_cis_environment_private.c
@@ -409,11 +502,14 @@ add_executable(test_domain_runtime
     ../../src/application/command_manager.c
     ../../src/application/result_manager.c
     ../../src/application/permission_manager.c
+    ../../src/application/cis_occupant_manager.c
+    ../../src/application/domain_cis_occupant_private.c
     ../../src/application/cis_environment_manager.c
     ../../src/application/domain_cis_environment_private.c
     ../../src/application/domain_interface_state_binding.c
     ../../src/application/domain_interface_result_binding.c
     ../../src/application/domain_interface_query_binding.c
+    ../../src/application/domain_interface_cis_occupant_binding.c
     ../../src/application/domain_interface_cis_environment_binding.c
     ../../src/interface/domain_interface_core.c
 )
@@ -454,11 +550,14 @@ add_executable(test_domain_board_timebase
     ../../src/application/command_manager.c
     ../../src/application/result_manager.c
     ../../src/application/permission_manager.c
+    ../../src/application/cis_occupant_manager.c
+    ../../src/application/domain_cis_occupant_private.c
     ../../src/application/cis_environment_manager.c
     ../../src/application/domain_cis_environment_private.c
     ../../src/application/domain_interface_state_binding.c
     ../../src/application/domain_interface_result_binding.c
     ../../src/application/domain_interface_query_binding.c
+    ../../src/application/domain_interface_cis_occupant_binding.c
     ../../src/application/domain_interface_cis_environment_binding.c
     ../../src/interface/domain_interface_core.c
 )
