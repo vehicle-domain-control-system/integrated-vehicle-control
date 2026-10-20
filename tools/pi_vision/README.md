@@ -47,8 +47,33 @@ rpicam-hello --list-cameras           # 구버전 OS: libcamera-hello --list-cam
 ```bash
 python3 -m venv --system-site-packages ~/visionenv     # apt로 설치한 picamera2를 함께 쓰기 위해
 source ~/visionenv/bin/activate
-pip install ultralytics
+mkdir -p ~/piptmp && export TMPDIR=~/piptmp            # 아래 "설치 문제 해결" 참고
+pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install --no-cache-dir ultralytics
+python -c "import torch; print(torch.__version__)"      # 끝이 +cpu 이면 정상
 ```
+
+### YOLO 설치 문제 해결
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| `OSError: [Errno 28] No space left on device` (디스크는 넉넉한데) | pip가 내려받는 파일을 `/tmp`에 쌓는데, 최신 Raspberry Pi OS(Python 3.13)의 `/tmp`는 RAM 기반(tmpfs, 약 2 GB)이라 가득 찬다 | `df -h /tmp /`로 확인한 뒤 `export TMPDIR=~/piptmp`로 임시 폴더를 SD 카드로 옮긴다. 터미널을 새로 열면 다시 지정해야 하고, 끝나면 `rm -rf ~/piptmp` |
+| `nvidia_cublas`, `nvidia_cudnn` 같은 수백 MB 패키지를 받는다 | aarch64용 `torch`가 CUDA 의존성까지 끌고 온다. Pi에는 GPU가 없어 쓸 수 없다 | 위 순서대로 **CPU용 torch를 먼저** 설치한다. 다운로드 목록에 `nvidia_`가 보이면 `Ctrl+C`로 멈춘다 |
+| 설치가 중간에 끊겼다 | 위 두 원인 중 하나 | `rm -rf ~/visionenv`로 환경을 지우고 처음부터 다시 만든다 |
+
+설치가 계속 안 되면 `--detector hog`는 추가 설치 없이 동작하므로 카메라 입력만 먼저 확인할 수 있다.
+
+### 카메라 인식만 시험하기
+
+시리얼 포트를 열지 않고 카메라와 검출기만 돌려 판정이 바뀔 때마다 화면에 찍는다 (CIS 보드가 없어도 된다):
+
+```bash
+python3 vision_sender.py --dry-run --detector hog                                        # 추가 설치 없이
+python3 vision_sender.py --dry-run --detector yolo --model yolov8n_ncnn_model --imgsz 320  # YOLO
+```
+
+`judgement #N: presence=… count=…` 줄이 사람 수와 맞는지, `[detector] … slow` 경고가 없는지 본다.
+사람 0명, 1명, 앉은 자세, 일부만 보이는 자세, 어두운 조명에서 각각 확인한다.
 
 Pi 4에서 속도를 더 내려면 NCNN 형식으로 변환해 쓴다 (ultralytics가 제공하는 방식이며, 얼마나 빨라지는지는 실측이 필요하다):
 
