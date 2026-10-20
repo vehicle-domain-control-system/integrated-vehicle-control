@@ -3,7 +3,8 @@
 
 /* ==========================================================================
  * Board binding for the RTD HAL (src/platform/rtd: net_hal_rtd.c common part,
- * net_hal_rtd_can.c FlexCAN part) and for the public entry (src/node/net_entry.c).
+ * net_hal_rtd_can.c FlexCAN part, net_hal_rtd_uart.c LPUART part) and for the
+ * public entry (src/node/net_entry.c).
  * This is the ONLY file to edit when the HAL meets a real S32DS project.
  * Defaults equal network_344_can_bringup (S32K344, RTD 7.0.1, CAN0
  * PTA6/PTA7, FD+BRS 500k/2M, 64 B payload, max_num_mb 16).
@@ -54,6 +55,76 @@
  * reported FAILED + released, freeing the slot. */
 #ifndef NET_BOARD_CAN_TX_TIMEOUT_MS
 #define NET_BOARD_CAN_TX_TIMEOUT_MS     100U
+#endif
+
+/* ---- LPUART links (net_hal_rtd_uart.c) ----
+ * The node profile decides which UART links exist (net_upper_profile.h):
+ *   UART-M (ESP32 <-> DOMAIN): HOST and DOMAIN profiles
+ *   UART-C (Pi <-> CIS)      : HOST and CIS profiles
+ * A link absent from the profile is not compiled at all (no LPUART symbol is
+ * referenced). Instance numbers and generated-config symbols are the
+ * ConfigTools names. Defaults equal the DS344 CIS bench: UART-C on LPUART11
+ * (Lpuart_Uart_Ip_xHwConfigPB_11, wired to the S32K144 peer). UART-M has no
+ * board yet; its default is a placeholder to be set by the DOMAIN project. */
+#include "network/net_upper_profile.h"
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_HOST || NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_DOMAIN
+#define NET_BOARD_UART_M_LINK 1
+#else
+#define NET_BOARD_UART_M_LINK 0
+#endif
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_HOST || NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
+#define NET_BOARD_UART_C_LINK 1
+#else
+#define NET_BOARD_UART_C_LINK 0
+#endif
+#ifndef NET_BOARD_UART_M_INSTANCE
+#define NET_BOARD_UART_M_INSTANCE       0U
+#endif
+#ifndef NET_BOARD_UART_M_CONFIG
+#define NET_BOARD_UART_M_CONFIG         Lpuart_Uart_Ip_xHwConfigPB_0
+#endif
+#ifndef NET_BOARD_UART_C_INSTANCE
+#define NET_BOARD_UART_C_INSTANCE       11U
+#endif
+#ifndef NET_BOARD_UART_C_CONFIG
+#define NET_BOARD_UART_C_CONFIG         Lpuart_Uart_Ip_xHwConfigPB_11
+#endif
+/* Generated config header that declares the configuration symbols above. */
+#ifndef NET_BOARD_UART_CFG_HEADER
+#define NET_BOARD_UART_CFG_HEADER       "Lpuart_Uart_Ip_Sa_PBcfg.h"
+#endif
+/* A frame transfer (AsyncSend) not ended within this time is aborted
+ * (AbortSendingData) and reported FAILED + released. One transfer per link at
+ * a time; 138 B at 115200 bit/s take about 12 ms. */
+#ifndef NET_BOARD_UART_TX_TIMEOUT_MS
+#define NET_BOARD_UART_TX_TIMEOUT_MS    100U
+#endif
+#ifndef NET_BOARD_UART_M_TX_TIMEOUT_MS
+#define NET_BOARD_UART_M_TX_TIMEOUT_MS  NET_BOARD_UART_TX_TIMEOUT_MS
+#endif
+#ifndef NET_BOARD_UART_C_TX_TIMEOUT_MS
+#define NET_BOARD_UART_C_TX_TIMEOUT_MS  NET_BOARD_UART_TX_TIMEOUT_MS
+#endif
+/* Received bytes the per-link ISR ring holds between two main passes. A byte
+ * that finds the ring full is dropped, counted and reported as a loss
+ * capture (NetUpperCapture.overflow) right before the next stored byte;
+ * 256 B is about 22 ms of a fully loaded 115200 bit/s line. */
+#ifndef NET_BOARD_UART_ISR_RING
+#define NET_BOARD_UART_ISR_RING         256U
+#endif
+/* Callback wiring of the generated LPUART config (ConfigTools callback name):
+ *  - NET_BOARD_UART_CALLBACK defined: the HAL DEFINES a function with that
+ *    name and handles every instance that uses it (other instances are
+ *    ignored and counted, NetHalRtdDiag.uart_unexpected_instance).
+ *  - not defined (routing): the HAL only provides
+ *      void NetHalRtdUart_OnEvent(uint8 instance, Lpuart_Uart_Ip_EventType event);
+ *    (net_hal_rtd_uart.h) and board code calls it from its own callback for
+ *    the Network instance. DS344 uses this mode: LPUART0 (console) and
+ *    LPUART11 share Uart344_BringupCallback, which keeps the console and
+ *    hands instance 11 to NetHalRtdUart_OnEvent(). */
+/* #define NET_BOARD_UART_CALLBACK  Uart344_BringupCallback */
+#if NET_BOARD_UART_M_LINK && NET_BOARD_UART_C_LINK
+typedef char net_board_uart_instances_distinct[(NET_BOARD_UART_M_INSTANCE != NET_BOARD_UART_C_INSTANCE) ? 1 : -1];
 #endif
 
 /* ---- Time base: pick ONE of three ----
@@ -115,7 +186,13 @@ extern uint64_t NET_BOARD_NOW_MS_HOOK(void);
  * NET_BOARD_ISR_DRAIN_BUDGET: ring entries taken per main pass, keeps one
  * Net_MainFunction() short (VSS contract: a few ms, never above 15 ms). It
  * must not exceed the adapter RX queue (NET_HAL_RX_CAPACITY, 16), which every
- * NetNode_Step() empties. */
+ * NetNode_Step() empties. The budget is shared: received UART bytes first (one
+ * adapter event per byte), then CAN ring entries, up to the same total.
+ * UART: M06 accepts no byte captured before its last drained timer check, so
+ * a byte still in the ring after a pass, captured before that pass's now, is
+ * refused (counted, the partial frame dropped, M06 resyncs). Keep the main
+ * pass period below NET_BOARD_ISR_DRAIN_BUDGET byte times of the UART line
+ * (16 B at 115200 bit/s: about 1.4 ms). */
 #ifndef NET_BOARD_CAN_ISR_RING
 #define NET_BOARD_CAN_ISR_RING          32U
 #endif

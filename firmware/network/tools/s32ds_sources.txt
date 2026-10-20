@@ -57,9 +57,12 @@ src/platform/s32k344/net_s32k344_upper_port.c
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_common.c
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
 
-# L05/M08 RTD backend: common part + FlexCAN part
+# L05/M08 RTD backend: common part + FlexCAN part + LPUART part
+# (net_hal_rtd_uart.c compiles to nothing unless the node profile has a UART
+# link: UART-M in HOST/DOMAIN, UART-C in HOST/CIS)
 src/platform/rtd/net_hal_rtd.c
 src/platform/rtd/net_hal_rtd_can.c
+src/platform/rtd/net_hal_rtd_uart.c
 
 # Node composition root + public entry (Net_Init / Net_MainFunction)
 src/node/net_node.c

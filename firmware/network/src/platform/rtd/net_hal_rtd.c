@@ -3,7 +3,8 @@
  * hooks, NET_BOARD_NOW_MS_HOOK or OsIf; net_board_cfg.h), the conversion of
  * ISR stamps to Network ms, the ISR <-> foreground critical section, the start
  * order, the NetHalBackendOps registration, the per-link submit dispatch and
- * the bounded ISR ring drain. Link parts: net_hal_rtd_can.c (FlexCAN).
+ * the bounded ISR ring drain. Link parts: net_hal_rtd_can.c (FlexCAN) and
+ * net_hal_rtd_uart.c (LPUART, only the UART links of the node profile).
  * Generated-config names come from net_board_cfg.h. Same file builds against
  * the host mock SDK (sdk_mock/rtd) and the real RTD.
  *
@@ -28,6 +29,8 @@ NetHalRtdCore net_hal_rtd_core;
  * RX queue holds (NetNode_Step() empties that queue on every pass). */
 typedef char net_board_drain_budget_in_range[(NET_BOARD_ISR_DRAIN_BUDGET >= 1u &&
                                               NET_BOARD_ISR_DRAIN_BUDGET <= NET_HAL_RX_CAPACITY) ? 1 : -1];
+
+#define UART_LINKS (NET_BOARD_UART_M_LINK || NET_BOARD_UART_C_LINK)
 
 #if defined(NET_BOARD_TIME_APP_TICK)
 #define TIME_SOURCE NET_HAL_RTD_TIME_APP_TICK
@@ -136,8 +139,14 @@ static NetStatus ops_submit(void *context, const NetHalTransfer *t)
     case NET_WIRE_CAN:
         if (!rtd.started) return NET_NOT_CONFIGURED;
         return net_hal_rtd_can_submit(t);
+#if UART_LINKS
+    case NET_WIRE_UART_M:
+    case NET_WIRE_UART_C:
+        if (!rtd.started) return NET_NOT_CONFIGURED;
+        return net_hal_rtd_uart_submit(t); /* NOT_CONFIGURED for a link this profile lacks */
+#endif
     default:
-        return NET_NOT_CONFIGURED; /* UART links: no backend part in this build */
+        return NET_NOT_CONFIGURED; /* link not compiled in for this profile */
     }
 }
 
@@ -147,6 +156,12 @@ static const NetHalBackendOps rtd_ops = { ops_now, ops_enter, ops_leave, ops_sub
 NetStatus net_hal_rtd_config(NetHalAdapter *adapter, const NetHalRtdConfig *in, NetHalConfig *out)
 {
     if (adapter == NULL || in == NULL || out == NULL || in->can_port_epoch == 0u) return NET_INVALID_ARGUMENT;
+#if NET_BOARD_UART_M_LINK
+    if (in->uart_m_port_epoch == 0u) return NET_INVALID_ARGUMENT;
+#endif
+#if NET_BOARD_UART_C_LINK
+    if (in->uart_c_port_epoch == 0u) return NET_INVALID_ARGUMENT;
+#endif
     memset(&rtd, 0, sizeof(rtd));
     net_hal_rtd_can_reset();
     rtd.adapter = adapter;
@@ -161,7 +176,11 @@ NetStatus net_hal_rtd_config(NetHalAdapter *adapter, const NetHalRtdConfig *in, 
     out->port_epoch[NET_WIRE_CAN] = in->can_port_epoch;
     out->ops = &rtd_ops;
     out->context = &rtd;
+#if UART_LINKS
+    return net_hal_rtd_uart_reset(in, out);
+#else
     return NET_OK;
+#endif
 }
 
 NetStatus net_hal_rtd_start(void)
@@ -178,9 +197,16 @@ NetStatus net_hal_rtd_start(void)
 
     st = net_hal_rtd_can_prepare();
     if (st != NET_OK) return st;
+#if UART_LINKS
+    net_hal_rtd_uart_prepare();
+#endif
     rtd.started = true; /* callbacks may fire from here on */
     st = net_hal_rtd_can_arm();
     if (st != NET_OK) { rtd.started = false; return st; }
+#if UART_LINKS
+    st = net_hal_rtd_uart_arm();
+    if (st != NET_OK) { rtd.started = false; return st; }
+#endif
     rtd.diag.started = true;
     return NET_OK;
 }
@@ -189,7 +215,16 @@ uint32_t net_hal_rtd_drain(void)
 {
     uint32_t n;
     if (!rtd.started) return 0u;
+#if UART_LINKS
+    /* Shared budget (the adapter RX queue holds one event per UART byte),
+     * UART first: M06 refuses a byte captured before its last drained timer
+     * check (net_upper_uart.h, receiver poll), so bytes must not wait behind
+     * CAN frames; a CAN frame that waits a pass keeps its own capture time. */
+    n = net_hal_rtd_uart_drain(NET_BOARD_ISR_DRAIN_BUDGET);
+    n += net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET - n);
+#else
     n = net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET);
+#endif
     if (n > rtd.diag.main_drained_max) rtd.diag.main_drained_max = n;
     return n;
 }
@@ -203,6 +238,9 @@ void net_hal_rtd_service(void)
     now = net_hal_rtd_now_locked();
     net_board_irq_restore(key);
     net_hal_rtd_can_service(now);
+#if UART_LINKS
+    net_hal_rtd_uart_service(now);
+#endif
 }
 
 NetStatus net_hal_rtd_diag(NetHalRtdDiag *out)

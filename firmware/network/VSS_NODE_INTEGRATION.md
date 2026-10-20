@@ -122,7 +122,8 @@ int main(void)
 ## 보드 프로젝트에 넣을 소스
 
 - 제품 C 소스 목록의 정본은 `tools/s32ds_sources.txt`다. host 빌드(`NETWORK_BUILD_RTD_MOCK`)도 같은 목록을 읽어 링크까지 확인한다.
-- RTD backend는 두 파일이다. `src/platform/rtd/net_hal_rtd.c`(시간원, ISR 시각 변환, 임계구역, 시작 순서, backend ops 등록, 링 비우기 진입)와 `src/platform/rtd/net_hal_rtd_can.c`(FlexCAN RX/TX/error ISR → ISR 링, 링 → 어댑터, TX MB, abort). 둘은 비공개 헤더 `net_hal_rtd_internal.h`로만 연결된다.
+- RTD backend는 세 파일이다. `src/platform/rtd/net_hal_rtd.c`(시간원, ISR 시각 변환, 임계구역, 시작 순서, backend ops 등록, 링 비우기 진입), `src/platform/rtd/net_hal_rtd_can.c`(FlexCAN RX/TX/error ISR → ISR 링, 링 → 어댑터, TX MB, abort), `src/platform/rtd/net_hal_rtd_uart.c`(LPUART: 1바이트 연속 수신 → 링크별 바이트 링, 링 → 어댑터, 링크당 송신 1건, 송신 시간 초과 abort). 서로 비공개 헤더 `net_hal_rtd_internal.h`로만 연결된다.
+- `net_hal_rtd_uart.c`는 프로필에 UART 링크가 있을 때만 내용이 컴파일된다(UART-M: HOST·DOMAIN, UART-C: HOST·CIS). VSS 프로필에서는 빈 파일이므로 목록에 그대로 두어도 LPUART 심볼을 참조하지 않는다.
 - 공개 진입은 `src/node/net_entry.c`다. 보드 hook을 쓰므로 `net_board_cfg.h`와 같은 define으로 컴파일한다.
 - RTD 헤더를 include하는 Network 파일은 `src/platform/rtd/` 안에만 있다.
 
@@ -132,6 +133,8 @@ int main(void)
 - MB 배치 기본값: RX 0..3(마스크 0, 모든 표준 ID 수신 후 registry로 걸러냄), TX 8..11. `max_num_mb`(344=16) 안에 들어가야 한다.
 - 시간원은 위 표의 A·B·C 중 하나다. 보드 빌드는 A를 쓴다. 셋 다 없으면(OsIf 타이머 OFF, hook 없음) 컴파일 오류(`OSIF_COUNTER_SYSTEM` 미정의)가 난다.
 - ISR 링: `NET_BOARD_CAN_ISR_RING`(기본 32, 1 이상), `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 1 이상 16 이하). 범위를 벗어나면 컴파일 오류다.
+- UART 링크(CIS·DOMAIN 프로필): `NET_BOARD_UART_C_INSTANCE`/`NET_BOARD_UART_C_CONFIG`(기본 11 / `Lpuart_Uart_Ip_xHwConfigPB_11`), `NET_BOARD_UART_M_INSTANCE`/`NET_BOARD_UART_M_CONFIG`(DOMAIN 보드 미정, 자리 표시 기본값 0 / `Lpuart_Uart_Ip_xHwConfigPB_0`), 링크별 송신 시간 초과(기본 100 ms), `NET_BOARD_UART_ISR_RING`(기본 256 B). 콜백은 `NET_BOARD_UART_CALLBACK`을 정의하면 HAL이 그 이름으로 정의하고, 정의하지 않으면 보드 콜백이 Network 인스턴스 이벤트를 `NetHalRtdUart_OnEvent()`(`net_hal_rtd_uart.h`)로 넘긴다(DS344: LPUART0 콘솔과 LPUART11이 `Uart344_BringupCallback`을 공유하므로 이 방식).
+- 한 바퀴에 비우는 양은 UART 바이트 먼저, 그다음 CAN으로 `NET_BOARD_ISR_DRAIN_BUDGET`을 함께 쓴다. M06은 앞선 바퀴의 시각보다 이전에 수신된 바이트를 받지 않으므로(수신기 poll 계약), 한 바퀴 동안 들어오는 UART 바이트가 상한을 넘지 않게 main 주기를 정한다(115200 bit/s에서 16 B는 약 1.4 ms).
 - BOOT_ID는 0이 아니어야 하고 재부팅마다 바뀌어야 한다. `Net_Init`을 쓰면 `NET_BOARD_NODE_CONFIG_HOOK`이 주고, `NetNode_Init`을 직접 쓰면 `NetNodeConfig.boot_id`로 준다.
 
 ## 진단 (`NetNode_GetDiag`)

@@ -2,19 +2,26 @@
 #define NETWORK_NET_HAL_RTD_H
 
 /* L05/M08 RTD backend for the SDK-neutral NetHalAdapter (S32K1/S32K3 RTD,
- * FlexCAN_Ip + OsIf). This header is SDK-free; only the files in
- * src/platform/rtd include RTD headers (net_hal_rtd.c: time base, start,
- * backend ops; net_hal_rtd_can.c: FlexCAN).
+ * FlexCAN_Ip + Lpuart_Uart_Ip + OsIf). This header is SDK-free; only the
+ * files in src/platform/rtd include RTD headers (net_hal_rtd.c: time base,
+ * start, backend ops; net_hal_rtd_can.c: FlexCAN; net_hal_rtd_uart.c: LPUART
+ * links of the node profile, board callback entry in net_hal_rtd_uart.h).
  *
  * Execution model (docs/network/network_sw_architecture.md section 8: short
  * CAN RX ISR -> static CAN RX queue -> Network superloop):
  *   ISR  : RTD FlexCAN callback -> copy frame + raw time stamp into the backend
  *          ISR ring -> re-arm MB. TX_COMPLETE and bus-off: fact + stamp into
- *          the same ring. The ISR never calls net_hal_capture_*().
+ *          the same ring. LPUART RX_FULL -> byte + raw stamp into the link's
+ *          byte ring -> re-arm the one-byte reception; END_TRANSFER: TX fact +
+ *          stamp; ERROR: counted, flagged on the next byte, reception re-armed.
+ *          The ISR never calls net_hal_capture_*().
  *   Main : NetNode_Step() -> net_hal_rtd_drain() takes at most
- *          NET_BOARD_ISR_DRAIN_BUDGET ring entries, converts each stamp to
- *          Network ms and calls net_hal_capture_*(); net_upper_step() then polls
- *          the adapter queue; net_hal_rtd_service() supervises stuck TX MBs.
+ *          NET_BOARD_ISR_DRAIN_BUDGET ring entries (UART bytes first, then
+ *          CAN), converts each stamp to Network ms and calls
+ *          net_hal_capture_*(); net_upper_step() then polls the adapter queue;
+ *          net_hal_rtd_service() supervises stuck TX MBs and UART transfers.
+ * Frame assembly, CRC and resynchronisation of UART bytes are M06 (L04), not
+ * the backend.
  * Time base (net_board_cfg.h): A) application tick hooks, Network now set by
  * net_hal_rtd_set_now() from Net_MainFunction(); B) NET_BOARD_NOW_MS_HOOK;
  * C) OsIf system counter. */
@@ -22,14 +29,40 @@
 
 typedef struct {
     uint64_t can_port_epoch; /* nonzero; changes only on a deliberate link reset */
+    /* Nonzero for each UART link the node profile compiles in (net_board_cfg.h:
+     * UART-M in HOST/DOMAIN, UART-C in HOST/CIS); ignored otherwise. */
+    uint64_t uart_m_port_epoch, uart_c_port_epoch;
 } NetHalRtdConfig;
 
 /* Start step reported in NetHalRtdDiag.init_failed_step (0 = none). */
 typedef enum {
     NET_HAL_RTD_STEP_NONE = 0, NET_HAL_RTD_STEP_TIME, NET_HAL_RTD_STEP_INIT, NET_HAL_RTD_STEP_MASK_TYPE,
     NET_HAL_RTD_STEP_MASK, NET_HAL_RTD_STEP_RX_CONFIG, NET_HAL_RTD_STEP_ERROR_INT,
-    NET_HAL_RTD_STEP_RX_ARM, NET_HAL_RTD_STEP_START
+    NET_HAL_RTD_STEP_RX_ARM, NET_HAL_RTD_STEP_START,
+    NET_HAL_RTD_STEP_UART_RX_ARM    /* first Lpuart_Uart_Ip_AsyncReceive (Init returns void) */
 } NetHalRtdStep;
+
+/* Per UART link counters (NetHalRtdDiag.uart[0] = UART-M, [1] = UART-C). */
+typedef struct {
+    bool uart_present;              /* link compiled in for this profile */
+    bool uart_rx_armed;             /* one-byte reception currently armed */
+    uint32_t uart_rx_bytes;         /* RX_FULL bytes seen in the ISR */
+    uint32_t uart_rx_errors;        /* framing / noise / parity / other receive errors */
+    uint32_t uart_rx_overrun;       /* receive overrun errors */
+    uint32_t uart_rx_rearm_errors;  /* AsyncReceive refused after an error (retried by service) */
+    uint32_t uart_rx_queue_rejected;/* adapter refused a drained byte */
+    uint32_t uart_rx_loss_marks;    /* loss / error captures reported before the next byte */
+    uint32_t uart_isr_ring_overflow;/* bytes dropped: ISR ring full */
+    uint32_t uart_isr_ring_max_depth;
+    uint32_t uart_last_error_status;/* raw Lpuart_Uart_Ip_GetReceiveStatus() of the last error */
+    uint32_t uart_tx_sent;          /* AsyncSend accepted (admission reported) */
+    uint32_t uart_tx_waiting;       /* transfers that waited for the link to become free */
+    uint32_t uart_tx_waiting_max;   /* most transfers waiting at once */
+    uint32_t uart_tx_complete;      /* END_TRANSFER with transmit status SUCCESS */
+    uint32_t uart_tx_timeout_aborts;/* AbortSendingData after NET_BOARD_UART_x_TX_TIMEOUT_MS */
+    uint32_t uart_tx_send_errors;   /* AsyncSend refused */
+    uint32_t uart_tx_expired;       /* deadline passed before the transfer could start */
+} NetHalRtdUartDiag;
 
 /* Time base selected at compile time (NetHalRtdDiag.time_source). */
 typedef enum {
@@ -56,6 +89,10 @@ typedef struct {
     uint32_t main_drained_max;    /* most entries taken in one main pass */
     uint32_t tick_future_clamped; /* stamps ahead of Network now (or not placeable on
                                      its 64-bit axis): delivered at now */
+    /* LPUART links (net_hal_rtd_uart.c) */
+    uint32_t uart_isr_ring_capacity;  /* received bytes held per link between two main passes */
+    uint32_t uart_unexpected_instance;/* events of an instance that is no Network UART link */
+    NetHalRtdUartDiag uart[2];        /* [0] UART-M, [1] UART-C */
 } NetHalRtdDiag;
 
 /* Fill the NetHalConfig (ops/context/links/epoch) for net_s32k344_upper_port_init()
@@ -63,7 +100,9 @@ typedef struct {
  * main-context hand-off (net_hal_rtd_drain, TX admission, TX abort). */
 NetStatus net_hal_rtd_config(NetHalAdapter *adapter, const NetHalRtdConfig *in, NetHalConfig *out);
 
-/* Initialize FlexCAN from the generated config, arm RX MBs, start the controller.
+/* Initialize FlexCAN from the generated config, arm RX MBs, start the controller;
+ * initialize the profile's LPUART links and arm their one-byte reception
+ * (the first AsyncReceive result tells whether a link is ready).
  * Call after the adapter and the upper service are initialized and after
  * Clock/Port/IntCtrl/OsIf init. Time base C (OsIf) only: returns
  * NOT_CONFIGURED when the OsIf system timer is disabled (no millisecond time
@@ -71,7 +110,9 @@ NetStatus net_hal_rtd_config(NetHalAdapter *adapter, const NetHalRtdConfig *in, 
 NetStatus net_hal_rtd_start(void);
 
 /* Foreground supervision: abort TX MBs older than NET_BOARD_CAN_TX_TIMEOUT_MS
- * (no ACK on the bench) and report FAILED + released. Read error counters. */
+ * (no ACK on the bench) and UART transfers older than the link timeout, report
+ * them FAILED + released, start a waiting UART transfer, re-arm a UART
+ * reception that stopped. Read error counters. */
 void net_hal_rtd_service(void);
 
 /* Main context only. Application clock (time base A): now_ms becomes the

@@ -554,8 +554,8 @@ if(NETWORK_BUILD_RTD_MOCK)
     if(NOT NETWORK_TARGET STREQUAL "host")
         message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK is Host only; a board project links the real RTD")
     endif()
-    if(NOT NETWORK_NODE_PROFILE STREQUAL "VSS")
-        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: node composition is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS only)")
+    if(NOT NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS)$")
+        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: RTD backend build is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS, CIS)")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.txt)
@@ -570,6 +570,12 @@ if(NETWORK_BUILD_RTD_MOCK)
         endif()
         if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_line})
             message(FATAL_ERROR "tools/s32ds_sources.txt lists a missing file: ${_line}")
+        endif()
+        # The node composition root and the public entry are wired for the VSS
+        # profile only; other profiles build the backend under a composition
+        # owned by their tests until their node root exists.
+        if(NOT NETWORK_NODE_PROFILE STREQUAL "VSS" AND _line MATCHES "^src/node/")
+            continue()
         endif()
         # Board-bound sources (RTD backend, public entry) are compiled once per
         # time-base variant, with that variant's net_board_cfg.h hook definitions.
@@ -609,16 +615,47 @@ if(NETWORK_BUILD_RTD_MOCK)
     # The test supplies the board clock (MockBoard_NowMs) for the hook build.
     target_compile_definitions(network_node_rtd_mock_hook PRIVATE NET_BOARD_NOW_MS_HOOK=MockBoard_NowMs)
     # The entry test supplies tick, conversion, node configuration and us hooks.
-    # Drain budget 8 (below the default 16) so that three budgets of frames fit
-    # the default ISR ring of 32 frames.
     target_compile_definitions(network_node_rtd_mock_tick PRIVATE
         NET_BOARD_ISR_TICK_HOOK=MockBoard_IsrTicks
         NET_BOARD_TICK_TO_MS_HOOK=MockBoard_TickToMs
         NET_BOARD_NODE_CONFIG_HOOK=MockBoard_NodeConfig
-        NET_BOARD_US_HOOK=MockBoard_Us
-        NET_BOARD_ISR_DRAIN_BUDGET=8)
+        NET_BOARD_US_HOOK=MockBoard_Us)
+    if(NETWORK_NODE_PROFILE STREQUAL "VSS")
+        # Drain budget 8 (below the default 16) so that three budgets of frames
+        # fit the default ISR ring of 32 frames (entry test).
+        target_compile_definitions(network_node_rtd_mock_tick PRIVATE NET_BOARD_ISR_DRAIN_BUDGET=8)
+    endif()
 
-    if(BUILD_TESTING)
+    if(NETWORK_NODE_PROFILE STREQUAL "CIS")
+        # LPUART callback wiring (net_board_cfg.h NET_BOARD_UART_CALLBACK): in
+        # the three time-base variants the HAL defines the generated-config
+        # callback; the routing variant leaves it to board code (the test) that
+        # hands the Network instance to NetHalRtdUart_OnEvent().
+        foreach(_variant IN ITEMS rtd_mock rtd_mock_hook rtd_mock_tick)
+            target_compile_definitions(network_node_${_variant} PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
+        endforeach()
+        add_library(network_node_rtd_mock_route STATIC
+            $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
+        target_include_directories(network_node_rtd_mock_route PUBLIC ${_node_includes} sdk_mock/rtd/include)
+        target_compile_definitions(network_node_rtd_mock_route PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+        network_warnings(network_node_rtd_mock_route)
+
+        # UART-M is a DOMAIN link: the same sources compiled for the DOMAIN
+        # profile in this tree check the second LPUART link.
+        list(FIND _network_profiles DOMAIN _domain_profile_id)
+        add_library(network_node_core_objs_domain OBJECT ${_node_core_sources})
+        target_include_directories(network_node_core_objs_domain PRIVATE ${_node_includes})
+        target_compile_definitions(network_node_core_objs_domain PRIVATE NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id})
+        network_warnings(network_node_core_objs_domain)
+        add_library(network_node_rtd_mock_uart_m STATIC
+            $<TARGET_OBJECTS:network_node_core_objs_domain> ${_node_rtd_sources} ${_rtd_mock_sources})
+        target_include_directories(network_node_rtd_mock_uart_m PUBLIC ${_node_includes} sdk_mock/rtd/include)
+        target_compile_definitions(network_node_rtd_mock_uart_m PUBLIC NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id})
+        target_compile_definitions(network_node_rtd_mock_uart_m PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
+        network_warnings(network_node_rtd_mock_uart_m)
+    endif()
+
+    if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "VSS")
         foreach(_variant IN ITEMS ostimer hook)
             add_executable(test_vss_node_e2e_${_variant} tests/vss_node/test_vss_node_e2e.c)
             if(_variant STREQUAL "hook")
@@ -645,6 +682,38 @@ if(NETWORK_BUILD_RTD_MOCK)
                 e8_node_config_boot e8_node_config_boot_zero e8_node_config_refused
                 e9_ring_overflow e10_main_max_us)
             add_test(NAME vss_entry.${case} COMMAND test_vss_entry ${case})
+        endforeach()
+    endif()
+
+    # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the
+    # DOMAIN build above). One case per process; the composition is the test's.
+    if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "CIS")
+        set(_uart_hal_builds
+            "ostimer|network_node_rtd_mock||u01_rx_frame u02_split u03_resync u04_crc_error u05_line_error u06_link_sequence u07_tx u08_tx_timeout u09_tx_one_per_link u11_can_uart_mixed u12_isr_ring_overflow"
+            "route|network_node_rtd_mock_route|UART_HAL_TEST_ROUTE=1|u10_callback_routing"
+            "tick|network_node_rtd_mock_tick|UART_HAL_TEST_TIME_TICK=1|u01_rx_frame u07_tx"
+            "hook|network_node_rtd_mock_hook|UART_HAL_TEST_TIME_HOOK=1|u01_rx_frame u07_tx"
+            "uart_m|network_node_rtd_mock_uart_m||u01_rx_frame u05_line_error u07_tx u08_tx_timeout")
+        foreach(_build IN LISTS _uart_hal_builds)
+            string(REPLACE "|" ";" _build "${_build}")
+            list(GET _build 0 _name)
+            list(GET _build 1 _lib)
+            list(GET _build 2 _define)
+            list(GET _build 3 _cases)
+            separate_arguments(_cases)
+            add_executable(test_uart_hal_e2e_${_name} tests/uart_hal/test_uart_hal_e2e.c)
+            target_link_libraries(test_uart_hal_e2e_${_name} PRIVATE ${_lib})
+            if(NOT _define STREQUAL "")
+                target_compile_definitions(test_uart_hal_e2e_${_name} PRIVATE ${_define})
+            endif()
+            network_warnings(test_uart_hal_e2e_${_name})
+            foreach(case IN LISTS _cases)
+                if(_name STREQUAL "ostimer" OR _name STREQUAL "route")
+                    add_test(NAME uart_hal.${case} COMMAND test_uart_hal_e2e_${_name} ${case})
+                else()
+                    add_test(NAME uart_hal.${case}_${_name} COMMAND test_uart_hal_e2e_${_name} ${case})
+                endif()
+            endforeach()
         endforeach()
     endif()
 endif()

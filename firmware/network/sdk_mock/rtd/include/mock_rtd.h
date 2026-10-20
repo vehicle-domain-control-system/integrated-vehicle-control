@@ -7,6 +7,7 @@
  * Independently written; NOT the NXP file. */
 #include <stdbool.h>
 #include "FlexCAN_Ip.h"
+#include "Lpuart_Uart_Ip.h"
 #include "OsIf.h"
 
 typedef struct {
@@ -36,6 +37,33 @@ int MockRtd_CanTransmitNext(uint8 instance, MockCanFrame *out);
 void MockRtd_CanSetAckMissing(uint8 instance, bool missing);
 void MockRtd_CanRaiseBusOff(uint8 instance);
 uint32 MockRtd_CanAborts(uint8 instance);
+
+/* LPUART virtual line (instances 0..15). The node side uses the
+ * Lpuart_Uart_Ip API; these hooks are the far end of the wire.
+ * Line -> node: each byte goes into the armed RX buffer, then the configured
+ * Callback runs with RX_FULL exactly as the RTD RX IRQ does (the callback
+ * re-arms with SetRxBuffer); END_TRANSFER follows only if it did not.
+ * A byte that finds no armed reception is lost on this node (counted).
+ * Returns the number of bytes the driver took. */
+uint32 MockRtd_UartInject(uint8 instance, const uint8 *bytes, uint32 count);
+/* Node -> line: takes up to max bytes of the active AsyncSend transfer.
+ * When the last byte leaves, TX_EMPTY and then END_TRANSFER run (RTD TX
+ * complete). Returns the number of bytes taken; 0 when idle or stalled. */
+uint32 MockRtd_UartTransmitTake(uint8 instance, uint8 *out, uint32 max);
+/* Receive error as raised by the RTD error IRQ: the status is stored as the
+ * receive status, the reception is completed (no longer armed) and the
+ * Callback runs with ERROR. */
+void MockRtd_UartRaiseError(uint8 instance, Lpuart_Uart_Ip_StatusType status);
+/* Stalled line: TransmitTake moves nothing (no peer reading, flow stuck). */
+void MockRtd_UartSetTxStall(uint8 instance, bool stall);
+/* AsyncReceive refuses (ERROR) while set: models a failed re-arm. */
+void MockRtd_UartSetReceiveRefused(uint8 instance, bool refused);
+bool MockRtd_UartRxArmed(uint8 instance);
+uint32 MockRtd_UartTxRemaining(uint8 instance);  /* bytes of the active transfer not yet taken */
+uint32 MockRtd_UartSends(uint8 instance);        /* AsyncSend calls that started a transfer */
+uint32 MockRtd_UartAborts(uint8 instance);       /* AbortSendingData calls that stopped a transfer */
+uint32 MockRtd_UartRxLost(uint8 instance);       /* injected bytes with no armed reception */
+uint32 MockRtd_UartInits(uint8 instance);
 
 /* DLC helpers shared by the simulation. */
 uint8 MockRtd_DlcForLength(uint8 length);

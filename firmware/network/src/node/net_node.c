@@ -75,6 +75,7 @@ NetStatus NetNode_Init(const NetNodeConfig *config)
         return fail(NET_NODE_STAGE_NONE, NET_INVALID_ARGUMENT);
     init_called = true;
 
+    memset(&rtd_in, 0, sizeof(rtd_in)); /* no UART link in this profile */
     rtd_in.can_port_epoch = config->can_port_epoch;
     st = net_hal_rtd_config(&hal, &rtd_in, &hal_cfg);
     if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_CONFIG, st);

@@ -5,6 +5,14 @@
  *  - Send() copies the payload into the MB; the frame stays pending until the
  *    bus side pulls it, then TX_COMPLETE runs. BUSY if the MB is pending.
  *  - OsIf system counter: 1 tick/us, 32-bit wrap; disabled timer -> 0 ticks/ms.
+ *  - Lpuart_Uart_Ip (interrupt transfers): AsyncReceive/SetRxBuffer arm a
+ *    user buffer; an injected byte is stored there and RX_FULL runs when the
+ *    buffer is full, END_TRANSFER only if the callback did not re-arm (the
+ *    RTD RX IRQ order). AsyncSend keeps the caller's buffer and reads it when
+ *    the line side takes the bytes (the buffer must stay valid until
+ *    END_TRANSFER). A receive error completes the reception and runs ERROR;
+ *    GetReceiveStatus then returns that error. AbortSendingData runs no
+ *    callback.
  * Independently written; NOT the NXP file. */
 #include <string.h>
 #include "mock_rtd.h"
@@ -39,7 +47,17 @@ typedef struct {
     uint8 tec, rec;
 } MockCan;
 
+typedef struct {
+    const Lpuart_Uart_Ip_UserConfigType *cfg;
+    Lpuart_Uart_Ip_StateStructureType *st;
+    bool tx_stall, rx_refused;
+    uint32 inits, sends, aborts, rx_lost;
+} MockUart;
+
+#define MOCK_UART_INSTANCES 16u
+
 static MockCan can[MOCK_INSTANCES];
+static MockUart uart[MOCK_UART_INSTANCES];
 static uint64_t now_us;
 static bool timer_enabled = true;
 static const uint8 dlc_len[16] = {0,1,2,3,4,5,6,7,8,12,16,20,24,32,48,64};
@@ -47,6 +65,7 @@ static const uint8 dlc_len[16] = {0,1,2,3,4,5,6,7,8,12,16,20,24,32,48,64};
 void MockRtd_Reset(void)
 {
     memset(can, 0, sizeof(can));
+    memset(uart, 0, sizeof(uart));
     now_us = 0u;
     timer_enabled = true;
 }
@@ -204,3 +223,178 @@ void MockRtd_CanRaiseBusOff(uint8 i)
     if (c && c->cfg && c->cfg->ErrorCallback) { c->tec = 255u; c->cfg->ErrorCallback(i, FLEXCAN_EVENT_BUSOFF, 0x4u, c->state); }
 }
 uint32 MockRtd_CanAborts(uint8 i) { MockCan *c = get(i); return c ? c->aborts : 0u; }
+
+/* -------------------------------------------------------------- LPUART -- */
+static MockUart *uget(uint8 i)
+{
+    return (i < MOCK_UART_INSTANCES && uart[i].cfg != NULL && uart[i].st != NULL) ? &uart[i] : NULL;
+}
+static void uevent(uint8 i, const MockUart *u, Lpuart_Uart_Ip_EventType ev)
+{
+    if (u->cfg->Callback != NULL) u->cfg->Callback(i, ev, u->cfg->CallbackParam);
+}
+
+void Lpuart_Uart_Ip_Init(const uint8 Instance, const Lpuart_Uart_Ip_UserConfigType *UserConfig)
+{
+    MockUart *u;
+    if (Instance >= MOCK_UART_INSTANCES || UserConfig == NULL || UserConfig->StateStruct == NULL) return;
+    u = &uart[Instance];
+    u->cfg = UserConfig;
+    u->st = UserConfig->StateStruct;
+    memset(u->st, 0, sizeof(*u->st));
+    u->st->BaudRate = UserConfig->BaudRate;
+    u->st->TransmitStatus = LPUART_UART_IP_STATUS_SUCCESS;
+    u->st->ReceiveStatus = LPUART_UART_IP_STATUS_SUCCESS;
+    ++u->inits;
+}
+Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_Deinit(const uint8 Instance)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL) return LPUART_UART_IP_STATUS_ERROR;
+    if (u->st->IsTxBusy || u->st->IsRxBusy) return LPUART_UART_IP_STATUS_BUSY;
+    u->cfg = NULL; u->st = NULL;
+    return LPUART_UART_IP_STATUS_SUCCESS;
+}
+Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_AsyncSend(const uint8 Instance, const uint8 *TxBuff, const uint32 TxSize)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL || TxBuff == NULL || TxSize == 0u) return LPUART_UART_IP_STATUS_ERROR;
+    if (u->st->IsTxBusy) return LPUART_UART_IP_STATUS_BUSY;
+    u->st->TxBuff = TxBuff;
+    u->st->TxSize = TxSize;
+    u->st->IsTxBusy = TRUE;
+    u->st->TransmitStatus = LPUART_UART_IP_STATUS_BUSY;
+    ++u->sends;
+    return LPUART_UART_IP_STATUS_SUCCESS;
+}
+Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_GetTransmitStatus(const uint8 Instance, uint32 *BytesRemaining)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL) return LPUART_UART_IP_STATUS_ERROR;
+    if (BytesRemaining != NULL) *BytesRemaining = u->st->TxSize;
+    return u->st->TransmitStatus;
+}
+Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_AbortSendingData(const uint8 Instance)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL) return LPUART_UART_IP_STATUS_ERROR;
+    if (u->st->IsTxBusy) {
+        u->st->IsTxBusy = FALSE;
+        u->st->TxSize = 0u;
+        u->st->TransmitStatus = LPUART_UART_IP_STATUS_ABORTED;
+        ++u->aborts;
+    }
+    return LPUART_UART_IP_STATUS_SUCCESS;
+}
+Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_AsyncReceive(const uint8 Instance, uint8 *RxBuff, const uint32 RxSize)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL || RxBuff == NULL || RxSize == 0u || u->rx_refused) return LPUART_UART_IP_STATUS_ERROR;
+    if (u->st->IsRxBusy) return LPUART_UART_IP_STATUS_BUSY;
+    u->st->RxBuff = RxBuff;
+    u->st->RxSize = RxSize;
+    u->st->IsRxBusy = TRUE;
+    u->st->ReceiveStatus = LPUART_UART_IP_STATUS_BUSY;
+    return LPUART_UART_IP_STATUS_SUCCESS;
+}
+Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_GetReceiveStatus(const uint8 Instance, uint32 *BytesRemaining)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL) return LPUART_UART_IP_STATUS_ERROR;
+    if (BytesRemaining != NULL) *BytesRemaining = u->st->RxSize;
+    return u->st->ReceiveStatus;
+}
+Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_AbortReceivingData(const uint8 Instance)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL) return LPUART_UART_IP_STATUS_ERROR;
+    if (u->st->IsRxBusy) {
+        u->st->IsRxBusy = FALSE;
+        u->st->ReceiveStatus = LPUART_UART_IP_STATUS_ABORTED;
+    }
+    return LPUART_UART_IP_STATUS_SUCCESS;
+}
+void Lpuart_Uart_Ip_SetRxBuffer(const uint8 Instance, uint8 *RxBuff, const uint32 RxSize)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL) return;
+    u->st->RxBuff = RxBuff;
+    u->st->RxSize = RxSize;
+}
+void Lpuart_Uart_Ip_SetTxBuffer(const uint8 Instance, const uint8 *TxBuff, const uint32 TxSize)
+{
+    MockUart *u = uget(Instance);
+    if (u == NULL) return;
+    u->st->TxBuff = TxBuff;
+    u->st->TxSize = TxSize;
+}
+
+/* ------------------------------------------------------- UART line hooks -- */
+uint32 MockRtd_UartInject(uint8 i, const uint8 *bytes, uint32 count)
+{
+    MockUart *u = uget(i);
+    uint32 n, taken = 0u;
+    if (u == NULL || bytes == NULL) return 0u;
+    for (n = 0u; n < count; ++n) {
+        Lpuart_Uart_Ip_StateStructureType *st = u->st;
+        if (!st->IsRxBusy || st->RxSize == 0u || st->RxBuff == NULL) { ++u->rx_lost; continue; }
+        *st->RxBuff = bytes[n];
+        ++st->RxBuff;
+        --st->RxSize;
+        ++taken;
+        if (st->RxSize == 0u) {
+            uevent(i, u, LPUART_UART_IP_EVENT_RX_FULL);  /* may re-arm with SetRxBuffer */
+            if (st->RxSize == 0u) {
+                st->IsRxBusy = FALSE;
+                st->ReceiveStatus = LPUART_UART_IP_STATUS_SUCCESS;
+                uevent(i, u, LPUART_UART_IP_EVENT_END_TRANSFER);
+            }
+        }
+    }
+    return taken;
+}
+
+uint32 MockRtd_UartTransmitTake(uint8 i, uint8 *out, uint32 max)
+{
+    MockUart *u = uget(i);
+    Lpuart_Uart_Ip_StateStructureType *st;
+    uint32 n;
+    if (u == NULL || u->tx_stall) return 0u;
+    st = u->st;
+    if (!st->IsTxBusy || st->TxBuff == NULL) return 0u;
+    n = st->TxSize < max ? st->TxSize : max;
+    if (out != NULL) memcpy(out, st->TxBuff, n);
+    st->TxBuff += n;
+    st->TxSize -= n;
+    if (st->TxSize == 0u) {
+        uevent(i, u, LPUART_UART_IP_EVENT_TX_EMPTY);       /* may chain with SetTxBuffer */
+        if (st->TxSize == 0u) {
+            st->IsTxBusy = FALSE;
+            st->TransmitStatus = LPUART_UART_IP_STATUS_SUCCESS;
+            uevent(i, u, LPUART_UART_IP_EVENT_END_TRANSFER);
+        }
+    }
+    return n;
+}
+
+void MockRtd_UartRaiseError(uint8 i, Lpuart_Uart_Ip_StatusType status)
+{
+    MockUart *u = uget(i);
+    if (u == NULL) return;
+    u->st->ReceiveStatus = status;
+    u->st->IsRxBusy = FALSE;      /* the RTD error handler completes the reception */
+    uevent(i, u, LPUART_UART_IP_EVENT_ERROR);
+}
+
+void MockRtd_UartSetTxStall(uint8 i, bool stall) { if (i < MOCK_UART_INSTANCES) uart[i].tx_stall = stall; }
+void MockRtd_UartSetReceiveRefused(uint8 i, bool refused) { if (i < MOCK_UART_INSTANCES) uart[i].rx_refused = refused; }
+bool MockRtd_UartRxArmed(uint8 i)
+{
+    MockUart *u = uget(i);
+    return u != NULL && u->st->IsRxBusy && u->st->RxSize != 0u;
+}
+uint32 MockRtd_UartTxRemaining(uint8 i) { MockUart *u = uget(i); return (u != NULL && u->st->IsTxBusy) ? u->st->TxSize : 0u; }
+uint32 MockRtd_UartSends(uint8 i) { return i < MOCK_UART_INSTANCES ? uart[i].sends : 0u; }
+uint32 MockRtd_UartAborts(uint8 i) { return i < MOCK_UART_INSTANCES ? uart[i].aborts : 0u; }
+uint32 MockRtd_UartRxLost(uint8 i) { return i < MOCK_UART_INSTANCES ? uart[i].rx_lost : 0u; }
+uint32 MockRtd_UartInits(uint8 i) { return i < MOCK_UART_INSTANCES ? uart[i].inits : 0u; }

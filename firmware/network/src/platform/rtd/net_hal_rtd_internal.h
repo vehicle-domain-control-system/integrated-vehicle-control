@@ -8,6 +8,8 @@
  *                      per-link submit dispatch, ISR ring drain entry
  *   net_hal_rtd_can.c  FlexCAN part: RX/TX/error ISR -> ISR ring, ring drain
  *                      into the adapter, TX MBs, abort
+ *   net_hal_rtd_uart.c LPUART part (only the profile's UART links): byte ISR
+ *                      ring, drain into the adapter, one transfer per link
  * The link parts never include each other; they share only what is below. */
 #include <stdint.h>
 #include <stdbool.h>
@@ -44,5 +46,16 @@ NetStatus net_hal_rtd_can_arm(void);                /* after started=true: arm R
 NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t);
 void net_hal_rtd_can_service(uint64_t now_ms);      /* stuck-TX abort, error counters */
 uint32_t net_hal_rtd_can_drain(uint32_t budget);    /* main: ISR ring -> adapter, at most budget entries */
+
+/* UART part, called by the common part only when the profile has a UART link
+ * (net_board_cfg.h NET_BOARD_UART_M_LINK / NET_BOARD_UART_C_LINK). */
+/* From net_hal_rtd_config(): checks the link port epochs, resets the part and
+ * adds the links to the adapter configuration. */
+NetStatus net_hal_rtd_uart_reset(const NetHalRtdConfig *in, NetHalConfig *out);
+void net_hal_rtd_uart_prepare(void);                /* Lpuart_Uart_Ip_Init per link */
+NetStatus net_hal_rtd_uart_arm(void);               /* after started=true: first one-byte reception */
+NetStatus net_hal_rtd_uart_submit(const NetHalTransfer *t);
+void net_hal_rtd_uart_service(uint64_t now_ms);     /* transfer timeout, waiting transfer, RX re-arm */
+uint32_t net_hal_rtd_uart_drain(uint32_t budget);   /* main: TX facts + at most budget received bytes */
 
 #endif
