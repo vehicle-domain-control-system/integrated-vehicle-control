@@ -57,6 +57,21 @@ fail-closed; actual product injection uses `net_*_upper_port.c` and `NetHalAdapt
   worker. `tests/virtual_ecu/network_virtual_demo.py` connects prepared profile
   workers through actual CAN envelopes / UART bytes. Owner fakes are outside the
   product service; the product queue, codecs, routers and adapters execute.
+  `NETWORK_BUILD_VIRTUAL_NODE=ON` builds the HAL-less node worker instead: the
+  node profile table (`src/node/net_node_profile_<node>.c`) and App Port facade
+  of VSS / CIS / BCM on this backend, plus a HOST peer (DOMAIN on CAN,
+  the Pi on UART-C). `tools/virtual_nodes_run.py --build-dir <dir>` builds all
+  four, checks that no include path reaches the mock SDK, `src/platform/rtd` or
+  an NXP SDK, and runs facade round trips (`RESULT passed=N failed=M`).
+- SDK swap: `tools/sdk_swap_check.py` compiles `src/platform/rtd` (and
+  `net_entry.c`) with ARM GCC against the real RTD headers of an S32K344 and an
+  S32K144 S32DS project, reading the board names from their generated
+  configuration (only differing names become `net_board_cfg.h` -D overrides).
+  The projects are only read; the report goes to `--out/summary.md`.
+- Bench helper: `NETWORK_BUILD_BENCH_TOOL=ON` builds the host `vss_bench` CLI
+  (`tools/vss_bench/README.md`). It builds CAN / UART-C frames with the wire
+  codecs, prints the S32K144 debug-console commands that send them and decodes
+  frames copied from that console.
 
 Ordinary WINDOW routes remain HOLD. Explicit `inspection_transport` plus the
 separate inspection-submit API may carry held wire data only to `held_can` /

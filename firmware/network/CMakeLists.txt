@@ -510,6 +510,40 @@ if(NETWORK_BUILD_VIRTUAL_ECU)
     endif()
 endif()
 
+# HAL-less node worker (tools/virtual_nodes_run.py): the node profile table and
+# the App Port facade of this build on the Host virtual backend, no SDK and no
+# mock SDK on any include path. HOST builds the peer (DOMAIN / PI roles).
+option(NETWORK_BUILD_VIRTUAL_NODE "Build the HAL-less node worker (node profile + App Port facade on the Host virtual backend)" OFF)
+if(NETWORK_BUILD_VIRTUAL_NODE)
+    if(NOT NETWORK_TARGET STREQUAL "host" OR NOT NETWORK_BUILD_HAL_PORT_ADAPTER)
+        message(FATAL_ERROR "Virtual node requires Host and the injected Port Adapter")
+    endif()
+    if(NOT TARGET network_host_virtual)
+        add_library(network_host_virtual STATIC src/platform/host_virtual/net_virtual.c)
+        target_link_libraries(network_host_virtual PUBLIC network_hal_port_adapter)
+        network_warnings(network_host_virtual)
+    endif()
+    if(NETWORK_NODE_PROFILE STREQUAL "HOST")
+        add_executable(network_virtual_node_PEER tests/virtual_ecu/virtual_peer.c)
+        target_link_libraries(network_virtual_node_PEER PRIVATE network_host_virtual)
+        network_warnings(network_virtual_node_PEER)
+    elseif(NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS|BCM)$")
+        add_executable(network_virtual_node_${NETWORK_NODE_PROFILE} tests/virtual_ecu/virtual_node.c
+            src/l02_typed_handoff/m03_typed_handoff/net_app_port_common.c
+            src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
+            src/l02_typed_handoff/m03_typed_handoff/net_app_port_cis.c
+            src/l02_typed_handoff/m03_typed_handoff/net_app_port_bcm.c
+            src/node/net_node_profile_vss.c
+            src/node/net_node_profile_cis.c
+            src/node/net_node_profile_bcm.c)
+        target_include_directories(network_virtual_node_${NETWORK_NODE_PROFILE} PRIVATE src/node)
+        target_link_libraries(network_virtual_node_${NETWORK_NODE_PROFILE} PRIVATE network_host_virtual)
+        network_warnings(network_virtual_node_${NETWORK_NODE_PROFILE})
+    else()
+        message(FATAL_ERROR "NETWORK_BUILD_VIRTUAL_NODE: no node profile table for ${NETWORK_NODE_PROFILE} (HOST peer, VSS, CIS, BCM)")
+    endif()
+endif()
+
 if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL "HOST")
     add_executable(test_upper_monitor tests/product/test_upper_monitor.c)
     target_link_libraries(test_upper_monitor PRIVATE network_product)
@@ -541,7 +575,8 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
     foreach(case IN ITEMS m01_no_submission m02_submit_rephase m03_repeat_same_stamp
             m04_skip_pending m05_saturated_age_keeps_sending m06_sequence_continuous
             m07_tx_failure_keeps_schedule m08_sequence_wrap_hold m09_pending_age
-            m10_uart_link_sequence m11_registration m12_queue_full_keeps_submission)
+            m10_uart_link_sequence m11_registration m12_queue_full_keeps_submission
+            m13_uart_link_sequence_wrap)
         add_test(NAME m04.${case} COMMAND test_m04_publish ${case})
     endforeach()
 endif()
@@ -554,8 +589,8 @@ if(NETWORK_BUILD_RTD_MOCK)
     if(NOT NETWORK_TARGET STREQUAL "host")
         message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK is Host only; a board project links the real RTD")
     endif()
-    if(NOT NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS)$")
-        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: RTD backend build is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS, CIS)")
+    if(NOT NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS|BCM)$")
+        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: RTD backend build is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS, CIS, BCM)")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.txt)
@@ -572,7 +607,7 @@ if(NETWORK_BUILD_RTD_MOCK)
             message(FATAL_ERROR "tools/s32ds_sources.txt lists a missing file: ${_line}")
         endif()
         # The node composition root, its profile tables and the public entry
-        # are built for every profile this option allows (VSS, CIS); the
+        # are built for every profile this option allows (VSS, CIS, BCM); the
         # tables and facades of other profiles compile to nothing.
         # Board-bound sources (RTD backend, public entry) are compiled once per
         # time-base variant, with that variant's net_board_cfg.h hook definitions.
@@ -668,7 +703,7 @@ if(NETWORK_BUILD_RTD_MOCK)
             foreach(case IN ITEMS h01_init h02_event_rx h03_order_duplicate h04_warning_rx
                     h05_permission_rx h06_malformed_rx h07_publish h08_publish_invalid
                     h09_publish_in_callback h10_ack_missing h11_busoff h12_time_source
-                    h13_status_not_repeated h13_pending_age h14_rx_burst)
+                    h13_status_not_repeated h13_pending_age h14_rx_burst h15_warning_quality_drop)
                 add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
             endforeach()
         endforeach()
@@ -689,11 +724,11 @@ if(NETWORK_BUILD_RTD_MOCK)
     # DOMAIN build above). One case per process; the composition is the test's.
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "CIS")
         set(_uart_hal_builds
-            "ostimer|network_node_rtd_mock||u01_rx_frame u02_split u03_resync u04_crc_error u05_line_error u06_link_sequence u07_tx u08_tx_timeout u09_tx_one_per_link u11_can_uart_mixed u12_isr_ring_overflow"
+            "ostimer|network_node_rtd_mock||u01_rx_frame u02_split u03_resync u04_crc_error u05_line_error u06_link_sequence u07_tx u08_tx_timeout u09_tx_one_per_link u11_can_uart_mixed u12_isr_ring_overflow u13_main_period_3ms u14_link_sequence_wrap"
             "route|network_node_rtd_mock_route|UART_HAL_TEST_ROUTE=1|u10_callback_routing"
-            "tick|network_node_rtd_mock_tick|UART_HAL_TEST_TIME_TICK=1|u01_rx_frame u07_tx"
-            "hook|network_node_rtd_mock_hook|UART_HAL_TEST_TIME_HOOK=1|u01_rx_frame u07_tx"
-            "uart_m|network_node_rtd_mock_uart_m||u01_rx_frame u05_line_error u07_tx u08_tx_timeout")
+            "tick|network_node_rtd_mock_tick|UART_HAL_TEST_TIME_TICK=1|u01_rx_frame u07_tx u13_main_period_3ms"
+            "hook|network_node_rtd_mock_hook|UART_HAL_TEST_TIME_HOOK=1|u01_rx_frame u07_tx u13_main_period_3ms"
+            "uart_m|network_node_rtd_mock_uart_m||u01_rx_frame u05_line_error u07_tx u08_tx_timeout u13_main_period_3ms u14_link_sequence_wrap")
         foreach(_build IN LISTS _uart_hal_builds)
             string(REPLACE "|" ";" _build "${_build}")
             list(GET _build 0 _name)
@@ -726,7 +761,8 @@ if(NETWORK_BUILD_RTD_MOCK)
         foreach(case IN ITEMS f01_init f02_permission_rx_relay f03_permission_new_evaluations
                 f04_permission_same_evaluation f05_permission_rx_timeout f06_permission_quality
                 f07_vision_rx f08_publish_frames f09_publish_invalid f10_publish_occupant_relay
-                f11_publish_in_callback f12_not_ready f14_permission_repeat_delivered)
+                f11_publish_in_callback f12_not_ready f14_permission_repeat_delivered
+                f15_permission_quality_drop_same_update f16_vision_rx_main_3ms)
             add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
         endforeach()
         # 20_API.md receive delivery: a normal repetition of the same DOMAIN
@@ -741,11 +777,40 @@ if(NETWORK_BUILD_RTD_MOCK)
         target_link_libraries(test_cis_node_entry PRIVATE network_node_rtd_mock_tick)
         target_compile_definitions(test_cis_node_entry PRIVATE CIS_NODE_TEST_ENTRY=1)
         network_warnings(test_cis_node_entry)
-        foreach(case IN ITEMS f13_entry f02_permission_rx_relay f07_vision_rx f08_publish_frames)
+        foreach(case IN ITEMS f13_entry f02_permission_rx_relay f07_vision_rx f08_publish_frames
+                f16_vision_rx_main_3ms)
             if(case STREQUAL "f13_entry")
                 add_test(NAME cis_node.${case} COMMAND test_cis_node_entry ${case})
             else()
                 add_test(NAME cis_node.${case}_entry COMMAND test_cis_node_entry ${case})
+            endif()
+        endforeach()
+    endif()
+
+    # BCM node end-to-end (CAN through the node root and the BCM facade).
+    # One case per process: NetNode_Init / Net_Init act once.
+    if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "BCM")
+        add_executable(test_bcm_node_e2e tests/bcm_node/test_bcm_node_e2e.c)
+        target_link_libraries(test_bcm_node_e2e PRIVATE network_node_rtd_mock)
+        network_warnings(test_bcm_node_e2e)
+        foreach(case IN ITEMS b01_init b02_door_command_rx b03_climate_light_command_rx
+                b04_command_order_target b05_permission_rx b06_publish_states
+                b07_states_not_repeated b08_send_result_event b09_discrete_kept_in_order
+                b10_discrete_no_capacity b11_publish_invalid b12_publish_in_callback
+                b13_not_ready)
+            add_test(NAME bcm_node.${case} COMMAND test_bcm_node_e2e ${case})
+        endforeach()
+
+        # Public entry Net_Init / Net_MainFunction on the application clock.
+        add_executable(test_bcm_node_entry tests/bcm_node/test_bcm_node_e2e.c)
+        target_link_libraries(test_bcm_node_entry PRIVATE network_node_rtd_mock_tick)
+        target_compile_definitions(test_bcm_node_entry PRIVATE BCM_NODE_TEST_ENTRY=1)
+        network_warnings(test_bcm_node_entry)
+        foreach(case IN ITEMS b14_entry b02_door_command_rx b08_send_result_event)
+            if(case STREQUAL "b14_entry")
+                add_test(NAME bcm_node.${case} COMMAND test_bcm_node_entry ${case})
+            else()
+                add_test(NAME bcm_node.${case}_entry COMMAND test_bcm_node_entry ${case})
             endif()
         endforeach()
     endif()
@@ -761,4 +826,14 @@ if(NOT NETWORK_VSS_FW_DIR STREQUAL "")
         message(FATAL_ERROR "NETWORK_VSS_FW_DIR needs -DNETWORK_NODE_PROFILE=VSS -DNETWORK_BUILD_RTD_MOCK=ON")
     endif()
     add_subdirectory(tests/vss_integ)
+endif()
+
+# Host bench helper for board tests (tools/vss_bench). Off by default; it
+# links only the wire codecs and never enters a product or MCU build.
+option(NETWORK_BUILD_BENCH_TOOL "Build the host vss_bench CAN/UART-C frame and console-command tool" OFF)
+if(NETWORK_BUILD_BENCH_TOOL)
+    if(NOT NETWORK_TARGET STREQUAL "host" OR NOT NETWORK_BUILD_WIRE_CANDIDATE)
+        message(FATAL_ERROR "NETWORK_BUILD_BENCH_TOOL needs NETWORK_TARGET=host and NETWORK_BUILD_WIRE_CANDIDATE=ON")
+    endif()
+    add_subdirectory(tools/vss_bench)
 endif()

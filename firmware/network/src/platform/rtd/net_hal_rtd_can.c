@@ -7,10 +7,16 @@
  * ISR ring (docs/network/network_sw_architecture.md section 8: the ISR hands
  * over only the minimum received data, the actual time and device errors):
  *   RX frame  : copied frame + raw stamp. At most NET_BOARD_CAN_ISR_RING
- *               frames; a frame that finds them all taken is dropped, counted
- *               and reported as loss on the next captured frame (overflow).
- *               CAN_PORT_RECOVERY.md: an RX overflow is a real loss, nothing
- *               is synthesized for the missing frame.
+ *               frames; a frame that finds them all taken is dropped and
+ *               counted (isr_ring_overflow). An MB overrun (an earlier frame
+ *               of that MB overwritten) is counted too (rx_overruns).
+ *               CAN_PORT_RECOVERY.md (RX overflow): an RX overflow is a real
+ *               loss observation, recorded with its unit and boundary only,
+ *               nothing is synthesized for the missing frame, and the result
+ *               is OK. So the next stored frame, itself complete, is delivered
+ *               as received (no loss flag on its capture); the boundary is
+ *               counted once (rx_loss_events). A single CAN frame has no
+ *               stream state to resynchronise.
  *   TX_DONE   : TX MB completed. The slot stays busy until the main context
  *               has reported SUCCEEDED + release, so each MB has at most one
  *               pending fact; their room is reserved and never dropped.
@@ -78,13 +84,13 @@ typedef struct {
     uint8_t kind;       /* RING_* */
     uint8_t tx_slot;    /* RING_TX_DONE */
     uint32_t stamp;     /* net_hal_rtd_isr_stamp_locked() at the event */
-    uint32_t overflow;  /* RING_RX: frames lost right before this one */
     NetWireCanEnvelope frame;
 } RingEntry;
 
 typedef struct {
     RingEntry e[RING_SIZE];
-    uint32_t head, count, rx_count, lost;
+    uint32_t head, count, rx_count;
+    uint32_t lost;      /* frames dropped since the last stored one (loss boundary pending) */
     bool busoff_queued;
 } IsrRing;
 
@@ -116,7 +122,6 @@ static RingEntry *ring_reserve(uint8_t kind)
     e = &r->e[(r->head + r->count) % RING_SIZE];
     e->kind = kind;
     e->tx_slot = 0u;
-    e->overflow = 0u;
     e->stamp = net_hal_rtd_isr_stamp_locked();
     ++r->count;
     if (kind == RING_RX) ++r->rx_count;
@@ -200,7 +205,9 @@ static void rx_complete(uint32_t mb)
     memcpy(f.bytes, m->data, n);
     if (n != f.length) { f.driver_error = true; inc(&rtd.diag.rx_length_mismatch); }
     if (((cs & CS_CODE_MASK) >> CS_CODE_SHIFT) == CS_CODE_RX_OVERRUN) {
-        /* An earlier frame in this MB was lost: report the loss, do not hide it. */
+        /* An earlier frame in this MB was overwritten: a real loss right
+         * before this frame, which itself is complete. Recorded, not hidden;
+         * the frame is still delivered. */
         overrun = 1u;
         inc(&rtd.diag.rx_overruns);
     }
@@ -209,11 +216,12 @@ static void rx_complete(uint32_t mb)
     e = ring_reserve(RING_RX);
     if (e != NULL) {
         e->frame = f;
-        e->overflow = can.ring.lost + overrun;
-        if (e->overflow < can.ring.lost) e->overflow = UINT32_MAX;
+        /* Loss boundary: frames were lost right before this stored one. */
+        if (can.ring.lost != 0u || overrun != 0u) inc(&rtd.diag.rx_loss_events);
         can.ring.lost = 0u;
     } else {
-        /* Ring full: this frame is lost; the next stored frame carries the loss. */
+        /* Ring full: this frame is lost (counted); the boundary is counted
+         * when the next frame is stored. */
         inc(&rtd.diag.isr_ring_overflow);
         inc(&can.ring.lost);
     }
@@ -324,8 +332,7 @@ uint32_t net_hal_rtd_can_drain(uint32_t budget)
         ++n;
         switch (e.kind) {
         case RING_RX:
-            c = capture_at(e.stamp);
-            c.overflow = e.overflow;
+            c = capture_at(e.stamp);   /* a complete frame: no loss flag */
             if (net_hal_capture_can(rtd.adapter, &e.frame, &c) != NET_OK) inc(&rtd.diag.rx_queue_rejected);
             break;
         case RING_TX_DONE:

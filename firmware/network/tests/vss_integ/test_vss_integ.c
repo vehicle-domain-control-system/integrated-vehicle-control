@@ -209,6 +209,10 @@ typedef struct {
     uint32_t lastWarningTick;
     uint8_t occupant;              /* NetFlag */
     uint8_t rear;                  /* NetRearWarningState */
+    /* Occupant lane without a valid evaluation (hand-over C12): the last valid
+     * source sequence is kept and the AGE grows from its time. */
+    bool occupantLost;
+    uint32_t occupantKeptSequence, occupantValidTick;
     IntegEvent lastEvent;
 } Domain;
 
@@ -240,6 +244,19 @@ static IntegWarning NextWarning(void)
     w.tx_sequence = ++s_dom.warningTx;
     w.antipinch = Lane(WINDOW_BOOT, seq, NET_FLAG_NO);
     w.occupant = Lane(CIS_BOOT, seq, s_dom.occupant);
+    if (s_dom.occupantLost)
+    {
+        w.occupant.source_sequence = s_dom.occupantKeptSequence;
+        w.occupant.original_age_ms =
+            (uint16_t)(VssTime_TicksToMs(s_tick) - VssTime_TicksToMs(s_dom.occupantValidTick));
+        w.occupant.quality = NET_QUALITY_STALE;
+        w.occupant.reason = NET_QUALITY_REASON_STALE;
+    }
+    else
+    {
+        s_dom.occupantKeptSequence = seq;
+        s_dom.occupantValidTick = s_tick;
+    }
     w.rear = Lane(CIS_BOOT, seq, s_dom.rear);
     w.rear_detection_activation = NET_FLAG_YES;
     w.activation_meta_format = 1u;
@@ -1070,14 +1087,16 @@ static int vi10_rx_flood_budget(void)
     CHECK(d.ring_overflow > 0u);
     /* Still working afterwards: the link is not locked, new frames are
      * delivered and taken, and the status reports go on. The first frame
-     * stored after a ring loss carries the loss mark (net_board_cfg.h, ISR
-     * ring) and may be withheld; the one after it must arrive. */
+     * stored after a ring loss is complete and is delivered as received
+     * (CAN_PORT_RECOVERY.md, RX overflow: the loss is recorded, nothing is
+     * synthesized), and so is the next one. */
     first = s_wrCount;
     CHECK(SendWarning());
     RunMs(20u);
     CHECK(SendWarning());
     RunMs(300u);
-    CHECK(s_wrCount >= first + 1u && s_wrCount <= first + 2u);
+    CHECK(s_wrCount == first + 2u);
+    CHECK(d.rx_loss_events > 0u);
     CHECK(s_wr[s_wrCount - 1u].tx == s_dom.warningTx);
     CHECK(s_wr[s_wrCount - 1u].result.frameValidation != VSS_VALIDATION_REJECTED);
     CHECK(s_frameCount > frames);
@@ -1086,6 +1105,52 @@ static int vi10_rx_flood_budget(void)
     printf("vi10: drain budget %u, most frames delivered in one pass %u, ring overflow %u, "
            "Net_MainFunction max %u us (host reference)\n", (unsigned)d.drain_budget,
            (unsigned)s_cbMaxPerLoop, (unsigned)d.ring_overflow, (unsigned)d.main_max_us);
+    return Invariants();
+}
+
+/* VI11 C12 with a new evaluation on another lane: the occupant hazard plays;
+ * then the occupant lane loses its quality (the last valid source sequence
+ * kept, STALE, AGE growing, hand-over C12) while the rear lane brings new
+ * evaluations and turns EMERGENCY. 04_COMMON/10_DATA_AND_ID_RULES.md (repeat
+ * and current quality): such a frame is accepted and delivered; VSS/10_DATA.md:
+ * the lanes are independent. Every frame reaches VSS, the warning stream has
+ * no gap, and the rear evaluation is not held behind the lost lane. */
+static int vi11_warning_quality_drop(void)
+{
+    VssWarningObservation obs;
+    IntegNetDiag d0, d;
+    uint32_t first, sent, kept, i;
+
+    CHECK(Boot());
+    s_dom.warnings = true;
+    RunMs(300u);
+    s_dom.occupant = NET_FLAG_YES;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE, 300u));
+    RunMs(100u);
+    d0 = Net();
+    first = s_wrCount;
+    sent = s_dom.warningTx;
+    kept = s_dom.occupantKeptSequence;
+    s_dom.occupantLost = true;
+    s_dom.rear = NET_REAR_WARNING_EMERGENCY;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_REAR_RISK, VSS_VALUE_EMERGENCY, 600u));
+    RunMs(300u);
+    d = Net();
+    CHECK(s_dom.warningTx - sent >= 6u);
+    /* Every frame of the lost lane delivered, none held. */
+    CHECK(s_wrCount - first == s_dom.warningTx - sent);
+    CHECK(d.rx_held == d0.rx_held && d.duplicates == d0.duplicates);
+    CHECK(d.warning_delivered == d0.warning_delivered + (s_dom.warningTx - sent));
+    for (i = first; i < s_wrCount; ++i)
+    {
+        CHECK(s_wr[i].occupantSequence == kept);
+        CHECK(s_wr[i].tx == s_wr[i - 1u].tx + 1u);
+        CHECK(s_wr[i].result.frameValidation != VSS_VALIDATION_REJECTED);
+    }
+    /* The rear lane's stream never looked lost to VSS. */
+    CHECK(Store_ReadWarning(VSS_PRODUCT, VSS_SIGNAL_REAR_RISK, &obs));
+    CHECK(!obs.firstLossPresent);
+    CHECK(Playing(VSS_SIGNAL_REAR_RISK, VSS_VALUE_EMERGENCY));
     return Invariants();
 }
 
@@ -1104,7 +1169,8 @@ int main(int argc, char **argv)
         { "vi7_warning_rx_loss", vi7_warning_rx_loss },
         { "vi8_status_period", vi8_status_period },
         { "vi9_link_locked_resubmit", vi9_link_locked_resubmit },
-        { "vi10_rx_flood_budget", vi10_rx_flood_budget }
+        { "vi10_rx_flood_budget", vi10_rx_flood_budget },
+        { "vi11_warning_quality_drop", vi11_warning_quality_drop }
     };
     size_t i;
 

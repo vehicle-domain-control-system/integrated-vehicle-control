@@ -48,7 +48,7 @@ VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만
 
 - CAN ISR은 Network 코어를 부르지 않는다. 수신 프레임, TX 완료, bus-off 사실을 **원시 시각과 함께 backend 내부 ISR 링**에만 넣는다. `net_hal_capture_*` 호출과 ms 변환은 모두 `Net_MainFunction` 안(main 문맥)에서 한다.
 - 링 크기 `NET_BOARD_CAN_ISR_RING`(기본 32)은 두 main 바퀴 사이에 쌓일 수 있는 수신 프레임 수다. TX 완료와 bus-off는 따로 자리를 잡아 두어 버려지지 않는다.
-- 링이 차서 들어오지 못한 수신 프레임은 버리고 `isr_ring_overflow`를 올린다. 그 손실은 다음에 링에 들어간 프레임의 캡처 `overflow`로 표시된다. 손실이 표시된 그 프레임은 엔진이 정상 프레임처럼 전달하지 않는다. 링크는 잠그지 않는다.
+- 링이 차서 들어오지 못한 수신 프레임은 버리고 `isr_ring_overflow`를 올린다. MB overrun(그 MB의 앞 프레임이 덮어써짐)은 `rx_overruns`로 센다. 손실 뒤 처음 링에 들어간 프레임은 그 자체로 온전하므로 받은 그대로 전달하고, 손실 경계는 `rx_loss_events`로 한 번 센다(`docs/network/sw_detail/functions/CAN_PORT_RECOVERY.md` RX overflow: 실제 손실만 기록, 합성 없음, 결과 OK). 링크는 잠그지 않는다.
 - 한 바퀴에 링에서 꺼내는 수는 `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 어댑터 RX 큐 16 이하)으로 제한한다. 나머지는 다음 바퀴에서 꺼낸다. `Net_MainFunction` 1회 실행을 짧게(수 ms, 15 ms 미만) 유지하기 위한 것이다.
 
 ### 시간원: 셋 중 하나
@@ -125,7 +125,7 @@ int main(void)
 - RTD backend는 세 파일이다. `src/platform/rtd/net_hal_rtd.c`(시간원, ISR 시각 변환, 임계구역, 시작 순서, backend ops 등록, 링 비우기 진입), `src/platform/rtd/net_hal_rtd_can.c`(FlexCAN RX/TX/error ISR → ISR 링, 링 → 어댑터, TX MB, abort), `src/platform/rtd/net_hal_rtd_uart.c`(LPUART: 1바이트 연속 수신 → 링크별 바이트 링, 링 → 어댑터, 링크당 송신 1건, 송신 시간 초과 abort). 서로 비공개 헤더 `net_hal_rtd_internal.h`로만 연결된다.
 - `net_hal_rtd_uart.c`는 프로필에 UART 링크가 있을 때만 내용이 컴파일된다(UART-M: HOST·DOMAIN, UART-C: HOST·CIS). VSS 프로필에서는 빈 파일이므로 목록에 그대로 두어도 LPUART 심볼을 참조하지 않는다.
 - 공개 진입은 `src/node/net_entry.c`다. 보드 hook을 쓰므로 `net_board_cfg.h`와 같은 define으로 컴파일한다.
-- 조립 루트는 공통 부분 `src/node/net_node.c`와 노드 프로필 표 `src/node/net_node_profile_<node>.c`(VSS, CIS)로 나뉜다. App facade(`net_app_port_vss.c`, `net_app_port_cis.c`)와 프로필 표는 빌드의 `NETWORK_UPPER_NODE_PROFILE`이 자기 노드일 때만 내용이 컴파일되므로, 목록 전체를 그대로 넣어도 다른 노드의 심볼(`CisApp_*` 등)을 참조하지 않는다.
+- 조립 루트는 공통 부분 `src/node/net_node.c`와 노드 프로필 표 `src/node/net_node_profile_<node>.c`(VSS, CIS, BCM)로 나뉜다. App facade(`net_app_port_<node>.c`)와 프로필 표는 빌드의 `NETWORK_UPPER_NODE_PROFILE`이 자기 노드일 때만 내용이 컴파일되므로, 목록 전체를 그대로 넣어도 다른 노드의 심볼(`CisApp_*` 등)을 참조하지 않는다.
 - RTD 헤더를 include하는 Network 파일은 `src/platform/rtd/` 안에만 있다.
 
 ## 보드 설정 요구 (`src/platform/rtd/net_board_cfg.h`)
@@ -135,7 +135,7 @@ int main(void)
 - 시간원은 위 표의 A·B·C 중 하나다. 보드 빌드는 A를 쓴다. 셋 다 없으면(OsIf 타이머 OFF, hook 없음) 컴파일 오류(`OSIF_COUNTER_SYSTEM` 미정의)가 난다.
 - ISR 링: `NET_BOARD_CAN_ISR_RING`(기본 32, 1 이상), `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 1 이상 16 이하). 범위를 벗어나면 컴파일 오류다.
 - UART 링크(CIS·DOMAIN 프로필): `NET_BOARD_UART_C_INSTANCE`/`NET_BOARD_UART_C_CONFIG`(기본 11 / `Lpuart_Uart_Ip_xHwConfigPB_11`), `NET_BOARD_UART_M_INSTANCE`/`NET_BOARD_UART_M_CONFIG`(DOMAIN 보드 미정, 자리 표시 기본값 0 / `Lpuart_Uart_Ip_xHwConfigPB_0`), 링크별 송신 시간 초과(기본 100 ms), `NET_BOARD_UART_ISR_RING`(기본 256 B). 콜백은 `NET_BOARD_UART_CALLBACK`을 정의하면 HAL이 그 이름으로 정의하고, 정의하지 않으면 보드 콜백이 Network 인스턴스 이벤트를 `NetHalRtdUart_OnEvent()`(`net_hal_rtd_uart.h`)로 넘긴다(DS344: LPUART0 콘솔과 LPUART11이 `Uart344_BringupCallback`을 공유하므로 이 방식).
-- 한 바퀴에 비우는 양은 UART 바이트 먼저, 그다음 CAN으로 `NET_BOARD_ISR_DRAIN_BUDGET`을 함께 쓴다. M06은 앞선 바퀴의 시각보다 이전에 수신된 바이트를 받지 않으므로(수신기 poll 계약), 한 바퀴 동안 들어오는 UART 바이트가 상한을 넘지 않게 main 주기를 정한다(115200 bit/s에서 16 B는 약 1.4 ms).
+- 한 바퀴에 비우는 양은 CAN 먼저, 그다음 UART 바이트로 `NET_BOARD_ISR_DRAIN_BUDGET`을 함께 쓴다. M06은 시각 검사보다 이전에 수신된 바이트를 받지 않는다(수신기 poll 계약). 그래서 서비스 Port(`net_hal_rtd_port()`, `net_node.c`가 쓴다)는 서비스가 읽은 시각 이전에 수신되어 UART 링에 남은 바이트가 있으면 "할 일 없음"을 알리지 않고 그 바이트를 넘긴다(poll 1회에 상한 이하, 서비스 step당 poll 32회). 바이트는 UART 링(256 B, 115200 bit/s 가득 찬 선로에서 약 22 ms)이 넘칠 때만 잃는다. main 주기는 링 시간보다 짧게, 선로 평균 부하는 바퀴당 64 B 이하로 둔다(예: 3 ms 주기 시험 `uart_hal.u13_main_period_3ms`, `cis_node.f16_vision_rx_main_3ms`).
 - BOOT_ID는 0이 아니어야 하고 재부팅마다 바뀌어야 한다. `Net_Init`을 쓰면 `NET_BOARD_NODE_CONFIG_HOOK`이 주고, `NetNode_Init`을 직접 쓰면 `NetNodeConfig.boot_id`로 준다.
 
 ## 진단 (`NetNode_GetDiag`)
@@ -148,6 +148,8 @@ int main(void)
 | `rtd.time_source` | 0 OsIf, 1 `NET_BOARD_NOW_MS_HOOK`, 2 앱 시계(tick hook) |
 | `rtd.isr_ring_capacity`, `rtd.isr_drain_budget` | 빌드한 링 크기와 바퀴당 상한 |
 | `rtd.isr_ring_overflow`, `rtd.isr_ring_max_depth` | 링이 차서 버린 수신 프레임 수, 링에 동시에 쌓인 최대 항목 수 |
+| `rtd.rx_overruns`, `rtd.rx_loss_events` | MB overrun 수, 손실 직후 링에 들어간(그리고 전달된) 프레임 수(손실 경계) |
+| `rtd.uart_poll_drained` | 서비스 Port poll이 시각 검사 전에 UART 링에서 넘긴 항목 수 |
 | `rtd.main_drained_max` | 한 바퀴에 링에서 꺼낸 최대 항목 수 |
 | `rtd.tick_future_clamped` | 현재 시각보다 미래라 현재 시각으로 둔 캡처 수 |
 

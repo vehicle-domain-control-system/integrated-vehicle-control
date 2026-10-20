@@ -278,6 +278,14 @@ NetStatus net_upper_submit_uart(NetUpper *s,const NetUpperUartMessage *m,
     if(s->config.uart_sequence_bound[(size_t)m->link-1u])return NET_HOLD;
     s->in_call=true;status=queue_message(s,NULL,m,source,p,out,false);s->in_call=false;return status;
 }
+/* UART LINK_SEQUENCE is "u16 LE, per direction frame order modulo 65536"
+ * (docs/network/interface/03_COMMUNICATION/20_UART_M.md shared framing, also
+ * the UART-C frame): after 65535 the next frame carries 0. CAN TX_SEQUENCE
+ * keeps its own rule (no wrap). */
+static uint32_t next_link_sequence(uint32_t used)
+{
+    return used>=UINT16_MAX ? 0u : used+1u;
+}
 NetStatus net_upper_submit_uart_auto(NetUpper *s,const NetUpperUartMessage *m,
     const NetSourceStamp *source,const NetAgePolicy *p,NetTxKey *out)
 {
@@ -289,7 +297,7 @@ NetStatus net_upper_submit_uart_auto(NetUpper *s,const NetUpperUartMessage *m,
     if(!s->config.uart_sequence_bound[i] || s->next_uart_sequence[i]>UINT16_MAX)return NET_HOLD;
     local=*m;local.sequence=(uint16_t)s->next_uart_sequence[i];
     s->in_call=true;status=queue_message(s,NULL,&local,source,p,out,false);s->in_call=false;
-    if(status==NET_OK)++s->next_uart_sequence[i];
+    if(status==NET_OK)s->next_uart_sequence[i]=next_link_sequence(s->next_uart_sequence[i]);
     return status;
 }
 NetStatus net_upper_submit_inspection_can(NetUpper *s,const NetUpperCanMessage *m,
@@ -312,7 +320,7 @@ NetStatus net_upper_submit_inspection_uart(NetUpper *s,const NetUpperUartMessage
     if(!s->config.uart_sequence_bound[i] || s->next_uart_sequence[i]>UINT16_MAX)return NET_HOLD;
     local=*m;local.sequence=(uint16_t)s->next_uart_sequence[i];
     s->in_call=true;st=queue_message(s,NULL,&local,source,p,out,true);s->in_call=false;
-    if(st==NET_OK)++s->next_uart_sequence[i];
+    if(st==NET_OK)s->next_uart_sequence[i]=next_link_sequence(s->next_uart_sequence[i]);
     return st;
 }
 NetStatus net_upper_cis_publish_rear(NetUpper *s,const NetWireCisRearRaw *rear,
@@ -339,6 +347,20 @@ static NetStatus admission(const NetUpperAdmission *a,uint32_t boot,uint32_t seq
     if(a->boot!=boot)return NET_HOLD;
     if(a->sequence==sequence)return NET_DUPLICATE;
     if(sequence<a->sequence)return NET_STALE; /* wrap/epoch ordering is not inferred */
+    return NET_OK;
+}
+/* UART LINK_SEQUENCE runs modulo 65536 (next_link_sequence). Within the same
+ * accepted boot a number is newer when it lies 1..2^15-1 ahead of the last
+ * accepted one in that circle, so 65535 -> 0 is the next frame and a number
+ * behind (or exactly opposite) is stale. */
+static NetStatus uart_admission(const NetUpperAdmission *a,uint32_t boot,uint16_t sequence)
+{
+    uint16_t ahead;
+    if(!a->seen)return NET_OK;
+    if(a->boot!=boot)return NET_HOLD;
+    ahead=(uint16_t)(sequence-(uint16_t)a->sequence);
+    if(ahead==0u)return NET_DUPLICATE;
+    if(ahead>=0x8000u)return NET_STALE;
     return NET_OK;
 }
 static bool can_raw_equal(const NetWireCanEnvelope *a,const NetWireCanEnvelope *b)
@@ -440,7 +462,7 @@ static NetStatus receive_uart(NetUpper *s,const NetUpperUartDelivery *u,uint64_t
     else if(r->direction==NET_WIRE_DOWNLINK)boot=u32(u->frame.bytes+(m->type==0x02u?8u:20u));
     if(!new_context){
         const NetUpperAdmission *a=record;
-        status=admission(a,boot,m->sequence);
+        status=uart_admission(a,boot,m->sequence);
         if(status==NET_DUPLICATE)return same_sequence(s,a,u->port_epoch,r->direction,
             a->raw.uart.length==u->frame.length && u->frame.length<=sizeof(u->frame.bytes) &&
             memcmp(a->raw.uart.bytes,u->frame.bytes,u->frame.length)==0);

@@ -37,6 +37,8 @@ static size_t slot_index(const NetUpperPublisher *p, NetWireLink link, uint16_t 
         if (p->slot[i].entry.link == link && p->slot[i].entry.id == id) return i;
     return NET_UPPER_PUBLISH_CAPACITY;
 }
+/* The service wraps a UART LINK_SEQUENCE modulo 65536 (20_UART_M.md shared
+ * framing), so this guard only catches a counter outside u16. */
 static bool uart_exhausted(const NetUpper *s, NetWireLink link)
 {
     return s->next_uart_sequence[uart_index(link)] > UINT16_MAX;
@@ -272,7 +274,7 @@ static void offer(NetUpperPublisher *p, NetUpperPublishSlot *slot, uint64_t now,
     uint32_t sequence = 0u;
     bool exhausted = slot->entry.link == NET_WIRE_CAN ? slot->sequence_held : uart_exhausted(p->service, slot->entry.link);
     if (exhausted) {
-        /* Wrap is HOLD: never restart at 0/1 and never send a wrong number. */
+        /* CAN TX_SEQUENCE wrap is HOLD: never restart at 0/1 and never send a wrong number. */
         INC(slot->counters.sequence_hold);
         if (fresh) slot->fresh = false;
         advance(slot, now);

@@ -108,6 +108,7 @@ typedef struct {
     uint32_t status_not_accepted;
     uint8_t last_status_result;   /* NetSubmitResult */
     uint32_t drain_budget, ring_capacity, ring_overflow, ring_max_depth, main_drained_max;
+    uint32_t rx_loss_events;      /* CAN frames stored right after a ring / MB loss */
     uint32_t tick_future_clamped;
     uint32_t busoff_events, tx_complete;
     uint32_t main_max_us;

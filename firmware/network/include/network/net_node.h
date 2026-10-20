@@ -8,8 +8,8 @@
  * src/node/net_node.c holds the common part (init order, step, diag); the
  * profile table src/node/net_node_profile_<node>.c holds what differs per
  * node (links, receive policies, facade binding, permission supervision,
- * M04 publish table). Wired profiles: VSS (6), CIS (1). Others fail at
- * compile time.
+ * M04 publish table). Wired profiles: VSS (6), CIS (1), BCM (3). Others fail
+ * at compile time.
  *
  * Public entry: Net_Init() / Net_MainFunction(nowMs) (network/app/net_if_entry.h,
  * src/node/net_entry.c) wrap NetNode_Init() / NetNode_Step() for every
@@ -30,6 +30,8 @@
 #include "network/net_app_port_vss.h"
 #elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
 #include "network/net_app_port_cis.h"
+#elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_BCM
+#include "network/net_app_port_bcm.h"
 #endif
 
 typedef struct {
@@ -77,6 +79,10 @@ typedef struct {
     NetAppPortCisDiag app;        /* App Port counters, last permission, relay */
     /* M04 slots: BOOT/TX (CAN) or LINK_SEQUENCE (UART-C), waits, repetitions */
     NetUpperPublishView rear_tx, environment_tx, occupant_tx, status_tx, pi_permission_tx;
+#elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_BCM
+    NetAppPortBcmDiag app;        /* App Port counters, last permission, discrete stores */
+    /* M04 slots: BOOT/TX, waits, repetitions */
+    NetUpperPublishView result_tx, event_tx, door_state_tx, climate_state_tx, light_state_tx, status_tx;
 #endif
     bool permission_valid;
     NetPermissionView permission; /* DOMAIN_PERMISSION supervision view */

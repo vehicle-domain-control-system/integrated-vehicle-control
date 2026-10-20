@@ -217,16 +217,69 @@ uint32_t net_hal_rtd_drain(void)
     if (!rtd.started) return 0u;
 #if UART_LINKS
     /* Shared budget (the adapter RX queue holds one event per UART byte),
-     * UART first: M06 refuses a byte captured before its last drained timer
-     * check (net_upper_uart.h, receiver poll), so bytes must not wait behind
-     * CAN frames; a CAN frame that waits a pass keeps its own capture time. */
-    n = net_hal_rtd_uart_drain(NET_BOARD_ISR_DRAIN_BUDGET);
-    n += net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET - n);
+     * CAN first: a UART byte that does not fit here is taken on demand by the
+     * Port poll before the M06 timer check (net_hal_rtd_port), so it never
+     * waits behind CAN frames; CAN frames, which keep their own capture time,
+     * are not starved by a busy UART line. */
+    n = net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET);
+    n += net_hal_rtd_uart_drain(NET_BOARD_ISR_DRAIN_BUDGET - n);
 #else
     n = net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET);
 #endif
     if (n > rtd.diag.main_drained_max) rtd.diag.main_drained_max = n;
     return n;
+}
+
+/* ------------------------------------------------ service Port hand-off -- */
+/* M06 receiver contract (net_upper_uart.h, receiver poll): its timer check
+ * runs only after the capture queue is drained AND the Port poll reported no
+ * work, with the real clock now; a byte captured before that check is refused
+ * afterwards (TIME_HOLD, the rest of the frame lost). A received UART byte
+ * still in an ISR byte ring is part of the capture queue. So while one taken
+ * at or before the service's clock reading waits there, the poll hands it
+ * over instead of reporting no work. A byte captured after that reading may
+ * wait: it cannot be older than the check. CAN frames are never taken here
+ * (one budget per pass, docs C8; a CAN frame keeps its capture time). */
+static const NetUpperPortOps *adapter_port_ops;
+static uint64_t service_now_ms;
+static bool service_now_known;
+
+static NetStatus port_now(void *context, uint64_t *out)
+{
+    NetStatus st = adapter_port_ops->now_ms(context, out);
+    if (st == NET_OK && out != NULL) { service_now_ms = *out; service_now_known = true; }
+    return st;
+}
+
+static NetStatus port_submit(void *context, const NetUpperPacket *packet, NetTxKey key)
+{
+    return adapter_port_ops->submit(context, packet, key);
+}
+
+static NetStatus port_poll(void *context, NetUpperEvent *out)
+{
+    NetStatus st = adapter_port_ops->poll(context, out);
+#if UART_LINKS
+    if (st == NET_NO_WORK && rtd.started && service_now_known) {
+        uint32_t n = net_hal_rtd_uart_drain_until(NET_BOARD_ISR_DRAIN_BUDGET, service_now_ms);
+        if (n != 0u) {
+            rtd.diag.uart_poll_drained = (rtd.diag.uart_poll_drained > UINT32_MAX - n) ?
+                UINT32_MAX : rtd.diag.uart_poll_drained + n;
+            st = adapter_port_ops->poll(context, out);
+        }
+    }
+#endif
+    return st;
+}
+
+NetUpperPort net_hal_rtd_port(NetHalAdapter *adapter)
+{
+    static const NetUpperPortOps ops = { port_now, port_submit, port_poll };
+    NetUpperPort p = net_hal_adapter_port(adapter);
+    adapter_port_ops = p.ops;
+    service_now_known = false;
+    p.ops = &ops;               /* same context: the adapter */
+    return p;
 }
 
 void net_hal_rtd_service(void)

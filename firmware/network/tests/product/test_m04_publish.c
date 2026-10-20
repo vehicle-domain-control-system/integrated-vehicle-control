@@ -489,6 +489,55 @@ static int m10_uart_link_sequence(void)
     return 0;
 }
 
+/* 20_UART_M.md shared framing (also the UART-C frame): LINK_SEQUENCE is the
+ * per-direction frame order modulo 65536, so after 65535 the next frame
+ * carries 0 and the link goes on (CAN TX_SEQUENCE keeps its HOLD, m08). */
+static int m13_uart_link_sequence_wrap(void)
+{
+    static const NetUpperPublishEntry vision[] = { { NET_WIRE_UART_C, 0x60u, 100u, { true, 2000u, true } } };
+    static const uint16_t want[] = { 65534u, 65535u, 0u, 1u, 2u };
+    NetUpperUartMessage m, out;
+    NetUpperPublishView v;
+    size_t k;
+    CHECK(start_service(NET_WIRE_NODE_PI, true) == NET_OK);
+    CHECK(start_table(vision, 1u) == NET_OK);
+    /* Boundary set-up: 65533 frames are not produced in a test, so the
+     * service-owned counter is placed two numbers before the end. */
+    svc.next_uart_sequence[1] = 65534u;
+    memset(&m, 0, sizeof(m));
+    m.link = NET_WIRE_UART_C;
+    m.type = 0x60u;
+    m.data.p_vision_result.pi_boot_id = 1432778632u;
+    m.data.p_vision_result.vision_sequence = 77u;
+    m.data.p_vision_result.vision_age_ms = 15u;
+    m.data.p_vision_result.occupant_presence = 1u;
+    m.data.p_vision_result.presence_validity = 1u;
+    m.data.p_vision_result.occupant_count = 3u;
+    m.data.p_vision_result.count_validity = 1u;
+    m.data.p_vision_result.vision_status = 2u;
+    CHECK(net_upper_publish_uart(&pub, &m, NULL, NULL) == NET_OK);
+    pass();
+    run_ms(200u);                                  /* two repetitions */
+    m.data.p_vision_result.vision_sequence = 78u;  /* new submissions keep numbering */
+    CHECK(net_upper_publish_uart(&pub, &m, NULL, NULL) == NET_OK);
+    pass();
+    m.data.p_vision_result.vision_sequence = 79u;
+    run_ms(10u);
+    CHECK(net_upper_publish_uart(&pub, &m, NULL, NULL) == NET_OK);
+    pass();
+    CHECK(port.count == 5u);
+    for (k = 0u; k < 5u; ++k) {
+        const Taken *f = &port.taken[k];
+        CHECK(net_upper_uart_decode(NET_WIRE_CANDIDATE_ONLY, NET_WIRE_UART_C, f->packet.direction,
+                                    &f->packet.uart, &out) == NET_WIRE_OK);
+        CHECK(out.sequence == want[k]);
+    }
+    CHECK(net_upper_publish_view(&pub, NET_WIRE_UART_C, 0x60u, &v) == NET_OK);
+    CHECK(v.next_sequence == 3u && !v.sequence_held && v.counters.sequence_hold == 0u);
+    CHECK(v.counters.not_sent == 0u);
+    return 0;
+}
+
 static int m11_registration(void)
 {
     static const NetUpperPublishEntry unknown[] = { { NET_WIRE_CAN, 0x7FFu, 0u, { true, 10u, true } } };
@@ -576,7 +625,8 @@ int main(int argc, char **argv)
         { "m07_tx_failure_keeps_schedule", m07_tx_failure_keeps_schedule },
         { "m08_sequence_wrap_hold", m08_sequence_wrap_hold }, { "m09_pending_age", m09_pending_age },
         { "m10_uart_link_sequence", m10_uart_link_sequence }, { "m11_registration", m11_registration },
-        { "m12_queue_full_keeps_submission", m12_queue_full_keeps_submission }
+        { "m12_queue_full_keeps_submission", m12_queue_full_keeps_submission },
+        { "m13_uart_link_sequence_wrap", m13_uart_link_sequence_wrap }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

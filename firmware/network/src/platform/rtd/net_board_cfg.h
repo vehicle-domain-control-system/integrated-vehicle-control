@@ -105,7 +105,8 @@
 #ifndef NET_BOARD_UART_C_TX_TIMEOUT_MS
 #define NET_BOARD_UART_C_TX_TIMEOUT_MS  NET_BOARD_UART_TX_TIMEOUT_MS
 #endif
-/* Received bytes the per-link ISR ring holds between two main passes. A byte
+/* Received bytes the per-link ISR ring holds until the main context takes
+ * them (net_hal_rtd_drain, then the service's Port poll on demand). A byte
  * that finds the ring full is dropped, counted and reported as a loss
  * capture (NetUpperCapture.overflow) right before the next stored byte;
  * 256 B is about 22 ms of a fully loaded 115200 bit/s line. */
@@ -181,18 +182,24 @@ extern uint64_t NET_BOARD_NOW_MS_HOOK(void);
  * NET_BOARD_CAN_ISR_RING: received frames the ring holds between two main
  * passes. TX completion and bus-off facts have their own reserved room on top
  * (one per TX MB, one bus-off), so they are never dropped. A frame that finds
- * the ring full is dropped, counted (NetHalRtdDiag.isr_ring_overflow) and
- * flagged on the next captured frame (NetUpperCapture.overflow).
+ * the ring full is dropped and counted (NetHalRtdDiag.isr_ring_overflow); an
+ * MB overrun is counted too (rx_overruns). The next stored frame is complete
+ * and is delivered as received; the loss boundary is counted once
+ * (rx_loss_events). CAN_PORT_RECOVERY.md: a real loss is recorded, nothing is
+ * synthesized, the link stays up.
  * NET_BOARD_ISR_DRAIN_BUDGET: ring entries taken per main pass, keeps one
  * Net_MainFunction() short (VSS contract: a few ms, never above 15 ms). It
  * must not exceed the adapter RX queue (NET_HAL_RX_CAPACITY, 16), which every
- * NetNode_Step() empties. The budget is shared: received UART bytes first (one
- * adapter event per byte), then CAN ring entries, up to the same total.
- * UART: M06 accepts no byte captured before its last drained timer check, so
- * a byte still in the ring after a pass, captured before that pass's now, is
- * refused (counted, the partial frame dropped, M06 resyncs). Keep the main
- * pass period below NET_BOARD_ISR_DRAIN_BUDGET byte times of the UART line
- * (16 B at 115200 bit/s: about 1.4 ms). */
+ * NetNode_Step() empties. The budget is shared: CAN ring entries first, then
+ * received UART bytes (one adapter event per byte), up to the same total.
+ * UART: M06 accepts no byte captured before its last drained timer check. The
+ * service's Port (net_hal_rtd_port) therefore takes the bytes still waiting
+ * in the ring, captured at or before the service's clock reading, before that
+ * check (at most this budget per poll; the service's poll budget,
+ * NET_UPPER_POLL_BUDGET 32 events per step, two steps per NetNode_Step(),
+ * bounds a pass). A byte is lost only when the byte ring overflows: keep the
+ * main pass period below the ring time (256 B: about 22 ms of a fully loaded
+ * 115200 bit/s line) and the average line load below 64 B per pass. */
 #ifndef NET_BOARD_CAN_ISR_RING
 #define NET_BOARD_CAN_ISR_RING          32U
 #endif

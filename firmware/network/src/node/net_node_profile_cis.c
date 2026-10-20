@@ -92,7 +92,8 @@ const NetNodeProfile net_node_profile = {
     publish_table, sizeof(publish_table) / sizeof(publish_table[0]),
     bind,
     permission,
-    diag
+    diag,
+    NULL
 };
 
 #else

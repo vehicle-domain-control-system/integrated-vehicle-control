@@ -70,3 +70,55 @@ bool net_app_port_cancel_if_unsent(NetUpper *service, NetTxKey key)
     if (!snap.used || !snap.queued || snap.submitted) return false;
     return net_upper_cancel(service, key) == NET_OK;
 }
+
+/* ------------------------------------------------- discrete records ---- */
+void net_app_port_discrete_init(NetAppPortDiscreteQueue *q, uint16_t id)
+{
+    memset(q, 0, sizeof(*q));
+    q->id = id;
+}
+
+static bool slot_idle(const NetUpperPublisher *p, uint16_t id)
+{
+    NetUpperPublishView v;
+    if (net_upper_publish_view(p, NET_WIRE_CAN, id, &v) != NET_OK) return false;
+    return !v.fresh && !v.in_flight;
+}
+
+bool net_app_port_discrete_direct(const NetAppPortDiscreteQueue *q, const NetUpperPublisher *p)
+{
+    return q->count == 0u && slot_idle(p, q->id);
+}
+
+NetStatus net_app_port_discrete_enqueue(NetAppPortDiscreteQueue *q, const NetUpperCanMessage *m, uint64_t now_ms)
+{
+    NetAppPortDiscreteRecord *r;
+    if (q->count >= NET_APP_PORT_DISCRETE_DEPTH) {
+        if (q->queue_full != UINT32_MAX) ++q->queue_full;
+        return NET_NO_CAPACITY;
+    }
+    if (q->last_observation == UINT64_MAX) return NET_HOLD;
+    r = &q->record[(q->head + q->count) % NET_APP_PORT_DISCRETE_DEPTH];
+    r->message = *m;
+    /* The record's own stamp: M04 counts the wait from here, once. */
+    r->source.observation_id = ++q->last_observation;
+    r->source.observed_at_ms = now_ms;
+    r->source.original_age_ms = net_upper_can_max_age(m);
+    ++q->count;
+    if (q->queued != UINT32_MAX) ++q->queued;
+    if (q->count > q->depth_max) q->depth_max = (uint32_t)q->count;
+    return NET_OK;
+}
+
+void net_app_port_discrete_service(NetAppPortDiscreteQueue *q, NetUpperPublisher *p)
+{
+    while (q->count != 0u && slot_idle(p, q->id)) {
+        const NetAppPortDiscreteRecord *r = &q->record[q->head];
+        NetStatus st = net_upper_publish_can(p, &r->message, &r->source, NULL);
+        if (st == NET_HOLD) return; /* link down or sequence exhausted: keep waiting */
+        q->head = (q->head + 1u) % NET_APP_PORT_DISCRETE_DEPTH;
+        --q->count;
+        if (st == NET_OK) return;   /* the slot holds it now: one record per frame */
+        if (q->offer_refused != UINT32_MAX) ++q->offer_refused;
+    }
+}

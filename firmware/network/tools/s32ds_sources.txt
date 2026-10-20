@@ -58,6 +58,7 @@ src/platform/s32k344/net_s32k344_upper_port.c
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_common.c
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_cis.c
+src/l02_typed_handoff/m03_typed_handoff/net_app_port_bcm.c
 
 # L05/M08 RTD backend: common part + FlexCAN part + LPUART part
 # (net_hal_rtd_uart.c compiles to nothing unless the node profile has a UART
@@ -72,4 +73,5 @@ src/platform/rtd/net_hal_rtd_uart.c
 src/node/net_node.c
 src/node/net_node_profile_vss.c
 src/node/net_node_profile_cis.c
+src/node/net_node_profile_bcm.c
 src/node/net_entry.c

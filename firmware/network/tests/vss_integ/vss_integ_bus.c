@@ -338,6 +338,7 @@ bool IntegBus_ReadDiag(IntegNetDiag *out)
     out->drain_budget = d.rtd.isr_drain_budget;
     out->ring_capacity = d.rtd.isr_ring_capacity;
     out->ring_overflow = d.rtd.isr_ring_overflow;
+    out->rx_loss_events = d.rtd.rx_loss_events;
     out->ring_max_depth = d.rtd.isr_ring_max_depth;
     out->main_drained_max = d.rtd.main_drained_max;
     out->tick_future_clamped = d.rtd.tick_future_clamped;

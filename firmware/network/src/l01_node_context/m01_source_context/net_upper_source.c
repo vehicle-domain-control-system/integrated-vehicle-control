@@ -9,6 +9,42 @@ static bool younger(uint16_t old_age, uint16_t new_age, uint64_t elapsed)
     uint16_t floor=elapsed >= (uint64_t)(UINT16_MAX-old_age) ? UINT16_MAX : (uint16_t)(old_age+elapsed);
     return new_age < floor;
 }
+/* Quality of one lane of the same original observation reported again with a
+ * newer TX_SEQUENCE. docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md
+ * (repeat and current quality): the identity of an original observation does
+ * not freeze its current quality; an actual VALID -> INVALID/STALE drop under
+ * the same identity is accepted and delivered, but a higher TX_SEQUENCE alone
+ * never changes the original value nor promotes a quality back to OK.
+ * (VSS/10_DATA.md: every warning lane keeps its own quality and AGE.)
+ * So: a restricted quality (STALE/INVALID/NO_DATA, any reason) may follow any
+ * earlier quality; OK may only follow the same OK with the same reason. */
+static bool quality_conflict(uint8_t old_quality, uint8_t old_reason, uint8_t new_quality, uint8_t new_reason)
+{
+    if(new_quality!=0u)return false;
+    return old_quality!=0u || old_reason!=new_reason;
+}
+static bool permission_same(const NetWireDomainPermissionRaw *a, const NetWireDomainPermissionRaw *b)
+{
+    return a->boot_id==b->boot_id && a->update_sequence==b->update_sequence;
+}
+static bool warning_lane_same(const NetWireVssWarningStateRaw *a, const NetWireVssWarningStateRaw *b, unsigned lane)
+{
+    if(a->boot_id!=b->boot_id)return false;
+    switch(lane) {
+    case 0u:return a->antipinch_source_boot==b->antipinch_source_boot && a->antipinch_source_sequence==b->antipinch_source_sequence;
+    case 1u:return a->occupant_hazard_source_boot==b->occupant_hazard_source_boot && a->occupant_hazard_source_sequence==b->occupant_hazard_source_sequence;
+    case 2u:return a->rear_obstacle_source_boot==b->rear_obstacle_source_boot && a->rear_obstacle_source_sequence==b->rear_obstacle_source_sequence;
+    default:return a->rear_activation_sequence==b->rear_activation_sequence && a->activation_meta_format==1u && b->activation_meta_format==1u;
+    }
+}
+/* Same quality and reason on every lane: nothing new to deliver. */
+static bool warning_quality_equal(const NetWireVssWarningStateRaw *a, const NetWireVssWarningStateRaw *b)
+{
+    return a->antipinch_quality==b->antipinch_quality && a->antipinch_reason==b->antipinch_reason &&
+        a->occupant_hazard_quality==b->occupant_hazard_quality && a->occupant_hazard_reason==b->occupant_hazard_reason &&
+        a->rear_obstacle_quality==b->rear_obstacle_quality && a->rear_obstacle_reason==b->rear_obstacle_reason &&
+        a->rear_activation_quality==b->rear_activation_quality && a->rear_activation_reason==b->rear_activation_reason;
+}
 NetStatus net_upper_cis_publish_occupant(NetUpper *s,uint32_t cis_boot,uint32_t tx_sequence,
     const NetAgePolicy *policy,NetTxKey *out)
 {
@@ -41,16 +77,19 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
 {
     if(old->id!=m->id)return NET_HOLD;
     switch(m->id) {
-    case 0x080u:
-        /* The original observation identity cannot carry different values or quality. */
-        if (old->data.domain_permission.boot_id==m->data.domain_permission.boot_id && old->data.domain_permission.update_sequence==m->data.domain_permission.update_sequence && (
-            old->data.domain_permission.vehicle_power_permission!=m->data.domain_permission.vehicle_power_permission ||
-            old->data.domain_permission.power_permission_quality!=m->data.domain_permission.power_permission_quality ||
-            old->data.domain_permission.power_operation_state!=m->data.domain_permission.power_operation_state ||
-            old->data.domain_permission.operation_allowed!=m->data.domain_permission.operation_allowed ||
-            old->data.domain_permission.operation_quality!=m->data.domain_permission.operation_quality)) return NET_HOLD;
-        if (old->data.domain_permission.boot_id==m->data.domain_permission.boot_id && old->data.domain_permission.update_sequence==m->data.domain_permission.update_sequence && younger(old->data.domain_permission.source_age_ms,m->data.domain_permission.source_age_ms,elapsed)) return NET_HOLD;
+    case 0x080u: {
+        /* The original observation identity cannot carry different values; its
+         * two qualities may only be restricted (quality_conflict). */
+        const NetWireDomainPermissionRaw *a=&old->data.domain_permission,*b=&m->data.domain_permission;
+        if (permission_same(a,b) && (
+            a->vehicle_power_permission!=b->vehicle_power_permission ||
+            a->power_operation_state!=b->power_operation_state ||
+            a->operation_allowed!=b->operation_allowed ||
+            quality_conflict(a->power_permission_quality,0u,b->power_permission_quality,0u) ||
+            quality_conflict(a->operation_quality,0u,b->operation_quality,0u))) return NET_HOLD;
+        if (permission_same(a,b) && younger(a->source_age_ms,b->source_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
+    }
     case 0x100u:
         /* The original observation identity cannot carry different values or quality. */
         if (old->data.bcm_door_command.boot_id==m->data.bcm_door_command.boot_id && old->data.bcm_door_command.target_boot_id==m->data.bcm_door_command.target_boot_id && old->data.bcm_door_command.command_id==m->data.bcm_door_command.command_id && (
@@ -265,36 +304,36 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
             old->data.vss_event.related_command_id!=m->data.vss_event.related_command_id)) return NET_HOLD;
         if (old->data.vss_event.boot_id==m->data.vss_event.boot_id && old->data.vss_event.occurrence_id==m->data.vss_event.occurrence_id && younger(old->data.vss_event.original_age_ms,m->data.vss_event.original_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
-    case 0x0C0u:
-        /* The original observation identity cannot carry different values or quality. */
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.antipinch_source_boot==m->data.vss_warning_state.antipinch_source_boot && old->data.vss_warning_state.antipinch_source_sequence==m->data.vss_warning_state.antipinch_source_sequence && (
-            old->data.vss_warning_state.antipinch_state!=m->data.vss_warning_state.antipinch_state ||
-            old->data.vss_warning_state.antipinch_quality!=m->data.vss_warning_state.antipinch_quality ||
-            old->data.vss_warning_state.antipinch_reason!=m->data.vss_warning_state.antipinch_reason ||
-            old->data.vss_warning_state.antipinch_availability!=m->data.vss_warning_state.antipinch_availability)) return NET_HOLD;
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.antipinch_source_boot==m->data.vss_warning_state.antipinch_source_boot && old->data.vss_warning_state.antipinch_source_sequence==m->data.vss_warning_state.antipinch_source_sequence && younger(old->data.vss_warning_state.antipinch_original_age_ms,m->data.vss_warning_state.antipinch_original_age_ms,elapsed)) return NET_HOLD;
-        /* The original observation identity cannot carry different values or quality. */
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.occupant_hazard_source_boot==m->data.vss_warning_state.occupant_hazard_source_boot && old->data.vss_warning_state.occupant_hazard_source_sequence==m->data.vss_warning_state.occupant_hazard_source_sequence && (
-            old->data.vss_warning_state.occupant_hazard_state!=m->data.vss_warning_state.occupant_hazard_state ||
-            old->data.vss_warning_state.occupant_hazard_quality!=m->data.vss_warning_state.occupant_hazard_quality ||
-            old->data.vss_warning_state.occupant_hazard_reason!=m->data.vss_warning_state.occupant_hazard_reason ||
-            old->data.vss_warning_state.occupant_hazard_availability!=m->data.vss_warning_state.occupant_hazard_availability)) return NET_HOLD;
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.occupant_hazard_source_boot==m->data.vss_warning_state.occupant_hazard_source_boot && old->data.vss_warning_state.occupant_hazard_source_sequence==m->data.vss_warning_state.occupant_hazard_source_sequence && younger(old->data.vss_warning_state.occupant_hazard_original_age_ms,m->data.vss_warning_state.occupant_hazard_original_age_ms,elapsed)) return NET_HOLD;
-        /* The original observation identity cannot carry different values or quality. */
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.rear_obstacle_source_boot==m->data.vss_warning_state.rear_obstacle_source_boot && old->data.vss_warning_state.rear_obstacle_source_sequence==m->data.vss_warning_state.rear_obstacle_source_sequence && (
-            old->data.vss_warning_state.rear_obstacle_state!=m->data.vss_warning_state.rear_obstacle_state ||
-            old->data.vss_warning_state.rear_obstacle_quality!=m->data.vss_warning_state.rear_obstacle_quality ||
-            old->data.vss_warning_state.rear_obstacle_reason!=m->data.vss_warning_state.rear_obstacle_reason ||
-            old->data.vss_warning_state.rear_obstacle_availability!=m->data.vss_warning_state.rear_obstacle_availability)) return NET_HOLD;
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.rear_obstacle_source_boot==m->data.vss_warning_state.rear_obstacle_source_boot && old->data.vss_warning_state.rear_obstacle_source_sequence==m->data.vss_warning_state.rear_obstacle_source_sequence && younger(old->data.vss_warning_state.rear_obstacle_original_age_ms,m->data.vss_warning_state.rear_obstacle_original_age_ms,elapsed)) return NET_HOLD;
-        /* The original observation identity cannot carry different values or quality. */
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.rear_activation_sequence==m->data.vss_warning_state.rear_activation_sequence && old->data.vss_warning_state.activation_meta_format==1u && m->data.vss_warning_state.activation_meta_format==1u && (
-            old->data.vss_warning_state.rear_detection_activation!=m->data.vss_warning_state.rear_detection_activation ||
-            old->data.vss_warning_state.activation_meta_format!=m->data.vss_warning_state.activation_meta_format ||
-            old->data.vss_warning_state.rear_activation_quality!=m->data.vss_warning_state.rear_activation_quality ||
-            old->data.vss_warning_state.rear_activation_reason!=m->data.vss_warning_state.rear_activation_reason)) return NET_HOLD;
-        if (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.rear_activation_sequence==m->data.vss_warning_state.rear_activation_sequence && old->data.vss_warning_state.activation_meta_format==1u && m->data.vss_warning_state.activation_meta_format==1u && younger(old->data.vss_warning_state.rear_activation_age_ms,m->data.vss_warning_state.rear_activation_age_ms,elapsed)) return NET_HOLD;
+    case 0x0C0u: {
+        /* Each lane is judged on its own identity and fields only. Under the
+         * same lane identity the value (state, availability) cannot change and
+         * the quality may only be restricted (quality_conflict), so a lane that
+         * lost its quality and keeps its last source sequence with a growing
+         * AGE does not hold the frame that carries a new evaluation of another
+         * lane. A lane that does change its value or promote its quality holds
+         * the whole frame: one frame is committed or refused as one result. */
+        const NetWireVssWarningStateRaw *a=&old->data.vss_warning_state,*b=&m->data.vss_warning_state;
+        if (warning_lane_same(a,b,0u) && (
+            a->antipinch_state!=b->antipinch_state ||
+            a->antipinch_availability!=b->antipinch_availability ||
+            quality_conflict(a->antipinch_quality,a->antipinch_reason,b->antipinch_quality,b->antipinch_reason))) return NET_HOLD;
+        if (warning_lane_same(a,b,0u) && younger(a->antipinch_original_age_ms,b->antipinch_original_age_ms,elapsed)) return NET_HOLD;
+        if (warning_lane_same(a,b,1u) && (
+            a->occupant_hazard_state!=b->occupant_hazard_state ||
+            a->occupant_hazard_availability!=b->occupant_hazard_availability ||
+            quality_conflict(a->occupant_hazard_quality,a->occupant_hazard_reason,b->occupant_hazard_quality,b->occupant_hazard_reason))) return NET_HOLD;
+        if (warning_lane_same(a,b,1u) && younger(a->occupant_hazard_original_age_ms,b->occupant_hazard_original_age_ms,elapsed)) return NET_HOLD;
+        if (warning_lane_same(a,b,2u) && (
+            a->rear_obstacle_state!=b->rear_obstacle_state ||
+            a->rear_obstacle_availability!=b->rear_obstacle_availability ||
+            quality_conflict(a->rear_obstacle_quality,a->rear_obstacle_reason,b->rear_obstacle_quality,b->rear_obstacle_reason))) return NET_HOLD;
+        if (warning_lane_same(a,b,2u) && younger(a->rear_obstacle_original_age_ms,b->rear_obstacle_original_age_ms,elapsed)) return NET_HOLD;
+        if (warning_lane_same(a,b,3u) && (
+            a->rear_detection_activation!=b->rear_detection_activation ||
+            quality_conflict(a->rear_activation_quality,a->rear_activation_reason,b->rear_activation_quality,b->rear_activation_reason))) return NET_HOLD;
+        if (warning_lane_same(a,b,3u) && younger(a->rear_activation_age_ms,b->rear_activation_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
+    }
     case 0x340u:
         /* The original observation identity cannot carry different values or quality. */
         if (old->data.vss_status.boot_id==m->data.vss_status.boot_id && old->data.vss_status.last_fault_occurrence==m->data.vss_status.last_fault_occurrence && old->data.vss_status.last_fault_quality==0u && m->data.vss_status.last_fault_quality==0u && (
@@ -596,7 +635,10 @@ bool net_upper_can_same_observation(const NetUpperCanMessage *old,const NetUpper
     if(old==NULL || m==NULL || old->id!=m->id)return false;
     switch(m->id) {
     case 0x080u:
-        return (old->data.domain_permission.boot_id==m->data.domain_permission.boot_id && old->data.domain_permission.update_sequence==m->data.domain_permission.update_sequence);
+        /* A restricted quality of the same evaluation is new to deliver. */
+        return permission_same(&old->data.domain_permission,&m->data.domain_permission) &&
+            old->data.domain_permission.power_permission_quality==m->data.domain_permission.power_permission_quality &&
+            old->data.domain_permission.operation_quality==m->data.domain_permission.operation_quality;
     case 0x100u:
         return (old->data.bcm_door_command.boot_id==m->data.bcm_door_command.boot_id && old->data.bcm_door_command.target_boot_id==m->data.bcm_door_command.target_boot_id && old->data.bcm_door_command.command_id==m->data.bcm_door_command.command_id);
     case 0x110u:
@@ -633,11 +675,12 @@ bool net_upper_can_same_observation(const NetUpperCanMessage *old,const NetUpper
         return (old->data.window_fault.boot_id==m->data.window_fault.boot_id && old->data.window_fault.update_sequence==m->data.window_fault.update_sequence);
     case 0x160u:
         return (old->data.vss_event.boot_id==m->data.vss_event.boot_id && old->data.vss_event.occurrence_id==m->data.vss_event.occurrence_id);
-    case 0x0C0u:
-        return (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.antipinch_source_boot==m->data.vss_warning_state.antipinch_source_boot && old->data.vss_warning_state.antipinch_source_sequence==m->data.vss_warning_state.antipinch_source_sequence) &&
-            (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.occupant_hazard_source_boot==m->data.vss_warning_state.occupant_hazard_source_boot && old->data.vss_warning_state.occupant_hazard_source_sequence==m->data.vss_warning_state.occupant_hazard_source_sequence) &&
-            (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.rear_obstacle_source_boot==m->data.vss_warning_state.rear_obstacle_source_boot && old->data.vss_warning_state.rear_obstacle_source_sequence==m->data.vss_warning_state.rear_obstacle_source_sequence) &&
-            (old->data.vss_warning_state.boot_id==m->data.vss_warning_state.boot_id && old->data.vss_warning_state.rear_activation_sequence==m->data.vss_warning_state.rear_activation_sequence && old->data.vss_warning_state.activation_meta_format==1u && m->data.vss_warning_state.activation_meta_format==1u);
+    case 0x0C0u: {
+        /* Every lane the same identity and a restricted quality on none. */
+        const NetWireVssWarningStateRaw *a=&old->data.vss_warning_state,*b=&m->data.vss_warning_state;
+        return warning_lane_same(a,b,0u) && warning_lane_same(a,b,1u) && warning_lane_same(a,b,2u) &&
+            warning_lane_same(a,b,3u) && warning_quality_equal(a,b);
+    }
     case 0x340u:
         return (old->data.vss_status.boot_id==m->data.vss_status.boot_id && old->data.vss_status.last_fault_occurrence==m->data.vss_status.last_fault_occurrence && old->data.vss_status.last_fault_quality==0u && m->data.vss_status.last_fault_quality==0u) &&
             (old->data.vss_status.boot_id==m->data.vss_status.boot_id && old->data.vss_status.update_sequence==m->data.vss_status.update_sequence);

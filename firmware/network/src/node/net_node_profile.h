@@ -31,6 +31,9 @@ typedef struct {
     /* DOMAIN_PERMISSION supervision, after the common 150 ms receive timeout. */
     void (*permission)(NetPermissionPolicy *p);
     void (*diag)(const NetUpperPublisher *publisher, NetNodeDiag *out);
+    /* Optional, once per pass outside the service step, right before the M04
+     * publish service (App Port work that waits for an idle M04 slot). */
+    void (*service)(void);
 } NetNodeProfile;
 
 extern const NetNodeProfile net_node_profile;

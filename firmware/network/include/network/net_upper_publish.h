@@ -18,7 +18,9 @@
  *    observation number stay and the current AGE keeps growing.
  *  - sw_detail/functions/CIS_REAR_TX_DISPATCH.md: a sequence number is used
  *    up only when the frame is offered to a device and is never reused; after
- *    0xFFFFFFFF the sequence is HOLD; the wait not yet counted is added to AGE
+ *    0xFFFFFFFF the sequence is HOLD (CAN TX_SEQUENCE; a UART LINK_SEQUENCE is
+ *    "frame order modulo 65536", 03_COMMUNICATION/20_UART_M.md shared framing,
+ *    and wraps in the service); the wait not yet counted is added to AGE
  *    once, before encoding; a frame a device owns is never rewritten.
  *  - interface/02_NODES/VSS/20_API.md (VssNet_PublishStatus): Network only adds
  *    the sending BOOT/TX and the waiting AGE.
@@ -67,7 +69,8 @@ typedef struct {
     uint32_t sent;                     /* submissions offered to the service queue (once each) */
     uint32_t periodic_sent;            /* repetitions offered to the service queue */
     uint32_t periodic_skipped_pending; /* due periods skipped: previous frame still unsettled */
-    uint32_t sequence_hold;            /* publish/offer refused: TX or LINK sequence exhausted */
+    uint32_t sequence_hold;            /* publish/offer refused: CAN TX_SEQUENCE exhausted
+                                          (a UART LINK_SEQUENCE wraps modulo 65536) */
     uint32_t queue_full;               /* offers deferred: service queue or device had no room */
     uint32_t not_sent;                 /* offers refused, or frames that ended before a device took them */
     uint32_t tx_failed;                /* frames a device took and reported not sent */

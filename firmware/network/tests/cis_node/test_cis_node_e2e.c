@@ -26,7 +26,7 @@ static const char *case_name;
 
 enum { NODE_BOOT = 0x43495331u, DOMAIN_BOOT = 0x444F4D31u, PI_BOOT = 0x50490001u, BUS = 0, LPUART = 11 };
 
-#define PASS_US 1000u   /* main pass period */
+#define PASS_US 1000u   /* default main pass period */
 #define BYTE_US 87u     /* 115200 bit/s 8N1 */
 
 /* ------------------------------------------------------------- time ----- */
@@ -54,6 +54,7 @@ static NetCanRxMeta last_perm_meta;
 static uint64_t perm_delivered_at;        /* main pass time of the last permission callback */
 static NetVisionResult last_result;
 static NetUartRxMeta last_result_meta;
+static uint16_t result_links[64];           /* LINK_SEQUENCE of each Vision Result callback */
 static NetVisionStatus last_status;
 static NetUartRxMeta last_status_meta;
 static bool in_isr;
@@ -100,6 +101,7 @@ void CisApp_OnPiVisionResult(const NetVisionResult *message, const NetUartRxMeta
 {
     int i;
     if (in_isr) ++isr_callbacks;
+    if (result_count < sizeof(result_links) / sizeof(result_links[0])) result_links[result_count] = meta->link_sequence;
     ++result_count;
     last_result = *message;
     last_result_meta = *meta;
@@ -155,6 +157,7 @@ static void collect(void)
     }
 }
 
+static uint64_t pass_us = PASS_US;   /* main pass period of the case */
 static uint64_t next_pass_us = PASS_US;
 
 static void pass(void)
@@ -167,14 +170,14 @@ static void pass(void)
     collect();
 }
 
-/* Superloop: one main pass at every 1 ms boundary while time advances. */
+/* Superloop: one main pass at every pass_us boundary while time advances. */
 static void advance_us(uint64_t us)
 {
     uint64_t end = MockRtd_NowUs() + us;
     while (next_pass_us <= end) {
         MockRtd_AdvanceUs(next_pass_us - MockRtd_NowUs());
         pass();
-        next_pass_us += PASS_US;
+        next_pass_us += pass_us;
     }
     MockRtd_AdvanceUs(end - MockRtd_NowUs());
 }
@@ -192,7 +195,7 @@ static void reset_bench(void)
 {
     MockRtd_Reset();
     MockRtd_SetSystemTimerEnabled(TIMER_ON);
-    next_pass_us = PASS_US;
+    next_pass_us = pass_us;
 }
 
 static NetStatus start_node(void)
@@ -1047,6 +1050,104 @@ static int f14_permission_repeat_delivered(void)
     return 0;
 }
 
+/* The same DOMAIN evaluation (UPDATE_SEQUENCE kept) reports a lower power
+ * quality with a new TX_SEQUENCE. 04_COMMON/10_DATA_AND_ID_RULES.md (repeat
+ * and current quality): an actual quality drop of the same original
+ * observation is accepted and delivered; a higher TX_SEQUENCE alone never
+ * changes the value nor promotes the quality back. CIS/20_API.md
+ * (CisApp_OnDomainPermission, relay path): the quality drop must not be
+ * missed by the application nor by the internal relay path, and an earlier
+ * ALLOW must not come back. */
+static int f15_permission_quality_drop_same_update(void)
+{
+    NetNodeDiag d0, d;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    RUN(permission_in(1u, 20u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 1u && uart_n == 1u);
+    d0 = diag();
+    CHECK(d0.permission.reason == NET_PERMISSION_CURRENT && d0.permission.power_usable);
+    /* TX2: same UPDATE 20, its AGE grown, power quality INVALID. */
+    step_ms(49u);
+    RUN(permission_in(2u, 20u, 60u, NET_TRISTATE_YES, NET_QUALITY_INVALID));
+    step_ms(1u);
+    d = diag();
+    CHECK(perm_count == 2u && last_perm_meta.source.tx_sequence == 2u);
+    CHECK(last_perm.update_sequence == 20u && last_perm.source_age_ms == 60u);
+    CHECK(last_perm.power_permission_quality == NET_QUALITY_INVALID);
+    CHECK(last_perm.vehicle_power_permission == NET_TRISTATE_YES);
+    CHECK(d.upper.rx_held == d0.upper.rx_held && d.upper.duplicates == d0.upper.duplicates);
+    CHECK(d.app.permission_delivered == 2u);
+    /* The relay path got the same drop: it does not relay a restricted
+     * quality (no reason on the wire) and the earlier ALLOW is not sent again. */
+    CHECK(d.app.relay_refused == 1u && d.app.last_relay_result == NET_SUBMIT_NOT_READY);
+    CHECK(d.permission.reason == NET_PERMISSION_BAD_QUALITY && !d.permission.power_usable);
+    CHECK(uart_n == 1u);
+    /* TX3: the same UPDATE back to OK (promotion by TX_SEQUENCE alone): held,
+     * the restriction stays. */
+    d0 = diag();
+    step_ms(49u);
+    RUN(permission_in(3u, 20u, 110u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    d = diag();
+    CHECK(perm_count == 2u && d.upper.rx_held == d0.upper.rx_held + 1u);
+    CHECK(uart_n == 1u && d.permission.reason == NET_PERMISSION_BAD_QUALITY && !d.permission.power_usable);
+    /* TX4: the same UPDATE with another value: held. */
+    step_ms(49u);
+    RUN(permission_in(4u, 20u, 160u, NET_TRISTATE_NO, NET_QUALITY_INVALID));
+    step_ms(1u);
+    d = diag();
+    CHECK(perm_count == 2u && d.upper.rx_held == d0.upper.rx_held + 2u);
+    /* Nothing reaches the Pi meanwhile: the earlier ALLOW is not repeated. */
+    step_ms(1000u);
+    CHECK(uart_n == 1u && uart_bad == 0u);
+    /* TX5: a new DOMAIN evaluation, OK: delivered and relayed with the next
+     * LINK_SEQUENCE. */
+    RUN(permission_in(5u, 21u, 4u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    d = diag();
+    CHECK(perm_count == 3u && last_perm.update_sequence == 21u && uart_n == 2u);
+    RUN(check_relay(&uart_out[1], 2u, 21u, NET_TRISTATE_YES, 4u, last_perm_meta.received_at_ms));
+    CHECK(d.permission.reason == NET_PERMISSION_CURRENT && d.permission.power_usable);
+    CHECK(isr_callbacks == 0u);
+    return 0;
+}
+
+/* Main pass every 3 ms through the node root (NetNode_Step / Net_MainFunction):
+ * P_VISION_RESULT frames back to back (29 B, 2.5 ms each at 115200 bit/s)
+ * bring more bytes per pass than one drain budget (16 B); DOMAIN_PERMISSION
+ * frames arrive meanwhile. Every frame reaches the application whole, in
+ * order, with the ISR time of its last byte (30_UART_C.md, CisApp_OnPiVision*). */
+static int f16_vision_rx_main_3ms(void)
+{
+    enum { FRAMES = 12 };
+    NetUpperUartMessage m;
+    NetNodeDiag d;
+    uint64_t last[FRAMES];
+    unsigned i;
+    pass_us = 3000u;
+    CHECK(start_node() == NET_OK);
+    step_ms(6u);
+    for (i = 0u; i < FRAMES; ++i) {
+        if ((i % 4u) == 0u) RUN(permission_in(1u + i / 4u, 30u + i / 4u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+        m = vision_message((uint16_t)(1u + i), 700u + i, 20u);
+        RUN(line_send(&m, &last[i]));
+    }
+    step_ms(12u);
+    CHECK(result_count == FRAMES && isr_callbacks == 0u);
+    for (i = 0u; i < FRAMES; ++i) CHECK(result_links[i] == (uint16_t)(1u + i));
+    CHECK(last_result.vision_sequence == 700u + FRAMES - 1u);
+    CHECK(last_result_meta.received_at_ms == (uint32_t)last[FRAMES - 1u]);
+    CHECK(perm_count == FRAMES / 4u);
+    d = diag();
+    CHECK(d.app.vision_result_delivered == FRAMES);
+    CHECK(d.rtd.uart_poll_drained > 0u && d.rtd.main_drained_max <= d.rtd.isr_drain_budget);
+    CHECK(d.rtd.uart[1].uart_isr_ring_overflow == 0u && d.rtd.uart[1].uart_rx_loss_marks == 0u);
+    CHECK(d.upper.rx_held == 0u && d.upper.rx_invalid == 0u && d.upper.rx_dropped == 0u && d.upper.stale == 0u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1065,7 +1166,9 @@ int main(int argc, char **argv)
 #ifdef CIS_NODE_TEST_ENTRY
         { "f13_entry", f13_entry },
 #endif
-        { "f14_permission_repeat_delivered", f14_permission_repeat_delivered }
+        { "f14_permission_repeat_delivered", f14_permission_repeat_delivered },
+        { "f15_permission_quality_drop_same_update", f15_permission_quality_drop_same_update },
+        { "f16_vision_rx_main_3ms", f16_vision_rx_main_3ms }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

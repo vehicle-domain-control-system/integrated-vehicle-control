@@ -68,7 +68,8 @@ static uint64_t line_ms(void) { return MockRtd_NowUs() / 1000u; }
 #define TIMER_ON true
 #endif
 
-#define PASS_US 1000u                /* main pass period */
+#define PASS_US 1000u                /* default main pass period */
+static uint64_t pass_us = PASS_US;   /* main pass period of the case */
 static uint64_t next_pass_us = PASS_US;
 
 /* ------------------------------------------- ISR context bookkeeping ---- */
@@ -92,6 +93,7 @@ void Uart344_BringupCallback(const uint8 HwInstance, const Lpuart_Uart_Ip_EventT
 
 /* ---------------------------------------------------- typed callbacks ---- */
 static unsigned rx_count, perm_count;
+static uint16_t rx_links[64];        /* LINK_SEQUENCE of each delivered frame */
 static NetUpperUartMessage rx_last;
 static NetUpperDelivery rx_meta;
 
@@ -102,6 +104,7 @@ static NetStatus note_rx(uint8_t type, const NetUpperDelivery *d)
     rx_last.type = type;
     rx_last.sequence = (uint16_t)d->source_sequence;
     rx_meta = *d;
+    if (rx_count < sizeof(rx_links) / sizeof(rx_links[0])) rx_links[rx_count] = rx_last.sequence;
     ++rx_count;
     return NET_OK;
 }
@@ -129,7 +132,7 @@ static NetStatus start(void)
     size_t i;
     MockRtd_Reset();
     MockRtd_SetSystemTimerEnabled(TIMER_ON);
-    next_pass_us = PASS_US;
+    next_pass_us = pass_us;
     memset(&in, 0, sizeof(in));
     in.can_port_epoch = 1u;
     in.uart_m_port_epoch = 1u;
@@ -150,7 +153,7 @@ static NetStatus start(void)
     c.local_epoch = 1u;
     for (i = 0u; i < 3u; ++i) c.port_epoch[i] = 1u;
     c.profile = NET_WIRE_CANDIDATE_ONLY;
-    c.port = net_hal_adapter_port(&hal);
+    c.port = net_hal_rtd_port(&hal);     /* the node root's Port (src/node/net_node.c) */
     c.owner = net_ecu_adapter_owner(&ecu);
     for (i = 0u; i < NET_UPPER_ROUTE_COUNT; ++i) {
         const NetWireRegistryEntry *r = net_wire_registry_at(i);
@@ -180,14 +183,14 @@ static void step(void)
     (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET);
 }
 
-/* Superloop: one main pass at every 1 ms boundary while time advances. */
+/* Superloop: one main pass at every pass_us boundary while time advances. */
 static void advance_us(uint64_t us)
 {
     uint64_t end = MockRtd_NowUs() + us;
     while (next_pass_us <= end) {
         MockRtd_AdvanceUs(next_pass_us - MockRtd_NowUs());
         step();
-        next_pass_us += PASS_US;
+        next_pass_us += pass_us;
     }
     MockRtd_AdvanceUs(end - MockRtd_NowUs());
 }
@@ -198,7 +201,7 @@ static void step_ms(unsigned ms) { advance_us((uint64_t)ms * 1000u); }
 static void stall_us(uint64_t us)
 {
     MockRtd_AdvanceUs(us);
-    next_pass_us = (MockRtd_NowUs() / PASS_US + 1u) * PASS_US;
+    next_pass_us = (MockRtd_NowUs() / pass_us + 1u) * pass_us;
 }
 
 static void dbg_dump(void);
@@ -536,6 +539,20 @@ static int rx_once(uint16_t sequence, uint32_t value)
     step_ms(5u);
     CHECK(rx_count == before + 1u);                     /* exactly once */
     CHECK(isr_callbacks == 0u);
+    return 0;
+}
+
+/* A whole frame the service refuses as stale: no callback, stale +1. */
+static int rx_stale(uint16_t sequence, uint32_t value)
+{
+    NetWireUartFrame f = rx_frame(sequence, value);
+    NetUpperObservation o0 = observation(), o;
+    unsigned before = rx_count;
+    CHECK(f.length != 0u);
+    CHECK(line_send(f.bytes, f.length) == f.length);
+    step_ms(3u);
+    o = observation();
+    CHECK(rx_count == before && o.stale == o0.stale + 1u);
     return 0;
 }
 
@@ -901,14 +918,20 @@ static int u12_isr_ring_overflow(void)
     CHECK(d.uart[DIAG].uart_isr_ring_max_depth == 256u);
     CHECK(d.uart[DIAG].uart_isr_ring_overflow == total - 256u);
     CHECK(d.uart[DIAG].uart_rx_bytes == total);
-    /* Passes resume: one budget per pass. Bytes captured before an earlier
-     * pass's time are refused by M06 (net_upper_uart.h receiver poll
-     * contract), so no partial or mixed frame is ever delivered. */
+    /* Passes resume. The pass drain keeps its budget; the Port poll hands the
+     * waiting bytes (all captured before the service's clock reading) to M06
+     * before its timer check (net_upper_uart.h receiver poll contract), so
+     * every whole frame the ring kept is delivered, in order. The frame cut
+     * by the overflow is never delivered, partial or mixed. */
     step_ms(30u);
     d = rdiag();
     CHECK(d.main_drained_max <= d.isr_drain_budget);
+    CHECK(d.uart_poll_drained > 0u);
     o = observation();
-    CHECK(o.rx_invalid == 0u && o.errors == 0u);
+    CHECK(o.rx_invalid == 0u && o.errors == 0u && o.rx_held == 0u);
+    CHECK(rx_count == 256u / f.length);
+    for (i = 0u; i < rx_count; ++i) CHECK(rx_links[i] == (uint16_t)(1u + i));
+    CHECK(stream()->byte_losses == 0u);
     /* The next byte brings the loss in stream order; the next frame on the
      * line is delivered whole. */
     f = rx_frame(20u, 990u);
@@ -923,6 +946,79 @@ static int u12_isr_ring_overflow(void)
     return 0;
 }
 
+/* Main pass every 3 ms on a busy line: a P_VISION_RESULT (29 B, 2.5 ms at
+ * 115200 bit/s) and more arrive between two passes, beyond one drain budget
+ * (16 B). The Port poll takes the waiting bytes before the M06 timer check,
+ * so every frame arrives whole, with its own last-byte capture time, and CAN
+ * frames received meanwhile are not starved. */
+static int u13_main_period_3ms(void)
+{
+    enum { FRAMES = 12 };
+    NetWireUartFrame f;
+    NetHalRtdDiag d;
+    NetUpperObservation o;
+    uint64_t last_byte[FRAMES];
+    uint32_t i;
+    pass_us = 3000u;
+    CHECK(start() == NET_OK);
+    step_ms(6u);
+    for (i = 0u; i < FRAMES; ++i) {
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
+        if ((i % 3u) == 0u) RUN(permission_in(1u + i / 3u, 50u + i / 3u));
+#endif
+        f = rx_frame((uint16_t)(1u + i), 1200u + i);
+        CHECK(line_send(f.bytes, f.length) == f.length);   /* back to back */
+        last_byte[i] = line_ms();
+    }
+    CHECK(run_until_rx(FRAMES, 30u));
+    step_ms(9u);
+    CHECK(rx_count == FRAMES && delivered_is((uint16_t)FRAMES, 1200u + FRAMES - 1u));
+    for (i = 0u; i < FRAMES; ++i) CHECK(rx_links[i] == (uint16_t)(1u + i));
+    CHECK(rx_meta.capture.captured_at_ms == last_byte[FRAMES - 1u]);
+    d = rdiag();
+    CHECK(d.uart_poll_drained > 0u);                         /* more than one budget per pass came */
+    CHECK(d.main_drained_max <= d.isr_drain_budget);
+    CHECK(d.uart[DIAG].uart_isr_ring_overflow == 0u && d.uart[DIAG].uart_rx_loss_marks == 0u);
+    o = observation();
+    CHECK(o.rx_held == 0u && o.rx_invalid == 0u && o.rx_dropped == 0u && o.stale == 0u);
+    CHECK(stream()->byte_losses == 0u && stream()->discarded_bytes == 0u && stream()->bad_crc == 0u);
+    CHECK(stream()->assembly_timeouts == 0u);
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
+    CHECK(perm_count == (FRAMES + 2u) / 3u);
+#endif
+    CHECK(isr_callbacks == 0u);
+    RUN(link_healthy());
+    return 0;
+}
+
+/* 20_UART_M.md shared framing: LINK_SEQUENCE is the per-direction frame order
+ * modulo 65536. A number 1..2^15-1 ahead of the last accepted one (on that
+ * circle) is a newer frame, so 65535 -> 0 goes on; one behind, or exactly
+ * opposite, is stale. */
+static int u14_link_sequence_wrap(void)
+{
+    static const uint16_t newer[] = { 65534u, 65535u, 0u, 1u };
+    NetUpperObservation o;
+    uint32_t i;
+    CHECK(start() == NET_OK);
+    step_ms(2u);
+    for (i = 0u; i < 4u; ++i) RUN(rx_once(newer[i], 1300u + i));
+    CHECK(rx_count == 4u);
+    for (i = 0u; i < 4u; ++i) CHECK(rx_links[i] == newer[i]);
+    /* Behind the last accepted (1): 0 and 65535 are stale; 1 + 2^15 is exactly
+     * opposite, not newer. */
+    RUN(rx_stale(0u, 1310u));
+    RUN(rx_stale(65535u, 1311u));
+    RUN(rx_stale(32769u, 1312u));
+    o = observation();
+    CHECK(rx_count == 4u && o.stale == 3u);
+    /* 2^15 - 1 ahead: newer. */
+    RUN(rx_once(32768u, 1313u));
+    CHECK(rx_count == 5u && rx_links[4] == 32768u);
+    RUN(link_healthy());
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -933,7 +1029,8 @@ int main(int argc, char **argv)
 #ifdef UART_HAL_TEST_ROUTE
         { "u10_callback_routing", u10_callback_routing },
 #endif
-        { "u11_can_uart_mixed", u11_can_uart_mixed }, { "u12_isr_ring_overflow", u12_isr_ring_overflow }
+        { "u11_can_uart_mixed", u11_can_uart_mixed }, { "u12_isr_ring_overflow", u12_isr_ring_overflow },
+        { "u13_main_period_3ms", u13_main_period_3ms }, { "u14_link_sequence_wrap", u14_link_sequence_wrap }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

@@ -107,7 +107,7 @@ target_link_options(test_vss_integ PRIVATE
 # Cases follow the VSS hand-over "integration checks" and contracts C1..C10.
 foreach(case IN ITEMS vi1_boot_order vi2_clock_axis vi3_tx_per_message vi4_domain_reboot
         vi5_same_occurrence vi6_structure_rejected vi7_warning_rx_loss vi8_status_period
-        vi9_link_locked_resubmit vi10_rx_flood_budget)
+        vi9_link_locked_resubmit vi10_rx_flood_budget vi11_warning_quality_drop)
     add_test(NAME vss_integ.${case} COMMAND test_vss_integ ${case})
 endforeach()
 # Disabled, cause on the Network side: once a CAN ID was admitted with one

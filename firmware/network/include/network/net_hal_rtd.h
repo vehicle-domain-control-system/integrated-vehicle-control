@@ -11,15 +11,19 @@
  * CAN RX ISR -> static CAN RX queue -> Network superloop):
  *   ISR  : RTD FlexCAN callback -> copy frame + raw time stamp into the backend
  *          ISR ring -> re-arm MB. TX_COMPLETE and bus-off: fact + stamp into
- *          the same ring. LPUART RX_FULL -> byte + raw stamp into the link's
- *          byte ring -> re-arm the one-byte reception; END_TRANSFER: TX fact +
- *          stamp; ERROR: counted, flagged on the next byte, reception re-armed.
+ *          the same ring; a CAN frame lost (ring full, MB overrun) is counted
+ *          and the next stored frame is delivered as received. LPUART RX_FULL
+ *          -> byte + raw stamp into the link's byte ring -> re-arm the
+ *          one-byte reception; END_TRANSFER: TX fact + stamp; ERROR: counted,
+ *          reported as a loss mark before the next byte, reception re-armed.
  *          The ISR never calls net_hal_capture_*().
  *   Main : NetNode_Step() -> net_hal_rtd_drain() takes at most
- *          NET_BOARD_ISR_DRAIN_BUDGET ring entries (UART bytes first, then
- *          CAN), converts each stamp to Network ms and calls
- *          net_hal_capture_*(); net_upper_step() then polls the adapter queue;
- *          net_hal_rtd_service() supervises stuck TX MBs and UART transfers.
+ *          NET_BOARD_ISR_DRAIN_BUDGET ring entries (CAN frames first, then
+ *          UART bytes), converts each stamp to Network ms and calls
+ *          net_hal_capture_*(); net_upper_step() then polls the adapter queue
+ *          through net_hal_rtd_port(), which takes waiting UART bytes on
+ *          demand; net_hal_rtd_service() supervises stuck TX MBs and UART
+ *          transfers.
  * Frame assembly, CRC and resynchronisation of UART bytes are M06 (L04), not
  * the backend.
  * Time base (net_board_cfg.h): A) application tick hooks, Network now set by
@@ -78,6 +82,9 @@ typedef struct {
     uint32_t init_rtd_status;   /* raw RTD status of the failed step */
     uint32_t ticks_per_ms;
     uint32_t rx_frames, rx_queue_rejected, rx_overruns, rx_rearm_errors, rx_length_mismatch;
+    /* CAN frames stored right after a loss (ring full or MB overrun): loss
+     * boundaries. The stored frame itself is complete and delivered. */
+    uint32_t rx_loss_events;
     uint32_t tx_sent, tx_busy, tx_send_errors, tx_complete, tx_timeout_aborts;
     uint32_t err_events, busoff_events, last_error_status, unexpected_events;
     uint8_t tx_error_counter, rx_error_counter;
@@ -92,6 +99,7 @@ typedef struct {
     /* LPUART links (net_hal_rtd_uart.c) */
     uint32_t uart_isr_ring_capacity;  /* received bytes held per link between two main passes */
     uint32_t uart_unexpected_instance;/* events of an instance that is no Network UART link */
+    uint32_t uart_poll_drained;       /* ring entries the Port poll took on demand (net_hal_rtd_port) */
     NetHalRtdUartDiag uart[2];        /* [0] UART-M, [1] UART-C */
 } NetHalRtdDiag;
 
@@ -121,10 +129,21 @@ void net_hal_rtd_service(void);
 bool net_hal_rtd_set_now(uint64_t now_ms);
 
 /* Main context only (first thing in NetNode_Step()). Takes at most
- * NET_BOARD_ISR_DRAIN_BUDGET entries from the ISR ring in arrival order,
- * converts their stamps and hands them to the adapter (net_hal_capture_*).
- * Returns the number of entries taken. */
+ * NET_BOARD_ISR_DRAIN_BUDGET entries from the ISR rings in arrival order per
+ * ring (CAN frames first, then UART bytes), converts their stamps and hands
+ * them to the adapter (net_hal_capture_*). Returns the number of entries taken. */
 uint32_t net_hal_rtd_drain(void);
+
+/* The NetUpperPort the service uses: the adapter port (net_hal_adapter_port)
+ * whose poll does not report "no work" while a received UART byte captured at
+ * or before the service's clock reading still waits in an ISR byte ring. The
+ * M06 receiver runs its timer check only after the Port reports no work
+ * (net_upper_uart.h, receiver poll), and refuses a byte captured before that
+ * check; so such a byte is taken on demand (at most NET_BOARD_ISR_DRAIN_BUDGET
+ * per poll, the service's poll budget bounds a step) instead of waiting for
+ * the next pass. Profiles without a UART link: the adapter port as it is.
+ * Call after net_hal_rtd_config(); the adapter must outlive the service. */
+NetUpperPort net_hal_rtd_port(NetHalAdapter *adapter);
 
 NetStatus net_hal_rtd_diag(NetHalRtdDiag *out);
 

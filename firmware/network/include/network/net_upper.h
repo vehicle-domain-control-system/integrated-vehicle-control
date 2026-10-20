@@ -93,7 +93,7 @@ typedef struct {
     bool rx_per_field_age[NET_UPPER_ROUTE_COUNT];
     NetWireStreamPolicy uart_policy[2];
     bool uart_sequence_bound[2];
-    uint16_t uart_initial_sequence[2]; /* Explicit owner-selected starting value. Wrap HOLD. */
+    uint16_t uart_initial_sequence[2]; /* Explicit owner-selected starting value. Wraps modulo 65536. */
     bool inspection_transport; /* Default OFF; isolated held-route observation only. */
     bool retain_failure_notices; /* Explicit opt-in: pending private failure notice prevents retirement. */
 } NetUpperConfig;
@@ -115,7 +115,7 @@ typedef struct {
     bool rx_per_field_age[NET_UPPER_ADMISSION_CAPACITY];
     NetWireStreamPolicy uart_policy[2];
     bool uart_sequence_bound[2];
-    uint16_t uart_initial_sequence[2]; /* Explicit owner-selected starting value. Wrap HOLD. */
+    uint16_t uart_initial_sequence[2]; /* Explicit owner-selected starting value. Wraps modulo 65536. */
     bool inspection_transport; /* Default OFF; isolated held-route observation only. */
     bool retain_failure_notices; /* Explicit opt-in: pending private failure notice prevents retirement. */
 } NetUpperStoredConfig;

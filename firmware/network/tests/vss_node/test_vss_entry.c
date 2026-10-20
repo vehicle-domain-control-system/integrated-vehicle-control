@@ -751,9 +751,10 @@ static int e8_node_config_refused(void)
     return inert_after_failed_init((uint8_t)NET_ENTRY_INIT_CONFIG_REFUSED);
 }
 
-/* ISR ring full: the frame is dropped and counted, the loss is flagged on the
- * next captured frame (a real loss, nothing synthesized), the link keeps
- * working. */
+/* ISR ring full: the frame is dropped and counted (CAN_PORT_RECOVERY.md, RX
+ * overflow: a real loss, recorded with its boundary, nothing synthesized,
+ * result OK). The next stored frame is complete and is delivered as
+ * received; the link keeps working. */
 static int e9_ring_overflow(void)
 {
     NetWireCanEnvelope e;
@@ -775,19 +776,24 @@ static int e9_ring_overflow(void)
     run_ticks(capacity / d.rtd.isr_drain_budget + 2u);
     CHECK(event_count == (int)capacity);
     CHECK(event_metas[capacity - 1u].source.tx_sequence == capacity);
-    /* The next stored frame carries the loss: not delivered as if nothing was lost. */
+    CHECK(d.rtd.rx_loss_events == 0u);
+    /* The next stored frame follows the loss: it is complete and delivered as
+     * received (a one-off Event must not be lost twice); the boundary is
+     * recorded once. */
     CHECK(encode_event(capacity + lost + 1u, 3000u, &e));
     CHECK(inject(&e) >= 0);
     run_ticks(1u);
     d = diag();
-    CHECK(event_count == (int)capacity);
-    CHECK(d.upper.rx_held == d0.upper.rx_held + 1u);
+    CHECK(event_count == (int)capacity + 1 && last_event.occurrence_id == 3000u);
+    CHECK(last_event_meta.source.tx_sequence == capacity + lost + 1u);
+    CHECK(d.upper.rx_held == d0.upper.rx_held);
+    CHECK(d.rtd.rx_loss_events == 1u);
     CHECK(encode_event(capacity + lost + 2u, 3001u, &e));
     CHECK(inject(&e) >= 0);
     run_ticks(1u);
-    CHECK(event_count == (int)capacity + 1 && last_event.occurrence_id == 3001u);
+    CHECK(event_count == (int)capacity + 2 && last_event.occurrence_id == 3001u);
     d = diag();
-    CHECK(d.rtd.isr_ring_overflow == lost);
+    CHECK(d.rtd.isr_ring_overflow == lost && d.rtd.rx_loss_events == 1u);
     CHECK(d.upper.errors == d0.upper.errors && d.hal.rx_dropped == 0u); /* no link lock */
     CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
     run_ticks(1u);

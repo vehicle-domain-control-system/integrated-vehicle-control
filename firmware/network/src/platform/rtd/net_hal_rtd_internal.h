@@ -57,5 +57,9 @@ NetStatus net_hal_rtd_uart_arm(void);               /* after started=true: first
 NetStatus net_hal_rtd_uart_submit(const NetHalTransfer *t);
 void net_hal_rtd_uart_service(uint64_t now_ms);     /* transfer timeout, waiting transfer, RX re-arm */
 uint32_t net_hal_rtd_uart_drain(uint32_t budget);   /* main: TX facts + at most budget received bytes */
+/* Main, from the Port poll (net_hal_rtd_port): at most budget received bytes
+ * (and loss marks) whose stamp lies at or before limit_ms, in ring order; a
+ * later entry and everything behind it stay for the next poll or pass. */
+uint32_t net_hal_rtd_uart_drain_until(uint32_t budget, uint64_t limit_ms);
 
 #endif

@@ -769,21 +769,140 @@ static int h14_rx_burst(void)
     CHECK(d.rtd.rx_frames == d0.rtd.rx_frames + BURST);
     CHECK(d.rtd.rx_queue_rejected == 0u);
     CHECK(d.rtd.rx_overruns == 0u);
-    /* Controller overrun: an earlier frame in the MB was overwritten. The loss
-     * is counted and flagged on the capture; the flagged frame is not delivered
-     * as if nothing had been lost, and the link keeps working. */
+    CHECK(d.rtd.rx_loss_events == 0u);
+    /* Controller overrun: an earlier frame in the MB was overwritten. That
+     * loss is recorded (CAN_PORT_RECOVERY.md, RX overflow: a real loss, its
+     * boundary only, nothing synthesized); the frame read now is complete and
+     * is delivered as received, and the link keeps working. */
     r = event_raw(BURST + 1, 2000u);
     CHECK(encode_event(&r, &e));
     CHECK(inject_frame(&e, e.fdf, e.brs, e.dlc, true) >= 0);
     step_ms(1u);
     d = diag();
-    CHECK(d.rtd.rx_overruns == 1u);
-    CHECK(event_count == BURST);
+    CHECK(d.rtd.rx_overruns == 1u && d.rtd.rx_loss_events == 1u);
+    CHECK(event_count == BURST + 1 && last_event.occurrence_id == 2000u);
+    CHECK(last_event_meta.source.tx_sequence == (uint32_t)(BURST + 1));
+    CHECK(d.upper.rx_held == d0.upper.rx_held && d.upper.errors == d0.upper.errors);
     r = event_raw(BURST + 2, 2001u);
     CHECK(encode_event(&r, &e));
     CHECK(inject(&e) >= 0);
     step_ms(1u);
-    CHECK(event_count == BURST + 1 && last_event.occurrence_id == 2001u);
+    CHECK(event_count == BURST + 2 && last_event.occurrence_id == 2001u);
+    CHECK(diag().rtd.rx_loss_events == 1u);
+    return 0;
+}
+
+static int send_warning(const NetWireVssWarningStateRaw *w)
+{
+    NetWireCanEnvelope e;
+    CHECK(net_wire_can_encode_vss_warning_state(NET_WIRE_CANDIDATE_ONLY, w, &e) == NET_WIRE_OK);
+    CHECK(inject(&e) >= 0);
+    return 0;
+}
+
+/* A warning lane that lost its quality keeps the last valid source sequence
+ * and lets its AGE grow (VSS hand-over C12), while another lane brings a new
+ * evaluation in the same frame. 04_COMMON/10_DATA_AND_ID_RULES.md (repeat and
+ * current quality): an actual quality drop of the same original observation
+ * with a new TX_SEQUENCE is accepted and delivered; a higher TX_SEQUENCE alone
+ * never changes the original value nor promotes the quality back to OK.
+ * VSS/10_DATA.md: the lanes keep independent quality and AGE. */
+static int h15_warning_quality_drop(void)
+{
+    NetWireVssWarningStateRaw w;
+    NetNodeDiag d0, d;
+    CHECK(start_node() == NET_OK);
+    step_ms(3u);
+    d0 = diag();
+    w = warning_raw(1u);                       /* every lane OK */
+    CHECK(send_warning(&w) == 0);
+    step_ms(50u);
+    CHECK(warning_count == 1);
+    /* TX2: occupant lane loses its quality (same source sequence 22, STALE,
+     * AGE 230 -> 400); rear lane brings a new evaluation (33 -> 34). The
+     * unchanged lanes repeat with their AGE grown by the elapsed time. */
+    w.tx_sequence = 2u;
+    w.occupant_hazard_quality = NET_QUALITY_STALE;
+    w.occupant_hazard_reason = NET_QUALITY_REASON_STALE;
+    w.occupant_hazard_original_age_ms = 400u;
+    w.rear_obstacle_source_sequence = 34u;
+    w.rear_obstacle_state = NET_REAR_WARNING_EMERGENCY;
+    w.rear_obstacle_original_age_ms = 5u;
+    w.antipinch_original_age_ms = 170u;
+    w.rear_activation_age_ms = 105u;
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 2 && last_warning_meta.source.tx_sequence == 2u);
+    CHECK(last_warning.occupant_hazard_source_sequence == 22u);
+    CHECK(last_warning.occupant_hazard_quality == NET_QUALITY_STALE);
+    CHECK(last_warning.occupant_hazard_reason == NET_QUALITY_REASON_STALE);
+    CHECK(last_warning.occupant_hazard_original_age_ms == 400u);
+    CHECK(last_warning.occupant_hazard_state == NET_FLAG_NO);
+    CHECK(last_warning.rear_obstacle_source_sequence == 34u);
+    CHECK(last_warning.rear_obstacle_state == NET_REAR_WARNING_EMERGENCY);
+    /* TX3: the same lost lane again (STALE -> INVALID with another reason is
+     * still restricted), the rear lane another new evaluation. */
+    step_ms(49u);
+    w.tx_sequence = 3u;
+    w.occupant_hazard_quality = NET_QUALITY_INVALID;
+    w.occupant_hazard_reason = NET_QUALITY_REASON_COMMUNICATION_FAULT;
+    w.occupant_hazard_original_age_ms = 450u;
+    w.rear_obstacle_source_sequence = 35u;
+    w.rear_obstacle_original_age_ms = 4u;
+    w.antipinch_original_age_ms = 220u;
+    w.rear_activation_age_ms = 155u;
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 3 && last_warning_meta.source.tx_sequence == 3u);
+    CHECK(last_warning.occupant_hazard_quality == NET_QUALITY_INVALID);
+    CHECK(last_warning.occupant_hazard_reason == NET_QUALITY_REASON_COMMUNICATION_FAULT);
+    CHECK(last_warning.rear_obstacle_source_sequence == 35u);
+    d = diag();
+    CHECK(d.upper.rx_delivered == d0.upper.rx_delivered + 3u);
+    CHECK(d.upper.rx_held == d0.upper.rx_held && d.app.warning_delivered == 3u);
+    /* TX4: the lost lane back to OK under the same source sequence (a
+     * promotion by TX_SEQUENCE alone): the frame is held as one result. */
+    step_ms(49u);
+    w.tx_sequence = 4u;
+    w.occupant_hazard_quality = NET_QUALITY_OK;
+    w.occupant_hazard_reason = NET_QUALITY_REASON_NONE;
+    w.occupant_hazard_original_age_ms = 500u;
+    w.rear_obstacle_source_sequence = 36u;
+    w.antipinch_original_age_ms = 270u;
+    w.rear_activation_age_ms = 205u;
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(warning_count == 3 && d.upper.rx_held == d0.upper.rx_held + 1u);
+    /* TX5: the same source sequence with another value: held. */
+    step_ms(49u);
+    w.tx_sequence = 5u;
+    w.occupant_hazard_quality = NET_QUALITY_INVALID;
+    w.occupant_hazard_reason = NET_QUALITY_REASON_COMMUNICATION_FAULT;
+    w.occupant_hazard_state = NET_FLAG_YES;
+    w.occupant_hazard_original_age_ms = 550u;
+    w.rear_obstacle_source_sequence = 37u;
+    w.antipinch_original_age_ms = 320u;
+    w.rear_activation_age_ms = 255u;
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(warning_count == 3 && d.upper.rx_held == d0.upper.rx_held + 2u);
+    /* TX6: a new occupant evaluation (new source sequence, OK, fresh AGE). */
+    step_ms(49u);
+    w.tx_sequence = 6u;
+    w.occupant_hazard_source_sequence = 23u;
+    w.occupant_hazard_quality = NET_QUALITY_OK;
+    w.occupant_hazard_reason = NET_QUALITY_REASON_NONE;
+    w.occupant_hazard_original_age_ms = 3u;
+    w.rear_obstacle_source_sequence = 38u;
+    w.antipinch_original_age_ms = 370u;
+    w.rear_activation_age_ms = 305u;
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 4 && last_warning_meta.source.tx_sequence == 6u);
+    CHECK(last_warning.occupant_hazard_source_sequence == 23u && last_warning.occupant_hazard_state == NET_FLAG_YES);
+    CHECK(last_warning.occupant_hazard_quality == NET_QUALITY_OK);
     return 0;
 }
 
@@ -797,7 +916,7 @@ int main(int argc, char **argv)
         { "h09_publish_in_callback", h09_publish_in_callback }, { "h10_ack_missing", h10_ack_missing },
         { "h11_busoff", h11_busoff }, { "h12_time_source", h12_time_source },
         { "h13_status_not_repeated", h13_status_not_repeated }, { "h13_pending_age", h13_pending_age },
-        { "h14_rx_burst", h14_rx_burst }
+        { "h14_rx_burst", h14_rx_burst }, { "h15_warning_quality_drop", h15_warning_quality_drop }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

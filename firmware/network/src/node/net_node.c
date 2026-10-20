@@ -11,8 +11,9 @@
 #include "net_node_profile.h"
 #include <string.h>
 
-#if NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_VSS && NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_CIS
-#error "net_node.c: no node profile table for this NETWORK_UPPER_NODE_PROFILE (wired: VSS=6, CIS=1)"
+#if NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_VSS && NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_CIS && \
+    NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_BCM
+#error "net_node.c: no node profile table for this NETWORK_UPPER_NODE_PROFILE (wired: VSS=6, CIS=1, BCM=3)"
 #endif
 
 static NetUpper service;
@@ -88,7 +89,7 @@ NetStatus NetNode_Init(const NetNodeConfig *config)
     c.port_epoch[NET_WIRE_UART_M] = p->uart_m ? config->uart_m_port_epoch : config->can_port_epoch;
     c.port_epoch[NET_WIRE_UART_C] = p->uart_c ? config->uart_c_port_epoch : config->can_port_epoch;
     c.profile = NET_WIRE_CANDIDATE_ONLY;
-    c.port = net_hal_adapter_port(&hal);
+    c.port = net_hal_rtd_port(&hal);   /* adapter port; UART ISR bytes taken before the M06 timer check */
     c.owner = net_ecu_adapter_owner(&ecu);
     rx_defaults(&c);
     p->upper(&c);
@@ -132,6 +133,7 @@ void NetNode_Step(void)
     (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* RX dispatch -> XxxApp_* ; TX facts */
     (void)net_permission_step(&permission);                /* DOMAIN_PERMISSION supervision */
     net_hal_rtd_service();                                 /* stuck-TX abort, error counters */
+    if (net_node_profile.service != NULL) net_node_profile.service(); /* App Port -> idle M04 slots */
     (void)net_upper_publish_service(&publisher);           /* M04: retire, BOOT/TX, due frames */
     (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* dispatch what M04 offered */
 }

@@ -23,7 +23,12 @@
  *            M04 never feeds a flagged capture's byte into the stream; it only
  *            signals the byte loss (partial frame discarded), so the next real
  *            byte, e.g. the SYNC of the next frame, is not consumed by the flag.
- *   main   : net_hal_rtd_drain() converts stamps and calls net_hal_capture_uart().
+ *   main   : net_hal_rtd_drain() converts stamps and calls net_hal_capture_uart()
+ *            with what its budget leaves after the CAN frames; the service's
+ *            Port poll (net_hal_rtd_port) takes the bytes still waiting that
+ *            were captured at or before its clock reading, before the M06
+ *            timer check, so a pass longer than one budget of byte times
+ *            loses no byte (net_upper_uart.h, receiver poll contract).
  * TX (one transfer per link on the line):
  *   submit : idle link -> AsyncSend of the whole frame, admission reported at
  *            once. Busy link -> the borrowed transfer waits in submission order
@@ -392,6 +397,20 @@ NetStatus net_hal_rtd_uart_submit(const NetHalTransfer *t)
     return NET_HOLD;
 }
 
+/* A taken ring entry to the adapter, at its placed capture time. */
+static void hand_over(const UartLink *u, const RxEntry *e, uint64_t at)
+{
+    NetUpperCapture c;
+    memset(&c, 0, sizeof(c));
+    c.port_epoch = u->epoch;
+    c.captured_at_ms = at;
+    c.timestamp_known = true;
+    c.errors = e->errors;     /* nonzero only on a loss mark */
+    c.overflow = e->overflow;
+    if (net_hal_capture_uart(rtd.adapter, u->link, e->byte, &c) != NET_OK)
+        inc(&u->diag->uart_rx_queue_rejected);
+}
+
 uint32_t net_hal_rtd_uart_drain(uint32_t budget)
 {
     uint32_t i, n = 0u, key;
@@ -419,7 +438,6 @@ uint32_t net_hal_rtd_uart_drain(uint32_t budget)
         UartLink *u = &uart[i];
         while (n < budget) {
             RxEntry e;
-            NetUpperCapture c;
             key = net_board_irq_save();
             if (u->count == 0u) { net_board_irq_restore(key); break; }
             e = u->ring[u->head];
@@ -427,14 +445,32 @@ uint32_t net_hal_rtd_uart_drain(uint32_t budget)
             --u->count;
             net_board_irq_restore(key);
             ++n;
-            memset(&c, 0, sizeof(c));
-            c.port_epoch = u->epoch;
-            c.captured_at_ms = net_hal_rtd_place_stamp(e.stamp);
-            c.timestamp_known = true;
-            c.errors = e.errors;      /* nonzero only on a loss mark */
-            c.overflow = e.overflow;
-            if (net_hal_capture_uart(rtd.adapter, u->link, e.byte, &c) != NET_OK)
-                inc(&u->diag->uart_rx_queue_rejected);
+            hand_over(u, &e, net_hal_rtd_place_stamp(e.stamp));
+        }
+    }
+    return n;
+}
+
+uint32_t net_hal_rtd_uart_drain_until(uint32_t budget, uint64_t limit_ms)
+{
+    uint32_t i, n = 0u, key;
+    for (i = 0u; i < LINKS; ++i) {
+        UartLink *u = &uart[i];
+        while (n < budget) {
+            RxEntry e;
+            uint64_t at;
+            key = net_board_irq_save();
+            if (u->count == 0u) { net_board_irq_restore(key); break; }
+            e = u->ring[u->head];   /* the ISR writes behind the tail only */
+            net_board_irq_restore(key);
+            at = net_hal_rtd_place_stamp(e.stamp);
+            if (at > limit_ms) break; /* after that reading: it waits, in ring order */
+            key = net_board_irq_save();
+            u->head = (u->head + 1u) % RING;
+            --u->count;
+            net_board_irq_restore(key);
+            ++n;
+            hand_over(u, &e, at);
         }
     }
     return n;
