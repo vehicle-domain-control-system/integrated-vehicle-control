@@ -29,6 +29,13 @@ BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 �
 - `TARGET_BOOT_ID`가 이 노드의 Network BOOT_ID가 아닌 명령은 앱에 전달하지 않는다(`NetNodeDiag.app.command_wrong_target`).
 - 명령 수용 상한(ACCEPT_LIMIT, 200 ms 후보와 1 s 잠정안 차이 미정)은 Network가 적용하지 않는다. `command_age_ms`와 `accept_limit_ms`를 그대로 앱에 넘긴다. Network는 공통 전달 상한 2000 ms만 적용한다.
 
+## DOMAIN 재부팅과 같은 평가의 반복 (수신)
+
+- **재부팅:** DOMAIN이 새 BOOT_ID로 TX 1부터 보내면, CAN ID(0x080, 0x100, 0x110, 0x120)마다 그 ID의 첫 새 BOOT 프레임에서 새 세대로 바꾸고 전달한다. 구조 검증을 통과하고 facade가 받은 프레임만 바꾼다. 그래서 다른 BCM BOOT를 대상으로 한 명령(`command_wrong_target`)은 세대를 바꾸지 않고, 명령의 TARGET_BOOT_ID 규칙은 그대로다.
+- **이전 BOOT로는 돌아갈 수 없다.** 끝난 BOOT를 CAN ID마다 최근 4개 기억하고 그 늦은 프레임은 버린다(`NetNodeDiag.upper.old_generation`). 같은 BOOT_ID로 재기동한 DOMAIN은 복구되지 않는다.
+- **같은 평가의 반복:** 0x080(50 ms / 150 ms)은 같은 평가를 새 TX로 반복해도 `BcmNetPriv_OnDomainPermission` 감독 기록에 전달한다(`upper.repeat_delivered`). 명령은 발생 메시지라 수신 중단 감시가 없고, 같은 명령의 재송신을 다시 전달하지 않는다.
+- 시험: `bcm_node.b13_domain_reboot`.
+
 ## 현재값과 개별 기록
 
 - 상태 4종은 현재값이다. 아직 장치가 가져가지 않은 기록은 새 제출로 교체된다(메시지별 1건, 최신 우선).

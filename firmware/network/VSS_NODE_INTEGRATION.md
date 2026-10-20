@@ -28,6 +28,14 @@ VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만
 - **대기 Age:** 제출 시각부터 실제로 장치에 넘기는 시각까지 기다린 시간을 SOURCE_AGE에 더한다(65535 포화). 제출 시각은 마지막 `Net_MainFunction`의 `nowMs`이고, 보통 다음 `Net_MainFunction()`에서 바로 나가므로 더해지는 것은 루프 1바퀴 정도다. 직전 0x340 프레임이 아직 TX MB에 있으면 새 제출은 그 프레임이 끝날 때까지 기다리고, 기다린 시간이 더해진다.
 - 진단: `NetNodeDiag.status_tx`(M04 슬롯). `sent`, `replaced`, `pending_age_added_ms_max`, `sequence_hold`를 본다. `periodic_sent`는 항상 0이다.
 
+## DOMAIN 재부팅과 같은 평가의 반복 (수신)
+
+- **재부팅:** DOMAIN이 재부팅해 새 BOOT_ID로 TX 1부터 보내면, CAN ID(0x160, 0x0C0, 0x080)마다 그 ID의 첫 새 BOOT 프레임에서 새 세대로 바꾸고 그대로 콜백한다. 구조 검증(DLC, padding, 예약 코드, enum, BOOT≠0)을 통과한 프레임만 바꾼다. 앞 세대의 문맥(TX 순서, 같은 관측 기억, AGE 비교 기준, permission 감독 기록)은 그 ID에서만 버린다. 콜백이 거절한 프레임은 세대를 바꾸지 않는다.
+- **이전 BOOT로는 돌아갈 수 없다.** 끝난 BOOT는 CAN ID마다 최근 4개를 기억하고, 그 BOOT의 늦은 프레임은 콜백 없이 버린다(`NetNodeDiag.upper.old_generation`, `stale`에도 포함). 바뀐 횟수는 `generation_changes`다. DOMAIN이 같은 BOOT_ID로 다시 시작하면 TX가 1로 돌아가 과거 TX로 버려지므로 복구되지 않는다(VSS 계약 C4: BOOT_ID는 기동마다 다르다).
+- **같은 평가의 반복:** 수신 중단 감시가 있는 주기 메시지(0x0C0 `VSS_WARNING_STATE`, 0x080)는 같은 원 관측을 새 TX로 반복해도 콜백한다. 원 관측 번호는 그대로이고 AGE는 늘어난 값이다. VSS INPUT은 TX가 앞선 프레임으로 150 ms 감시를 갱신한다(C11). 정확한 중복(같은 TX, 같은 바이트)은 버린다. 반복은 `NetNodeDiag.upper.repeat_delivered`로 세고 `rx_delivered`·`duplicates`에는 넣지 않는다.
+- **늦게 도착한 반복:** 반복 프레임이 버스 중재 등으로 늦어 AGE가 "직전 AGE + 수신 간격"보다 5 ms 이내로 모자라면, AGE를 그 하한으로 올려 전달한다(`repeat_age_raised`). 낮추지는 않는다. 5 ms는 문서의 CAN 전달 여유 후보(PROPOSED)다. 더 모자라면 보류한다(`rx_held`).
+- `VSS_EVENT`(0x160)는 발생 메시지라 수신 중단 감시가 없다. 같은 occurrence를 새 TX로 다시 보내도 두 번 전달하지 않는다.
+
 ## 공개 진입과 시각
 
 ### `Net_Init()`
@@ -173,11 +181,10 @@ int main(void)
   ```
 - **구성:** VSS 라이브러리 `vss_fw_host`(`src/**/*.c`에서 `hal/s32k344/` 제외 + `hal_mock.c`, VSS `host_test.py`와 같은 플래그 + `VSS_CFG_NET_STUB=0 VSS_CFG_TEST_INPUT=0`), Network 라이브러리 `network_node_vss_integ`(`tools/s32ds_sources.txt` 목록 + mock SDK, `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`, `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`, 시험용 노드 설정·µs hook, `-funsigned-char`). GCC/Clang 전용이다(`-Wl,--wrap`).
 - **시험 프로그램:** `vss_net_api.h`와 `net_if_*.h`는 같은 타입을 정의하므로 두 번역 단위로 나눈다. `test_vss_integ.c`는 VSS 헤더만, `vss_integ_bus.c`(DOMAIN 프레임 codec, 버스, 0x340 해독, Network 진단)는 Network 헤더만 include하고, 둘은 `vss_integ_bus.h`(기본 C 타입)로만 만난다. 슈퍼루프는 tick(1.25 ms)마다 1바퀴, 오디오 출력 경계는 48 kHz 1024 frame마다 올린다. `VssApp_On*`·`VssNet_PublishStatus`는 link spy(`--wrap`)로 기록한 뒤 실제 함수를 부른다.
-- **케이스(`vss_integ.*`, 케이스당 프로세스 1개):** vi1 부팅 순서, vi2 수신 시각 축, vi3 메시지별 TX, vi4 DOMAIN 재부팅, vi5 같은 occurrence 재전송, vi6 구조 오류 선검사, vi7 Warning 수신 끊김, vi8 0x340 주기(10 s에 40±2건), vi9 링크 잠김 재제출, vi10 수신 폭주 처리 상한.
-- **vi4는 DISABLED다.** 원인은 Network 쪽이다: 아래 "제한"의 새 BOOT_ID 거부. 새 BOOT를 받아들이도록 시험 삼아 바꾼 엔진에서는 통과했다. 수용 규칙이 정해지면 `tests/vss_integ/CMakeLists.txt`의 DISABLED를 지운다.
+- **케이스(`vss_integ.*`, 케이스당 프로세스 1개):** vi1 부팅 순서, vi2 수신 시각 축, vi3 메시지별 TX, vi4 DOMAIN 재부팅, vi5 같은 occurrence 재전송, vi6 구조 오류 선검사, vi7 Warning 수신 끊김, vi8 0x340 주기(10 s에 40±2건), vi9 링크 잠김 재제출, vi10 수신 폭주 처리 상한, vi11 한 lane의 품질 하향, vi12 같은 평가 1초 반복(도착 0~2.5 ms 흔들림)에도 경고 유지.
 
 ## 제한
 
 - 버스오프 자동 복구는 없다. bus-off가 나면 CAN 링크가 잠기고, 보드를 리셋해야 다시 송수신한다.
-- **DOMAIN 재부팅(새 BOOT_ID)을 받아들이지 않는다.** 엔진은 CAN ID별로 처음 수용한 BOOT_ID와 다른 BOOT_ID의 프레임을 모두 보류한다(`net_upper_service.c` `admission()`). 그래서 DOMAIN이 재부팅하면 VSS 노드는 리셋 전까지 `VSS_EVENT`·`VSS_WARNING_STATE`·`DOMAIN_PERMISSION`을 받지 못한다. VSS 계약은 새 BOOT를 그대로 전달하기를 기대하고, `docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md`는 BOOT 수용 규칙을 OPEN으로 둔다.
+- DOMAIN이 같은 BOOT_ID로 재기동하면 복구되지 않는다(위 "DOMAIN 재부팅" 절). 끝난 BOOT 기억은 CAN ID마다 4개라, 4번 넘게 재부팅한 뒤 아주 오래된 BOOT의 프레임이 다시 오면 새 세대로 받는다.
 - VSS 노드는 UART 링크와 다른 노드의 facade를 쓰지 않는다.

@@ -45,13 +45,25 @@ static const NetUpperPublishEntry publish_table[] = {
     { NET_WIRE_UART_C, 0x62u, 500u, { true, 500u, true } }
 };
 
+/* Repetitions of the same original observation with a new TX_SEQUENCE /
+ * LINK_SEQUENCE reach the receive callbacks on the periodic routes with a
+ * receive timeout (02_NODES/CIS/20_API.md receive delivery: they feed the
+ * function's receive supervision): DOMAIN_PERMISSION 50 / 150 ms
+ * (10_CAN_FD.md), P_VISION_RESULT 100 / 300 ms and P_VISION_STATUS
+ * 1000 / 3000 ms (30_UART_C.md). The relay to the Pi is not repeated by them
+ * (net_app_port_cis.c). */
 static void upper(NetUpperConfig *c)
 {
     size_t i;
     for (i = 0u; i < NET_UPPER_ROUTE_COUNT; ++i) {
         const NetWireRegistryEntry *r = net_wire_registry_at(i);
-        if (r != NULL && r->link == NET_WIRE_CAN && r->id_type == 0x080u)
+        if (r == NULL) continue;
+        if (r->link == NET_WIRE_CAN && r->id_type == 0x080u) {
             c->rx_policy[i].maximum_age_ms = 500u;
+            c->rx_repeat_delivery[i] = true;
+        }
+        if (r->link == NET_WIRE_UART_C && (r->id_type == 0x60u || r->id_type == 0x61u))
+            c->rx_repeat_delivery[i] = true;
     }
     /* UART-C receiver (Pi -> CIS) and the CIS -> Pi LINK_SEQUENCE. */
     c->uart_policy[NET_WIRE_UART_C - 1u].candidate_time_policy_selected = true;

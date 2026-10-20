@@ -39,13 +39,19 @@ static const NetUpperPublishEntry publish_table[] = {
     { NET_WIRE_CAN, 0x230u, 0u, { true, 65535u + 1000u, true } }
 };
 
+/* DOMAIN_PERMISSION (50 / 150 ms, 10_CAN_FD.md): repetitions of the same
+ * evaluation with a new TX_SEQUENCE reach BcmNetPriv_OnDomainPermission (the
+ * supervision record). The commands (on occurrence / stage change, no
+ * receive timeout) are never delivered twice for one command. */
 static void upper(NetUpperConfig *c)
 {
     size_t i;
     for (i = 0u; i < NET_UPPER_ROUTE_COUNT; ++i) {
         const NetWireRegistryEntry *r = net_wire_registry_at(i);
-        if (r != NULL && r->link == NET_WIRE_CAN && r->id_type == 0x080u)
+        if (r != NULL && r->link == NET_WIRE_CAN && r->id_type == 0x080u) {
             c->rx_policy[i].maximum_age_ms = 500u;
+            c->rx_repeat_delivery[i] = true;
+        }
     }
 }
 

@@ -24,16 +24,30 @@ static const NetUpperPublishEntry publish_table[] = {
     { NET_WIRE_CAN, 0x340u, 0u, { true, 65535u + 1000u, true } }
 };
 
+/* Repetitions of the same original observation with a new TX_SEQUENCE reach
+ * the receive callback on the periodic routes with a receive timeout
+ * (10_CAN_FD.md period / receive timeout: 0x0C0 and 0x080 50 / 150 ms):
+ *   VSS_WARNING_STATE -> VssApp_OnDomainWarningState: the VSS receive watch
+ *     of 150 ms is in VSS INPUT and is refreshed by a newer TX (VSS hand-over
+ *     C11), so a DOMAIN repeating one evaluation keeps the warning alive;
+ *   DOMAIN_PERMISSION -> VssNetPriv_OnDomainPermission (Network supervision
+ *     record, VSS hand-over C9; the guard reads the same refreshed receipt).
+ * VSS_EVENT has no receive timeout (on occurrence): a retransmitted
+ * occurrence is not delivered twice. */
 static void upper(NetUpperConfig *c)
 {
     size_t i;
     for (i = 0u; i < NET_UPPER_ROUTE_COUNT; ++i) {
         const NetWireRegistryEntry *r = net_wire_registry_at(i);
         if (r == NULL || r->link != NET_WIRE_CAN) continue;
-        if (r->id_type == 0x080u) c->rx_policy[i].maximum_age_ms = 500u;
+        if (r->id_type == 0x080u) {
+            c->rx_policy[i].maximum_age_ms = 500u;
+            c->rx_repeat_delivery[i] = true;
+        }
         if (r->id_type == 0x0C0u) {
             c->rx_per_field_age[i] = true;          /* three independent lanes + activation */
             c->rx_policy[i].maximum_age_ms = 1000u; /* local capture->delivery bound */
+            c->rx_repeat_delivery[i] = true;
         }
     }
 }

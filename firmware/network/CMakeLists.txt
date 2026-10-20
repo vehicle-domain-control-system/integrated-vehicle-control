@@ -310,7 +310,7 @@ if(NETWORK_BUILD_UPPER_STACK)
     target_link_libraries(network_product PUBLIC network_wire_candidate network_common)
     network_warnings(network_product)
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "HOST")
-        foreach(suite IN ITEMS adversarial uart query can_routes e2e rx_identity control epoch)
+        foreach(suite IN ITEMS adversarial uart query can_routes e2e rx_identity control epoch generation)
             add_executable(test_upper_${suite} tests/product/test_upper_${suite}.c)
             target_link_libraries(test_upper_${suite} PRIVATE network_product)
             network_warnings(test_upper_${suite})
@@ -352,6 +352,11 @@ if(NETWORK_BUILD_UPPER_STACK)
         foreach(case IN ITEMS old_receipt_read old_receipt_enqueue queued_rear_reset queued_permission_reset
                 queued_vision_reset newer_receipt_immutable source_error epoch_recovery buffered_error)
             add_test(NAME product.epoch_${case} COMMAND test_upper_epoch ${case})
+        endforeach()
+        # Sender runs (BOOT_ID generations) and repetitions of one original observation.
+        foreach(case IN ITEMS ended_depth owner_refused_no_switch repeat_scope repeat_can_slack
+                repeat_uart_slack uart_c_generation)
+            add_test(NAME product.generation_${case} COMMAND test_upper_generation ${case})
         endforeach()
     endif()
 endif()
@@ -707,6 +712,12 @@ if(NETWORK_BUILD_RTD_MOCK)
                 add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
             endforeach()
         endforeach()
+        # Repetition delivery and DOMAIN restart: the OsIf counter build under
+        # the plain case name, the board hook build with its suffix.
+        foreach(case IN ITEMS h16_warning_repeat_delivered h17_domain_boot_switch)
+            add_test(NAME vss_node.${case} COMMAND test_vss_node_e2e_ostimer ${case})
+            add_test(NAME vss_node.${case}_hook COMMAND test_vss_node_e2e_hook ${case})
+        endforeach()
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_vss_entry tests/vss_node/test_vss_entry.c)
@@ -762,15 +773,10 @@ if(NETWORK_BUILD_RTD_MOCK)
                 f04_permission_same_evaluation f05_permission_rx_timeout f06_permission_quality
                 f07_vision_rx f08_publish_frames f09_publish_invalid f10_publish_occupant_relay
                 f11_publish_in_callback f12_not_ready f14_permission_repeat_delivered
-                f15_permission_quality_drop_same_update f16_vision_rx_main_3ms)
+                f15_permission_quality_drop_same_update f16_vision_rx_main_3ms f17_domain_reboot
+                f18_pi_reboot f19_permission_repeat_no_flood)
             add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
         endforeach()
-        # 20_API.md receive delivery: a normal repetition of the same DOMAIN
-        # evaluation with a new TX_SEQUENCE should reach CisApp_OnDomainPermission;
-        # the service ends it as a same observation without a callback (same
-        # rule as the VSS_WARNING_STATE repetition). Kept as written, disabled
-        # until the Network decides the rule.
-        set_tests_properties(cis_node.f14_permission_repeat_delivered PROPERTIES DISABLED TRUE)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_cis_node_entry tests/cis_node/test_cis_node_e2e.c)
@@ -797,7 +803,7 @@ if(NETWORK_BUILD_RTD_MOCK)
                 b04_command_order_target b05_permission_rx b06_publish_states
                 b07_states_not_repeated b08_send_result_event b09_discrete_kept_in_order
                 b10_discrete_no_capacity b11_publish_invalid b12_publish_in_callback
-                b13_not_ready)
+                b13_not_ready b13_domain_reboot)
             add_test(NAME bcm_node.${case} COMMAND test_bcm_node_e2e ${case})
         endforeach()
 

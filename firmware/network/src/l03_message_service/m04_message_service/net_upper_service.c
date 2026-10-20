@@ -144,6 +144,7 @@ static void config_commit(NetUpper *s,const NetUpperConfig *c)
         if(j<NET_UPPER_ADMISSION_CAPACITY) {
             s->config.rx_policy[j]=c->rx_policy[i];
             s->config.rx_per_field_age[j]=c->rx_per_field_age[i];
+            s->config.rx_repeat_delivery[j]=c->rx_repeat_delivery[i];
         }
     }
 #endif
@@ -341,13 +342,47 @@ NetStatus net_upper_capture(NetUpper *s,const NetUpperEvent *e)
     if(s->rx_count==NET_UPPER_RX_CAPACITY){INC(s->observation.rx_dropped);return NET_NO_CAPACITY;}
     tail=(s->rx_head+s->rx_count)%NET_UPPER_RX_CAPACITY;s->rx[tail]=*e;++s->rx_count;INC(s->observation.rx_captured);return NET_OK;
 }
-static NetStatus admission(const NetUpperAdmission *a,uint32_t boot,uint32_t sequence)
+/* Sender runs (BOOT_ID). docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md
+ * (generation): an accepted change of the sending run invalidates that
+ * sender's earlier context, and an ended run is not accepted again (A -> B ->
+ * late A). Per receive key the runs it left are kept, NET_UPPER_ENDED_BOOTS
+ * deep; the oldest one goes first. A BOOT that never ran on the key and is not
+ * ended starts a new generation: it needs no TX_SEQUENCE relation to the old
+ * run (a restarted sender counts from 1 again). A sender that restarts with
+ * the same BOOT_ID is not recognized (VSS hand-over C4: BOOT_ID differs on
+ * every start). Structure errors are refused before this point (decode), so
+ * they never move a key. */
+static bool boot_ended(const NetUpperEndedBoots *e,uint32_t boot)
 {
+    size_t i;
+    for(i=0u;i<e->count && i<NET_UPPER_ENDED_BOOTS;++i)if(e->boot[i]==boot)return true;
+    return false;
+}
+static void end_boot(NetUpperEndedBoots *e,uint32_t boot)
+{
+    size_t i;
+    if(boot_ended(e,boot))return;
+    if(e->count<NET_UPPER_ENDED_BOOTS){e->boot[e->count]=boot;++e->count;return;}
+    for(i=1u;i<NET_UPPER_ENDED_BOOTS;++i)e->boot[i-1u]=e->boot[i];
+    e->boot[NET_UPPER_ENDED_BOOTS-1u]=boot;
+}
+/* CAN transport order per receive key (sender and CAN ID, registry route):
+ * same accepted BOOT, TX_SEQUENCE strictly growing. Another BOOT that is not
+ * ended starts a new generation (new_generation); the caller commits it only
+ * together with an accepted frame. */
+static NetStatus admission(const NetUpperAdmission *a,uint32_t boot,uint32_t sequence,bool *new_generation)
+{
+    *new_generation=false;
     if(!a->seen)return NET_OK;
-    if(a->boot!=boot)return NET_HOLD;
+    if(a->boot!=boot){*new_generation=true;return NET_OK;}
     if(a->sequence==sequence)return NET_DUPLICATE;
     if(sequence<a->sequence)return NET_STALE; /* wrap/epoch ordering is not inferred */
     return NET_OK;
+}
+static bool repeat_route(const NetUpper *s,size_t idx)
+{
+    size_t j=net_upper_admission_index(idx);
+    return j<NET_UPPER_ADMISSION_CAPACITY && s->config.rx_repeat_delivery[j];
 }
 /* UART LINK_SEQUENCE runs modulo 65536 (next_link_sequence). Within the same
  * accepted boot a number is newer when it lies 1..2^15-1 ahead of the last
@@ -399,11 +434,24 @@ static NetStatus delivery_time(NetUpper *s,size_t idx,const NetUpperCapture *cap
     out->per_field_age_required=true;
     return NET_OK;
 }
-static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now)
+/* Receive delivery (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md,
+ * repeat and current quality; 02_NODES/CIS/20_API.md receive delivery):
+ *   - an exact duplicate (same accepted BOOT, same TX_SEQUENCE / LINK_SEQUENCE,
+ *     same raw) refreshes nothing (same_sequence);
+ *   - a newer transport sequence carrying the same original observation is a
+ *     repetition. On a route with rx_repeat_delivery it is passed to the Owner
+ *     with the receipt of that observation (NetUpperDelivery.repeat) and counted
+ *     as repeat_delivered; elsewhere it refreshes the receipt record and AGE
+ *     without an Owner call (C2 is not republished, 04_COMMON/
+ *     20_API_USAGE_AND_FAILURE.md receive delivery) and ends as a duplicate;
+ *   - anything else is a new observation (new receipt).
+ * *repeat_delivered is set when a repetition reached the Owner. */
+static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now,bool *repeat_delivered)
 {
     size_t idx=route_index(NET_WIRE_CAN,(uint16_t)event->can.standard_id);
     const NetWireRegistryEntry *r;NetUpperCanMessage m;NetUpperDelivery d;NetStatus status;NetUpperAdmission *record;
-    uint32_t boot,sequence;bool same_observation=false;
+    uint32_t boot,sequence;bool same_observation=false,repeat=false,raised=false,new_generation=false;
+    *repeat_delivered=false;
     if(event->link!=NET_WIRE_CAN || idx>=NET_UPPER_ROUTE_COUNT)return NET_REJECTED;
     r=net_wire_registry_at(idx);
     if(disabled(r,s->config.node) && !s->config.inspection_transport)return NET_HOLD;
@@ -413,39 +461,71 @@ static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now
     status=net_upper_wire_status(net_upper_can_identity(&m,&boot,&sequence));if(status!=NET_OK)return status;
     if(!event->capture.timestamp_known || event->capture.errors!=0u || event->capture.overflow!=0u ||
        event->capture.captured_at_ms>now)return NET_HOLD;
-    status=admission(record,boot,sequence);
+    if(record->seen && record->boot!=boot && boot_ended(&record->ended,boot)) {
+        /* Late frame of an ended run: no Owner call, no receipt, no AGE refresh. */
+        INC(s->observation.old_generation);return NET_STALE;
+    }
+    status=admission(record,boot,sequence,&new_generation);
     if(status==NET_DUPLICATE)return same_sequence(s,record,event->capture.port_epoch,
         r->direction,can_raw_equal(&record->raw.can,&event->can));
     if(status!=NET_OK)return status;
     status=delivery_time(s,idx,&event->capture,net_upper_can_max_age(&m),now,&d);if(status!=NET_OK)return status;
-    if(record->seen) {
-        const NetUpperAdmission *a=record;
+    /* A new generation is compared with nothing of the run it replaces. */
+    if(record->seen && !new_generation) {
+        const NetUpperAdmission *a=record;uint64_t elapsed;
         if(event->capture.captured_at_ms<a->delivery.capture.captured_at_ms)return NET_HOLD;
-        status=net_upper_can_original_age(&a->can,&m,event->capture.captured_at_ms-a->delivery.capture.captured_at_ms);
-        if(status!=NET_OK)return status;
+        elapsed=event->capture.captured_at_ms-a->delivery.capture.captured_at_ms;
         same_observation=net_upper_can_same_observation(&a->can,&m);
+        repeat=same_observation && repeat_route(s,idx) && !disabled(r,s->config.node);
+        status=net_upper_can_original_age(&a->can,&m,elapsed);
+        if(status==NET_HOLD && repeat) {
+            /* Late repetition: AGE raised to the bound within the slack, then
+             * every other rule of the same observation still applies. */
+            status=net_upper_can_repeat_age(&a->can,&m,elapsed,NET_UPPER_CAN_REPEAT_SLACK_MS,&raised);
+            if(status==NET_OK)status=net_upper_can_original_age(&a->can,&m,elapsed);
+            if(status==NET_OK)status=delivery_time(s,idx,&event->capture,net_upper_can_max_age(&m),now,&d);
+        }
+        if(status!=NET_OK)return status;
     }
     if((m.id==0x0a0u || m.id==0x080u) && net_upper_can_max_age(&m)==UINT16_MAX)return NET_HOLD;
     if(m.id==0x080u && d.age_ms>=500u)return NET_EXPIRED;
     d.source_boot=boot;d.source_sequence=sequence;
     d.observation_only=disabled(r,s->config.node);
-    status=same_observation?NET_OK:d.observation_only ? (s->config.owner.held_can==NULL?NET_HOLD:
+    if(same_observation)d.receipt_id=record->delivery.receipt_id;
+    d.repeat=repeat;
+    status=same_observation && !repeat?NET_OK:d.observation_only ? (s->config.owner.held_can==NULL?NET_HOLD:
         s->config.owner.held_can(s->config.owner.context,&m,&d)) : net_upper_deliver_can(&s->config.owner,&m,&d);
     if(status!=NET_OK)INC(s->observation.consumer_rejected);
     if(status==NET_OK) {
         NetUpperAdmission *a=record;
-        if(same_observation)d.receipt_id=a->delivery.receipt_id;
+        if(new_generation){end_boot(&a->ended,a->boot);INC(s->observation.generation_changes);}
         a->seen=true;a->boot=boot;a->sequence=sequence;a->can=m;a->delivery=d;
         a->raw.can=event->can;a->raw_direction=r->direction;if(!same_observation)++s->next_receipt;
+        if(raised)INC(s->observation.repeat_age_raised);
     }
+    if(status==NET_OK && repeat){*repeat_delivered=true;return NET_OK;}
     if(status==NET_OK && same_observation)return NET_DUPLICATE;
     return status==NET_OK && d.observation_only?NET_HOLD:status;
 }
-static NetStatus receive_uart(NetUpper *s,const NetUpperUartDelivery *u,uint64_t now)
+/* AGE the UART delivery bound is checked against (the record's own AGE). */
+static uint64_t uart_rx_age(const NetUpperUartMessage *m)
 {
-    const NetUpperUartMessage *m=&u->message;size_t idx=route_index(m->link,m->type);
+    if(m->link==NET_WIRE_UART_C) {
+        if(m->type==0x60u)return m->data.p_vision_result.vision_age_ms;
+        if(m->type==0x61u)return m->data.p_vision_status.status_age_ms;
+        return m->data.p_permission.source_age_ms;
+    }
+    return net_upper_uart_max_age(m);
+}
+/* u is the step's handoff buffer: a raised repetition AGE is written into
+ * u->message before the Owner sees it (the raw frame stays as received). */
+static NetStatus receive_uart(NetUpper *s,NetUpperUartDelivery *u,uint64_t now,bool *repeat_delivered)
+{
+    NetUpperUartMessage *m=&u->message;size_t idx=route_index(m->link,m->type);
     const NetWireRegistryEntry *r;NetUpperCapture capture;NetUpperDelivery d;NetStatus status;NetUpperAdmission *record;
-    uint32_t boot=0u;uint64_t age=0u;bool new_context=false,same_observation=false;
+    uint32_t boot=0u;bool new_context=false,same_observation=false,repeat=false,raised=false;
+    bool new_generation=false,rebase=false;
+    *repeat_delivered=false;
     if(idx>=NET_UPPER_ROUTE_COUNT)return NET_UNSUPPORTED;
     if(s->link_failed[m->link] || s->quiescing[m->link])return NET_HOLD;
     r=net_wire_registry_at(idx);
@@ -453,52 +533,84 @@ static NetStatus receive_uart(NetUpper *s,const NetUpperUartDelivery *u,uint64_t
     if((r->receivers&s->config.node)==0u)return NET_REJECTED;
     record=net_upper_admission_at_mut(s,idx);if(record==NULL)return NET_REJECTED;
     status=context_check(s,m,&u->frame);if(status!=NET_OK)return status;
-    age=net_upper_uart_max_age(m);
     if(m->link==NET_WIRE_UART_C) {
-        if(m->type==0x60u){boot=m->data.p_vision_result.pi_boot_id;age=m->data.p_vision_result.vision_age_ms;}
-        else if(m->type==0x61u){boot=m->data.p_vision_status.pi_boot_id;age=m->data.p_vision_status.status_age_ms;}
-        else {boot=m->data.p_permission.cis_boot_id;age=m->data.p_permission.source_age_ms;}
+        if(m->type==0x60u)boot=m->data.p_vision_result.pi_boot_id;
+        else if(m->type==0x61u)boot=m->data.p_vision_status.pi_boot_id;
+        else boot=m->data.p_permission.cis_boot_id;
     } else if(m->type==0x01u) new_context=!s->context_seen || !context_equal(&s->context,&m->data.m_context);
     else if(r->direction==NET_WIRE_DOWNLINK)boot=u32(u->frame.bytes+(m->type==0x02u?8u:20u));
     if(!new_context){
         const NetUpperAdmission *a=record;
-        status=uart_admission(a,boot,m->sequence);
-        if(status==NET_DUPLICATE)return same_sequence(s,a,u->port_epoch,r->direction,
-            a->raw.uart.length==u->frame.length && u->frame.length<=sizeof(u->frame.bytes) &&
-            memcmp(a->raw.uart.bytes,u->frame.bytes,u->frame.length)==0);
-        if(status!=NET_OK)return status;
+        if(m->link==NET_WIRE_UART_C) {
+            /* UART-C sender run (Pi BOOT for the Pi -> CIS direction), judged
+             * before the LINK_SEQUENCE window: a restarted sender counts its
+             * LINK_SEQUENCE from the start again. The frame passed CRC, length
+             * and format (M06) and its BOOT is nonzero (codec). */
+            const NetUpperLinkGeneration *g=&s->uart_c_generation;
+            if(g->seen && boot!=g->boot) {
+                if(boot_ended(&g->ended,boot)){INC(s->observation.old_generation);return NET_STALE;}
+                new_generation=true;
+            }
+            /* This record last took a frame of an earlier run: its LINK_SEQUENCE
+             * and original observation are not comparable; this frame is its
+             * new baseline. */
+            rebase=new_generation || (a->seen && a->boot!=boot);
+        }
+        if(!rebase) {
+            status=uart_admission(a,boot,m->sequence);
+            if(status==NET_DUPLICATE)return same_sequence(s,a,u->port_epoch,r->direction,
+                a->raw.uart.length==u->frame.length && u->frame.length<=sizeof(u->frame.bytes) &&
+                memcmp(a->raw.uart.bytes,u->frame.bytes,u->frame.length)==0);
+            if(status!=NET_OK)return status;
+        }
     }
     memset(&capture,0,sizeof(capture));capture.port_epoch=u->port_epoch;
     capture.captured_at_ms=u->frame.captured_at_ms;capture.timestamp_known=true;
-    status=delivery_time(s,idx,&capture,age,now,&d);if(status!=NET_OK)return status;
-    if(!new_context && record->seen) {
-        const NetUpperAdmission *a=record;
+    status=delivery_time(s,idx,&capture,uart_rx_age(m),now,&d);if(status!=NET_OK)return status;
+    if(!new_context && !rebase && record->seen) {
+        const NetUpperAdmission *a=record;uint64_t elapsed;
         if(capture.captured_at_ms<a->delivery.capture.captured_at_ms)return NET_HOLD;
-        status=net_upper_uart_original_age(&a->uart,m,capture.captured_at_ms-a->delivery.capture.captured_at_ms);
+        elapsed=capture.captured_at_ms-a->delivery.capture.captured_at_ms;
+        repeat=repeat_route(s,idx) && !disabled(r,s->config.node) && net_upper_uart_same_source(&a->uart,m);
+        same_observation=repeat || net_upper_uart_same_observation(&a->uart,m);
+        status=net_upper_uart_original_age(&a->uart,m,elapsed);
+        if(status==NET_HOLD && repeat) {
+            status=net_upper_uart_repeat_age(&a->uart,m,elapsed,NET_UPPER_UART_REPEAT_SLACK_MS,&raised);
+            if(status==NET_OK)status=net_upper_uart_original_age(&a->uart,m,elapsed);
+            if(status==NET_OK)status=delivery_time(s,idx,&capture,uart_rx_age(m),now,&d);
+        }
         if(status!=NET_OK)return status;
-        same_observation=net_upper_uart_same_observation(&a->uart,m);
     }
     if(m->link==NET_WIRE_UART_M && (m->type==0x10u || m->type==0x11u || m->type==0x12u || m->type==0x40u))d.freshness_known=false;
     if(m->link==NET_WIRE_UART_C && m->type==0x62u && d.age_ms>=500u)return NET_EXPIRED;
     d.source_boot=boot;d.source_sequence=m->sequence;
     d.observation_only=disabled(r,s->config.node);
-    status=same_observation?NET_OK:d.observation_only ? (s->config.owner.held_uart==NULL?NET_HOLD:
+    if(same_observation)d.receipt_id=record->delivery.receipt_id;
+    d.repeat=repeat;
+    status=same_observation && !repeat?NET_OK:d.observation_only ? (s->config.owner.held_uart==NULL?NET_HOLD:
         s->config.owner.held_uart(s->config.owner.context,u,&d)) :
         (s->config.owner.uart==NULL?NET_HOLD:s->config.owner.uart(s->config.owner.context,u,&d));
     if(status!=NET_OK)INC(s->observation.consumer_rejected);
     if(status==NET_OK) {
         if(m->link==NET_WIRE_UART_M && m->type==0x01u)accept_context(s,&m->data.m_context);
-        if(same_observation)d.receipt_id=record->delivery.receipt_id;
+        if(m->link==NET_WIRE_UART_C) {
+            NetUpperLinkGeneration *g=&s->uart_c_generation;
+            if(new_generation){end_boot(&g->ended,g->boot);INC(s->observation.generation_changes);}
+            g->seen=true;g->boot=boot;
+        }
         record->seen=true;record->boot=boot;record->sequence=m->sequence;
         record->uart=*m;record->delivery=d;
         record->raw.uart=u->frame;record->raw_direction=r->direction;if(!same_observation)++s->next_receipt;
+        if(raised)INC(s->observation.repeat_age_raised);
     }
+    if(status==NET_OK && repeat){*repeat_delivered=true;return NET_OK;}
     if(status==NET_OK && same_observation)return NET_DUPLICATE;
     return status==NET_OK && d.observation_only?NET_HOLD:status;
 }
-static void observe_receive(NetUpper *s,NetStatus status)
+static void observe_receive(NetUpper *s,NetStatus status,bool repeat_delivered)
 {
-    if(status==NET_OK)INC(s->observation.rx_delivered);
+    if(repeat_delivered)INC(s->observation.repeat_delivered); /* not a new observation */
+    else if(status==NET_OK)INC(s->observation.rx_delivered);
     else if(status==NET_DUPLICATE)INC(s->observation.duplicates);
     else if(status==NET_STALE)INC(s->observation.stale);
     else if(status==NET_HOLD || status==NET_EXPIRED)INC(s->observation.rx_held);
@@ -557,9 +669,9 @@ static NetStatus process_event(NetUpper *s,const NetUpperEvent *e,uint64_t now,b
             (void)net_upper_uart_receiver_signal(net_upper_receiver_mut(s,(size_t)e->link-1u),e->capture.port_epoch,true,false);
         INC(s->observation.rx_dropped);return NET_HOLD;
     }
-    if(e->kind==NET_UPPER_CAN_RX){status=receive_can(s,e,now);observe_receive(s,status);return status;}
+    if(e->kind==NET_UPPER_CAN_RX){bool repeat;status=receive_can(s,e,now,&repeat);observe_receive(s,status,repeat);return status;}
     if(e->kind==NET_UPPER_UART_BYTE && e->link!=NET_WIRE_CAN) {
-        NetWireStatus ws;size_t i=(size_t)e->link-1u;bool consumed=false;
+        NetWireStatus ws;size_t i=(size_t)e->link-1u;bool consumed=false,repeat=false;
         if(!s->uart_enabled[i])return NET_HOLD;
         if(e->capture.errors!=0u || e->capture.overflow!=0u) {
             (void)net_upper_uart_receiver_signal(net_upper_receiver_mut(s,i),e->capture.port_epoch,true,false);INC(s->observation.rx_dropped);return NET_HOLD;
@@ -570,8 +682,8 @@ static NetStatus process_event(NetUpper *s,const NetUpperEvent *e,uint64_t now,b
         if(ws==NET_WIRE_TIME_HOLD || ws==NET_WIRE_INVALID_ARGUMENT) {
             *pop=true;(void)net_upper_uart_receiver_signal(net_upper_receiver_mut(s,i),e->capture.port_epoch,true,false);
         }
-        status=ws==NET_WIRE_OK?receive_uart(s,delivery,now):net_upper_wire_status(ws);
-        observe_receive(s,status);return status;
+        status=ws==NET_WIRE_OK?receive_uart(s,delivery,now,&repeat):net_upper_wire_status(ws);
+        observe_receive(s,status,repeat);return status;
     }
     return NET_INVALID_ARGUMENT;
 }
@@ -649,7 +761,7 @@ NetStatus net_upper_step(NetUpper *s,size_t budget)
     if(drained && s->rx_count==0u) {
         for(i=0u;i<2u;++i)if(s->uart_enabled[i] && !s->quiescing[i+1u] && !s->link_failed[i+1u]) {
             NetWireStatus ws=net_upper_uart_receiver_poll(net_upper_receiver_mut(s,i),now,s->config.port_epoch[i+1u],&delivery);
-            if(ws==NET_WIRE_OK){status=receive_uart(s,&delivery,now);observe_receive(s,status);if(result==NET_NO_WORK)result=status;}
+            if(ws==NET_WIRE_OK){bool repeat;status=receive_uart(s,&delivery,now,&repeat);observe_receive(s,status,repeat);if(result==NET_NO_WORK)result=status;}
         }
     }
     /* Token order is enqueue order, independent of reclaimed slot index. */

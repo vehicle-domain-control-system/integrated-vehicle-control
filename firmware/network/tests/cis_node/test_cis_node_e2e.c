@@ -216,15 +216,15 @@ static NetStatus start_node(void)
 #endif
 }
 
-/* DOMAIN_PERMISSION on the bus (ISR context of the CAN controller). */
-static int permission_in(uint32_t tx, uint32_t update, uint16_t age, uint8_t value, uint8_t quality)
+/* DOMAIN_PERMISSION of a DOMAIN run on the bus (ISR context of the CAN controller). */
+static int permission_from(uint32_t boot, uint32_t tx, uint32_t update, uint16_t age, uint8_t value, uint8_t quality)
 {
     NetWireDomainPermissionRaw p;
     NetWireCanEnvelope e;
     MockCanFrame f;
     int mb;
     memset(&p, 0, sizeof(p));
-    p.boot_id = DOMAIN_BOOT;
+    p.boot_id = boot;
     p.tx_sequence = tx;
     p.vehicle_power_permission = value;
     p.power_permission_quality = quality;
@@ -242,6 +242,11 @@ static int permission_in(uint32_t tx, uint32_t update, uint16_t age, uint8_t val
     in_isr = false;
     CHECK(mb >= 0);
     return 0;
+}
+
+static int permission_in(uint32_t tx, uint32_t update, uint16_t age, uint8_t value, uint8_t quality)
+{
+    return permission_from(DOMAIN_BOOT, tx, update, age, value, quality);
 }
 
 static NetUpperUartMessage vision_message(uint16_t link, uint32_t vision_sequence, uint16_t age)
@@ -1148,6 +1153,183 @@ static int f16_vision_rx_main_3ms(void)
     return 0;
 }
 
+/* DOMAIN restart (04_COMMON/10_DATA_AND_ID_RULES.md generation; 30_UART_C.md
+ * P_PERMISSION): run A, then run B with another BOOT_ID, TX from 1 and an
+ * UPDATE_SEQUENCE below run A's. The first B frame reaches
+ * CisApp_OnDomainPermission and, as an accepted change of the DOMAIN run, is
+ * relayed to the Pi at once. A late frame of run A is refused (no callback, no
+ * relay). Repetitions of one evaluation are delivered, not relayed. */
+static int f17_domain_reboot(void)
+{
+    enum { BOOT_A = 0x444F4D41u, BOOT_B = 0x444F4D42u };
+    NetNodeDiag d0, d;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    RUN(permission_from(BOOT_A, 10u, 50u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 1u && uart_n == 1u);
+    RUN(check_relay(&uart_out[0], 1u, 50u, NET_TRISTATE_YES, 10u, last_perm_meta.received_at_ms));
+    /* The same evaluation of run A again, 50 ms later: delivered, not relayed. */
+    step_ms(49u);
+    RUN(permission_from(BOOT_A, 11u, 50u, 60u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 2u && uart_n == 1u && last_perm_meta.source.tx_sequence == 11u);
+    d0 = diag();
+    CHECK(d0.app.permission_repeats == 1u && d0.app.relay_submitted == 1u);
+    /* DOMAIN restarts: run B, TX 1, UPDATE_SEQUENCE 3 (below 50). */
+    step_ms(30u);
+    RUN(permission_from(BOOT_B, 1u, 3u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 3u);
+    CHECK(last_perm_meta.source.boot_id == BOOT_B && last_perm_meta.source.tx_sequence == 1u);
+    CHECK(last_perm.update_sequence == 3u && last_perm.source_age_ms == 5u);
+    CHECK(uart_n == 2u && uart_bad == 0u);
+    CHECK(uart_out[1].at == perm_delivered_at);              /* at once, in the same pass */
+    RUN(check_relay(&uart_out[1], 2u, 3u, NET_TRISTATE_YES, 5u, last_perm_meta.received_at_ms));
+    d = diag();
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes + 1u);
+    CHECK(d.permission_valid && d.permission.reason == NET_PERMISSION_CURRENT && d.permission.power_usable);
+    CHECK(d.permission.original.update_sequence == 3u);
+    /* A late frame of run A: old generation, nothing delivered or relayed. */
+    d0 = d;
+    RUN(permission_from(BOOT_A, 12u, 51u, 4u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(2u);
+    d = diag();
+    CHECK(perm_count == 3u && uart_n == 2u);
+    CHECK(d.upper.old_generation == d0.upper.old_generation + 1u && d.upper.stale == d0.upper.stale + 1u);
+    CHECK(d.permission.original.update_sequence == 3u);
+    /* Run B goes on: its repetition is delivered, not relayed; its next
+     * evaluation is relayed. */
+    step_ms(47u);
+    RUN(permission_from(BOOT_B, 2u, 3u, 55u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 4u && uart_n == 2u);
+    step_ms(49u);
+    RUN(permission_from(BOOT_B, 3u, 4u, 2u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 5u && uart_n == 3u);
+    RUN(check_relay(&uart_out[2], 3u, 4u, NET_TRISTATE_YES, 2u, last_perm_meta.received_at_ms));
+    CHECK(isr_callbacks == 0u);
+    return 0;
+}
+
+static NetUpperUartMessage vision_of(uint32_t pi_boot, uint16_t link, uint32_t vision_sequence, uint16_t age)
+{
+    NetUpperUartMessage m = vision_message(link, vision_sequence, age);
+    m.data.p_vision_result.pi_boot_id = pi_boot;
+    return m;
+}
+
+static NetUpperUartMessage status_of(uint32_t pi_boot, uint16_t link, uint32_t status_sequence)
+{
+    NetUpperUartMessage m = vision_status_message(link, status_sequence);
+    m.data.p_vision_status.pi_boot_id = pi_boot;
+    return m;
+}
+
+/* Pi restart (04_COMMON/10_DATA_AND_ID_RULES.md generation: Pi A -> B ->
+ * late A): run A near LINK_SEQUENCE 1000, run B from LINK_SEQUENCE 0. The new
+ * Pi BOOT is judged before the LINK_SEQUENCE window; P_VISION_RESULT and
+ * P_VISION_STATUS share the link, so once B is accepted a late A frame of
+ * either type is refused, and the first B frame of the other type is taken. */
+static int f18_pi_reboot(void)
+{
+    enum { PI_A = 0x50490A01u, PI_B = 0x50490B01u };
+    NetUpperUartMessage m;
+    NetCisOccupant occ;
+    NetNodeDiag d0, d;
+    uint64_t last;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    m = vision_of(PI_A, 1000u, 500u, 20u);
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    m = status_of(PI_A, 1001u, 31u);
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(result_count == 1u && status_count == 1u);
+    CHECK(last_result.pi_boot_id == PI_A && last_result_meta.link_sequence == 1000u);
+    d0 = diag();
+    /* Pi restarts: run B, LINK_SEQUENCE from 0. */
+    step_ms(20u);
+    m = vision_of(PI_B, 0u, 1u, 10u);
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(result_count == 2u && last_result.pi_boot_id == PI_B && last_result.vision_sequence == 1u);
+    CHECK(last_result_meta.link_sequence == 0u && last_result_meta.received_at_ms == last);
+    d = diag();
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes + 1u);
+    /* A late P_VISION_STATUS of run A before B's first status: refused. */
+    m = status_of(PI_A, 1002u, 32u);
+    RUN(line_send(&m, &last));
+    step_ms(2u);
+    d = diag();
+    CHECK(status_count == 1u && d.upper.old_generation == d0.upper.old_generation + 1u);
+    /* The first status of run B is taken in the same generation. */
+    m = status_of(PI_B, 1u, 1u);
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(status_count == 2u && last_status.pi_boot_id == PI_B && last_status_meta.link_sequence == 1u);
+    /* A late result of run A: refused. */
+    m = vision_of(PI_A, 1003u, 501u, 15u);
+    RUN(line_send(&m, &last));
+    step_ms(2u);
+    d = diag();
+    CHECK(result_count == 2u && d.upper.old_generation == d0.upper.old_generation + 2u);
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes + 1u);
+    /* Run B goes on, and its judgement is the CIS_OCCUPANT relay origin. */
+    m = vision_of(PI_B, 2u, 2u, 8u);
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(result_count == 3u && last_result.vision_sequence == 2u && last_result_meta.link_sequence == 2u);
+    occ = relay_of(&last_result, 0u);
+    CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(can_count(0x310u, 0u) == 1u);
+    CHECK(isr_callbacks == 0u);
+    return 0;
+}
+
+/* DOMAIN as 10_DATA_AND_ID_RULES.md (timing) describes it for one second:
+ * CAN every 50 ms, an actual new evaluation about every 200 ms, the frames in
+ * between repeat the evaluation with a new TX_SEQUENCE and a grown AGE (one
+ * evaluation alone cannot last a second: its original Power life is 500 ms).
+ * Every frame reaches CisApp_OnDomainPermission (receive supervision); a
+ * P_PERMISSION frame leaves only for a new evaluation (30_UART_C.md), never per
+ * CAN frame. */
+static int f19_permission_repeat_no_flood(void)
+{
+    NetNodeDiag d;
+    uint32_t tx = 0u, update = 300u;
+    uint16_t age = 0u;
+    unsigned t, i, evaluations = 0u;
+    uint64_t first_capture[8];
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    for (t = 0u; t < 1000u; t += 50u) {
+        if (t % 200u == 0u) { ++update; age = 6u; first_capture[evaluations++ & 7u] = now_ms(); }
+        else age = (uint16_t)(age + 50u);
+        RUN(permission_in(++tx, update, age, NET_TRISTATE_YES, NET_QUALITY_OK));
+        step_ms(1u);
+        CHECK(perm_count == tx && last_perm_meta.source.tx_sequence == tx);
+        CHECK(uart_n == evaluations);                 /* nothing for a repetition */
+        step_ms(49u);
+    }
+    CHECK(perm_count >= 19u && perm_count == 20u);
+    CHECK(evaluations == 5u && uart_n == 5u && uart_bad == 0u);
+    for (i = 0u; i < uart_n; ++i) {
+        CHECK(uart_out[i].m.sequence == i + 1u);
+        CHECK(uart_out[i].m.data.p_permission.update_sequence == 301u + i);
+        CHECK(uart_out[i].at - first_capture[i] <= 1u);
+    }
+    d = diag();
+    CHECK(d.app.permission_delivered == 20u && d.app.permission_repeats == 15u);
+    CHECK(d.app.relay_submitted == 5u && d.app.relay_refused == 0u);
+    CHECK(d.upper.repeat_delivered == 15u && d.upper.duplicates == 0u && d.upper.rx_held == 0u);
+    CHECK(d.pi_permission_tx.counters.sent == 5u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1168,7 +1350,10 @@ int main(int argc, char **argv)
 #endif
         { "f14_permission_repeat_delivered", f14_permission_repeat_delivered },
         { "f15_permission_quality_drop_same_update", f15_permission_quality_drop_same_update },
-        { "f16_vision_rx_main_3ms", f16_vision_rx_main_3ms }
+        { "f16_vision_rx_main_3ms", f16_vision_rx_main_3ms },
+        { "f17_domain_reboot", f17_domain_reboot },
+        { "f18_pi_reboot", f18_pi_reboot },
+        { "f19_permission_repeat_no_flood", f19_permission_repeat_no_flood }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

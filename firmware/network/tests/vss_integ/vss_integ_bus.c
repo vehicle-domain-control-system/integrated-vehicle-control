@@ -330,6 +330,10 @@ bool IntegBus_ReadDiag(IntegNetDiag *out)
     out->stale = d.upper.stale;
     out->duplicates = d.upper.duplicates;
     out->rx_conflicts = d.upper.rx_conflicts;
+    out->repeat_delivered = d.upper.repeat_delivered;
+    out->repeat_age_raised = d.upper.repeat_age_raised;
+    out->generation_changes = d.upper.generation_changes;
+    out->old_generation = d.upper.old_generation;
     out->event_delivered = d.app.event_delivered;
     out->warning_delivered = d.app.warning_delivered;
     out->permission_received = d.app.permission_received;

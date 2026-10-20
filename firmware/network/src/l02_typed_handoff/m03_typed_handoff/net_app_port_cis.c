@@ -81,6 +81,17 @@ static NetStatus on_domain_permission(void *ctx, const NetWireDomainPermissionRa
     port.diag.permission_seen = true;
     CisApp_OnDomainPermission(&p, &meta);
     inc(&port.diag.permission_delivered);
+    /* 30_UART_C.md: P_PERMISSION is submitted at once on a new original
+     * evaluation, an accepted change of the DOMAIN run (its first frame, even
+     * with an UPDATE_SEQUENCE not above the earlier run's) or an actual
+     * quality restriction; a repetition of the same evaluation with a new
+     * TX_SEQUENCE is none of these. It reaches the application (receive
+     * supervision) but submits no relay record: no P_PERMISSION per CAN
+     * frame. */
+    if (d->repeat) {
+        inc(&port.diag.permission_repeats);
+        return NET_OK;
+    }
     /* Same verified input to the private relay. Its local result is a
      * relay fact (diag), never a reason to refuse the DOMAIN receipt. */
     (void)CisNetPriv_RelayPiPermission(&p, &meta);

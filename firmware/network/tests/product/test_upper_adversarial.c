@@ -293,14 +293,21 @@ static int can_metadata(void)
 static int receive_order(void)
 {
     NetWireCisRearRaw r=rear_value(2u,123u);NetUpperEvent e;
-    NetUpperCanMessage saved;NetUpperDelivery delivery;NetSourceStamp source;
+    NetUpperCanMessage saved;NetUpperDelivery delivery;NetSourceStamp source;NetUpperObservation o;
     CHECK(init_service(&receiver,&receiver_port,NET_WIRE_NODE_DOMAIN,&domain)==NET_OK);
     e=rear_event(&r);CHECK(push(&receiver_port,&e));(void)net_upper_step(&receiver,32u);CHECK(domain.calls==1u);
     CHECK(push(&receiver_port,&e));(void)net_upper_step(&receiver,32u);CHECK(domain.calls==1u);
     r.tx_sequence=1u;e=rear_event(&r);CHECK(push(&receiver_port,&e));(void)net_upper_step(&receiver,32u);CHECK(domain.calls==1u);
-    r.tx_sequence=3u;r.boot_id=42u;e=rear_event(&r);CHECK(push(&receiver_port,&e));(void)net_upper_step(&receiver,32u);CHECK(domain.calls==1u);
+    /* Another sender BOOT that never ran on this key: a new generation, taken
+     * with its own TX_SEQUENCE (10_DATA_AND_ID_RULES.md generation). */
+    r.tx_sequence=3u;r.boot_id=42u;e=rear_event(&r);CHECK(push(&receiver_port,&e));(void)net_upper_step(&receiver,32u);CHECK(domain.calls==2u);
     CHECK(net_upper_received_can(&receiver,0x0a0u,&saved,&delivery,&source)==NET_OK);
-    CHECK(saved.data.cis_rear.boot_id==41u&&saved.data.cis_rear.tx_sequence==2u);
+    CHECK(saved.data.cis_rear.boot_id==42u&&saved.data.cis_rear.tx_sequence==3u);
+    /* The ended BOOT 41 again (a late frame of the earlier run): refused. */
+    r.tx_sequence=4u;r.boot_id=41u;e=rear_event(&r);CHECK(push(&receiver_port,&e));(void)net_upper_step(&receiver,32u);CHECK(domain.calls==2u);
+    CHECK(net_upper_received_can(&receiver,0x0a0u,&saved,&delivery,&source)==NET_OK);
+    CHECK(saved.data.cis_rear.boot_id==42u&&saved.data.cis_rear.tx_sequence==3u);
+    CHECK(net_upper_observation(&receiver,&o)==NET_OK&&o.generation_changes==1u&&o.old_generation==1u);
     return 0;
 }
 static int owner_reject(void)

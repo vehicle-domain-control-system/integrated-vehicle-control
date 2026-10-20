@@ -183,12 +183,12 @@ static int inject(const NetWireCanEnvelope *e)
     return 0;
 }
 
-static int door_in(uint32_t tx, uint32_t target, uint32_t command_id, uint16_t age, uint8_t lock_target)
+static int door_from(uint32_t boot, uint32_t tx, uint32_t target, uint32_t command_id, uint16_t age, uint8_t lock_target)
 {
     NetWireBcmDoorCommandRaw c;
     NetWireCanEnvelope e;
     memset(&c, 0, sizeof(c));
-    c.boot_id = DOMAIN_BOOT;
+    c.boot_id = boot;
     c.tx_sequence = tx;
     c.target_boot_id = target;
     c.command_id = command_id;
@@ -198,6 +198,11 @@ static int door_in(uint32_t tx, uint32_t target, uint32_t command_id, uint16_t a
     c.origin = NET_ORIGIN_MOBILE_MANUAL;
     CHECK(net_wire_can_encode_bcm_door_command(NET_WIRE_CANDIDATE_ONLY, &c, &e) == NET_WIRE_OK);
     return inject(&e);
+}
+
+static int door_in(uint32_t tx, uint32_t target, uint32_t command_id, uint16_t age, uint8_t lock_target)
+{
+    return door_from(DOMAIN_BOOT, tx, target, command_id, age, lock_target);
 }
 
 static int climate_in(uint32_t tx, uint32_t command_id, uint16_t age)
@@ -236,12 +241,12 @@ static int light_in(uint32_t tx, uint32_t command_id, uint16_t age)
     return inject(&e);
 }
 
-static int permission_in(uint32_t tx, uint32_t update, uint16_t age)
+static int permission_from(uint32_t boot, uint32_t tx, uint32_t update, uint16_t age)
 {
     NetWireDomainPermissionRaw p;
     NetWireCanEnvelope e;
     memset(&p, 0, sizeof(p));
-    p.boot_id = DOMAIN_BOOT;
+    p.boot_id = boot;
     p.tx_sequence = tx;
     p.vehicle_power_permission = NET_TRISTATE_YES;
     p.power_permission_quality = NET_QUALITY_OK;
@@ -252,6 +257,11 @@ static int permission_in(uint32_t tx, uint32_t update, uint16_t age)
     p.source_age_ms = age;
     CHECK(net_wire_can_encode_permission(NET_WIRE_CANDIDATE_ONLY, &p, &e) == NET_WIRE_OK);
     return inject(&e);
+}
+
+static int permission_in(uint32_t tx, uint32_t update, uint16_t age)
+{
+    return permission_from(DOMAIN_BOOT, tx, update, age);
 }
 
 static NetWireCanEnvelope envelope(const MockCanFrame *f)
@@ -977,6 +987,74 @@ static int b13_not_ready(void)
     return 0;
 }
 
+/* DOMAIN restart (04_COMMON/10_DATA_AND_ID_RULES.md generation): run A, then
+ * run B with another BOOT_ID and TX from 1. BCM takes DOMAIN_PERMISSION and
+ * the commands of run B again (each CAN ID on its own first accepted B frame);
+ * a late frame of run A is refused. The command target rule stays: a B
+ * command addressed to another BCM boot reaches no application and does not
+ * move the CAN ID to run B. Repetitions of one DOMAIN_PERMISSION evaluation
+ * reach the supervision record; a retransmitted command does not drive twice. */
+static int b13_domain_reboot(void)
+{
+    enum { BOOT_A = 0x444F4D41u, BOOT_B = 0x444F4D42u };
+    NetNodeDiag d0, d;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    /* Run A. */
+    RUN(permission_from(BOOT_A, 4u, 20u, 10u));
+    RUN(door_from(BOOT_A, 7u, NODE_BOOT, 501u, 5u, NET_DOOR_TARGET_LOCK));
+    step_ms(1u);
+    d = diag();
+    CHECK(door_count == 1u && d.app.permission_received == 1u);
+    CHECK(d.app.last_permission_meta.source.boot_id == BOOT_A);
+    /* The same evaluation 50 ms later: the supervision record follows it. */
+    step_ms(49u);
+    RUN(permission_from(BOOT_A, 5u, 20u, 60u));
+    step_ms(1u);
+    d = diag();
+    CHECK(d.app.permission_received == 2u && d.app.last_permission_meta.source.tx_sequence == 5u);
+    CHECK(d.upper.repeat_delivered == 1u);
+    /* The same command again with a new TX: no second drive. */
+    RUN(door_from(BOOT_A, 8u, NODE_BOOT, 501u, 56u, NET_DOOR_TARGET_LOCK));
+    step_ms(1u);
+    CHECK(door_count == 1u);
+    d0 = diag();
+    /* DOMAIN restarts: run B. */
+    step_ms(20u);
+    RUN(permission_from(BOOT_B, 1u, 1u, 3u));
+    step_ms(1u);
+    d = diag();
+    CHECK(d.app.permission_received == 3u);
+    CHECK(d.app.last_permission_meta.source.boot_id == BOOT_B && d.app.last_permission_meta.source.tx_sequence == 1u);
+    CHECK(d.app.last_permission.update_sequence == 1u);
+    CHECK(d.permission_valid && d.permission.reason == NET_PERMISSION_CURRENT && d.permission.power_usable);
+    /* A B command for another BCM boot: refused by the target rule; the
+     * door CAN ID stays on run A. */
+    RUN(door_from(BOOT_B, 1u, OTHER_BOOT, 1u, 2u, NET_DOOR_TARGET_UNLOCK));
+    step_ms(1u);
+    d = diag();
+    CHECK(door_count == 1u && d.app.command_wrong_target == d0.app.command_wrong_target + 1u);
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes + 1u);
+    /* The next B command for this boot: delivered, the door CAN ID moves to B. */
+    RUN(door_from(BOOT_B, 2u, NODE_BOOT, 2u, 3u, NET_DOOR_TARGET_UNLOCK));
+    step_ms(1u);
+    d = diag();
+    CHECK(door_count == 2u && last_door.command.command_id == 2u);
+    CHECK(last_door_meta.source.boot_id == BOOT_B && last_door_meta.source.tx_sequence == 2u);
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes + 2u);
+    /* Late frames of run A: refused, nothing delivered. */
+    d0 = d;
+    RUN(door_from(BOOT_A, 9u, NODE_BOOT, 502u, 3u, NET_DOOR_TARGET_UNLOCK));
+    RUN(permission_from(BOOT_A, 6u, 21u, 2u));
+    step_ms(2u);
+    d = diag();
+    CHECK(door_count == 2u && d.app.permission_received == 3u);
+    CHECK(d.upper.old_generation == d0.upper.old_generation + 2u);
+    CHECK(d.app.last_permission_meta.source.boot_id == BOOT_B);
+    CHECK(isr_callbacks == 0u);
+    return 0;
+}
+
 #ifdef BCM_NODE_TEST_ENTRY
 /* The public entry drives the BCM profile exactly like the VSS one. */
 static int b14_entry(void)
@@ -1031,6 +1109,7 @@ int main(int argc, char **argv)
         { "b11_publish_invalid", b11_publish_invalid },
         { "b12_publish_in_callback", b12_publish_in_callback },
         { "b13_not_ready", b13_not_ready },
+        { "b13_domain_reboot", b13_domain_reboot },
 #ifdef BCM_NODE_TEST_ENTRY
         { "b14_entry", b14_entry },
 #endif

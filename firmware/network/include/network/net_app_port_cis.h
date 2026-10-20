@@ -21,7 +21,10 @@
  * dispatcher just delivered to CisApp_OnDomainPermission() and submits the
  * relay record to the M04 slot (repetition period from the node table). Only
  * OK power quality is relayed: the wire has no reason for the other
- * qualities, so they return NOT_READY and the slot keeps nothing new. */
+ * qualities, so they return NOT_READY and the slot keeps nothing new.
+ * A repetition of the same DOMAIN evaluation with a new TX_SEQUENCE reaches
+ * CisApp_OnDomainPermission() but is not relayed again; the first frame of a
+ * new DOMAIN run is (30_UART_C.md P_PERMISSION). */
 #include "network/net_ecu_adapter.h"
 #include "network/net_app_port.h"
 #include "network/net_upper_publish.h"
@@ -56,6 +59,7 @@ typedef struct {
 typedef struct {
     bool bound;
     uint32_t permission_delivered, vision_result_delivered, vision_status_delivered;
+    uint32_t permission_repeats; /* of permission_delivered: repetitions of one evaluation, not relayed */
     bool permission_seen;
     NetDomainPermission last_permission;
     NetCanRxMeta last_permission_meta;

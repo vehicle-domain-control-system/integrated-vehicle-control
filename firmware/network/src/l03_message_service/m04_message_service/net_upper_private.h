@@ -10,6 +10,9 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *, const NetUpperC
 NetStatus net_upper_uart_original_age(const NetUpperUartMessage *, const NetUpperUartMessage *, uint64_t);
 bool net_upper_can_same_observation(const NetUpperCanMessage *, const NetUpperCanMessage *);
 bool net_upper_uart_same_observation(const NetUpperUartMessage *, const NetUpperUartMessage *);
+bool net_upper_uart_same_source(const NetUpperUartMessage *, const NetUpperUartMessage *);
+NetStatus net_upper_can_repeat_age(const NetUpperCanMessage *, NetUpperCanMessage *, uint64_t, uint16_t, bool *);
+NetStatus net_upper_uart_repeat_age(const NetUpperUartMessage *, NetUpperUartMessage *, uint64_t, uint16_t, bool *);
 size_t net_upper_admission_index(size_t registry_index);
 const NetUpperAdmission *net_upper_admission_at(const NetUpper *, size_t registry_index);
 NetUpperAdmission *net_upper_admission_at_mut(NetUpper *, size_t registry_index);

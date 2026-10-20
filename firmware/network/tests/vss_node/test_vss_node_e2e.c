@@ -16,6 +16,7 @@
 #include <string.h>
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", case_name, __LINE__, #x); return 1; } } while (0)
+#define RUN_CHECK(x) do { if ((x) != 0) return 1; } while (0)
 
 static const char *case_name;
 
@@ -906,6 +907,226 @@ static int h15_warning_quality_drop(void)
     return 0;
 }
 
+/* Every lane's AGE grown by ms (the same original observation, later). */
+static void warning_age_add(NetWireVssWarningStateRaw *w, uint16_t ms)
+{
+    w->antipinch_original_age_ms = (uint16_t)(w->antipinch_original_age_ms + ms);
+    w->occupant_hazard_original_age_ms = (uint16_t)(w->occupant_hazard_original_age_ms + ms);
+    w->rear_obstacle_original_age_ms = (uint16_t)(w->rear_obstacle_original_age_ms + ms);
+    w->rear_activation_age_ms = (uint16_t)(w->rear_activation_age_ms + ms);
+}
+
+static int warning_ages_are(const NetVssWarningState *w, const NetWireVssWarningStateRaw *first, uint16_t grown)
+{
+    CHECK(w->antipinch_original_age_ms == (uint16_t)(first->antipinch_original_age_ms + grown));
+    CHECK(w->occupant_hazard_original_age_ms == (uint16_t)(first->occupant_hazard_original_age_ms + grown));
+    CHECK(w->rear_obstacle_original_age_ms == (uint16_t)(first->rear_obstacle_original_age_ms + grown));
+    CHECK(w->rear_activation_age_ms == (uint16_t)(first->rear_activation_age_ms + grown));
+    return 0;
+}
+
+/* DOMAIN repeats one warning evaluation every 50 ms with a new TX_SEQUENCE and
+ * the AGE grown (VSS hand-over C11: periodic, receive watch 150 ms in VSS).
+ * 04_COMMON/10_DATA_AND_ID_RULES.md (repeat and current quality) and
+ * 02_NODES/CIS/20_API.md (receive delivery, same rule for every node
+ * callback): a normal repetition with a new TX_SEQUENCE is delivered to the
+ * existing callback even for the same original observation, its original
+ * numbers kept and its AGE grown; an exact duplicate (same TX, same raw) is
+ * not. A repetition that arrives a little late (its AGE short of the
+ * accumulated bound by up to the CAN hop allowance, 5 ms candidate) is still
+ * delivered with the AGE raised to that bound, never lowered; further short
+ * is held. */
+static int h16_warning_repeat_delivered(void)
+{
+    NetWireVssWarningStateRaw first = warning_raw(1u), w;
+    NetWireCanEnvelope e, last;
+    NetNodeDiag d0, d;
+    uint32_t t1;
+    CHECK(start_node() == NET_OK);
+    step_ms(3u);
+    t1 = now_ms();
+    CHECK(send_warning(&first) == 0);          /* TX1: the evaluation itself */
+    step_ms(1u);
+    CHECK(warning_count == 1);
+    d0 = diag();
+    /* TX2 at +50 ms, on time: AGE +50. */
+    step_ms(49u);
+    w = first; w.tx_sequence = 2u; warning_age_add(&w, 50u);
+    CHECK(now_ms() == t1 + 50u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 2 && last_warning_meta.source.tx_sequence == 2u);
+    CHECK(last_warning_meta.received_at_ms == t1 + 50u);
+    CHECK(last_warning.occupant_hazard_source_sequence == first.occupant_hazard_source_sequence);
+    RUN_CHECK(warning_ages_are(&last_warning, &first, 50u));
+    /* TX3: AGE as of +100 ms, but the frame reaches the bus 2 ms late. Its AGE
+     * is 2 ms short of TX2's AGE + 52 ms: delivered with the AGE raised to the
+     * bound (+102), not lowered. */
+    step_ms(51u);
+    w = first; w.tx_sequence = 3u; warning_age_add(&w, 100u);
+    CHECK(now_ms() == t1 + 102u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 3 && last_warning_meta.source.tx_sequence == 3u);
+    CHECK(last_warning_meta.received_at_ms == t1 + 102u);
+    RUN_CHECK(warning_ages_are(&last_warning, &first, 102u));
+    /* TX4 at +150 ms, on time again. */
+    step_ms(47u);
+    w = first; w.tx_sequence = 4u; warning_age_add(&w, 150u);
+    CHECK(now_ms() == t1 + 150u);
+    CHECK(net_wire_can_encode_vss_warning_state(NET_WIRE_CANDIDATE_ONLY, &w, &last) == NET_WIRE_OK);
+    CHECK(inject(&last) >= 0);
+    step_ms(1u);
+    CHECK(warning_count == 4 && last_warning_meta.source.tx_sequence == 4u);
+    RUN_CHECK(warning_ages_are(&last_warning, &first, 150u));
+    d = diag();
+    /* Three repetitions passed on: not new observations, not duplicates. */
+    CHECK(d.upper.repeat_delivered == d0.upper.repeat_delivered + 3u);
+    CHECK(d.upper.repeat_age_raised == d0.upper.repeat_age_raised + 1u);
+    CHECK(d.upper.rx_delivered == d0.upper.rx_delivered);
+    CHECK(d.upper.duplicates == d0.upper.duplicates && d.upper.rx_held == d0.upper.rx_held);
+    CHECK(d.app.warning_delivered == 4u);
+    /* The exact TX4 frame again (same TX, same raw): no callback. */
+    d0 = d;
+    CHECK(inject(&last) >= 0);
+    step_ms(2u);
+    d = diag();
+    CHECK(warning_count == 4 && d.upper.duplicates == d0.upper.duplicates + 1u);
+    /* TX5 at +200 ms whose AGE is 10 ms short of the bound (beyond the
+     * allowance): held, no callback. */
+    step_ms(47u);
+    w = first; w.tx_sequence = 5u; warning_age_add(&w, 190u);
+    CHECK(now_ms() == t1 + 200u);
+    CHECK(net_wire_can_encode_vss_warning_state(NET_WIRE_CANDIDATE_ONLY, &w, &e) == NET_WIRE_OK);
+    CHECK(inject(&e) >= 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(warning_count == 4 && d.upper.rx_held == d0.upper.rx_held + 1u);
+    /* TX6 at +250 ms with its correct AGE: delivered again. */
+    step_ms(49u);
+    w = first; w.tx_sequence = 6u; warning_age_add(&w, 250u);
+    CHECK(now_ms() == t1 + 250u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 5 && last_warning_meta.source.tx_sequence == 6u);
+    RUN_CHECK(warning_ages_are(&last_warning, &first, 250u));
+    return 0;
+}
+
+/* A VSS_WARNING_STATE that is a new evaluation on every lane. */
+static NetWireVssWarningStateRaw warning_new(uint32_t boot, uint32_t tx, uint32_t n)
+{
+    NetWireVssWarningStateRaw w = warning_raw(tx);
+    w.boot_id = boot;
+    w.antipinch_source_sequence = 100u + n;
+    w.occupant_hazard_source_sequence = 200u + n;
+    w.rear_obstacle_source_sequence = 300u + n;
+    w.rear_activation_sequence = 400u + n;
+    return w;
+}
+
+static int send_event(uint32_t boot, uint32_t tx, uint32_t occurrence)
+{
+    NetWireVssEventRaw r = event_raw(tx, occurrence);
+    NetWireCanEnvelope e;
+    r.boot_id = boot;
+    CHECK(encode_event(&r, &e));
+    CHECK(inject(&e) >= 0);
+    return 0;
+}
+
+/* DOMAIN restart (VSS hand-over C4, C6; 04_COMMON/10_DATA_AND_ID_RULES.md
+ * generation): run A sends from TX 5, run B (another BOOT_ID) from TX 1 again.
+ * Each CAN ID moves to B on its own first valid B frame and passes it on; a
+ * late frame of A is then an old generation and is refused. A frame with a
+ * structure error never moves a CAN ID to its BOOT (C5). */
+static int h17_domain_boot_switch(void)
+{
+    enum { BOOT_A = 0x444F4D41u, BOOT_B = 0x444F4D42u, BOOT_C = 0x444F4D43u };
+    NetWireVssEventRaw r, r2;
+    NetWireVssWarningStateRaw w;
+    NetWireCanEnvelope good, other, bad;
+    NetNodeDiag d0, d;
+    size_t kind_at = 0u, i;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    d0 = diag();
+    /* Run A, TX from 5. */
+    RUN_CHECK(send_event(BOOT_A, 5u, 70u));
+    w = warning_new(BOOT_A, 5u, 1u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(event_count == 1 && warning_count == 1);
+    CHECK(last_event_meta.source.boot_id == BOOT_A && last_event_meta.source.tx_sequence == 5u);
+    RUN_CHECK(send_event(BOOT_A, 6u, 71u));
+    step_ms(1u);
+    CHECK(event_count == 2);
+    /* BOOT C with a structure error (reserved event kind; a warning one DLC
+     * step shorter than the registered 64 B). */
+    r = event_raw(1u, 1u);
+    r.boot_id = BOOT_C;
+    CHECK(encode_event(&r, &good));
+    r2 = r;
+    r2.event_kind = NET_VSS_EVENT_GOODBYE;
+    CHECK(encode_event(&r2, &other));
+    for (i = 0u; i < good.length; ++i) if (good.bytes[i] != other.bytes[i]) { kind_at = i; break; }
+    CHECK(i < good.length);
+    bad = good;
+    bad.bytes[kind_at] = 0u;
+    CHECK(inject(&bad) >= 0);
+    w = warning_new(BOOT_C, 1u, 2u);
+    CHECK(net_wire_can_encode_vss_warning_state(NET_WIRE_CANDIDATE_ONLY, &w, &bad) == NET_WIRE_OK);
+    bad.length = 48u;
+    CHECK(inject_frame(&bad, true, true, MockRtd_DlcForLength(48u), false) >= 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(event_count == 2 && warning_count == 1);
+    CHECK(d.upper.rx_invalid == d0.upper.rx_invalid + 2u);
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes);
+    /* Run A is still the accepted one on both CAN IDs. */
+    RUN_CHECK(send_event(BOOT_A, 7u, 72u));
+    w = warning_new(BOOT_A, 6u, 3u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(event_count == 3 && warning_count == 2);
+    CHECK(last_event_meta.source.boot_id == BOOT_A && last_warning_meta.source.boot_id == BOOT_A);
+    /* DOMAIN restarts: run B, TX from 1 on each CAN ID. */
+    step_ms(20u);
+    w = warning_new(BOOT_B, 1u, 4u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 3 && last_warning_meta.source.boot_id == BOOT_B && last_warning_meta.source.tx_sequence == 1u);
+    /* VSS_EVENT still on A until its own first B frame: a late A event is
+     * still its run. */
+    RUN_CHECK(send_event(BOOT_A, 8u, 73u));
+    step_ms(1u);
+    CHECK(event_count == 4 && last_event_meta.source.boot_id == BOOT_A);
+    RUN_CHECK(send_event(BOOT_B, 1u, 1u));
+    step_ms(1u);
+    CHECK(event_count == 5 && last_event_meta.source.boot_id == BOOT_B && last_event_meta.source.tx_sequence == 1u);
+    CHECK(last_event.occurrence_id == 1u);
+    d0 = diag();
+    CHECK(d0.upper.generation_changes == d.upper.generation_changes + 2u);
+    /* Late frames of run A on both CAN IDs: old generation, refused. */
+    RUN_CHECK(send_event(BOOT_A, 9u, 74u));
+    w = warning_new(BOOT_A, 7u, 5u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(event_count == 5 && warning_count == 3);
+    CHECK(d.upper.old_generation == d0.upper.old_generation + 2u);
+    CHECK(d.upper.stale == d0.upper.stale + 2u);
+    /* Run B goes on. */
+    RUN_CHECK(send_event(BOOT_B, 2u, 2u));
+    w = warning_new(BOOT_B, 2u, 6u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(event_count == 6 && warning_count == 4);
+    CHECK(last_event_meta.source.boot_id == BOOT_B && last_event_meta.source.tx_sequence == 2u);
+    CHECK(last_warning_meta.source.boot_id == BOOT_B && last_warning_meta.source.tx_sequence == 2u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -916,7 +1137,9 @@ int main(int argc, char **argv)
         { "h09_publish_in_callback", h09_publish_in_callback }, { "h10_ack_missing", h10_ack_missing },
         { "h11_busoff", h11_busoff }, { "h12_time_source", h12_time_source },
         { "h13_status_not_repeated", h13_status_not_repeated }, { "h13_pending_age", h13_pending_age },
-        { "h14_rx_burst", h14_rx_burst }, { "h15_warning_quality_drop", h15_warning_quality_drop }
+        { "h14_rx_burst", h14_rx_burst }, { "h15_warning_quality_drop", h15_warning_quality_drop },
+        { "h16_warning_repeat_delivered", h16_warning_repeat_delivered },
+        { "h17_domain_boot_switch", h17_domain_boot_switch }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

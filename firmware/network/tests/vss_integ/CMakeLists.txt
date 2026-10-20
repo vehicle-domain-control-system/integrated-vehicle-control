@@ -107,16 +107,7 @@ target_link_options(test_vss_integ PRIVATE
 # Cases follow the VSS hand-over "integration checks" and contracts C1..C10.
 foreach(case IN ITEMS vi1_boot_order vi2_clock_axis vi3_tx_per_message vi4_domain_reboot
         vi5_same_occurrence vi6_structure_rejected vi7_warning_rx_loss vi8_status_period
-        vi9_link_locked_resubmit vi10_rx_flood_budget vi11_warning_quality_drop)
+        vi9_link_locked_resubmit vi10_rx_flood_budget vi11_warning_quality_drop
+        vi12_warning_repeat_keeps_vss)
     add_test(NAME vss_integ.${case} COMMAND test_vss_integ ${case})
 endforeach()
-# Disabled, cause on the Network side: once a CAN ID was admitted with one
-# BOOT_ID, the engine holds every frame with another BOOT_ID for good
-# (src/l03_message_service/m04_message_service/net_upper_service.c admission(),
-# kept by tests/product/test_upper_adversarial.c receive_order), so after a
-# DOMAIN restart VSS never receives the new run. The VSS contract (C4, C6)
-# expects a new DOMAIN BOOT to be passed on, while
-# docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md lists BOOT admission
-# as OPEN. With a trial engine change that admits a new BOOT the case passes;
-# enable it when the Network admission rule is decided.
-set_tests_properties(vss_integ.vi4_domain_reboot PROPERTIES DISABLED TRUE)

@@ -213,8 +213,16 @@ typedef struct {
      * source sequence is kept and the AGE grows from its time. */
     bool occupantLost;
     uint32_t occupantKeptSequence, occupantValidTick;
+    /* Every lane repeats the last evaluation (same source sequences) with its
+     * AGE grown from evaluationTick, computed at the frame's nominal 50 ms
+     * time; the frame itself reaches the bus 0..2 ticks later (arbitration). */
+    bool repeatEvaluation;
+    uint32_t evaluationTick, nominalTick, repeats;
     IntegEvent lastEvent;
 } Domain;
+
+/* Arrival delay of each repeated frame, in board ticks (0, 1.25, 2.5 ms). */
+static const uint8_t s_jitter[] = { 0u, 2u, 1u, 0u, 2u, 2u, 0u, 1u, 2u, 0u, 1u, 1u, 2u };
 
 static Domain s_dom;
 
@@ -237,7 +245,7 @@ static IntegLane Lane(uint32_t boot, uint32_t sequence, uint8_t state)
 static IntegWarning NextWarning(void)
 {
     IntegWarning w;
-    uint32_t seq = ++s_dom.laneSequence;
+    uint32_t seq = s_dom.repeatEvaluation ? s_dom.laneSequence : ++s_dom.laneSequence;
 
     memset(&w, 0, sizeof w);
     w.boot_id = s_dom.boot;
@@ -264,6 +272,15 @@ static IntegWarning NextWarning(void)
     w.rear_activation_reason = NET_QUALITY_REASON_NONE;
     w.rear_activation_sequence = seq;
     w.rear_activation_age_ms = 0u;
+    if (s_dom.repeatEvaluation)
+    {
+        uint16_t age = (uint16_t)(VssTime_TicksToMs(s_dom.nominalTick) - VssTime_TicksToMs(s_dom.evaluationTick));
+
+        w.antipinch.original_age_ms = age;
+        w.occupant.original_age_ms = age;
+        w.rear.original_age_ms = age;
+        w.rear_activation_age_ms = age;
+    }
     return w;
 }
 
@@ -305,13 +322,24 @@ static bool s_domainSendFailed;
 
 static void DomainService(void)
 {
-    if (s_dom.warnings && (s_tick >= s_dom.nextWarningTick))
+    uint32_t due = s_dom.nextWarningTick;
+
+    if (s_dom.repeatEvaluation)
     {
+        due += s_jitter[s_dom.repeats % (sizeof s_jitter / sizeof s_jitter[0])];
+    }
+    if (s_dom.warnings && (s_tick >= due))
+    {
+        s_dom.nominalTick = s_dom.nextWarningTick;
         if (!SendWarning())
         {
             s_domainSendFailed = true;
         }
         s_dom.nextWarningTick += WARNING_PERIOD_TICKS;
+        if (s_dom.repeatEvaluation)
+        {
+            ++s_dom.repeats;
+        }
     }
 }
 
@@ -628,12 +656,13 @@ static int vi3_tx_per_message(void)
 /* VI4 DOMAIN restart (C4, C6): run A, then run B with a new BOOT_ID and TX
  * from 1 again: VSS takes B over as a new generation (generationChanges +1).
  * A late frame of run A is refused and does not close B; B keeps working.
- * Registered DISABLED: the Network does not admit a new BOOT_ID yet (reason in
- * tests/vss_integ/CMakeLists.txt). */
+ * Network side (04_COMMON/10_DATA_AND_ID_RULES.md generation): each CAN ID
+ * moves to B on its first valid B frame and passes it on; the late A frame
+ * is an old generation and reaches no VSS callback. */
 static int vi4_domain_reboot(void)
 {
     IntegEvent late;
-    uint32_t lateTx, events;
+    uint32_t lateTx, events, old;
     uint64_t lastSession;
 
     CHECK(Boot());
@@ -665,15 +694,14 @@ static int vi4_domain_reboot(void)
     late = EventOf(NET_VSS_EVENT_LOCK_COMPLETE, 2u, 0u);
     late.boot_id = DOMAIN_BOOT_A;
     late.tx_sequence = lateTx;
+    old = Net().old_generation;
     CHECK(IntegBus_SendEvent(&late));
     RunMs(300u);
     View();
     CHECK(s_in.acceptedBoot == DOMAIN_BOOT_B && s_in.generationChanges == 1u);
     CHECK(!s_view.present && s_view.lastSession == lastSession);
-    if (s_evCount > events)
-    {
-        CHECK(s_ev[s_evCount - 1u].result.validation == VSS_VALIDATION_REJECTED);
-    }
+    /* Refused by the Network already: no VSS callback for it. */
+    CHECK(s_evCount == events && Net().old_generation == old + 1u);
 
     /* Run B goes on. */
     CHECK(SendEvent(NET_VSS_EVENT_UNLOCK_COMPLETE, 2u, 0u));
@@ -1154,6 +1182,71 @@ static int vi11_warning_quality_drop(void)
     return Invariants();
 }
 
+/* VI12 one evaluation repeated (C11): the occupant hazard plays; then DOMAIN
+ * stops evaluating anew and repeats the last evaluation every 50 ms for one
+ * second (same source sequences, new TX_SEQUENCE, AGE grown from the
+ * evaluation), each frame reaching the bus 0..2.5 ms after its nominal time.
+ * 04_COMMON/10_DATA_AND_ID_RULES.md (repeat and current quality) and the
+ * receive delivery rule: every repetition reaches VssApp_OnDomainWarningState,
+ * so the VSS receive watch (150 ms) never fires and the warning keeps playing
+ * (without them VSS would stop 150 + 500 ms after the last new evaluation).
+ * The Network counts them as repetitions, not duplicates; a late frame's AGE
+ * is raised to the accumulated bound within the CAN allowance, never held. */
+static int vi12_warning_repeat_keeps_vss(void)
+{
+    VssWarningObservation obs;
+    IntegNetDiag d0, d;
+    uint64_t session, evaluationMs;
+    uint32_t first, sent, kept, i;
+
+    CHECK(Boot());
+    s_dom.warnings = true;
+    RunMs(300u);
+    s_dom.occupant = NET_FLAG_YES;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE, 300u));
+    session = s_view.session;
+    /* The next new evaluation is the last one. */
+    do
+    {
+        Step();
+    } while (s_dom.lastWarningTick != s_tick);
+    s_dom.repeatEvaluation = true;
+    s_dom.evaluationTick = s_dom.lastWarningTick;
+    kept = s_dom.laneSequence;
+    evaluationMs = VssTime_TicksToMs(s_dom.evaluationTick);
+    d0 = Net();
+    first = s_wrCount;
+    sent = s_dom.warningTx;
+    while (NowMs() < evaluationMs + 1000u)
+    {
+        Step();
+        CHECK(Playing(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE));
+        CHECK(s_view.session == session && !s_view.stopRequested);
+        CHECK(Store_ReadWarning(VSS_PRODUCT, VSS_SIGNAL_OCCUPANT_HAZARD, &obs));
+        /* The occupant TTL (1000 ms from the evaluation) is not reached yet. */
+        if (NowMs() < evaluationMs + 900u)
+        {
+            CHECK(!obs.firstLossPresent);
+        }
+    }
+    d = Net();
+    CHECK(s_dom.warningTx - sent >= 19u);
+    /* Every repetition delivered, as a repetition. */
+    CHECK(s_wrCount - first == s_dom.warningTx - sent);
+    CHECK(d.repeat_delivered - d0.repeat_delivered == s_dom.warningTx - sent);
+    CHECK(d.warning_delivered - d0.warning_delivered == s_dom.warningTx - sent);
+    CHECK(d.duplicates == d0.duplicates && d.rx_held == d0.rx_held && d.rx_delivered == d0.rx_delivered);
+    CHECK(d.repeat_age_raised > d0.repeat_age_raised);
+    for (i = first; i < s_wrCount; ++i)
+    {
+        CHECK(s_wr[i].occupantSequence == kept);
+        CHECK(s_wr[i].tx == s_wr[i - 1u].tx + 1u);
+        CHECK(s_wr[i].result.frameValidation != VSS_VALIDATION_REJECTED);
+    }
+    CHECK(Playing(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE) && s_view.session == session);
+    return Invariants();
+}
+
 int main(int argc, char **argv)
 {
     static const struct {
@@ -1170,7 +1263,8 @@ int main(int argc, char **argv)
         { "vi8_status_period", vi8_status_period },
         { "vi9_link_locked_resubmit", vi9_link_locked_resubmit },
         { "vi10_rx_flood_budget", vi10_rx_flood_budget },
-        { "vi11_warning_quality_drop", vi11_warning_quality_drop }
+        { "vi11_warning_quality_drop", vi11_warning_quality_drop },
+        { "vi12_warning_repeat_keeps_vss", vi12_warning_repeat_keeps_vss }
     };
     size_t i;
 

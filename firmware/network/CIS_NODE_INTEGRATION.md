@@ -32,10 +32,20 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 ## P_PERMISSION relay
 
 - 새 DOMAIN 평가(새 UPDATE_SEQUENCE)를 받으면 같은 `Net_MainFunction()`에서 바로 Pi로 보낸다. CIS_BOOT_ID는 이 노드의 Network BOOT_ID, USE_LIMIT는 1500 ms(기존 후보), SOURCE_AGE는 DOMAIN AGE + CIS 대기다.
+- DOMAIN이 재부팅한 뒤 새 BOOT의 첫 0x080도 바로 보낸다(수용한 세대 변경). 그 UPDATE_SEQUENCE가 이전 BOOT보다 작거나 같아도 보낸다.
+- 같은 DOMAIN 평가를 새 TX로 반복한 0x080(약 50 ms마다)은 `CisApp_OnDomainPermission`에는 전달하지만 Pi로 다시 보내지 않는다(`NetNodeDiag.app.permission_repeats`). 그래서 P_PERMISSION은 CAN 프레임마다 나가지 않는다(`cis_node.f19_permission_repeat_no_flood`).
 - 전원 품질이 OK가 아닌 허용은 보내지 않는다(Wire에 사유를 표현할 수 없음). 이전 ALLOW는 다시 나가지 않는다.
 - 같은 DOMAIN 평가(같은 UPDATE_SEQUENCE)의 품질 하향을 새 TX로 받으면 `CisApp_OnDomainPermission`과 relay 경로 모두에 전달한다(relay는 위 규칙대로 보내지 않고 `relay_refused`를 올린다). 같은 UPDATE에서 값이 바뀌거나 품질이 OK로 돌아간 프레임은 보류한다(`cis_node.f15_permission_quality_drop_same_update`).
 - M04에 500 ms 반복으로 등록되어 있다. 다만 서비스는 원 DOMAIN AGE가 500 ms에 이르렀거나 지금 수용한 0x080과 맞지 않는 P_PERMISSION을 반복 포함 모두 거절하므로, 실제 반복 프레임은 나가지 않는다. Pi 쪽 1500 ms 수신 중단을 피하는 것은 DOMAIN의 약 200 ms 재평가다.
 - DOMAIN 0x080이 150 ms 끊기면 `NetNodeDiag.permission.reason`이 `NET_PERMISSION_RX_TIMEOUT`이 된다.
+
+## 재부팅과 같은 관측의 반복 (수신)
+
+- **DOMAIN 재부팅:** 새 BOOT_ID로 TX 1부터 오는 0x080을 첫 프레임에서 새 세대로 받아 콜백하고 relay한다. 구조 검증을 통과한 프레임만 세대를 바꾼다.
+- **Pi 재부팅:** Pi가 새 BOOT로 LINK_SEQUENCE를 처음부터 다시 보내면, LINK_SEQUENCE 창 비교보다 먼저 새 세대로 받는다. CRC·길이·형식을 통과한 프레임만 바꾼다. P_VISION_RESULT와 P_VISION_STATUS는 같은 링크(Pi→CIS)를 쓰므로, 둘 중 먼저 온 새 BOOT 프레임이 링크를 바꾸고 다른 메시지는 자기 첫 새 BOOT 프레임에서 기준을 다시 잡는다.
+- **이전 BOOT로는 돌아갈 수 없다.** 끝난 BOOT를 키(CAN ID, UART-C 수신 방향)마다 최근 4개 기억하고, 그 BOOT의 늦은 프레임은 콜백 없이 버린다(`NetNodeDiag.upper.old_generation`). 같은 BOOT_ID로 재기동한 송신 노드는 이 규칙으로 복구되지 않는다.
+- **같은 관측의 반복:** 수신 중단 감시가 있는 주기 메시지(0x080, P_VISION_RESULT, P_VISION_STATUS)는 같은 원 관측을 새 TX/LINK_SEQUENCE로 반복해도 기존 콜백으로 전달한다(`20_API.md` 수신 전달). 원 관측 번호는 그대로이고 AGE는 늘어난 값이다. 정확한 중복(같은 순번, 같은 바이트)은 버린다. 반복은 `NetNodeDiag.upper.repeat_delivered`로 센다.
+- **늦게 도착한 반복:** AGE가 "직전 AGE + 수신 간격"보다 CAN 5 ms, UART 50 ms 이내로 모자라면 그 하한으로 올려 전달한다(`repeat_age_raised`). 문서의 전달 여유 후보(PROPOSED)다. 더 모자라면 보류한다.
 
 ## 진단
 
@@ -51,4 +61,4 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 ## 시험
 
 - `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON`)의 `cis_node.*`: `tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다.
-- `cis_node.f14_permission_repeat_delivered`는 DISABLED다. 같은 DOMAIN 평가를 새 TX로 반복한 정상 프레임도 콜백으로 전달해야 한다는 `20_API.md` 규칙을 서비스가 아직 따르지 않는다(같은 관측으로 끝냄). 규칙이 정해지면 해제한다.
+- 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`.

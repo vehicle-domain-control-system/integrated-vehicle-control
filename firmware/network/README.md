@@ -92,8 +92,13 @@ transport identity with different raw bytes is a conflict. A newer transport
 sequence with the same original per-field identity may increase AGE but cannot
 change that field's value/quality. Valid repeated observations refresh receipt
 metadata without repeated Owner delivery, except the explicitly designed new
-UART-C LINK observation of an unchanged Vision evaluation. Result progression
-and independent lanes remain independent.
+UART-C LINK observation of an unchanged Vision evaluation and the periodic routes
+a node profile opts in (`rx_repeat_delivery`: VSS/CIS/BCM receive callbacks that
+feed a receive supervision), where the repetition reaches the Owner with the
+original receipt (`NetUpperDelivery.repeat`). Result progression and independent lanes
+remain independent. A sender BOOT other than the accepted one starts a new
+generation per CAN ID (UART-C: per receive direction) unless it is one of the
+4 BOOTs that key ended; a late frame of an ended BOOT is refused.
 
 Source ages use an explicit monotonic clock and immutable capture provenance.
 Backward/unknown time, arithmetic overflow, unresolved identity wrap or missing
@@ -108,8 +113,8 @@ TX success; this is not an acknowledgement from a remote application.
 7-codec / 27-codec / 48-codec counts, scaffold-only statements and old test totals
 must not be read as the current implementation inventory.
 
-G01-G08, WINDOW execution, external Owner policy/ABI adoption, boot/wrap rules,
-real driver/RTD timing and release semantics, target whole-ECU RAM/stack/heap,
+G01-G08, WINDOW execution, external Owner policy/ABI adoption, BOOT_ID source,
+CAN TX_SEQUENCE wrap, real driver/RTD timing and release semantics, target whole-ECU RAM/stack/heap,
 ARM builds, Flash and physical bus tests remain explicitly HOLD/UNKNOWN/NOT_RUN
 as applicable. The HAL-independent code runs with Host backends; no Host success
 is promoted to a physical-board or whole-ECU fitness claim.

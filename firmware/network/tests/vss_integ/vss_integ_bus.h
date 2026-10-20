@@ -104,6 +104,10 @@ typedef struct {
     bool app_tick_time;           /* time base A (application tick hooks) */
     uint32_t rx_frames;           /* frames the RTD backend received */
     uint32_t rx_delivered, rx_invalid, rx_held, stale, duplicates, rx_conflicts;
+    uint32_t repeat_delivered;    /* repetitions of one original observation passed on */
+    uint32_t repeat_age_raised;   /* of them: AGE raised to the bound within the slack */
+    uint32_t generation_changes;  /* receive keys moved to a new DOMAIN BOOT */
+    uint32_t old_generation;      /* frames of an ended DOMAIN BOOT refused */
     uint32_t event_delivered, warning_delivered, permission_received;
     uint32_t status_not_accepted;
     uint8_t last_status_result;   /* NetSubmitResult */

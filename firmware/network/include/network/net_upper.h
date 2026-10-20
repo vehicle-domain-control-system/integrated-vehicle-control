@@ -12,6 +12,22 @@
 #define NET_UPPER_RX_CAPACITY 32u
 #define NET_UPPER_ROUTE_COUNT 48u
 #define NET_UPPER_POLL_BUDGET 32u
+/* Ended BOOTs kept per receive key (CAN: sender and CAN ID; UART-C: the
+ * node's receive direction). A frame of one of them is an old generation and
+ * is refused. Same depth as the VSS receiver (VSS hand-over C4: the 4 most
+ * recently replaced BOOTs). docs/network/interface/04_COMMON/
+ * 10_DATA_AND_ID_RULES.md (generation): an accepted change of the sending run
+ * invalidates that sender's earlier context. */
+#define NET_UPPER_ENDED_BOOTS 4u
+/* Delivery slack of a repetition of the same original observation on a route
+ * whose node passes repetitions to its receive callback (rx_repeat_delivery):
+ * an AGE short of the accumulated lower bound by at most this many ms (late
+ * arrival: bus arbitration, UART queueing, ms rounding) is raised to that
+ * bound instead of being held. Candidate hop allowances, PROPOSED, not
+ * measured bounds (10_DATA_AND_ID_RULES.md quality and AGE: CAN 5 ms /
+ * UART 50 ms). */
+#define NET_UPPER_CAN_REPEAT_SLACK_MS 5u
+#define NET_UPPER_UART_REPEAT_SLACK_MS 50u
 typedef struct {
     NetWireLink link;
     NetWireDirection direction;
@@ -57,6 +73,10 @@ typedef struct {
     bool freshness_known; /* Continuous local clock and unsaturated wire AGE; no original AGE exists for M_REQUEST. */
     bool observation_only; /* Held route transport inspection; never Owner execution authority. */
     bool per_field_age_required; /* age_ms is conservative max; inspect each typed field. */
+    /* Repetition of the same original observation with a newer transport
+     * sequence on a route with rx_repeat_delivery: the receipt is the one of
+     * the original observation, only the capture and the grown AGE are new. */
+    bool repeat;
 } NetUpperDelivery;
 /* Raw Network observation independent of Owner ABI. Current pinned DOMAIN C2
  * stores rearDistanceMm; net_domain_c2 preserves mm without rounding. External
@@ -91,6 +111,13 @@ typedef struct {
      * backlog only, retain every raw field AGE/quality, and make no whole-
      * message freshness assertion. Rear/permission cannot opt out of TTL. */
     bool rx_per_field_age[NET_UPPER_ROUTE_COUNT];
+    /* Explicit node opt-in, default OFF: a repetition of the same original
+     * observation with a newer transport sequence is passed to the Owner
+     * (NetUpperDelivery.repeat) instead of ending as a same observation
+     * without a call. For periodic routes with a receive timeout whose node
+     * receive callback feeds the receive supervision
+     * (docs/network/interface/02_NODES/CIS/20_API.md receive delivery). */
+    bool rx_repeat_delivery[NET_UPPER_ROUTE_COUNT];
     NetWireStreamPolicy uart_policy[2];
     bool uart_sequence_bound[2];
     uint16_t uart_initial_sequence[2]; /* Explicit owner-selected starting value. Wraps modulo 65536. */
@@ -113,6 +140,7 @@ typedef struct {
      * backlog only, retain every raw field AGE/quality, and make no whole-
      * message freshness assertion. Rear/permission cannot opt out of TTL. */
     bool rx_per_field_age[NET_UPPER_ADMISSION_CAPACITY];
+    bool rx_repeat_delivery[NET_UPPER_ADMISSION_CAPACITY]; /* see NetUpperConfig */
     NetWireStreamPolicy uart_policy[2];
     bool uart_sequence_bound[2];
     uint16_t uart_initial_sequence[2]; /* Explicit owner-selected starting value. Wraps modulo 65536. */
@@ -142,6 +170,11 @@ typedef struct {
     bool failure_notice_enabled;
     uint64_t failure_version, failure_ack_version;
 } NetUpperTx;
+/* BOOTs a receive key accepted and then left for a newer one, oldest first. */
+typedef struct {
+    uint32_t boot[NET_UPPER_ENDED_BOOTS];
+    uint8_t count;
+} NetUpperEndedBoots;
 typedef struct {
     bool seen;
     uint32_t boot, sequence;
@@ -151,12 +184,27 @@ typedef struct {
     /* Exact accepted wire identity. Arrival time and storage padding are not wire. */
     union { NetWireCanEnvelope can; NetWireUartFrame uart; } raw;
     NetWireDirection raw_direction;
+    NetUpperEndedBoots ended; /* CAN key (sender, CAN ID) */
 } NetUpperAdmission;
+/* Accepted sending run of the UART-C direction this node receives. The
+ * records of that direction share it: the first frame of a new run, of any
+ * type, moves the link to it and the other types follow on their first frame. */
+typedef struct {
+    bool seen;
+    uint32_t boot;
+    NetUpperEndedBoots ended;
+} NetUpperLinkGeneration;
 typedef struct {
     uint32_t rx_captured, rx_dropped, rx_invalid, rx_held, rx_delivered;
     uint32_t duplicates, stale, consumer_rejected, errors, resets, rx_conflicts;
     uint32_t tx_queued, tx_submitted, tx_admitted, tx_succeeded, tx_failed;
     uint32_t tx_released, tx_conflicts, tx_stale, tx_duplicates, time_holds;
+    /* Repetitions passed to the Owner (rx_repeat_delivery): not new
+     * observations, not in rx_delivered and not in duplicates. */
+    uint32_t repeat_delivered;
+    uint32_t repeat_age_raised; /* of them: AGE raised to the lower bound within the slack */
+    uint32_t generation_changes; /* receive keys moved to a new sender BOOT */
+    uint32_t old_generation; /* frames of an ended BOOT refused (also counted in stale) */
 } NetUpperObservation;
 typedef struct NetUpper {
     unsigned char init_tag[8]; /* Byte-readable live-instance guard; fresh storage may be poisoned. */
@@ -171,6 +219,7 @@ typedef struct NetUpper {
     NetUpperUartReceiver uart_rx[NET_UPPER_UART_RECEIVER_CAPACITY];
 #endif
     bool uart_enabled[2];
+    NetUpperLinkGeneration uart_c_generation;
     bool link_failed[3], context_seen;
     bool quiescing[3];
     NetWireMContext context;

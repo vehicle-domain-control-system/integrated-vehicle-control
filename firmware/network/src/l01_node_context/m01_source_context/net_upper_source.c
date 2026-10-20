@@ -688,6 +688,77 @@ bool net_upper_can_same_observation(const NetUpperCanMessage *old,const NetUpper
     }
 }
 
+/* Repetition of the same original observation on a route whose node passes
+ * repetitions to its receive callback (NetUpperConfig.rx_repeat_delivery).
+ * docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md (quality and AGE):
+ * a re-reception of the same original identity never lowers the accumulated
+ * AGE; both are compared at the same local consumption time. A repetition
+ * that arrives later than the sender's period (arbitration, queueing, ms
+ * rounding; that wait is in no AGE) is short of the bound old AGE + elapsed
+ * by that much. Within `slack` (the candidate hop allowance) its AGE is
+ * raised to the bound, never lowered; further short stays HOLD. */
+static NetStatus raise_age(uint16_t old_age, uint16_t *age, uint64_t elapsed, uint16_t slack, bool *raised)
+{
+    uint16_t floor=elapsed >= (uint64_t)(UINT16_MAX-old_age) ? UINT16_MAX : (uint16_t)(old_age+elapsed);
+    if(*age>=floor)return NET_OK;
+    if((uint16_t)(floor-*age)>slack)return NET_HOLD;
+    *age=floor;*raised=true;return NET_OK;
+}
+NetStatus net_upper_can_repeat_age(const NetUpperCanMessage *old, NetUpperCanMessage *m, uint64_t elapsed,
+    uint16_t slack, bool *raised)
+{
+    NetStatus st=NET_OK;
+    if(old==NULL || m==NULL || raised==NULL || old->id!=m->id)return NET_HOLD;
+    switch(m->id) {
+    case 0x080u:
+        if(!permission_same(&old->data.domain_permission,&m->data.domain_permission))return NET_HOLD;
+        return raise_age(old->data.domain_permission.source_age_ms,&m->data.domain_permission.source_age_ms,
+            elapsed,slack,raised);
+    case 0x0C0u: {
+        const NetWireVssWarningStateRaw *a=&old->data.vss_warning_state;
+        NetWireVssWarningStateRaw *b=&m->data.vss_warning_state;
+        if(st==NET_OK && warning_lane_same(a,b,0u))
+            st=raise_age(a->antipinch_original_age_ms,&b->antipinch_original_age_ms,elapsed,slack,raised);
+        if(st==NET_OK && warning_lane_same(a,b,1u))
+            st=raise_age(a->occupant_hazard_original_age_ms,&b->occupant_hazard_original_age_ms,elapsed,slack,raised);
+        if(st==NET_OK && warning_lane_same(a,b,2u))
+            st=raise_age(a->rear_obstacle_original_age_ms,&b->rear_obstacle_original_age_ms,elapsed,slack,raised);
+        if(st==NET_OK && warning_lane_same(a,b,3u))
+            st=raise_age(a->rear_activation_age_ms,&b->rear_activation_age_ms,elapsed,slack,raised);
+        return st;
+    }
+    default:return NET_HOLD; /* no repetition delivery for other messages */
+    }
+}
+NetStatus net_upper_uart_repeat_age(const NetUpperUartMessage *old, NetUpperUartMessage *m, uint64_t elapsed,
+    uint16_t slack, bool *raised)
+{
+    if(old==NULL || m==NULL || raised==NULL || !net_upper_uart_same_source(old,m) || m->link!=NET_WIRE_UART_C)
+        return NET_HOLD;
+    if(m->type==0x60u)
+        return raise_age(old->data.p_vision_result.vision_age_ms,&m->data.p_vision_result.vision_age_ms,elapsed,slack,raised);
+    if(m->type==0x61u)
+        return raise_age(old->data.p_vision_status.status_age_ms,&m->data.p_vision_status.status_age_ms,elapsed,slack,raised);
+    return NET_HOLD;
+}
+
+/* Identity of the original observation of a received UART record. The Pi
+ * Vision records keep it in Pi BOOT and VISION_SEQUENCE / STATUS_SEQUENCE
+ * (30_UART_C.md: both numbers grow only on a new judgement / state
+ * evaluation, a retransmission keeps them); their values cannot change under
+ * it (net_upper_uart_original_age). Other records: the same observation. */
+bool net_upper_uart_same_source(const NetUpperUartMessage *old,const NetUpperUartMessage *m)
+{
+    if(old==NULL || m==NULL || old->link!=m->link || old->type!=m->type)return false;
+    if(m->link==NET_WIRE_UART_C && m->type==0x60u)
+        return old->data.p_vision_result.pi_boot_id==m->data.p_vision_result.pi_boot_id &&
+            old->data.p_vision_result.vision_sequence==m->data.p_vision_result.vision_sequence;
+    if(m->link==NET_WIRE_UART_C && m->type==0x61u)
+        return old->data.p_vision_status.pi_boot_id==m->data.p_vision_status.pi_boot_id &&
+            old->data.p_vision_status.status_sequence==m->data.p_vision_status.status_sequence;
+    return net_upper_uart_same_observation(old,m);
+}
+
 /* Transport refresh of the exact same source observation. Caller first validates
  * age/identity and preserves the newer raw/capture baseline without replaying Owner. */
 bool net_upper_uart_same_observation(const NetUpperUartMessage *old,const NetUpperUartMessage *m)
