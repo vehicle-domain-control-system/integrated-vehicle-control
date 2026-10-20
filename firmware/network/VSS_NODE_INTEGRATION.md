@@ -147,7 +147,31 @@ int main(void)
 | `rtd.main_drained_max` | 한 바퀴에 링에서 꺼낸 최대 항목 수 |
 | `rtd.tick_future_clamped` | 현재 시각보다 미래라 현재 시각으로 둔 캡처 수 |
 
+## VSS 통합 하네스 (host, `tests/vss_integ`)
+
+실제 VSS 소스(`VssMain_Boot`·`VssMain_LoopOnce`, VSS HAL 대역 `tests/host/hal_mock.c`)를 이 Network 노드(VSS 프로필, mock RTD, 방식 A 시계)와 링크해 VSS 인계 문서 §8의 연동 확인 시험을 host에서 돌린다. VSS 파일은 읽기만 하고 리포에 복사하지 않는다.
+
+- **VSS 소스:** VSS 브랜치 `feat/vss-firmware` 커밋 `8fcf25c`의 worktree(아래 `<VSS_WT>`, 리포 밖 폴더)에서 `firmware/vss` 폴더를 쓴다. 경로에는 `/`를 쓴다.
+  ```
+  git fetch origin feat/vss-firmware
+  git worktree add --detach <VSS_WT> 8fcf25c
+  ```
+- **빌드·실행:** VSS 프로필 빌드 옵션에 폴더 하나를 더한다. 폴더나 `src/net_if/vss_net_api.h`가 없으면 configure가 멈춘다.
+  ```
+  cmake -S firmware/network -B firmware/network/.build-vss-integ -G Ninja \
+    -DBUILD_TESTING=ON -DNETWORK_BUILD_WIRE_CANDIDATE=ON -DNETWORK_BUILD_UPPER_STACK=ON \
+    -DNETWORK_BUILD_HAL_PORT_ADAPTER=ON -DNETWORK_NODE_PROFILE=VSS -DNETWORK_BUILD_RTD_MOCK=ON \
+    -DNETWORK_VSS_FW_DIR=<VSS_WT>/firmware/vss
+  cmake --build firmware/network/.build-vss-integ
+  ctest --test-dir firmware/network/.build-vss-integ -R vss_integ
+  ```
+- **구성:** VSS 라이브러리 `vss_fw_host`(`src/**/*.c`에서 `hal/s32k344/` 제외 + `hal_mock.c`, VSS `host_test.py`와 같은 플래그 + `VSS_CFG_NET_STUB=0 VSS_CFG_TEST_INPUT=0`), Network 라이브러리 `network_node_vss_integ`(`tools/s32ds_sources.txt` 목록 + mock SDK, `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`, `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`, 시험용 노드 설정·µs hook, `-funsigned-char`). GCC/Clang 전용이다(`-Wl,--wrap`).
+- **시험 프로그램:** `vss_net_api.h`와 `net_if_*.h`는 같은 타입을 정의하므로 두 번역 단위로 나눈다. `test_vss_integ.c`는 VSS 헤더만, `vss_integ_bus.c`(DOMAIN 프레임 codec, 버스, 0x340 해독, Network 진단)는 Network 헤더만 include하고, 둘은 `vss_integ_bus.h`(기본 C 타입)로만 만난다. 슈퍼루프는 tick(1.25 ms)마다 1바퀴, 오디오 출력 경계는 48 kHz 1024 frame마다 올린다. `VssApp_On*`·`VssNet_PublishStatus`는 link spy(`--wrap`)로 기록한 뒤 실제 함수를 부른다.
+- **케이스(`vss_integ.*`, 케이스당 프로세스 1개):** vi1 부팅 순서, vi2 수신 시각 축, vi3 메시지별 TX, vi4 DOMAIN 재부팅, vi5 같은 occurrence 재전송, vi6 구조 오류 선검사, vi7 Warning 수신 끊김, vi8 0x340 주기(10 s에 40±2건), vi9 링크 잠김 재제출, vi10 수신 폭주 처리 상한.
+- **vi4는 DISABLED다.** 원인은 Network 쪽이다: 아래 "제한"의 새 BOOT_ID 거부. 새 BOOT를 받아들이도록 시험 삼아 바꾼 엔진에서는 통과했다. 수용 규칙이 정해지면 `tests/vss_integ/CMakeLists.txt`의 DISABLED를 지운다.
+
 ## 제한
 
 - 버스오프 자동 복구는 없다. bus-off가 나면 CAN 링크가 잠기고, 보드를 리셋해야 다시 송수신한다.
+- **DOMAIN 재부팅(새 BOOT_ID)을 받아들이지 않는다.** 엔진은 CAN ID별로 처음 수용한 BOOT_ID와 다른 BOOT_ID의 프레임을 모두 보류한다(`net_upper_service.c` `admission()`). 그래서 DOMAIN이 재부팅하면 VSS 노드는 리셋 전까지 `VSS_EVENT`·`VSS_WARNING_STATE`·`DOMAIN_PERMISSION`을 받지 못한다. VSS 계약은 새 BOOT를 그대로 전달하기를 기대하고, `docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md`는 BOOT 수용 규칙을 OPEN으로 둔다.
 - VSS 노드는 UART 링크와 다른 노드의 facade를 쓰지 않는다.

@@ -648,3 +648,15 @@ if(NETWORK_BUILD_RTD_MOCK)
         endforeach()
     endif()
 endif()
+
+# Host integration harness with the real VSS firmware sources (tests/vss_integ):
+# VSS boot sequence and super-loop + this Network node on the mock SDK. Off
+# unless the firmware/vss folder of a VSS worktree is given; its files are
+# only read.
+set(NETWORK_VSS_FW_DIR "" CACHE PATH "firmware/vss folder of a VSS worktree: builds the vss_integ.* harness (needs NETWORK_NODE_PROFILE=VSS and NETWORK_BUILD_RTD_MOCK=ON)")
+if(NOT NETWORK_VSS_FW_DIR STREQUAL "")
+    if(NOT NETWORK_NODE_PROFILE STREQUAL "VSS" OR NOT NETWORK_BUILD_RTD_MOCK)
+        message(FATAL_ERROR "NETWORK_VSS_FW_DIR needs -DNETWORK_NODE_PROFILE=VSS -DNETWORK_BUILD_RTD_MOCK=ON")
+    endif()
+    add_subdirectory(tests/vss_integ)
+endif()
