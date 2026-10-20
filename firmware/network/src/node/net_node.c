@@ -4,7 +4,8 @@
  *   VSS_EVENT        0x160 : discrete; original-age cap 2000 ms (L = min(USE_LIMIT,500,2000)
  *                            is applied by the VSS application, not here)
  *   VSS_WARNING_STATE 0x0C0: per-lane ages (per-field mode); local delivery bound only
- *   VSS_STATUS (TX)  0x340 : freshness from source_age_ms; receiver judges staleness */
+ *   VSS_STATUS (TX)  0x340 : freshness from source_age_ms; receiver judges staleness;
+ *                            one frame per submission, never repeated (table below) */
 #include "network/net_node.h"
 #include <string.h>
 
@@ -17,7 +18,21 @@
 static NetUpper service;
 static NetHalAdapter hal;
 static NetEcuAdapter ecu;
+static NetUpperPublisher publisher;
 static NetPermissionGuard permission;
+
+/* M04 publish table of the VSS profile: messages whose BOOT_ID / TX_SEQUENCE
+ * and waiting AGE Network owns, and their repetition period.
+ * VSS_STATUS is submitted by the VSS application itself: immediately on every
+ * change and otherwise as a new evaluation every 250 ms (firmware/vss
+ * README §6 submission rule; 10_CAN_FD.md: 250 ms period / 750 ms receive
+ * timeout). Network therefore sends one frame per submission and registers
+ * no period here; a period would put a second frame on the bus each status
+ * period. Freshness bound of a submission: source_age_ms plus the local wait;
+ * the wire saturates at 65535 and DOMAIN judges staleness. */
+static const NetUpperPublishEntry publish_table[] = {
+    { NET_WIRE_CAN, 0x340u, 0u, { true, 65535u + 1000u, true } }
+};
 static NetNodeStage stage;
 static NetStatus stage_status;
 static uint32_t steps;
@@ -48,6 +63,7 @@ NetStatus NetNode_Init(const NetNodeConfig *config)
     NetHalConfig hal_cfg;
     NetUpperConfig c;
     NetAppPortVssConfig app;
+    NetUpperPublishConfig pub;
     NetPermissionPolicy perm;
     NetStatus st;
 
@@ -81,11 +97,15 @@ NetStatus NetNode_Init(const NetNodeConfig *config)
     st = net_upper_init(&service, &c);
     if (st != NET_OK) return fail(NET_NODE_STAGE_UPPER, st);
 
+    memset(&pub, 0, sizeof(pub));
+    pub.can_boot_id = config->boot_id;
+    pub.entries = publish_table;
+    pub.entry_count = sizeof(publish_table) / sizeof(publish_table[0]);
+    st = net_upper_publish_init(&publisher, &service, &pub);
+    if (st != NET_OK) return fail(NET_NODE_STAGE_UPPER, st);
+
     memset(&app, 0, sizeof(app));
-    app.boot_id = config->boot_id;
-    app.status_tx_age.bound = true;
-    app.status_tx_age.maximum_age_ms = 65535u + 1000u; /* wire saturates at 65535; DOMAIN judges */
-    app.status_tx_age.expires_at_equality = true;
+    app.publisher = &publisher;
     st = net_app_port_vss_bind(&service, &ecu, &app);
     if (st != NET_OK) return fail(NET_NODE_STAGE_APP_PORT, st);
 
@@ -107,11 +127,11 @@ void NetNode_Step(void)
 {
     if (stage != NET_NODE_STAGE_READY) return;
     if (steps != UINT32_MAX) ++steps;
-    (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* RX dispatch -> VssApp_* ; TX submit */
+    (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* RX dispatch -> VssApp_* ; TX facts */
     (void)net_permission_step(&permission);                /* DOMAIN_PERMISSION supervision */
-    net_app_port_vss_service();                            /* deferred status, retire TX slots */
     net_hal_rtd_service();                                 /* stuck-TX abort, error counters */
-    (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* submit what the App Port queued */
+    (void)net_upper_publish_service(&publisher);           /* M04: retire, BOOT/TX, due frames */
+    (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* dispatch what M04 offered */
 }
 
 NetStatus NetNode_GetDiag(NetNodeDiag *out)
@@ -126,6 +146,7 @@ NetStatus NetNode_GetDiag(NetNodeDiag *out)
     (void)net_hal_adapter_observation(&hal, &out->hal);
     (void)net_hal_rtd_diag(&out->rtd);
     (void)net_app_port_vss_diag(&out->app);
+    (void)net_upper_publish_view(&publisher, NET_WIRE_CAN, 0x340u, &out->status_tx);
     out->permission_valid = net_permission_snapshot(&permission, &out->permission) == NET_OK;
     return NET_OK;
 }

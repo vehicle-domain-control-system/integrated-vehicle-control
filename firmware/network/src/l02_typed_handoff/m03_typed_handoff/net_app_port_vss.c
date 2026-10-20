@@ -2,24 +2,20 @@
  * Contract: docs/network/interface/02_NODES/VSS/{10_DATA,20_API}.md
  *   - RX: verified typed wire DTO -> NetVss* (explicit field copy) -> VssApp_*
  *         from the serialized NetNode_Step() context only.
- *   - TX: VssNet_PublishStatus -> Network-owned BOOT_ID/TX_SEQUENCE ->
- *         typed ECU adapter -> M04 queue (local copy; not TX success).
- *   - A newer status replaces an older one that is still queued and never
- *     submitted ("send-not-started pending current state may be replaced"). */
+ *   - TX: VssNet_PublishStatus -> explicit field copy -> M04 publish slot
+ *         (local copy; not TX success). BOOT_ID, TX_SEQUENCE, the replacement
+ *         of a status no device has taken yet and the waiting AGE are M04's
+ *         (net_upper_publish.h; 20_API.md: Network only adds the sending
+ *         BOOT/TX and the waiting AGE). Nothing here numbers or repeats a frame:
+ *         the VSS application submits every new evaluation itself. */
 #include "network/net_app_port_vss.h"
 #include <string.h>
 
 typedef struct {
-    bool bound, in_publish, sequence_exhausted;
+    bool bound, in_publish;
     NetUpper *service;
     NetEcuAdapter *ecu;
-    NetAppPortVssConfig config;
-    uint32_t next_status_sequence;
-    uint64_t next_observation;
-    bool status_key_valid, pending_valid;
-    NetTxKey status_key;
-    NetVssStatus pending;
-    NetAppPortTxTracker tracker;
+    NetUpperPublisher *publisher;
     NetAppPortVssDiag diag;
 } VssPort;
 
@@ -129,25 +125,18 @@ void VssNetPriv_OnDomainPermission(const NetDomainPermission *message, const Net
 }
 
 /* ---------------------------------------------------------------- TX ---- */
-static NetStatus submit_status(const NetVssStatus *message)
+NetSubmitResult VssNet_PublishStatus(const NetVssStatus *message)
 {
     NetUpperCanMessage m;
     NetWireVssStatusRaw *r = &m.data.vss_status;
-    NetSourceStamp stamp;
-    NetTxKey key;
+    NetUpperPublishNote note;
     NetStatus st;
-    uint64_t now;
-
-    net_app_port_retire_completed(&port.tracker, port.service);
-    if (port.status_key_valid && net_app_port_cancel_if_unsent(port.service, port.status_key)) {
-        inc(&port.diag.status_replaced);
-        port.status_key_valid = false;
-    }
-
+    if (message == NULL) return NET_SUBMIT_INVALID_ARGUMENT;
+    if (!port.bound || port.in_publish) return NET_SUBMIT_NOT_READY;
+    port.in_publish = true;
     memset(&m, 0, sizeof(m));
     m.id = 0x340u;
-    r->boot_id = port.config.boot_id;              /* Network-owned link identity */
-    r->tx_sequence = port.next_status_sequence;    /* Network-owned, per message */
+    /* boot_id / tx_sequence stay 0: M04 writes them into each frame. */
     r->vss_state = message->vss_state;
     r->vss_availability = message->vss_availability;
     r->vss_accepting_events = message->vss_accepting_events;
@@ -159,45 +148,15 @@ static NetStatus submit_status(const NetVssStatus *message)
     r->last_fault_quality = message->last_fault_quality;
     r->update_sequence = message->update_sequence;
     r->source_age_ms = message->source_age_ms;
-
-    st = net_upper_now(port.service, &now);
+    memset(&note, 0, sizeof(note));
+    st = net_upper_publish_can(port.publisher, &m, NULL, &note);
     if (st == NET_OK) {
-        stamp.observation_id = ++port.next_observation;
-        stamp.observed_at_ms = now;
-        stamp.original_age_ms = net_upper_can_max_age(&m);
-        st = net_ecu_publish_vss_status(port.ecu, r, &stamp, &port.config.status_tx_age, &key);
-    }
-    if (st == NET_OK) {
-        net_app_port_track(&port.tracker, key);
-        port.status_key = key;
-        port.status_key_valid = true;
-        inc(&port.diag.status_submitted);
-        if (port.next_status_sequence == UINT32_MAX) port.sequence_exhausted = true; /* wrap HOLD */
-        else ++port.next_status_sequence;
-    } else if (st != NET_BUSY) {
+        /* Inside an RX callback the copy is offered right after that step. */
+        if (note.in_step) inc(&port.diag.status_deferred);
+    } else {
         inc(&port.diag.status_not_accepted);
     }
     port.diag.last_status_engine = st;
-    return st;
-}
-
-NetSubmitResult VssNet_PublishStatus(const NetVssStatus *message)
-{
-    NetStatus st;
-    if (message == NULL) return NET_SUBMIT_INVALID_ARGUMENT;
-    if (!port.bound || port.in_publish || port.sequence_exhausted) return NET_SUBMIT_NOT_READY;
-    port.in_publish = true;
-    st = submit_status(message);
-    if (st == NET_BUSY) {
-        /* Called from inside an RX callback (engine step in progress). Keep a
-         * bounded local copy, latest wins, and submit it right after the step
-         * (net_app_port_vss_service). That copy is what NET_SUBMIT_OK means. */
-        if (port.pending_valid) inc(&port.diag.status_replaced);
-        port.pending = *message;
-        port.pending_valid = true;
-        inc(&port.diag.status_deferred);
-        st = NET_OK;
-    }
     port.diag.last_status_result = net_app_port_submit_result(st);
     port.in_publish = false;
     return port.diag.last_status_result;
@@ -207,36 +166,30 @@ NetSubmitResult VssNet_PublishStatus(const NetVssStatus *message)
 NetStatus net_app_port_vss_bind(NetUpper *service, NetEcuAdapter *ecu,
                                 const NetAppPortVssConfig *config)
 {
-    if (service == NULL || ecu == NULL || config == NULL || config->boot_id == 0u ||
-        !config->status_tx_age.bound) return NET_INVALID_ARGUMENT;
+    NetUpperPublishView view;
+    if (service == NULL || ecu == NULL || config == NULL || config->publisher == NULL ||
+        config->publisher->service != service ||
+        net_upper_publish_view(config->publisher, NET_WIRE_CAN, 0x340u, &view) != NET_OK)
+        return NET_INVALID_ARGUMENT;
     memset(&port, 0, sizeof(port));
     port.service = service;
     port.ecu = ecu;
-    port.config = *config;
-    port.next_status_sequence = 1u;
+    port.publisher = config->publisher;
     port.bound = true;
     return NET_OK;
 }
 
-void net_app_port_vss_service(void)
-{
-    if (!port.bound || port.in_publish) return;
-    port.in_publish = true;
-    if (port.pending_valid) {
-        NetStatus st = submit_status(&port.pending);
-        if (st != NET_BUSY) port.pending_valid = false; /* outcome recorded in diag */
-    } else {
-        net_app_port_retire_completed(&port.tracker, port.service);
-    }
-    port.in_publish = false;
-}
-
 NetStatus net_app_port_vss_diag(NetAppPortVssDiag *out)
 {
+    NetUpperPublishView view;
     if (out == NULL) return NET_INVALID_ARGUMENT;
     *out = port.diag;
     out->bound = port.bound;
-    out->boot_id = port.config.boot_id;
-    out->next_status_sequence = port.next_status_sequence;
+    if (port.bound && net_upper_publish_view(port.publisher, NET_WIRE_CAN, 0x340u, &view) == NET_OK) {
+        out->boot_id = view.boot_id;
+        out->next_status_sequence = view.next_sequence;
+        out->status_submitted = view.counters.sent;
+        out->status_replaced = view.counters.replaced;
+    }
     return NET_OK;
 }

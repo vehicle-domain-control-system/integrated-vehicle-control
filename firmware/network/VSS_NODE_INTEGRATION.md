@@ -12,9 +12,16 @@ VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만
 |---|---|---|
 | `VssApp_OnDomainEvent` | VSS 앱 | `NetNode_Step()` 안. ISR 아님 |
 | `VssApp_OnDomainWarningState` | VSS 앱 | `NetNode_Step()` 안. ISR 아님 |
-| `VssNet_PublishStatus` | Network | 슈퍼루프 문맥. 콜백 안에서 불러도 됨(지연 1건, 최신 우선) |
+| `VssNet_PublishStatus` | Network | 슈퍼루프 문맥. 콜백 안에서 불러도 됨(아직 나가지 않은 제출은 최신 것으로 교체) |
 
-BOOT_ID와 TX_SEQUENCE는 Network가 소유한다. 앱은 채우지 않는다.
+BOOT_ID와 TX_SEQUENCE는 Network(M04 `net_upper_publish.c`)가 프레임마다 쓴다. 앱은 채우지 않는다.
+
+## VSS_STATUS(0x340) 송신 규칙
+
+- **0x340은 앱이 주기적으로 제출하고, Network는 반복하지 않는다.** VSS 앱은 상태가 바뀌면 즉시, 아니면 250 ms마다 새 평가(새 `update_sequence`)로 제출한다. Network는 제출마다 프레임 1건을 보낸다. M04 주기 표에 0x340을 등록하지 않는다. 등록하면 같은 주기에 프레임이 두 번 나간다.
+- TX_SEQUENCE는 1부터 프레임마다 +1이다. `0xFFFFFFFF`를 쓴 뒤에는 송신을 멈추고(HOLD) `sequence_hold`를 올리며, 제출은 `NET_SUBMIT_NOT_READY`를 받는다.
+- **대기 Age:** 제출 시각부터 실제로 장치에 넘기는 시각까지 기다린 시간을 SOURCE_AGE에 더한다(65535 포화). 보통은 다음 `NetNode_Step()`에서 바로 나가므로 더할 것이 거의 없다. 직전 0x340 프레임이 아직 TX MB에 있으면 새 제출은 그 프레임이 끝날 때까지 기다리고, 기다린 시간이 더해진다.
+- 진단: `NetNodeDiag.status_tx`(M04 슬롯). `sent`, `replaced`, `pending_age_added_ms_max`, `sequence_hold`를 본다. `periodic_sent`는 항상 0이다.
 
 ## 슈퍼루프
 

@@ -300,6 +300,7 @@ if(NETWORK_BUILD_UPPER_STACK)
         src/l05_transport_port/m07_buffer_outcome/net_upper_outcome.c
         src/l05_transport_port/m07_buffer_outcome/net_upper_detail.c
         src/l03_message_service/m04_message_service/net_upper_control.c
+        src/l03_message_service/m04_message_service/net_upper_publish.c
         src/l05_transport_port/m08_device_port/net_upper_port.c
         src/l05_transport_port/m09_observation/net_upper_observation.c
         src/l05_transport_port/m09_observation/net_upper_diagnostics.c)
@@ -530,6 +531,21 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
     endforeach()
 endif()
 
+# M04 Message Service: Network-owned BOOT/TX sequence, waiting AGE and the
+# periodic repetition driver, exercised through a test-only registration on a
+# fake Port (no product profile table is changed for the tests).
+if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL "HOST")
+    add_executable(test_m04_publish tests/product/test_m04_publish.c)
+    target_link_libraries(test_m04_publish PRIVATE network_product)
+    network_warnings(test_m04_publish)
+    foreach(case IN ITEMS m01_no_submission m02_submit_rephase m03_repeat_same_stamp
+            m04_skip_pending m05_saturated_age_keeps_sending m06_sequence_continuous
+            m07_tx_failure_keeps_schedule m08_sequence_wrap_hold m09_pending_age
+            m10_uart_link_sequence m11_registration m12_queue_full_keeps_submission)
+        add_test(NAME m04.${case} COMMAND test_m04_publish ${case})
+    endforeach()
+endif()
+
 # Host-only node build of the RTD backend against the independently written
 # mock SDK (sdk_mock/rtd). Product sources come from tools/s32ds_sources.txt,
 # the same list a board project copies, so the list itself is link-checked.
@@ -601,7 +617,8 @@ if(NETWORK_BUILD_RTD_MOCK)
             network_warnings(test_vss_node_e2e_${_variant})
             foreach(case IN ITEMS h01_init h02_event_rx h03_order_duplicate h04_warning_rx
                     h05_permission_rx h06_malformed_rx h07_publish h08_publish_invalid
-                    h09_publish_in_callback h10_ack_missing h11_busoff h12_time_source h14_rx_burst)
+                    h09_publish_in_callback h10_ack_missing h11_busoff h12_time_source
+                    h13_status_not_repeated h13_pending_age h14_rx_burst)
                 add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
             endforeach()
         endforeach()

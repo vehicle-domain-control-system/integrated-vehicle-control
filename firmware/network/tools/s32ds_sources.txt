@@ -44,6 +44,7 @@ src/l02_typed_handoff/m03_typed_handoff/net_ecu_adapter.c
 src/l05_transport_port/m07_buffer_outcome/net_upper_outcome.c
 src/l05_transport_port/m07_buffer_outcome/net_upper_detail.c
 src/l03_message_service/m04_message_service/net_upper_control.c
+src/l03_message_service/m04_message_service/net_upper_publish.c
 src/l05_transport_port/m08_device_port/net_upper_port.c
 src/l05_transport_port/m09_observation/net_upper_observation.c
 src/l05_transport_port/m09_observation/net_upper_diagnostics.c

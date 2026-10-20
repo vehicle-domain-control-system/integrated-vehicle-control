@@ -656,6 +656,87 @@ static int h12_time_source(void)
 #endif
 }
 
+/* VSS_STATUS is an application-periodic message: the VSS application submits
+ * a new evaluation on every change and otherwise every 250 ms, so Network
+ * sends one frame per submission and never repeats it (a repetition would
+ * double the frames each period). 10_CAN_FD.md: TX_SEQUENCE +1 per frame,
+ * UPDATE_SEQUENCE is the evaluation's own number. */
+static int h13_status_not_repeated(void)
+{
+    NetVssStatus s = status_ready(500u, 12u);
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d;
+    unsigned ms, frames = 0u;
+    uint32_t n;
+    CHECK(start_node() == NET_OK);
+    step_ms(10u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    for (ms = 0u; ms < 2000u; ++ms) {
+        step_ms(1u);
+        while (pull_status(&f, &raw) >= 0) {
+            ++frames;
+            CHECK(f.id == 0x340u && raw.tx_sequence == 1u && raw.update_sequence == 500u);
+        }
+    }
+    CHECK(frames == 1u);                /* exactly one frame in 2 s after one submission */
+    /* The application's 250 ms cadence: one frame per submission, at once. */
+    for (n = 1u; n <= 8u; ++n) {
+        s = status_ready(600u + n, 3u);
+        CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+        step_ms(1u);
+        CHECK(pull_status(&f, &raw) >= 0);
+        CHECK(raw.boot_id == NODE_BOOT && raw.tx_sequence == 1u + n);
+        CHECK(raw.update_sequence == 600u + n);    /* the submitted number, unchanged */
+        CHECK(raw.source_age_ms == 3u + 1u);       /* submitted AGE + 1 ms until the next step */
+        CHECK(MockRtd_CanTransmitNext(BUS, NULL) < 0);
+        step_ms(249u);
+        CHECK(MockRtd_CanTransmitNext(BUS, NULL) < 0);
+    }
+    d = diag();
+    CHECK(d.status_tx.period_ms == 0u && d.status_tx.counters.periodic_sent == 0u);
+    CHECK(d.status_tx.counters.sent == 9u && d.app.status_submitted == 9u);
+    CHECK(d.app.next_status_sequence == 10u);
+    return 0;
+}
+
+/* A submission made while the previous VSS_STATUS frame still occupies the TX
+ * message buffer waits in M04; the wait is added to SOURCE_AGE when it is
+ * actually sent (20_API.md: Network adds the sending BOOT/TX and the waiting AGE). */
+static int h13_pending_age(void)
+{
+    NetVssStatus s1 = status_ready(1u, 0u), s2 = status_ready(2u, 17u);
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d;
+    uint32_t submitted_at;
+    CHECK(start_node() == NET_OK);
+    step_ms(5u);
+    CHECK(VssNet_PublishStatus(&s1) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(diag().rtd.tx_sent == 1u);    /* in the MB; the bus has not taken it yet */
+    step_ms(4u);
+    submitted_at = now_ms();
+    CHECK(VssNet_PublishStatus(&s2) == NET_SUBMIT_OK);
+    step_ms(30u);
+    d = diag();
+    CHECK(d.rtd.tx_sent == 1u);         /* waits: one unsettled frame per message */
+    CHECK(d.status_tx.fresh && d.status_tx.in_flight);
+    CHECK(pull_status(&f, &raw) >= 0);  /* the bus takes the first frame now */
+    CHECK(raw.tx_sequence == 1u && raw.update_sequence == 1u && raw.source_age_ms == 1u); /* 1 ms to its step */
+    step_ms(1u);
+    CHECK(pull_status(&f, &raw) >= 0);
+    CHECK(raw.tx_sequence == 2u && raw.update_sequence == 2u);
+    CHECK(now_ms() - submitted_at == 31u);
+    CHECK(raw.source_age_ms == 17u + (now_ms() - submitted_at)); /* submitted AGE + wait */
+    d = diag();
+    CHECK(d.status_tx.counters.pending_age_added_ms_max == 31u);
+    CHECK(d.status_tx.counters.periodic_sent == 0u && d.status_tx.counters.replaced == 0u);
+    step_ms(1000u);
+    CHECK(MockRtd_CanTransmitNext(BUS, NULL) < 0);
+    return 0;
+}
+
 static int h14_rx_burst(void)
 {
     enum { BURST = 12 };                /* > RX MBs (4), within the HAL RX queue */
@@ -715,6 +796,7 @@ int main(int argc, char **argv)
         { "h07_publish", h07_publish }, { "h08_publish_invalid", h08_publish_invalid },
         { "h09_publish_in_callback", h09_publish_in_callback }, { "h10_ack_missing", h10_ack_missing },
         { "h11_busoff", h11_busoff }, { "h12_time_source", h12_time_source },
+        { "h13_status_not_repeated", h13_status_not_repeated }, { "h13_pending_age", h13_pending_age },
         { "h14_rx_burst", h14_rx_burst }
     };
     size_t i;

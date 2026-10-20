@@ -33,5 +33,9 @@ NetWireStatus net_upper_can_encode(NetWireProfile profile, const NetUpperCanMess
 NetWireStatus net_upper_can_decode(NetWireProfile profile, const NetWireCanEnvelope *frame, NetUpperCanMessage *out);
 NetWireStatus net_upper_can_add_age(NetUpperCanMessage *message, uint64_t elapsed_ms);
 NetWireStatus net_upper_can_identity(const NetUpperCanMessage *message, uint32_t *boot, uint32_t *sequence);
+/* Writes the common CAN header (BOOT_ID, TX_SEQUENCE) of any of the 22 typed
+ * messages; every other field is unchanged. Used by the M04 publish slots,
+ * which own both values per frame (net_upper_publish.h). */
+NetWireStatus net_upper_can_set_identity(NetUpperCanMessage *message, uint32_t boot, uint32_t sequence);
 uint16_t net_upper_can_max_age(const NetUpperCanMessage *message);
 #endif

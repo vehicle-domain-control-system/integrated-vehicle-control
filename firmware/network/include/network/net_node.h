@@ -17,6 +17,7 @@
 #include "network/net_hal_adapter.h"
 #include "network/net_hal_rtd.h"
 #include "network/net_app_port_vss.h"
+#include "network/net_upper_publish.h"
 
 typedef struct {
     /* Network-owned CAN BOOT_ID for this power cycle (0 reserved). Must change
@@ -44,6 +45,7 @@ typedef struct {
     NetHalObservation hal;        /* M08 adapter counters */
     NetHalRtdDiag rtd;            /* RTD backend counters / init failure */
     NetAppPortVssDiag app;        /* App Port counters, last permission */
+    NetUpperPublishView status_tx; /* M04 slot of VSS_STATUS: BOOT/TX, waits, repetitions */
     bool permission_valid;
     NetPermissionView permission; /* DOMAIN_PERMISSION supervision view */
 } NetNodeDiag;

@@ -179,6 +179,38 @@ NetWireStatus net_upper_can_identity(const NetUpperCanMessage *m, uint32_t *boot
     }
     *boot=b; *sequence=s; return NET_WIRE_OK;
 }
+#define SET_IDENTITY(field) do { m->data.field.boot_id=boot; m->data.field.tx_sequence=sequence; } while (0)
+NetWireStatus net_upper_can_set_identity(NetUpperCanMessage *m, uint32_t boot, uint32_t sequence)
+{
+    if (m == NULL) return NET_WIRE_INVALID_ARGUMENT;
+    switch(m->id) {
+    case 0x080u: SET_IDENTITY(domain_permission); break;
+    case 0x100u: SET_IDENTITY(bcm_door_command); break;
+    case 0x110u: SET_IDENTITY(bcm_climate_command); break;
+    case 0x120u: SET_IDENTITY(bcm_light_command); break;
+    case 0x090u: SET_IDENTITY(window_command); break;
+    case 0x200u: SET_IDENTITY(bcm_door_state); break;
+    case 0x210u: SET_IDENTITY(bcm_climate_state); break;
+    case 0x220u: SET_IDENTITY(bcm_light_state); break;
+    case 0x140u: SET_IDENTITY(bcm_result); break;
+    case 0x141u: SET_IDENTITY(bcm_event); break;
+    case 0x230u: SET_IDENTITY(bcm_status); break;
+    case 0x300u: SET_IDENTITY(cis_environment); break;
+    case 0x310u: SET_IDENTITY(cis_occupant); break;
+    case 0x0A0u: SET_IDENTITY(cis_rear); break;
+    case 0x320u: SET_IDENTITY(cis_status); break;
+    case 0x0B0u: SET_IDENTITY(window_state); break;
+    case 0x091u: SET_IDENTITY(window_event); break;
+    case 0x092u: SET_IDENTITY(window_result); break;
+    case 0x330u: SET_IDENTITY(window_fault); break;
+    case 0x160u: SET_IDENTITY(vss_event); break;
+    case 0x0C0u: SET_IDENTITY(vss_warning_state); break;
+    case 0x340u: SET_IDENTITY(vss_status); break;
+    default: return NET_WIRE_UNSUPPORTED;
+    }
+    return NET_WIRE_OK;
+}
+#undef SET_IDENTITY
 uint16_t net_upper_can_max_age(const NetUpperCanMessage *m)
 {
     uint16_t age = 0u;
