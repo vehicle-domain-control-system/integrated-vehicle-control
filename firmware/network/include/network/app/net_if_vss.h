@@ -7,7 +7,7 @@
  * Direction / owner:
  *   VssApp_OnDomainEvent / VssApp_OnDomainWarningState
  *       Network -> Application. IMPLEMENTED BY THE VSS APPLICATION.
- *       Called from NetNode_Step() (serialized superloop), never from an ISR.
+ *       Called inside Net_MainFunction() (serialized superloop), never from an ISR.
  *       message/meta are borrowed for the call only: copy what you need.
  *       void return: delivery is not acceptance, storage or sound evidence.
  *   VssNet_PublishStatus
@@ -15,8 +15,11 @@
  *       NET_SUBMIT_OK = bounded local copy only (not TX/ACK/DOMAIN acceptance).
  *       The application never fills CAN BOOT_ID / TX_SEQUENCE; Network owns them.
  *   VssNetPriv_OnDomainPermission
- *       Network-private supervision (see net_app_port_vss.h). Not an App API. */
+ *       Network-private supervision (see net_app_port_vss.h). Not an App API.
+ *   Net_Init / Net_MainFunction
+ *       Application -> Network entry points (network/app/net_if_entry.h). */
 #include "network/app/net_if_common.h"
+#include "network/app/net_if_entry.h"
 
 typedef uint8_t NetVssEventKind;
 enum NetVssEventKindCode

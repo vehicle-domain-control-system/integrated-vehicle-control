@@ -571,7 +571,9 @@ if(NETWORK_BUILD_RTD_MOCK)
         if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_line})
             message(FATAL_ERROR "tools/s32ds_sources.txt lists a missing file: ${_line}")
         endif()
-        if(_line MATCHES "^src/platform/rtd/")
+        # Board-bound sources (RTD backend, public entry) are compiled once per
+        # time-base variant, with that variant's net_board_cfg.h hook definitions.
+        if(_line MATCHES "^src/platform/rtd/" OR _line STREQUAL "src/node/net_entry.c")
             list(APPEND _node_rtd_sources ${_line})
         else()
             list(APPEND _node_core_sources ${_line})
@@ -594,8 +596,10 @@ if(NETWORK_BUILD_RTD_MOCK)
     target_compile_definitions(network_node_core_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
     network_warnings(network_node_core_objs)
 
-    # Two time sources: OsIf system counter (default) and NET_BOARD_NOW_MS_HOOK.
-    foreach(_variant IN ITEMS rtd_mock rtd_mock_hook)
+    # Three time sources (net_board_cfg.h): OsIf system counter (default),
+    # NET_BOARD_NOW_MS_HOOK, and the application tick hooks (ISR tick + main
+    # context conversion, the board / VSS build).
+    foreach(_variant IN ITEMS rtd_mock rtd_mock_hook rtd_mock_tick)
         add_library(network_node_${_variant} STATIC
             $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
         target_include_directories(network_node_${_variant} PUBLIC ${_node_includes} sdk_mock/rtd/include)
@@ -604,6 +608,15 @@ if(NETWORK_BUILD_RTD_MOCK)
     endforeach()
     # The test supplies the board clock (MockBoard_NowMs) for the hook build.
     target_compile_definitions(network_node_rtd_mock_hook PRIVATE NET_BOARD_NOW_MS_HOOK=MockBoard_NowMs)
+    # The entry test supplies tick, conversion, node configuration and us hooks.
+    # Drain budget 8 (below the default 16) so that three budgets of frames fit
+    # the default ISR ring of 32 frames.
+    target_compile_definitions(network_node_rtd_mock_tick PRIVATE
+        NET_BOARD_ISR_TICK_HOOK=MockBoard_IsrTicks
+        NET_BOARD_TICK_TO_MS_HOOK=MockBoard_TickToMs
+        NET_BOARD_NODE_CONFIG_HOOK=MockBoard_NodeConfig
+        NET_BOARD_US_HOOK=MockBoard_Us
+        NET_BOARD_ISR_DRAIN_BUDGET=8)
 
     if(BUILD_TESTING)
         foreach(_variant IN ITEMS ostimer hook)
@@ -621,6 +634,17 @@ if(NETWORK_BUILD_RTD_MOCK)
                     h13_status_not_repeated h13_pending_age h14_rx_burst)
                 add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
             endforeach()
+        endforeach()
+
+        # Public entry Net_Init / Net_MainFunction on the application clock.
+        add_executable(test_vss_entry tests/vss_node/test_vss_entry.c)
+        target_link_libraries(test_vss_entry PRIVATE network_node_rtd_mock_tick)
+        network_warnings(test_vss_entry)
+        foreach(case IN ITEMS e1_init e2_clock_axis e2_future_tick_clamped e3_now_wrap
+                e4_status_not_repeated e5_drain_budget e6_submit_results e7_callback_context
+                e8_node_config_boot e8_node_config_boot_zero e8_node_config_refused
+                e9_ring_overflow e10_main_max_us)
+            add_test(NAME vss_entry.${case} COMMAND test_vss_entry ${case})
         endforeach()
     endif()
 endif()

@@ -127,6 +127,7 @@ void NetNode_Step(void)
 {
     if (stage != NET_NODE_STAGE_READY) return;
     if (steps != UINT32_MAX) ++steps;
+    (void)net_hal_rtd_drain();                             /* ISR ring -> adapter, bounded, main context */
     (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* RX dispatch -> VssApp_* ; TX facts */
     (void)net_permission_step(&permission);                /* DOMAIN_PERMISSION supervision */
     net_hal_rtd_service();                                 /* stuck-TX abort, error counters */
@@ -141,6 +142,7 @@ NetStatus NetNode_GetDiag(NetNodeDiag *out)
     out->stage = stage;
     out->stage_status = stage_status;
     out->steps = steps;
+    net_entry_diag(out);
     if (stage != NET_NODE_STAGE_READY) { (void)net_hal_rtd_diag(&out->rtd); return NET_OK; }
     (void)net_upper_observation(&service, &out->upper);
     (void)net_hal_adapter_observation(&hal, &out->hal);

@@ -3,9 +3,11 @@
 
 /* Private glue between the parts of the L05/M08 RTD backend
  * (src/platform/rtd only; NOT a public header):
- *   net_hal_rtd.c      common part: time base, critical section, start order,
- *                      NetHalBackendOps registration, per-link submit dispatch
- *   net_hal_rtd_can.c  FlexCAN part: RX ISR capture, TX MBs, abort, error callback
+ *   net_hal_rtd.c      common part: time base, stamp conversion, critical
+ *                      section, start order, NetHalBackendOps registration,
+ *                      per-link submit dispatch, ISR ring drain entry
+ *   net_hal_rtd_can.c  FlexCAN part: RX/TX/error ISR -> ISR ring, ring drain
+ *                      into the adapter, TX MBs, abort
  * The link parts never include each other; they share only what is below. */
 #include <stdint.h>
 #include <stdbool.h>
@@ -26,7 +28,14 @@ extern NetHalRtdCore net_hal_rtd_core;
 
 /* Common part, called by the link parts. */
 uint64_t net_hal_rtd_now_locked(void);              /* caller holds the critical section */
-NetUpperCapture net_hal_rtd_capture_now(uint64_t port_epoch); /* takes the critical section */
+NetUpperCapture net_hal_rtd_capture_now(uint64_t port_epoch); /* main context; takes the critical section */
+/* ISR context, caller holds the critical section: the raw stamp stored with a
+ * ring entry. Time base A: NET_BOARD_ISR_TICK_HOOK(). B/C: Network ms (low 32 bits). */
+uint32_t net_hal_rtd_isr_stamp_locked(void);
+/* Main context: a stored stamp as Network ms on the 64-bit axis. Time base A
+ * converts with NET_BOARD_TICK_TO_MS_HOOK(), B/C use the stamp as ms. A time
+ * ahead of now (or not placeable) gives now and counts tick_future_clamped. */
+uint64_t net_hal_rtd_place_stamp(uint32_t stamp);
 
 /* CAN part, called by the common part. */
 void net_hal_rtd_can_reset(void);                   /* from net_hal_rtd_config() */
@@ -34,5 +43,6 @@ NetStatus net_hal_rtd_can_prepare(void);            /* controller init, masks, R
 NetStatus net_hal_rtd_can_arm(void);                /* after started=true: arm RX MBs, start mode */
 NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t);
 void net_hal_rtd_can_service(uint64_t now_ms);      /* stuck-TX abort, error counters */
+uint32_t net_hal_rtd_can_drain(uint32_t budget);    /* main: ISR ring -> adapter, at most budget entries */
 
 #endif

@@ -3,7 +3,7 @@
 
 /* ==========================================================================
  * Board binding for the RTD HAL (src/platform/rtd: net_hal_rtd.c common part,
- * net_hal_rtd_can.c FlexCAN part).
+ * net_hal_rtd_can.c FlexCAN part) and for the public entry (src/node/net_entry.c).
  * This is the ONLY file to edit when the HAL meets a real S32DS project.
  * Defaults equal network_344_can_bringup (S32K344, RTD 7.0.1, CAN0
  * PTA6/PTA7, FD+BRS 500k/2M, 64 B payload, max_num_mb 16).
@@ -56,22 +56,86 @@
 #define NET_BOARD_CAN_TX_TIMEOUT_MS     100U
 #endif
 
-/* ---- Millisecond time base ----
- * Default: OsIf system counter (ConfigTools: OsIf > "Use System Timer" ON;
- * the bring-up projects currently have it OFF -> net_hal_rtd_start() returns
- * NOT_CONFIGURED). The counter is read at least every NetNode_Step() and in
- * the CAN ISR; keep the superloop period well below the counter wrap time.
- * Alternative: define NET_BOARD_NOW_MS_HOOK to a function returning uint64_t
- * monotonic ms (e.g. a PIT/STM based counter you already own). */
+/* ---- Time base: pick ONE of three ----
+ * The CAN ISR never hands a frame to the Network core. It stores the frame,
+ * a TX completion or a bus-off fact together with a raw time stamp in the
+ * backend ISR ring (below); the main context (NetNode_Step(), i.e. inside
+ * Net_MainFunction()) takes the ring entries out, turns the stamp into Network
+ * milliseconds and only then calls net_hal_capture_*().
+ *
+ * A) Application clock (board builds; VSS contract: received_at_ms is on the
+ *    VSS clock axis). Define BOTH
+ *      NET_BOARD_ISR_TICK_HOOK    uint32_t f(void)          read in the ISR
+ *      NET_BOARD_TICK_TO_MS_HOOK  uint32_t f(uint32_t tick) main context only
+ *    The ISR records NET_BOARD_ISR_TICK_HOOK() and nothing else; the tick is
+ *    converted with NET_BOARD_TICK_TO_MS_HOOK() in the main context. Network
+ *    "now" is the nowMs of the last Net_MainFunction() (32-bit wrap extended
+ *    to 64 bits); no millisecond counter of its own. A converted time ahead of
+ *    that now is clamped to now and counted (NetHalRtdDiag.tick_future_clamped).
+ *      VSS:            HalTimer_GetTicks / VssTime_TickToMs32 (1 tick = 1.25 ms)
+ *      Bench w/o VSS:  a SysTick 1 kHz ms counter as tick, identity conversion
+ * B) NET_BOARD_NOW_MS_HOOK: a board ms clock returning uint64_t, read in the ISR
+ *    and in the main context (bench / host). The ISR stores its milliseconds as
+ *    the tick; the conversion is the identity.
+ * C) Default: OsIf system counter (ConfigTools: OsIf > "Use System Timer" ON;
+ *    the bring-up projects currently have it OFF -> net_hal_rtd_start() returns
+ *    NOT_CONFIGURED). Read in the ISR and in the main context; keep the
+ *    superloop period well below the counter wrap time. Milliseconds as tick. */
 #ifndef NET_BOARD_TIME_COUNTER
 #define NET_BOARD_TIME_COUNTER          OSIF_COUNTER_SYSTEM
 #endif
-/* #define NET_BOARD_NOW_MS_HOOK  Board_GetMonotonicMs */
-#ifdef NET_BOARD_NOW_MS_HOOK
+/* #define NET_BOARD_ISR_TICK_HOOK    HalTimer_GetTicks   */
+/* #define NET_BOARD_TICK_TO_MS_HOOK  VssTime_TickToMs32  */
+/* #define NET_BOARD_NOW_MS_HOOK      Board_GetMonotonicMs */
 #include <stdint.h>
+#if defined(NET_BOARD_ISR_TICK_HOOK) && defined(NET_BOARD_TICK_TO_MS_HOOK)
+#ifdef NET_BOARD_NOW_MS_HOOK
+#error "net_board_cfg.h: NET_BOARD_NOW_MS_HOOK cannot be combined with the tick hooks"
+#endif
+#define NET_BOARD_TIME_APP_TICK 1
+/* Free-running board tick; reads a value only, safe in an ISR. */
+extern uint32_t NET_BOARD_ISR_TICK_HOOK(void);
+/* Tick -> application milliseconds (32-bit axis). Main context only. */
+extern uint32_t NET_BOARD_TICK_TO_MS_HOOK(uint32_t tick);
+#elif defined(NET_BOARD_ISR_TICK_HOOK) || defined(NET_BOARD_TICK_TO_MS_HOOK)
+#error "net_board_cfg.h: define both NET_BOARD_ISR_TICK_HOOK and NET_BOARD_TICK_TO_MS_HOOK, or neither"
+#endif
+#ifdef NET_BOARD_NOW_MS_HOOK
 /* Board-owned monotonic ms clock (e.g. SysTick 1 kHz counter). Called from the
  * CAN ISR and from NetNode_Step(); must be safe in both contexts. */
 extern uint64_t NET_BOARD_NOW_MS_HOOK(void);
+#endif
+
+/* ---- CAN ISR ring (ISR -> main hand-off) ----
+ * NET_BOARD_CAN_ISR_RING: received frames the ring holds between two main
+ * passes. TX completion and bus-off facts have their own reserved room on top
+ * (one per TX MB, one bus-off), so they are never dropped. A frame that finds
+ * the ring full is dropped, counted (NetHalRtdDiag.isr_ring_overflow) and
+ * flagged on the next captured frame (NetUpperCapture.overflow).
+ * NET_BOARD_ISR_DRAIN_BUDGET: ring entries taken per main pass, keeps one
+ * Net_MainFunction() short (VSS contract: a few ms, never above 15 ms). It
+ * must not exceed the adapter RX queue (NET_HAL_RX_CAPACITY, 16), which every
+ * NetNode_Step() empties. */
+#ifndef NET_BOARD_CAN_ISR_RING
+#define NET_BOARD_CAN_ISR_RING          32U
+#endif
+#ifndef NET_BOARD_ISR_DRAIN_BUDGET
+#define NET_BOARD_ISR_DRAIN_BUDGET      16U
+#endif
+
+/* ---- Public entry hooks (src/node/net_entry.c) ----
+ * NET_BOARD_NODE_CONFIG_HOOK  bool f(NetNodeConfig *out)  (required for Net_Init)
+ *   Net_Init(void) has no argument: BOOT_ID and the epochs come from here.
+ *   out arrives with boot_id 0 and both epochs 1; the hook must set a nonzero
+ *   BOOT_ID that changes on every reboot. false or BOOT_ID 0 -> Net_Init fails
+ *   (NetNodeDiag.entry_init_result) and Net_MainFunction() stays inert.
+ * NET_BOARD_US_HOOK  uint32_t f(void)  (optional)
+ *   Free-running microsecond counter. When defined, the longest
+ *   Net_MainFunction() pass is kept in NetNodeDiag.main_max_us; otherwise 0. */
+/* #define NET_BOARD_NODE_CONFIG_HOOK  Board_GetNetNodeConfig */
+/* #define NET_BOARD_US_HOOK           Board_GetMicros        */
+#ifdef NET_BOARD_US_HOOK
+extern uint32_t NET_BOARD_US_HOOK(void);
 #endif
 
 /* ---- Critical section (ISR <-> foreground) ---- */

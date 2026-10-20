@@ -1,7 +1,22 @@
 /* L05/M08 RTD backend, FlexCAN part (S32K1 RTD 3.x / S32K3 RTD 7.x).
- * RX ISR capture, TX message buffers, stuck-TX abort and the error callback.
+ * RX/TX/error ISR -> ISR ring, the main-context ring drain into the adapter,
+ * TX message buffers and the stuck-TX abort.
  * Time base, critical section, start order and backend ops registration are
  * in net_hal_rtd.c; the two parts share net_hal_rtd_internal.h only.
+ *
+ * ISR ring (docs/network/network_sw_architecture.md section 8: the ISR hands
+ * over only the minimum received data, the actual time and device errors):
+ *   RX frame  : copied frame + raw stamp. At most NET_BOARD_CAN_ISR_RING
+ *               frames; a frame that finds them all taken is dropped, counted
+ *               and reported as loss on the next captured frame (overflow).
+ *               CAN_PORT_RECOVERY.md: an RX overflow is a real loss, nothing
+ *               is synthesized for the missing frame.
+ *   TX_DONE   : TX MB completed. The slot stays busy until the main context
+ *               has reported SUCCEEDED + release, so each MB has at most one
+ *               pending fact; their room is reserved and never dropped.
+ *   BUSOFF    : one pending bus-off fact at most (the link stays failed until
+ *               reset anyway); its room is reserved as well.
+ * The main context takes entries in arrival order (net_hal_rtd_can_drain).
  *
  * RTD symbols used (verified against both bring-up projects' headers):
  *   FlexCAN_Ip_Init, FlexCAN_Ip_SetRxMaskType, FlexCAN_Ip_SetRxIndividualMask,
@@ -44,16 +59,39 @@ typedef char net_board_mb_in_range[(RX_FIRST + RX_COUNT <= NET_BOARD_CAN_MAX_MB 
 #define CS_DLC_MASK   0x000F0000UL
 #define CS_CODE_RX_OVERRUN 0x6UL
 
+typedef char net_board_isr_ring_nonzero[(NET_BOARD_CAN_ISR_RING >= 1u) ? 1 : -1];
+
 typedef struct {
-    volatile bool busy, aborting;
+    /* busy: MB owned by a transfer until its outcome is reported.
+     * done: TX_COMPLETE seen in the ISR, SUCCEEDED + release not yet reported. */
+    volatile bool busy, aborting, done;
     NetTxKey key;
     uint64_t submitted_at_ms;
     union { uint32_t align; uint8_t bytes[64]; } data; /* RTD reads payload words */
 } TxSlot;
 
+enum { RING_RX = 1, RING_TX_DONE, RING_BUSOFF };
+/* Received frames + one fact per TX MB + one bus-off. */
+#define RING_SIZE (NET_BOARD_CAN_ISR_RING + TX_COUNT + 1u)
+
+typedef struct {
+    uint8_t kind;       /* RING_* */
+    uint8_t tx_slot;    /* RING_TX_DONE */
+    uint32_t stamp;     /* net_hal_rtd_isr_stamp_locked() at the event */
+    uint32_t overflow;  /* RING_RX: frames lost right before this one */
+    NetWireCanEnvelope frame;
+} RingEntry;
+
+typedef struct {
+    RingEntry e[RING_SIZE];
+    uint32_t head, count, rx_count, lost;
+    bool busoff_queued;
+} IsrRing;
+
 typedef struct {
     Flexcan_Ip_MsgBuffType rx[RX_COUNT];
     TxSlot tx[TX_COUNT];
+    IsrRing ring;
 } RtdCan;
 
 static RtdCan can;
@@ -65,6 +103,25 @@ static void inc(uint32_t *v) { if (*v != UINT32_MAX) ++*v; }
 void net_hal_rtd_can_reset(void)
 {
     memset(&can, 0, sizeof(can));
+}
+
+/* ------------------------------------------------------------ ISR ring -- */
+/* Caller holds the critical section. RX frames may use NET_BOARD_CAN_ISR_RING
+ * entries; facts (TX_DONE, BUSOFF) use the reserved remainder. */
+static RingEntry *ring_reserve(uint8_t kind)
+{
+    IsrRing *r = &can.ring;
+    RingEntry *e;
+    if (r->count >= RING_SIZE || (kind == RING_RX && r->rx_count >= NET_BOARD_CAN_ISR_RING)) return NULL;
+    e = &r->e[(r->head + r->count) % RING_SIZE];
+    e->kind = kind;
+    e->tx_slot = 0u;
+    e->overflow = 0u;
+    e->stamp = net_hal_rtd_isr_stamp_locked();
+    ++r->count;
+    if (kind == RING_RX) ++r->rx_count;
+    if (r->count > rtd.diag.isr_ring_max_depth) rtd.diag.isr_ring_max_depth = r->count;
+    return e;
 }
 
 /* -------------------------------------------------------------- TX ------ */
@@ -86,6 +143,7 @@ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t)
             mb = (uint8_t)(TX_FIRST + i);
             slot->busy = true;
             slot->aborting = false;
+            slot->done = false;
             slot->key = t->key;
             slot->submitted_at_ms = net_hal_rtd_now_locked();
             break;
@@ -105,7 +163,8 @@ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t)
     info.is_polling = FALSE;
     st = FlexCAN_Ip_Send(NET_BOARD_CAN_INSTANCE, mb, &info, f->standard_id, slot->data.bytes);
     if (st == FLEXCAN_STATUS_SUCCESS) {
-        /* Driver accepted the MB. Final outcome + release follow in the ISR. */
+        /* Driver accepted the MB (main context: reported synchronously). Final
+         * outcome + release follow from the ISR through the ring. */
         NetTxEvent ev;
         NetUpperCapture c = net_hal_rtd_capture_now(rtd.can_epoch);
         memset(&ev, 0, sizeof(ev));
@@ -125,8 +184,8 @@ static void rx_complete(uint32_t mb)
 {
     Flexcan_Ip_MsgBuffType *m = &can.rx[mb - RX_FIRST];
     NetWireCanEnvelope f;
-    NetUpperCapture c = net_hal_rtd_capture_now(rtd.can_epoch);
-    uint32_t cs = m->cs, n;
+    RingEntry *e;
+    uint32_t cs = m->cs, n, key, overrun = 0u;
 
     memset(&f, 0, sizeof(f));
     f.standard_id = m->msgId & 0x7FFu;
@@ -142,11 +201,23 @@ static void rx_complete(uint32_t mb)
     if (n != f.length) { f.driver_error = true; inc(&rtd.diag.rx_length_mismatch); }
     if (((cs & CS_CODE_MASK) >> CS_CODE_SHIFT) == CS_CODE_RX_OVERRUN) {
         /* An earlier frame in this MB was lost: report the loss, do not hide it. */
-        c.overflow = 1u;
+        overrun = 1u;
         inc(&rtd.diag.rx_overruns);
     }
     inc(&rtd.diag.rx_frames);
-    if (net_hal_capture_can(rtd.adapter, &f, &c) != NET_OK) inc(&rtd.diag.rx_queue_rejected);
+    key = net_board_irq_save();
+    e = ring_reserve(RING_RX);
+    if (e != NULL) {
+        e->frame = f;
+        e->overflow = can.ring.lost + overrun;
+        if (e->overflow < can.ring.lost) e->overflow = UINT32_MAX;
+        can.ring.lost = 0u;
+    } else {
+        /* Ring full: this frame is lost; the next stored frame carries the loss. */
+        inc(&rtd.diag.isr_ring_overflow);
+        inc(&can.ring.lost);
+    }
+    net_board_irq_restore(key);
     /* Copy is complete: re-arm immediately so back-to-back frames are kept. */
     if (FlexCAN_Ip_Receive(NET_BOARD_CAN_INSTANCE, (uint8)mb, m, FALSE) != FLEXCAN_STATUS_SUCCESS)
         inc(&rtd.diag.rx_rearm_errors);
@@ -154,19 +225,22 @@ static void rx_complete(uint32_t mb)
 
 static void tx_complete(uint32_t mb)
 {
-    TxSlot *slot = &can.tx[mb - TX_FIRST];
-    NetTxEvent ev;
-    NetUpperCapture c;
-    if (!slot->busy) { inc(&rtd.diag.unexpected_events); return; }
-    c = net_hal_rtd_capture_now(rtd.can_epoch);
-    memset(&ev, 0, sizeof(ev));
-    ev.key = slot->key;
-    ev.admission_observed = true; ev.accepted = true;
-    ev.outcome = NET_TX_SUCCEEDED;
-    ev.release_observed = true;
-    slot->busy = false;
-    inc(&rtd.diag.tx_complete);
-    (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
+    uint32_t idx = mb - TX_FIRST;
+    TxSlot *slot = &can.tx[idx];
+    RingEntry *e;
+    uint32_t key = net_board_irq_save();
+    if (!slot->busy || slot->done) { inc(&rtd.diag.unexpected_events); net_board_irq_restore(key); return; }
+    e = ring_reserve(RING_TX_DONE);
+    if (e != NULL) {
+        e->tx_slot = (uint8_t)idx;
+        slot->done = true;      /* the MB stays busy until the main context reports it */
+        inc(&rtd.diag.tx_complete);
+    } else {
+        /* Not reachable (one reserved entry per MB). The MB stays busy and the
+         * TX timeout reports it FAILED: never claim success without a record. */
+        inc(&rtd.diag.unexpected_events);
+    }
+    net_board_irq_restore(key);
 }
 
 void NET_BOARD_CAN_CALLBACK(uint8 instance, Flexcan_Ip_EventType eventType,
@@ -192,12 +266,81 @@ void NET_BOARD_CAN_ERROR_CALLBACK(uint8 instance, Flexcan_Ip_EventType eventType
     inc(&rtd.diag.err_events);
     rtd.diag.last_error_status = u32ErrStatus;
     if (eventType == FLEXCAN_EVENT_BUSOFF && rtd.started) {
-        /* Reported to M04 (link failed, TX held). Link recovery (quiesce ->
-         * new epoch -> resume) is a deliberate integration step, not automatic. */
-        NetUpperCapture c = net_hal_rtd_capture_now(rtd.can_epoch);
+        /* Reported to M04 (link failed, TX held) from the main context. Link
+         * recovery (quiesce -> new epoch -> resume) is a deliberate integration
+         * step, not automatic. A bus-off already waiting covers this one. */
+        uint32_t key = net_board_irq_save();
         inc(&rtd.diag.busoff_events);
-        (void)net_hal_capture_link(rtd.adapter, NET_UPPER_PORT_ERROR, NET_WIRE_CAN, &c);
+        if (!can.ring.busoff_queued && ring_reserve(RING_BUSOFF) != NULL) can.ring.busoff_queued = true;
+        net_board_irq_restore(key);
     }
+}
+
+/* ------------------------------------------------------- main context ---- */
+static NetUpperCapture capture_at(uint32_t stamp)
+{
+    NetUpperCapture c;
+    memset(&c, 0, sizeof(c));
+    c.port_epoch = rtd.can_epoch;
+    c.captured_at_ms = net_hal_rtd_place_stamp(stamp);
+    c.timestamp_known = true;
+    return c;
+}
+
+static void report_tx_done(uint32_t idx, uint32_t stamp)
+{
+    TxSlot *slot = &can.tx[idx];
+    NetTxEvent ev;
+    NetUpperCapture c;
+    uint32_t key;
+    memset(&ev, 0, sizeof(ev));
+    key = net_board_irq_save();
+    ev.key = slot->key;
+    slot->busy = false;
+    slot->done = false;
+    net_board_irq_restore(key);
+    ev.admission_observed = true; ev.accepted = true;
+    ev.outcome = NET_TX_SUCCEEDED;
+    ev.release_observed = true;
+    c = capture_at(stamp);
+    (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
+}
+
+uint32_t net_hal_rtd_can_drain(uint32_t budget)
+{
+    IsrRing *r = &can.ring;
+    RingEntry e;
+    NetUpperCapture c;
+    uint32_t n = 0u, key;
+    while (n < budget) {
+        key = net_board_irq_save();
+        if (r->count == 0u) { net_board_irq_restore(key); break; }
+        e = r->e[r->head];
+        r->head = (r->head + 1u) % RING_SIZE;
+        --r->count;
+        if (e.kind == RING_RX) --r->rx_count;
+        if (e.kind == RING_BUSOFF) r->busoff_queued = false;
+        net_board_irq_restore(key);
+        ++n;
+        switch (e.kind) {
+        case RING_RX:
+            c = capture_at(e.stamp);
+            c.overflow = e.overflow;
+            if (net_hal_capture_can(rtd.adapter, &e.frame, &c) != NET_OK) inc(&rtd.diag.rx_queue_rejected);
+            break;
+        case RING_TX_DONE:
+            report_tx_done(e.tx_slot, e.stamp);
+            break;
+        case RING_BUSOFF:
+            c = capture_at(e.stamp);
+            (void)net_hal_capture_link(rtd.adapter, NET_UPPER_PORT_ERROR, NET_WIRE_CAN, &c);
+            break;
+        default:
+            inc(&rtd.diag.unexpected_events);
+            break;
+        }
+    }
+    return n;
 }
 
 /* -------------------------------------------------------- foreground ---- */
@@ -255,14 +398,14 @@ void net_hal_rtd_can_service(uint64_t now)
         TxSlot *slot = &can.tx[i];
         bool expired;
         key = net_board_irq_save();
-        expired = slot->busy && !slot->aborting &&
+        expired = slot->busy && !slot->aborting && !slot->done &&
                   now - slot->submitted_at_ms >= NET_BOARD_CAN_TX_TIMEOUT_MS;
         if (expired) slot->aborting = true;
         net_board_irq_restore(key);
         if (!expired) continue;
         (void)FlexCAN_Ip_AbortTransfer(NET_BOARD_CAN_INSTANCE, (uint8)(TX_FIRST + i));
         key = net_board_irq_save();
-        if (slot->busy) {
+        if (slot->busy && !slot->done) {
             /* Not completed before the abort: never claim success. */
             NetTxEvent ev;
             NetUpperCapture c;
@@ -276,7 +419,7 @@ void net_hal_rtd_can_service(uint64_t now)
             net_board_irq_restore(key);
             (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
         } else {
-            net_board_irq_restore(key); /* completed in the meantime; ISR reported it */
+            net_board_irq_restore(key); /* completed in the meantime; the ring reports it */
         }
     }
     rtd.diag.tx_error_counter = FlexCAN_Ip_GetControllerTxErrorCounter(NET_BOARD_CAN_INSTANCE);

@@ -61,5 +61,6 @@ src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
 src/platform/rtd/net_hal_rtd.c
 src/platform/rtd/net_hal_rtd_can.c
 
-# Node composition root
+# Node composition root + public entry (Net_Init / Net_MainFunction)
 src/node/net_node.c
+src/node/net_entry.c

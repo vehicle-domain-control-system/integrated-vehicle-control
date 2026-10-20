@@ -1,13 +1,19 @@
 /* L05/M08 RTD backend, common part (S32K1 RTD 3.x / S32K3 RTD 7.x).
- * Owns what every link shares: the millisecond time base (OsIf or
- * NET_BOARD_NOW_MS_HOOK), the ISR <-> foreground critical section, the start
- * order, the NetHalBackendOps registration and the per-link submit dispatch.
- * Link parts: net_hal_rtd_can.c (FlexCAN). Generated-config names come from
- * net_board_cfg.h. Same file builds against the host mock SDK (sdk_mock/rtd)
- * and the real RTD.
+ * Owns what every link shares: the millisecond time base (application tick
+ * hooks, NET_BOARD_NOW_MS_HOOK or OsIf; net_board_cfg.h), the conversion of
+ * ISR stamps to Network ms, the ISR <-> foreground critical section, the start
+ * order, the NetHalBackendOps registration, the per-link submit dispatch and
+ * the bounded ISR ring drain. Link parts: net_hal_rtd_can.c (FlexCAN).
+ * Generated-config names come from net_board_cfg.h. Same file builds against
+ * the host mock SDK (sdk_mock/rtd) and the real RTD.
+ *
+ * Application clock (VSS contract: received_at_ms is on the VSS clock axis,
+ * the tick is read in the ISR and converted in the main context only):
+ * Network now is the nowMs handed to Net_MainFunction(), set here through
+ * net_hal_rtd_set_now(); there is no millisecond counter of its own.
  *
  * RTD symbols used here (verified against both bring-up projects' headers):
- *   OsIf_GetCounter, OsIf_GetElapsed, OsIf_MicrosToTicks. */
+ *   OsIf_GetCounter, OsIf_GetElapsed, OsIf_MicrosToTicks (time base C only). */
 #include <stdint.h>
 #include <string.h>
 #include "network/net_hal_rtd.h"
@@ -18,10 +24,27 @@
 NetHalRtdCore net_hal_rtd_core;
 #define rtd net_hal_rtd_core
 
+/* Drain budget: one main pass never offers the adapter more frames than its
+ * RX queue holds (NetNode_Step() empties that queue on every pass). */
+typedef char net_board_drain_budget_in_range[(NET_BOARD_ISR_DRAIN_BUDGET >= 1u &&
+                                              NET_BOARD_ISR_DRAIN_BUDGET <= NET_HAL_RX_CAPACITY) ? 1 : -1];
+
+#if defined(NET_BOARD_TIME_APP_TICK)
+#define TIME_SOURCE NET_HAL_RTD_TIME_APP_TICK
+#elif defined(NET_BOARD_NOW_MS_HOOK)
+#define TIME_SOURCE NET_HAL_RTD_TIME_NOW_MS_HOOK
+#else
+#define TIME_SOURCE NET_HAL_RTD_TIME_OSIF
+#endif
+
+static void inc(uint32_t *v) { if (*v != UINT32_MAX) ++*v; }
+
 /* ------------------------------------------------------------- time ----- */
 uint64_t net_hal_rtd_now_locked(void)
 {
-#ifdef NET_BOARD_NOW_MS_HOOK
+#if defined(NET_BOARD_TIME_APP_TICK)
+    /* Last Net_MainFunction() nowMs, extended to 64 bits (net_hal_rtd_set_now). */
+#elif defined(NET_BOARD_NOW_MS_HOOK)
     rtd.now_ms = NET_BOARD_NOW_MS_HOOK();
 #else
     uint32_t ticks = OsIf_GetElapsed(&rtd.time_ref, NET_BOARD_TIME_COUNTER);
@@ -30,6 +53,51 @@ uint64_t net_hal_rtd_now_locked(void)
     rtd.tick_rest = (uint32_t)(total % rtd.ticks_per_ms);
 #endif
     return rtd.now_ms;
+}
+
+uint32_t net_hal_rtd_isr_stamp_locked(void)
+{
+#if defined(NET_BOARD_TIME_APP_TICK)
+    return NET_BOARD_ISR_TICK_HOOK();   /* raw tick only: no conversion in the ISR */
+#else
+    return (uint32_t)net_hal_rtd_now_locked();
+#endif
+}
+
+uint64_t net_hal_rtd_place_stamp(uint32_t stamp)
+{
+    uint32_t key, ms, back;
+    uint64_t now;
+    key = net_board_irq_save();
+    now = net_hal_rtd_now_locked();
+    net_board_irq_restore(key);
+#if defined(NET_BOARD_TIME_APP_TICK)
+    ms = NET_BOARD_TICK_TO_MS_HOOK(stamp);
+#else
+    ms = stamp;                         /* the ISR stored milliseconds */
+#endif
+    /* Place the 32-bit time on the 64-bit axis relative to now. A time ahead
+     * of now (the tick arrived after the application read nowMs) or further
+     * back than the axis start cannot be a capture time: use now and count. */
+    back = (uint32_t)now - ms;
+    if (back > 0x7FFFFFFFu || (uint64_t)back > now) {
+        inc(&rtd.diag.tick_future_clamped);
+        return now;
+    }
+    return now - back;
+}
+
+bool net_hal_rtd_set_now(uint64_t now_ms)
+{
+#if defined(NET_BOARD_TIME_APP_TICK)
+    uint32_t key = net_board_irq_save();
+    if (now_ms > rtd.now_ms) rtd.now_ms = now_ms;
+    net_board_irq_restore(key);
+    return true;
+#else
+    (void)now_ms;
+    return false;
+#endif
 }
 
 NetUpperCapture net_hal_rtd_capture_now(uint64_t port_epoch)
@@ -84,6 +152,9 @@ NetStatus net_hal_rtd_config(NetHalAdapter *adapter, const NetHalRtdConfig *in, 
     rtd.adapter = adapter;
     rtd.can_epoch = in->can_port_epoch;
     rtd.configured = true;
+    rtd.diag.time_source = (uint8_t)TIME_SOURCE;
+    rtd.diag.isr_ring_capacity = NET_BOARD_CAN_ISR_RING;
+    rtd.diag.isr_drain_budget = NET_BOARD_ISR_DRAIN_BUDGET;
     memset(out, 0, sizeof(*out));
     out->binding_selected = true;
     out->enabled_links = NET_HAL_LINK_BIT(NET_WIRE_CAN);
@@ -98,7 +169,7 @@ NetStatus net_hal_rtd_start(void)
     NetStatus st;
     if (!rtd.configured || rtd.started) return NET_INVALID_ARGUMENT;
 
-#ifndef NET_BOARD_NOW_MS_HOOK
+#if !defined(NET_BOARD_TIME_APP_TICK) && !defined(NET_BOARD_NOW_MS_HOOK)
     rtd.ticks_per_ms = OsIf_MicrosToTicks(1000U, NET_BOARD_TIME_COUNTER);
     rtd.diag.ticks_per_ms = rtd.ticks_per_ms;
     if (rtd.ticks_per_ms == 0u) { rtd.diag.init_failed_step = NET_HAL_RTD_STEP_TIME; return NET_NOT_CONFIGURED; }
@@ -112,6 +183,15 @@ NetStatus net_hal_rtd_start(void)
     if (st != NET_OK) { rtd.started = false; return st; }
     rtd.diag.started = true;
     return NET_OK;
+}
+
+uint32_t net_hal_rtd_drain(void)
+{
+    uint32_t n;
+    if (!rtd.started) return 0u;
+    n = net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET);
+    if (n > rtd.diag.main_drained_max) rtd.diag.main_drained_max = n;
+    return n;
 }
 
 void net_hal_rtd_service(void)
