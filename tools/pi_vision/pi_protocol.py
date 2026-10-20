@@ -8,7 +8,8 @@ All multi-byte numbers are little-endian.
     byte 2     VERSION         1
     byte 3     MESSAGE_TYPE    0x60 P_VISION_RESULT (Pi -> CIS), 0x61 P_VISION_STATUS (Pi -> CIS),
                                0x62 P_PERMISSION (CIS -> Pi)
-    byte 4..5  PAYLOAD_LENGTH  u16, exact for each type (19, 16, 15)
+               0x70 P_BENCH_SENSORS (CIS -> Pi, bench only, not part of UART-C v1)
+    byte 4..5  PAYLOAD_LENGTH  u16, exact for each type (19, 16, 15, 52)
     byte 6..7  LINK_SEQUENCE   u16, +1 for every frame sent in one direction
     byte 8..   PAYLOAD
     last 2     CRC16           CRC-16/CCITT-FALSE over VERSION .. end of payload (SYNC excluded)
@@ -28,8 +29,12 @@ VERSION = 1
 TYPE_VISION_RESULT = 0x60
 TYPE_VISION_STATUS = 0x61
 TYPE_PERMISSION = 0x62
+# NOT part of UART-C v1: bench-only report of the CIS sensor values (CIS -> Pi). The Network stack
+# drops unknown types, so the CIS sends it only in the bench build (CIS_BENCH_REPORT).
+TYPE_BENCH_SENSORS = 0x70
 
-PAYLOAD_LEN = {TYPE_VISION_RESULT: 19, TYPE_VISION_STATUS: 16, TYPE_PERMISSION: 15}
+PAYLOAD_LEN = {TYPE_VISION_RESULT: 19, TYPE_VISION_STATUS: 16, TYPE_PERMISSION: 15,
+               TYPE_BENCH_SENSORS: 52}
 OVERHEAD = 10                      # SYNC(2) VERSION TYPE LEN(2) LINK_SEQ(2) CRC(2)
 ASSEMBLY_TIMEOUT_S = 0.050
 
@@ -147,7 +152,44 @@ class Permission:
     source_age_ms: int
 
 
-Message = Union[VisionResult, VisionStatus, Permission]
+@dataclass
+class BenchValue:
+    """One sensor value of P_BENCH_SENSORS: number, validity, reason, new-measurement number, age."""
+    value: int
+    valid: int
+    reason: int
+    sequence: int
+    age_ms: int
+
+
+@dataclass
+class BenchSensors:
+    """P_BENCH_SENSORS (CIS -> Pi), bench only. Layout (52 bytes, little-endian):
+         0 reported_status u8 (PROXIMITY_STATUS after the power gate, 5 = INACTIVE)
+         1 reported_valid u8   2 reported_reason u8   3 sensor_status u8 (before the power gate)
+         4 distance_mm u16    6 rear_sequence u32   10 rear_age_ms u16
+        12 temperature i16 (0.01 degC)  14 valid  15 reason  16 sequence u32  20 age u16
+        22 humidity u16 (0.01 %RH)      24 valid  25 reason  26 sequence u32  30 age u16
+        32 illuminance u32 (lx)         36 valid  37 reason  38 sequence u32  42 age u16
+        44 pi_link_up u8  45 occupant_count u8  46 occupant_presence u8  47 vision_sequence u32
+        51 cis_state u8
+    """
+    reported_status: int
+    reported_valid: int
+    reported_reason: int
+    sensor_status: int
+    distance_mm: BenchValue
+    temperature: BenchValue
+    humidity: BenchValue
+    illuminance: BenchValue
+    pi_link_up: int
+    occupant_count: int
+    occupant_presence: int
+    vision_sequence: int
+    cis_state: int
+
+
+Message = Union[VisionResult, VisionStatus, Permission, BenchSensors]
 
 
 @dataclass
@@ -178,6 +220,20 @@ def build_permission(link_seq: int, m: Permission) -> bytes:
     return _frame(TYPE_PERMISSION, link_seq, p)
 
 
+def build_bench_sensors(link_seq: int, m: BenchSensors) -> bytes:
+    """Used by the tests; the CIS firmware builds this frame itself."""
+    def value(v: BenchValue, signed: bool = False, wide: bool = False) -> bytes:
+        num = _u32(v.value) if wide else _u16(v.value & 0xFFFF)
+        return num + bytes([v.valid & 0xFF, v.reason & 0xFF]) + _u32(v.sequence) + _u16(v.age_ms)
+    p = (bytes([m.reported_status & 0xFF, m.reported_valid & 0xFF, m.reported_reason & 0xFF,
+                m.sensor_status & 0xFF])
+         + _u16(m.distance_mm.value) + _u32(m.distance_mm.sequence) + _u16(m.distance_mm.age_ms)
+         + value(m.temperature) + value(m.humidity) + value(m.illuminance, wide=True)
+         + bytes([m.pi_link_up & 0xFF, m.occupant_count & 0xFF, m.occupant_presence & 0xFF])
+         + _u32(m.vision_sequence) + bytes([m.cis_state & 0xFF]))
+    return _frame(TYPE_BENCH_SENSORS, link_seq, p)
+
+
 def _u16_at(p: bytes, i: int) -> int:
     return p[i] | (p[i + 1] << 8)
 
@@ -194,7 +250,7 @@ class FrameParser:
     A damaged frame is skipped (the next frame start is searched inside it too).
     """
 
-    def __init__(self, accept=(TYPE_PERMISSION,)) -> None:
+    def __init__(self, accept=(TYPE_PERMISSION, TYPE_BENCH_SENSORS)) -> None:
         self._accept = set(accept)
         self._buf = bytearray()
         self._t_start = 0.0
@@ -274,6 +330,17 @@ class FrameParser:
             elif ftype == TYPE_VISION_STATUS:
                 msg = VisionStatus(_u32_at(p, 0), _u32_at(p, 4), p[8], _u16_at(p, 9), _u16_at(p, 11),
                                    _u16_at(p, 13), p[15])
+            elif ftype == TYPE_BENCH_SENSORS:
+                temp = _u16_at(p, 12)
+                if temp >= 0x8000:
+                    temp -= 0x10000                      # signed 0.01 degC
+                msg = BenchSensors(
+                    p[0], p[1], p[2], p[3],
+                    BenchValue(_u16_at(p, 4), p[1], p[2], _u32_at(p, 6), _u16_at(p, 10)),
+                    BenchValue(temp, p[14], p[15], _u32_at(p, 16), _u16_at(p, 20)),
+                    BenchValue(_u16_at(p, 22), p[24], p[25], _u32_at(p, 26), _u16_at(p, 30)),
+                    BenchValue(_u32_at(p, 32), p[36], p[37], _u32_at(p, 38), _u16_at(p, 42)),
+                    p[44], p[45], p[46], _u32_at(p, 47), p[51])
             else:
                 msg = Permission(_u32_at(p, 0), _u32_at(p, 4), p[8], p[9], p[10], _u16_at(p, 11), _u16_at(p, 13))
             return Frame(link_seq, msg)

@@ -21,7 +21,8 @@ void pi_uart_init(void);
  * now_ms is the current time (the 50 ms frame assembly limit uses it). */
 bool pi_uart_poll(pi_frame_t *frame, uint32_t now_ms);
 
-/* Blocking transmit (about 87 us per byte). */
+/* Queues a frame (whole or not at all, up to 256 bytes). The bytes go out inside pi_uart_poll(),
+ * about 87 us per byte, so call that often. */
 void pi_uart_send(const uint8_t *data, size_t len);
 
 /* Counters for the debugger */
@@ -32,5 +33,6 @@ uint32_t pi_uart_assembly_timeouts(void);
 uint32_t pi_uart_skipped_bytes(void);
 uint32_t pi_uart_overruns(void);        /* receiver overruns: bytes lost */
 uint32_t pi_uart_line_errors(void);     /* framing / noise / parity errors */
+uint32_t pi_uart_tx_dropped(void);      /* frames dropped because the transmit queue was full */
 
 #endif /* PI_UART_H */

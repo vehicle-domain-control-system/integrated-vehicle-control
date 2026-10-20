@@ -29,10 +29,13 @@
 #define PI_TYPE_VISION_RESULT   0x60u
 #define PI_TYPE_VISION_STATUS   0x61u
 #define PI_TYPE_PERMISSION      0x62u
+#define PI_TYPE_BENCH_SENSORS   0x70u   /* NOT UART-C v1: bench-only report CIS -> Pi (CIS_BENCH_REPORT) */
 
 #define PI_VISION_RESULT_LEN    19u
 #define PI_VISION_STATUS_LEN    16u
 #define PI_PERMISSION_LEN       15u
+#define PI_BENCH_SENSORS_LEN    52u
+#define PI_BENCH_FRAME_LEN      (PI_FRAME_OVERHEAD + PI_BENCH_SENSORS_LEN)
 
 #define PI_FRAME_OVERHEAD       10u     /* SYNC(2) VERSION TYPE LEN(2) LINK_SEQ(2) CRC(2) */
 #define PI_FRAME_MAX            (PI_FRAME_OVERHEAD + PI_VISION_RESULT_LEN)
@@ -100,6 +103,30 @@ typedef struct {                        /* P_PERMISSION, CIS -> Pi */
     uint16_t source_age_ms;             /* age of the Domain permission, 65535 = unknown */
 } pi_permission_t;
 
+typedef struct {                        /* one sensor value of P_BENCH_SENSORS */
+    uint32_t value;                     /* number (temperature: int16 in two's complement) */
+    uint8_t  valid;
+    uint8_t  reason;
+    uint32_t sequence;
+    uint16_t age_ms;
+} pi_bench_value_t;
+
+typedef struct {                        /* P_BENCH_SENSORS, CIS -> Pi, bench only (layout: tools/pi_vision/pi_protocol.py) */
+    uint8_t  reported_status;           /* PROXIMITY_STATUS after the power gate */
+    uint8_t  reported_valid;
+    uint8_t  reported_reason;
+    uint8_t  sensor_status;             /* PROXIMITY_STATUS before the power gate */
+    pi_bench_value_t distance;          /* mm */
+    pi_bench_value_t temperature;       /* 0.01 degC */
+    pi_bench_value_t humidity;          /* 0.01 %RH */
+    pi_bench_value_t illuminance;       /* lx */
+    uint8_t  pi_link_up;
+    uint8_t  occupant_count;
+    uint8_t  occupant_presence;
+    uint32_t vision_sequence;
+    uint8_t  cis_state;
+} pi_bench_sensors_t;
+
 typedef struct {
     uint8_t  type;                      /* PI_TYPE_VISION_RESULT or PI_TYPE_VISION_STATUS */
     uint16_t link_seq;
@@ -133,6 +160,7 @@ bool pi_parser_step(pi_parser_t *p, pi_frame_t *out);
 /* Builders. Return the number of bytes written (the buffer must hold PI_FRAME_MAX). */
 size_t pi_build_vision_result(uint8_t *out, uint16_t link_seq, const pi_vision_result_t *v);
 size_t pi_build_vision_status(uint8_t *out, uint16_t link_seq, const pi_vision_status_t *s);
+size_t pi_build_bench_sensors(uint8_t *out, uint16_t link_seq, const pi_bench_sensors_t *b);
 size_t pi_build_permission(uint8_t *out, uint16_t link_seq, const pi_permission_t *p);
 
 #endif /* PI_PROTOCOL_H */

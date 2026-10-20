@@ -3,8 +3,11 @@
 #include "dht22.h"
 #include "veml7700.h"
 #include "pi_uart.h"
+#include "cis_fault.h"
+#include "cis_state.h"
 
 #define PERMISSION_TX_MS    500u
+#define BENCH_REPORT_MS     500u
 
 static rear_state_t    s_rear;
 static rear_output_t   s_rear_out;
@@ -14,6 +17,7 @@ static vision_state_t  s_vision;
 static power_gate_t    s_gate;
 
 static uint32_t s_last_perm_ms;
+static uint32_t s_last_bench_ms;
 static uint16_t s_link_seq;          /* UART-C LINK_SEQUENCE of the frames sent to the Pi */
 
 void cis_app_init(void)
@@ -30,6 +34,7 @@ void cis_app_init(void)
 #endif
     power_gate_init(&s_gate);
     s_last_perm_ms = 0u;
+    s_last_bench_ms = 0u;
     s_link_seq = 0u;
 }
 
@@ -97,6 +102,54 @@ static void permission_tx_step(uint32_t now_ms)
 #endif
 }
 
+#ifdef CIS_BENCH_REPORT
+static void bench_value(pi_bench_value_t *o, const cis_value_t *v, uint32_t now_ms)
+{
+    o->value = (uint32_t)v->value;
+    o->valid = v->valid ? 1u : 0u;
+    o->reason = (uint8_t)v->reason;
+    o->sequence = v->sequence;
+    o->age_ms = cis_value_age_ms(v, now_ms);
+}
+
+/* Sensor values for the Pi screen (bench only, not UART-C v1). */
+static void bench_report_step(uint32_t now_ms)
+{
+    pi_bench_sensors_t b;
+    uint8_t out[PI_BENCH_FRAME_LEN];
+    cis_func_status_t fn[CIS_FN_COUNT];
+    size_t n;
+
+    if ((uint32_t)(now_ms - s_last_bench_ms) < BENCH_REPORT_MS || !hcsr04_idle()) {
+        return;
+    }
+    s_last_bench_ms = now_ms;
+
+    b.reported_status = (uint8_t)s_rear_out.status;
+    b.reported_valid = s_rear_out.valid ? 1u : 0u;
+    b.reported_reason = (uint8_t)s_rear_out.reason;
+    b.sensor_status = (uint8_t)s_rear.status;
+    bench_value(&b.distance, &s_rear.value, now_ms);
+    b.distance.value = s_rear.value.value > 0 ? (uint32_t)s_rear.value.value : 0u;
+    bench_value(&b.temperature, &s_env.temperature, now_ms);
+    bench_value(&b.humidity, &s_env.humidity, now_ms);
+    bench_value(&b.illuminance, &s_lux.illuminance, now_ms);
+    b.pi_link_up = s_vision.link_up ? 1u : 0u;
+    b.occupant_count = (uint8_t)s_vision.count.value;
+    b.occupant_presence = (uint8_t)s_vision.presence.value;
+    b.vision_sequence = s_vision.count.sequence;
+    fn[CIS_FN_VISION] = vision_function_status(&s_vision);
+    fn[CIS_FN_TEMPERATURE] = s_env.temperature.status;
+    fn[CIS_FN_HUMIDITY] = s_env.humidity.status;
+    fn[CIS_FN_ILLUMINANCE] = s_lux.illuminance.status;
+    fn[CIS_FN_REAR] = s_rear.value.status;
+    b.cis_state = (uint8_t)cis_state_eval(CIS_INIT_DONE, false, fn);
+
+    n = pi_build_bench_sensors(out, s_link_seq++, &b);
+    pi_uart_send(out, n);
+}
+#endif
+
 static void rear_step(uint32_t now_ms)
 {
     (void)hcsr04_step(&s_rear, now_ms);
@@ -124,6 +177,9 @@ void cis_app_run(uint32_t now_ms)
     rear_step(now_ms);
     env_step(now_ms);
     lux_step(now_ms);
+#ifdef CIS_BENCH_REPORT
+    bench_report_step(now_ms);
+#endif
 }
 
 const rear_state_t   *cis_app_rear(void)        { return &s_rear; }

@@ -20,6 +20,15 @@
  * the P_PERMISSION relay, and cis_net_adapter.c connects the CIS to its API.
  */
 
+/*
+ * CIS_BENCH_REPORT: also send the sensor values to the Pi as P_BENCH_SENSORS (type 0x70) every
+ * BENCH_REPORT_MS, so they can be read on the Pi screen / CSV (tools/pi_vision). This frame is
+ * NOT part of UART-C v1: it is on by default and switched off with CIS_USE_NETWORK_API.
+ */
+#if !defined(CIS_BENCH_REPORT) && !defined(CIS_USE_NETWORK_API)
+#define CIS_BENCH_REPORT 1
+#endif
+
 #define CIS_BOOT_ID     1u       /* [TBD] provided by the Network stack; 0 is reserved */
 
 void cis_app_init(void);

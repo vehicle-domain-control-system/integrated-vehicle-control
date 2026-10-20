@@ -200,6 +200,41 @@ size_t pi_build_vision_status(uint8_t *out, uint16_t link_seq, const pi_vision_s
     return finish_frame(out, PI_TYPE_VISION_STATUS, link_seq, PI_VISION_STATUS_LEN);
 }
 
+static void wr_value(uint8_t *p, const pi_bench_value_t *v, bool wide)
+{
+    if (wide) {
+        wr32(&p[0], v->value);
+        p += 2;                                  /* the 32-bit number takes two more bytes */
+    } else {
+        wr16(&p[0], (uint16_t)v->value);
+    }
+    p[2] = v->valid;
+    p[3] = v->reason;
+    wr32(&p[4], v->sequence);
+    wr16(&p[8], v->age_ms);
+}
+
+size_t pi_build_bench_sensors(uint8_t *out, uint16_t link_seq, const pi_bench_sensors_t *b)
+{
+    uint8_t *pl = &out[8];
+    pl[0] = b->reported_status;
+    pl[1] = b->reported_valid;
+    pl[2] = b->reported_reason;
+    pl[3] = b->sensor_status;
+    wr16(&pl[4], (uint16_t)b->distance.value);
+    wr32(&pl[6], b->distance.sequence);
+    wr16(&pl[10], b->distance.age_ms);
+    wr_value(&pl[12], &b->temperature, false);
+    wr_value(&pl[22], &b->humidity, false);
+    wr_value(&pl[32], &b->illuminance, true);
+    pl[44] = b->pi_link_up;
+    pl[45] = b->occupant_count;
+    pl[46] = b->occupant_presence;
+    wr32(&pl[47], b->vision_sequence);
+    pl[51] = b->cis_state;
+    return finish_frame(out, PI_TYPE_BENCH_SENSORS, link_seq, PI_BENCH_SENSORS_LEN);
+}
+
 size_t pi_build_permission(uint8_t *out, uint16_t link_seq, const pi_permission_t *p)
 {
     uint8_t *pl = &out[8];

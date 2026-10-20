@@ -122,6 +122,7 @@ python3 vision_sender.py --dry-run --simulate 0,2             # 시리얼 포트
 | `P_VISION_RESULT` | 0x60 | Pi → CIS | 100 ms | 부팅 번호, 판정 번호, 판정 후 경과(AGE), **존재 여부와 인원수 각각의 값·유효성·사유**, 기능 상태, 고장 코드 |
 | `P_VISION_STATUS` | 0x61 | Pi → CIS | 1000 ms (상태가 바뀌면 즉시) | 기능 상태, 현재/최근 고장, 영향받는 값(존재/인원수) |
 | `P_PERMISSION` | 0x62 | CIS → Pi | 500 ms | 차량 전원 허용 (CIS가 Domain 값을 중계. 현재는 `UNKNOWN`) |
+| `P_BENCH_SENSORS` | 0x70 | CIS → Pi | 500 ms | **UART-C v1 규격 밖, 벤치 전용.** 후방 거리, 온도, 습도, 조도(값·유효성·사유·순번·AGE), Pi 판정 요약 |
 
 ## 동작 규칙
 
@@ -165,3 +166,23 @@ CIS 쪽 디버거 변수: `g_occ_count`, `g_occ_presence`(0 없음, 1 있음, 25
 | 스크립트 재시작 | `g_pi_boot_id` 변경, 새 판정부터 다시 유효, 이전 값 재사용 없음 |
 | 카메라로 사람 1~3명 | 판정이 바뀌는 데 1~2초 이내, 로그 `detect=`가 600 ms 아래 |
 | 오래 실행 | `g_pi_bad_crc`, `g_pi_overruns`가 거의 늘지 않음 |
+
+## CIS 센서 값을 Pi 화면에서 보기 (벤치 전용)
+
+S32K144가 수집한 센서 값을 Pi에서 확인할 수 있다. CIS 펌웨어가 `P_BENCH_SENSORS`(0x70)를 500 ms마다 보내고,
+`vision_sender.py`가 받아서 한 줄로 출력한다.
+
+```bash
+python3 vision_sender.py --port auto --simulate 0,1,2 --log-cis cis_sensors.csv
+```
+
+```
+CIS rear=VALID_DISTANCE 412mm (sensor status 0) temp=24.31C hum=48.2% lux=310 pi_link=1 count=2 presence=1 state=2
+```
+
+- 유효하지 않은 값은 숫자 대신 `--`로 보인다. 후방 `INACTIVE`는 DOMAIN 허용이 없을 때 나오는 정상 값이다.
+- `--log-cis 파일`을 주면 모든 값(순번과 AGE 포함)을 CSV로 쌓는다.
+- 이 프레임은 **UART-C v1에 없는 메시지**다. Network 스택은 모르는 TYPE을 형식 오류로 버리므로, CIS 펌웨어는
+  `CIS_USE_NETWORK_API`를 켜면 이 송신을 자동으로 끈다 (`CIS_BENCH_REPORT`). 제품 빌드에서는 쓰지 않는다.
+- 값이 CIS 디버거 변수(`g_distance_mm`, `g_temp_c01`, `g_hum_c01`, `g_lux`)와 같은지 비교하면 링크를 확인할 수 있다.
+- CIS 쪽 `g_pi_tx_dropped`가 늘면 송신 큐가 가득 차서 프레임을 버렸다는 뜻이다.

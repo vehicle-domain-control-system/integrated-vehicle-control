@@ -12,6 +12,7 @@ the CIS can tell a new judgement from a repeat.
 """
 
 import argparse
+import os
 import collections
 import random
 import statistics
@@ -260,6 +261,35 @@ PERMISSION_NAMES = {pp.PERMISSION_DENIED: "DENIED", pp.PERMISSION_ALLOWED: "ALLO
 STATUS_PERIOD_S = 1.0
 
 
+
+REPORTED_STATUS = {0: "VALID_DISTANCE", 1: "NO_OBJECT", 2: "UNAVAILABLE", 3: "FAULT", 4: "RECOVERING", 5: "INACTIVE"}
+CSV_HEADER = ("time,rear_status,rear_valid,rear_reason,sensor_status,distance_mm,rear_seq,rear_age_ms,"
+              "temp_c01,temp_valid,temp_reason,temp_seq,temp_age_ms,hum_c01,hum_valid,hum_reason,hum_seq,"
+              "hum_age_ms,lux,lux_valid,lux_reason,lux_seq,lux_age_ms,pi_link,count,presence,vision_seq,cis_state\n")
+
+
+def format_bench(b) -> str:
+    """One line of the CIS sensor values (bench build). A value that is not valid shows '--'."""
+    def num(v, text):
+        return text if v.valid else "--"
+    d, t, h, x = b.distance_mm, b.temperature, b.humidity, b.illuminance
+    rear = REPORTED_STATUS.get(b.reported_status, str(b.reported_status))
+    dist = f"{d.value}mm" if b.reported_status == 0 else "--"
+    return (f"CIS rear={rear} {dist} (sensor status {b.sensor_status}) "
+            f"temp={num(t, f'{t.value / 100:.2f}C')} hum={num(h, f'{h.value / 100:.1f}%')} "
+            f"lux={num(x, str(x.value))} pi_link={b.pi_link_up} count={b.occupant_count} "
+            f"presence={b.occupant_presence} state={b.cis_state}")
+
+
+def csv_bench(b, now: float) -> str:
+    d, t, h, x = b.distance_mm, b.temperature, b.humidity, b.illuminance
+    cols = [f"{now:.3f}", b.reported_status, b.reported_valid, b.reported_reason, b.sensor_status,
+            d.value, d.sequence, d.age_ms, t.value, t.valid, t.reason, t.sequence, t.age_ms,
+            h.value, h.valid, h.reason, h.sequence, h.age_ms, x.value, x.valid, x.reason, x.sequence,
+            x.age_ms, b.pi_link_up, b.occupant_count, b.occupant_presence, b.vision_sequence, b.cis_state]
+    return ",".join(str(c) for c in cols) + "\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", default="auto", help="serial port, or 'auto' (default)")
@@ -275,6 +305,7 @@ def main() -> int:
     ap.add_argument("--conf", type=float, default=0.4, help="YOLO confidence threshold")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
+    ap.add_argument("--log-cis", metavar="FILE", help="append the CIS sensor values (bench build) to this CSV file")
     ap.add_argument("--fps", type=float, default=3.0, help="judgements per second (the CIS needs at least 2)")
     ap.add_argument("--window", type=int, default=3, help="pictures used for the median")
     ap.add_argument("--min-samples", type=int, default=2, help="pictures needed before a count is reported")
@@ -309,6 +340,12 @@ def main() -> int:
     sent = 0
     last_perm = None
     last_printed = None
+    cis_log = None
+    if args.log_cis:
+        new_file = not os.path.exists(args.log_cis) or os.path.getsize(args.log_cis) == 0
+        cis_log = open(args.log_cis, "a", encoding="utf-8")
+        if new_file:
+            cis_log.write(CSV_HEADER)
     last_status_key = None
     cis_update_seq = None
 
@@ -349,7 +386,12 @@ def main() -> int:
 
             if ser is not None:
                 for f in parser.feed(ser.read(256)):
-                    if isinstance(f.message, pp.Permission):
+                    if isinstance(f.message, pp.BenchSensors):
+                        print(format_bench(f.message))
+                        if cis_log is not None:
+                            cis_log.write(csv_bench(f.message, time.time()))
+                            cis_log.flush()
+                    elif isinstance(f.message, pp.Permission):
                         m = f.message
                         cis_update_seq = m.update_sequence
                         state = (m.permission, m.value_quality, m.cis_boot_id)
@@ -371,6 +413,8 @@ def main() -> int:
     except KeyboardInterrupt:
         print("stopped")
     finally:
+        if cis_log is not None:
+            cis_log.close()
         worker.stop_event.set()
         if ser is not None:
             ser.close()

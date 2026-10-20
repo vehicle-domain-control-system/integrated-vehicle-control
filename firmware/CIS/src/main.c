@@ -90,6 +90,7 @@ volatile uint32_t g_pi_bad_format;
 volatile uint32_t g_pi_skipped;
 volatile uint32_t g_pi_overruns;
 volatile uint32_t g_pi_line_errors;
+volatile uint32_t g_pi_tx_dropped;
 
 volatile uint32_t g_lux;
 volatile uint32_t g_lux_valid;
@@ -194,6 +195,7 @@ static void debug_mirror(uint32_t now_ms)
     g_pi_skipped = pi_uart_skipped_bytes();
     g_pi_overruns = pi_uart_overruns();
     g_pi_line_errors = pi_uart_line_errors();
+    g_pi_tx_dropped = pi_uart_tx_dropped();
 
     g_temp_c01 = env->temperature.value;
     g_hum_c01 = env->humidity.value;
