@@ -1,0 +1,64 @@
+# Product C sources copied into an S32DS board project (RTD backend build).
+# One path per line, relative to firmware/network. '#' starts a comment.
+# The host build reads this list for the mock-SDK node library
+# (NETWORK_BUILD_RTD_MOCK), so every entry is compiled and linked on host too.
+# Headers: include/network/** (except net_host_mock.h, net_virtual.h) and the
+# *.h files in the source folders below. Never copy sdk_mock/, tests/, tools/.
+
+# L04 frame codec
+src/l04_frame_codec/net_wire_common.c
+src/l04_frame_codec/net_wire_registry.c
+src/l04_frame_codec/m05_can_codec/net_wire_can.c
+src/l04_frame_codec/m05_can_codec/net_wire_can_common.c
+src/l04_frame_codec/m05_can_codec/net_wire_can_bcm_raw.c
+src/l04_frame_codec/m05_can_codec/net_wire_can_nodes_raw.c
+src/l04_frame_codec/m06_uart_codec/net_wire_uart.c
+src/l04_frame_codec/m06_uart_codec/net_wire_uart_dto.c
+src/l04_frame_codec/m06_uart_codec/net_wire_uart_typed_internal.c
+src/l04_frame_codec/m06_uart_codec/net_wire_uart_m_core.c
+src/l04_frame_codec/m06_uart_codec/net_wire_uart_m_projection.c
+src/l04_frame_codec/m06_uart_codec/net_wire_uart_c_status.c
+src/l04_frame_codec/m06_uart_codec/net_wire_stream.c
+
+# Common runtime
+src/l01_node_context/m01_source_context/net_source.c
+src/l02_typed_handoff/m03_typed_handoff/net_handoff.c
+src/l03_message_service/m04_message_service/net_runtime.c
+src/l04_frame_codec/m05_can_codec/net_can_codec.c
+src/l04_frame_codec/m06_uart_codec/net_uart_stream.c
+src/l05_transport_port/m07_buffer_outcome/net_buffer.c
+src/l05_transport_port/m08_device_port/net_port.c
+src/l05_transport_port/m09_observation/net_observation.c
+
+# Upper product service
+src/l03_message_service/m04_message_service/net_upper_service.c
+src/l03_message_service/m04_message_service/net_upper_profile.c
+src/l01_node_context/m01_source_context/net_upper_source.c
+src/l01_node_context/m01_source_context/net_upper_receipt.c
+src/l01_node_context/m01_source_context/net_upper_monitor.c
+src/l03_message_service/m04_message_service/net_upper_can.c
+src/l03_message_service/m04_message_service/net_upper_uart.c
+src/l01_node_context/m02_query_control/net_upper_query.c
+src/l02_typed_handoff/m03_typed_handoff/net_upper_adapter.c
+src/l02_typed_handoff/m03_typed_handoff/net_ecu_adapter.c
+src/l05_transport_port/m07_buffer_outcome/net_upper_outcome.c
+src/l05_transport_port/m07_buffer_outcome/net_upper_detail.c
+src/l03_message_service/m04_message_service/net_upper_control.c
+src/l05_transport_port/m08_device_port/net_upper_port.c
+src/l05_transport_port/m09_observation/net_upper_observation.c
+src/l05_transport_port/m09_observation/net_upper_diagnostics.c
+
+# L05/M08 device port bridge
+src/l05_transport_port/m08_device_port/net_hal_adapter.c
+src/platform/s32k344/net_s32k344_upper_port.c
+
+# L02/M03 application port (VSS facade)
+src/l02_typed_handoff/m03_typed_handoff/net_app_port_common.c
+src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
+
+# L05/M08 RTD backend: common part + FlexCAN part
+src/platform/rtd/net_hal_rtd.c
+src/platform/rtd/net_hal_rtd_can.c
+
+# Node composition root
+src/node/net_node.c

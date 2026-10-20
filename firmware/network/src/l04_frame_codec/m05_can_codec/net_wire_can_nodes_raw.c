@@ -165,6 +165,9 @@ static NetWireStatus valid_vss_status(const NetWireVssStatusRaw *p)
         (p->last_fault_quality != 0u && p->last_fault_quality != 3u)) return NET_WIRE_MALFORMED;
     if (p->last_fault_quality == 3u && (p->vss_last_fault != 0u ||
         p->last_fault_occurrence != 0u || p->last_fault_age_ms != 0u)) return NET_WIRE_MALFORMED;
+    /* History present (quality 0) carries an original occurrence 1..UINT32_MAX
+     * (sw_detail/functions/can/VSS_STATUS.md, nodes/VSS.md B16-VSS-05). */
+    if (p->last_fault_quality == 0u && p->last_fault_occurrence == 0u) return NET_WIRE_MALFORMED;
     if (p->last_fault_quality == 0u && p->vss_last_fault == 0u) return NET_WIRE_CONTRACT_HOLD;
     /* History0/3 is not State/currentFault quality. No same-K A2 commit here. */
     return NET_WIRE_OK;

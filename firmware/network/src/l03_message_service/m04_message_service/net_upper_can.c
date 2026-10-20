@@ -252,7 +252,11 @@ uint16_t net_upper_can_max_age(const NetUpperCanMessage *m)
         if (m->data.vss_warning_state.rear_activation_age_ms > age) age = m->data.vss_warning_state.rear_activation_age_ms;
         return age;
     case 0x340u:
-        if (m->data.vss_status.last_fault_age_ms > age) age = m->data.vss_status.last_fault_age_ms;
+        /* Freshness = current service evaluation only. last_fault_age_ms is a
+         * history age that legitimately saturates at 65535 ~65 s after a fault
+         * (nodes/VSS.md status-flow step 4, B16-VSS-04); using it here made every
+         * later VSS_STATUS TX/RX EXPIRED. Both ages are still advanced
+         * independently by net_upper_can_add_age(). */
         if (m->data.vss_status.source_age_ms > age) age = m->data.vss_status.source_age_ms;
         return age;
     default: return UINT16_MAX;

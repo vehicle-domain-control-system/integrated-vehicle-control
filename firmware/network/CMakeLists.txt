@@ -529,3 +529,81 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
         add_test(NAME product.semantic_${case} COMMAND test_semantic_identity ${case})
     endforeach()
 endif()
+
+# Host-only node build of the RTD backend against the independently written
+# mock SDK (sdk_mock/rtd). Product sources come from tools/s32ds_sources.txt,
+# the same list a board project copies, so the list itself is link-checked.
+option(NETWORK_BUILD_RTD_MOCK "Build the RTD backend node against sdk_mock/rtd (Host only)" OFF)
+if(NETWORK_BUILD_RTD_MOCK)
+    if(NOT NETWORK_TARGET STREQUAL "host")
+        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK is Host only; a board project links the real RTD")
+    endif()
+    if(NOT NETWORK_NODE_PROFILE STREQUAL "VSS")
+        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: node composition is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS only)")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.txt)
+    file(STRINGS tools/s32ds_sources.txt _node_lines)
+    set(_node_core_sources)
+    set(_node_rtd_sources)
+    foreach(_line IN LISTS _node_lines)
+        string(REGEX REPLACE "#.*$" "" _line "${_line}")
+        string(STRIP "${_line}" _line)
+        if(_line STREQUAL "")
+            continue()
+        endif()
+        if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_line})
+            message(FATAL_ERROR "tools/s32ds_sources.txt lists a missing file: ${_line}")
+        endif()
+        if(_line MATCHES "^src/platform/rtd/")
+            list(APPEND _node_rtd_sources ${_line})
+        else()
+            list(APPEND _node_core_sources ${_line})
+        endif()
+    endforeach()
+    # Board project include paths (same seven folders), plus the mock SDK.
+    set(_node_includes
+        include
+        src/l04_frame_codec
+        src/l02_typed_handoff/m03_typed_handoff
+        src/l05_transport_port/m07_buffer_outcome
+        src/l05_transport_port/m09_observation
+        src/l03_message_service/m04_message_service
+        src/platform/rtd)
+    file(GLOB _rtd_mock_sources CONFIGURE_DEPENDS sdk_mock/rtd/src/*.c)
+
+    # SDK-independent part: compiled once, without the mock SDK include path.
+    add_library(network_node_core_objs OBJECT ${_node_core_sources})
+    target_include_directories(network_node_core_objs PRIVATE ${_node_includes})
+    target_compile_definitions(network_node_core_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+    network_warnings(network_node_core_objs)
+
+    # Two time sources: OsIf system counter (default) and NET_BOARD_NOW_MS_HOOK.
+    foreach(_variant IN ITEMS rtd_mock rtd_mock_hook)
+        add_library(network_node_${_variant} STATIC
+            $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
+        target_include_directories(network_node_${_variant} PUBLIC ${_node_includes} sdk_mock/rtd/include)
+        target_compile_definitions(network_node_${_variant} PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+        network_warnings(network_node_${_variant})
+    endforeach()
+    # The test supplies the board clock (MockBoard_NowMs) for the hook build.
+    target_compile_definitions(network_node_rtd_mock_hook PRIVATE NET_BOARD_NOW_MS_HOOK=MockBoard_NowMs)
+
+    if(BUILD_TESTING)
+        foreach(_variant IN ITEMS ostimer hook)
+            add_executable(test_vss_node_e2e_${_variant} tests/vss_node/test_vss_node_e2e.c)
+            if(_variant STREQUAL "hook")
+                target_link_libraries(test_vss_node_e2e_${_variant} PRIVATE network_node_rtd_mock_hook)
+                target_compile_definitions(test_vss_node_e2e_${_variant} PRIVATE VSS_NODE_TEST_TIME_HOOK=1)
+            else()
+                target_link_libraries(test_vss_node_e2e_${_variant} PRIVATE network_node_rtd_mock)
+            endif()
+            network_warnings(test_vss_node_e2e_${_variant})
+            foreach(case IN ITEMS h01_init h02_event_rx h03_order_duplicate h04_warning_rx
+                    h05_permission_rx h06_malformed_rx h07_publish h08_publish_invalid
+                    h09_publish_in_callback h10_ack_missing h11_busoff h12_time_source h14_rx_burst)
+                add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
+            endforeach()
+        endforeach()
+    endif()
+endif()
