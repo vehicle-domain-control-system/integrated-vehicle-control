@@ -230,12 +230,53 @@ static int uart_c_generation(void)
     return 0;
 }
 
+/* CAN TX_SEQUENCE starts at 1 in every sender run (docs/network/interface/
+ * 03_COMMUNICATION/10_CAN_FD.md, TX_SEQUENCE: first 1). A frame carrying 0 is
+ * a structure error (VSS hand-over C5: structure checks are Network's first,
+ * a structure error frame causes no generation change): refused as invalid
+ * with no Owner call, as the very first frame of a key, as the first frame of
+ * a new run and inside the accepted run; the key never moves on it. */
+static int tx_zero_refused(void)
+{
+    NetUpperCanMessage m;NetUpperObservation o;
+    CHECK(setup(NET_WIRE_NODE_VSS,route(NET_WIRE_CAN,0x0c0u))==0);
+    /* The very first frame of the key. */
+    m=event_of(0xA1u,0u,1u);CHECK(can_message(&m)==NET_REJECTED);
+    m=warning_of(0xA1u,0u,100u);CHECK(can_message(&m)==NET_REJECTED);
+    CHECK(owner.calls==0u);
+    o=observed();CHECK(o.rx_invalid==2u&&o.rx_delivered==0u&&o.generation_changes==0u);
+    /* Run A then starts from TX 1. */
+    m=event_of(0xA1u,1u,1u);CHECK(can_message(&m)==NET_OK);
+    CHECK(owner.accepted==1u&&owner.delivery.source_boot==0xA1u&&owner.delivery.source_sequence==1u);
+    /* The first frame of a new run B with TX 0: refused, the key stays on A. */
+    m=event_of(0xB2u,0u,1u);CHECK(can_message(&m)==NET_REJECTED);
+    CHECK(owner.calls==1u);
+    o=observed();CHECK(o.rx_invalid==3u&&o.generation_changes==0u&&o.old_generation==0u);
+    m=event_of(0xA1u,2u,2u);CHECK(can_message(&m)==NET_OK);
+    CHECK(owner.accepted==2u&&owner.delivery.source_boot==0xA1u&&owner.delivery.source_sequence==2u);
+    /* B from TX 1 is the new run, A has ended. */
+    m=event_of(0xB2u,1u,1u);CHECK(can_message(&m)==NET_OK);
+    CHECK(owner.accepted==3u&&owner.delivery.source_boot==0xB2u);
+    /* TX 0 inside the accepted run is refused the same way. */
+    m=event_of(0xB2u,0u,2u);CHECK(can_message(&m)==NET_REJECTED);
+    m=event_of(0xA1u,3u,3u);CHECK(can_message(&m)==NET_STALE);
+    CHECK(owner.calls==3u);
+    o=observed();CHECK(o.rx_invalid==4u&&o.generation_changes==1u&&o.old_generation==1u);
+    /* On the repeat route the same: a warning repetition with TX 0 is refused. */
+    m=warning_of(0xB2u,1u,100u);CHECK(can_message(&m)==NET_OK);
+    port.now+=50u;m=warning_of(0xB2u,0u,150u);CHECK(can_message(&m)==NET_REJECTED);
+    CHECK(owner.calls==4u);
+    o=observed();CHECK(o.rx_invalid==5u&&o.repeat_delivered==0u);
+    return 0;
+}
+
 int main(int argc,char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[]={
         {"ended_depth",ended_depth},{"owner_refused_no_switch",owner_refused_no_switch},
         {"repeat_scope",repeat_scope},{"repeat_can_slack",repeat_can_slack},
-        {"repeat_uart_slack",repeat_uart_slack},{"uart_c_generation",uart_c_generation}
+        {"repeat_uart_slack",repeat_uart_slack},{"uart_c_generation",uart_c_generation},
+        {"tx_zero_refused",tx_zero_refused}
     };
     size_t i;
     if(argc!=2){printf("usage: %s <case>\n",argv[0]);return 2;}

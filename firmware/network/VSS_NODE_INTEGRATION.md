@@ -30,7 +30,7 @@ VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만
 
 ## DOMAIN 재부팅과 같은 평가의 반복 (수신)
 
-- **재부팅:** DOMAIN이 재부팅해 새 BOOT_ID로 TX 1부터 보내면, CAN ID(0x160, 0x0C0, 0x080)마다 그 ID의 첫 새 BOOT 프레임에서 새 세대로 바꾸고 그대로 콜백한다. 구조 검증(DLC, padding, 예약 코드, enum, BOOT≠0)을 통과한 프레임만 바꾼다. 앞 세대의 문맥(TX 순서, 같은 관측 기억, AGE 비교 기준, permission 감독 기록)은 그 ID에서만 버린다. 콜백이 거절한 프레임은 세대를 바꾸지 않는다.
+- **재부팅:** DOMAIN이 재부팅해 새 BOOT_ID로 TX 1부터 보내면, CAN ID(0x160, 0x0C0, 0x080)마다 그 ID의 첫 새 BOOT 프레임에서 새 세대로 바꾸고 그대로 콜백한다. 구조 검증(DLC, padding, 예약 코드, enum, BOOT≠0, TX_SEQUENCE≠0)을 통과한 프레임만 바꾼다. TX_SEQUENCE 0은 `10_CAN_FD.md`의 "최초 1"에 따라 구조 오류로 버린다(`rx_invalid`, 콜백 없음). 앞 세대의 문맥(TX 순서, 같은 관측 기억, AGE 비교 기준, permission 감독 기록)은 그 ID에서만 버린다. 콜백이 거절한 프레임은 세대를 바꾸지 않는다.
 - **이전 BOOT로는 돌아갈 수 없다.** 끝난 BOOT는 CAN ID마다 최근 4개를 기억하고, 그 BOOT의 늦은 프레임은 콜백 없이 버린다(`NetNodeDiag.upper.old_generation`, `stale`에도 포함). 바뀐 횟수는 `generation_changes`다. DOMAIN이 같은 BOOT_ID로 다시 시작하면 TX가 1로 돌아가 과거 TX로 버려지므로 복구되지 않는다(VSS 계약 C4: BOOT_ID는 기동마다 다르다).
 - **같은 평가의 반복:** 수신 중단 감시가 있는 주기 메시지(0x0C0 `VSS_WARNING_STATE`, 0x080)는 같은 원 관측을 새 TX로 반복해도 콜백한다. 원 관측 번호는 그대로이고 AGE는 늘어난 값이다. VSS INPUT은 TX가 앞선 프레임으로 150 ms 감시를 갱신한다(C11). 정확한 중복(같은 TX, 같은 바이트)은 버린다. 반복은 `NetNodeDiag.upper.repeat_delivered`로 세고 `rx_delivered`·`duplicates`에는 넣지 않는다.
 - **늦게 도착한 반복:** 반복 프레임이 버스 중재 등으로 늦어 AGE가 "직전 AGE + 수신 간격"보다 5 ms 이내로 모자라면, AGE를 그 하한으로 올려 전달한다(`repeat_age_raised`). 낮추지는 않는다. 5 ms는 문서의 CAN 전달 여유 후보(PROPOSED)다. 더 모자라면 보류한다(`rx_held`).

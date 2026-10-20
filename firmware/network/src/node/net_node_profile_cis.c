@@ -11,7 +11,8 @@
  *                            framing, proposed), LINK_SEQUENCE from 1 per direction
  *   CIS_REAR 0x0A0, CIS_ENVIRONMENT 0x300, CIS_OCCUPANT 0x310, CIS_STATUS 0x320
  *                            (CAN TX): submitted by the CIS application
- *   P_PERMISSION 0x62 (UART-C TX): Network-internal relay, 500 ms repetition */
+ *   P_PERMISSION 0x62 (UART-C TX): Network-internal relay, no Network
+ *                            repetition (see the publish table) */
 #include "net_node_profile.h"
 
 #if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
@@ -32,17 +33,25 @@
  * Freshness bound of a submission: its AGE plus the local wait; the wire
  * saturates at 65535 and DOMAIN judges staleness.
  * P_PERMISSION: Network-internal relay (20_API.md CisNetPriv_RelayPiPermission):
- * a new DOMAIN evaluation is submitted at once, the same relay record is
- * repeated every 500 ms with the same UPDATE_SEQUENCE and a growing AGE
- * (30_UART_C.md: 500 ms repetition / 1500 ms receive timeout). The service
- * refuses any P_PERMISSION whose original DOMAIN AGE reached 500 ms or that no
- * longer matches the DOMAIN_PERMISSION receipt it holds, repetitions included. */
+ * a new DOMAIN evaluation or an accepted change of the DOMAIN run is submitted
+ * at once and leaves as one frame (OK power quality only, net_app_port_cis.c).
+ * Network does not repeat it (period 0). 30_UART_C.md names a 500 ms
+ * repetition / 1500 ms receive timeout, but a repetition sent with the
+ * original stamp cannot pass the service: it refuses any P_PERMISSION whose
+ * original DOMAIN AGE reached 500 ms (04_COMMON/10_DATA_AND_ID_RULES.md,
+ * consumption boundary of the rear Power evaluation) or that no longer
+ * matches the DOMAIN_PERMISSION receipt it holds, and a repetition 500 ms
+ * after the first frame always meets the first rule. The repetition basis
+ * (500 ms original life or the 1500 ms USE_LIMIT, the AGE of a repeated
+ * frame, the receipt match) is a pending design decision; until then the
+ * Pi's 1500 ms receive timeout is held off by DOMAIN's new evaluations
+ * (about every 200 ms). */
 static const NetUpperPublishEntry publish_table[] = {
     { NET_WIRE_CAN, 0x0A0u, 0u, { true, 65535u + 1000u, true } },
     { NET_WIRE_CAN, 0x300u, 0u, { true, 65535u + 1000u, true } },
     { NET_WIRE_CAN, 0x310u, 0u, { true, 65535u + 1000u, true } },
     { NET_WIRE_CAN, 0x320u, 0u, { true, 65535u + 1000u, true } },
-    { NET_WIRE_UART_C, 0x62u, 500u, { true, 500u, true } }
+    { NET_WIRE_UART_C, 0x62u, 0u, { true, 500u, true } }
 };
 
 /* Repetitions of the same original observation with a new TX_SEQUENCE /

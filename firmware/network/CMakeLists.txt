@@ -355,7 +355,7 @@ if(NETWORK_BUILD_UPPER_STACK)
         endforeach()
         # Sender runs (BOOT_ID generations) and repetitions of one original observation.
         foreach(case IN ITEMS ended_depth owner_refused_no_switch repeat_scope repeat_can_slack
-                repeat_uart_slack uart_c_generation)
+                repeat_uart_slack uart_c_generation tx_zero_refused)
             add_test(NAME product.generation_${case} COMMAND test_upper_generation ${case})
         endforeach()
     endif()
@@ -774,7 +774,7 @@ if(NETWORK_BUILD_RTD_MOCK)
                 f07_vision_rx f08_publish_frames f09_publish_invalid f10_publish_occupant_relay
                 f11_publish_in_callback f12_not_ready f14_permission_repeat_delivered
                 f15_permission_quality_drop_same_update f16_vision_rx_main_3ms f17_domain_reboot
-                f18_pi_reboot f19_permission_repeat_no_flood)
+                f18_pi_reboot f19_permission_repeat_no_flood f20_permission_tx_zero)
             add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
         endforeach()
 

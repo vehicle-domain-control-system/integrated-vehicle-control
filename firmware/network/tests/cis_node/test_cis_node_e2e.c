@@ -435,10 +435,15 @@ static int f01_init(void)
     CHECK(d.rtd.uart[1].uart_present && d.rtd.uart[1].uart_rx_armed && !d.rtd.uart[0].uart_present);
     CHECK(MockRtd_UartInits(LPUART) == 1u && MockRtd_UartRxArmed(LPUART));
     CHECK(d.app.bound);
-    /* M04 table: four application messages without a period, the relay at 500 ms. */
+    /* M04 table: no message has a Network period. */
     CHECK(d.rear_tx.boot_id == NODE_BOOT && d.rear_tx.next_sequence == 1u && d.rear_tx.period_ms == 0u);
     CHECK(d.environment_tx.period_ms == 0u && d.occupant_tx.period_ms == 0u && d.status_tx.period_ms == 0u);
-    CHECK(d.pi_permission_tx.period_ms == 500u && d.pi_permission_tx.next_sequence == 1u);
+    /* Pending design decision: 03_COMMUNICATION/30_UART_C.md lists P_PERMISSION
+     * at 500 ms / 1500 ms, while a repetition with the original stamp meets the
+     * 500 ms original Power life (04_COMMON/10_DATA_AND_ID_RULES.md, consumption
+     * boundary). The relay is not repeated by Network until the repetition basis
+     * is decided. */
+    CHECK(d.pi_permission_tx.period_ms == 0u && d.pi_permission_tx.next_sequence == 1u);
     CHECK(!d.rear_tx.has_source && !d.pi_permission_tx.has_source);
     step_ms(3u);
     CHECK(diag().steps == 3u);
@@ -497,7 +502,7 @@ static int f02_permission_rx_relay(void)
 
 /* DOMAIN as 10_DATA.md describes it: CAN every 50 ms, a new evaluation about
  * every 200 ms. Each new evaluation is relayed at once; the CAN repetitions of
- * an evaluation add no frame and the 500 ms repetition never comes due. */
+ * an evaluation add no frame and Network repeats no relay frame. */
 static int f03_permission_new_evaluations(void)
 {
     NetNodeDiag d;
@@ -530,9 +535,16 @@ static int f03_permission_new_evaluations(void)
 }
 
 /* The same DOMAIN evaluation keeps arriving (CAN repetitions, growing AGE):
- * one relay frame; the 500 ms repetitions come due and the service refuses
- * them (the original Power life of 500 ms has passed and the relay no longer
- * matches the DOMAIN receipt), so nothing more reaches the Pi. */
+ * one relay frame and nothing more reaches the Pi. Network does not repeat
+ * P_PERMISSION; a repetition with the original stamp could not pass the
+ * service anyway (the original Power life of 500 ms, the DOMAIN receipt
+ * match). The CAN repetitions reach the application but are not relayed.
+ * Pending design decision for the expectations marked below:
+ * 03_COMMUNICATION/30_UART_C.md "UART-C 500ms repetition / 1500ms receive
+ * timeout" against 04_COMMON/10_DATA_AND_ID_RULES.md consumption boundary
+ * "500ms and 501ms are not used" for the rear Power evaluation; the
+ * repetition basis (500 ms original life or the 1500 ms USE_LIMIT), the AGE
+ * of a repeated frame and the receipt match decide them. */
 static int f04_permission_same_evaluation(void)
 {
     NetNodeDiag d;
@@ -549,17 +561,18 @@ static int f04_permission_same_evaluation(void)
         step_ms(1u);
         t = now_ms();
         d = diag();
-        if (t == offered_at + 499u) CHECK(d.pi_permission_tx.counters.not_sent == 0u);
-        if (t == offered_at + 500u) CHECK(d.pi_permission_tx.counters.not_sent == 1u); /* due, refused */
+        /* Pending design decision (above): no repetition comes due at +500 ms. */
+        if (t == offered_at + 500u) CHECK(d.pi_permission_tx.counters.not_sent == 0u);
         /* DOMAIN repeats the same evaluation every 50 ms, its AGE growing. */
         if (t < first + 1200u && (t - first) % 50u == 0u)
             RUN(permission_in(++tx, 7u, (uint16_t)(10u + (t - first)), NET_TRISTATE_YES, NET_QUALITY_OK));
     }
     d = diag();
-    CHECK(uart_n == 1u && uart_bad == 0u);
+    CHECK(uart_n == 1u && uart_bad == 0u);                       /* pending design decision (above) */
     CHECK(d.pi_permission_tx.counters.sent == 1u && d.pi_permission_tx.counters.periodic_sent == 0u);
-    CHECK(d.pi_permission_tx.counters.not_sent == 3u);           /* +500, +1000, +1500 */
+    CHECK(d.pi_permission_tx.counters.not_sent == 0u);           /* pending design decision (above) */
     CHECK(d.pi_permission_tx.next_sequence == 2u);               /* no LINK_SEQUENCE used */
+    CHECK(d.app.relay_submitted == 1u && d.app.permission_repeats > 0u);
     return 0;
 }
 
@@ -606,10 +619,17 @@ static int f06_permission_quality(void)
     step_ms(1u);
     CHECK(perm_count == 2u && last_perm.power_permission_quality == NET_QUALITY_INVALID);
     d = diag();
+    /* Pending design decision: 02_NODES/CIS/20_API.md (internal relay) "a
+     * normal-format DENY/STALE/INVALID may also be kept and relayed as an
+     * explicit state" and 03_COMMUNICATION/30_UART_C.md (P_PERMISSION) "an
+     * actual quality restriction is submitted as soon as possible", while the
+     * DOMAIN_PERMISSION wire carries no reason to project into the
+     * P_PERMISSION QUALITY_REASON. Until that projection is decided a non-OK
+     * quality is refused (NOT_READY) and nothing reaches the Pi. */
     CHECK(d.app.relay_refused == 1u && d.app.last_relay_result == NET_SUBMIT_NOT_READY);
     CHECK(d.permission.reason == NET_PERMISSION_BAD_QUALITY && !d.permission.power_usable);
     step_ms(1500u);
-    CHECK(uart_n == 1u);
+    CHECK(uart_n == 1u);                                      /* pending design decision (above) */
     /* A confirmed DENY (OK quality) is relayed as it is. */
     RUN(permission_in(3u, 22u, 6u, NET_TRISTATE_NO, NET_QUALITY_OK));
     step_ms(1u);
@@ -875,13 +895,22 @@ static int f10_publish_occupant_relay(void)
     occ = relay_of(&last_result, 0u);
     occ.vision_sequence = 799u;
     CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_NOT_READY);       /* not the accepted judgement */
+    /* Pending design decision for the next two expectations:
+     * 02_NODES/CIS/20_API.md (CisNet_PublishOccupant) "when the quality of the
+     * same original observation drops, the current quality and the actual
+     * restriction are submitted with the original Pi value, BOOT /
+     * VISION_SEQUENCE and origin kept", and 02_NODES/CIS/10_DATA.md
+     * vision_function_status "CIS function state, no raw cast of the Pi
+     * VISION_STATUS". The service accepts CIS_OCCUPANT only as the unchanged
+     * relay of the accepted P_VISION_RESULT, so a CIS restriction or a CIS
+     * function state is refused (NOT_READY) until that rule is decided. */
     occ = relay_of(&last_result, 0u);
     occ.presence_validity = NET_VALIDITY_INVALID;
     occ.presence_reason = NET_QUALITY_REASON_DATA_INVALID;
-    CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_NOT_READY);       /* CIS restriction: not representable */
+    CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_NOT_READY);       /* pending design decision (above) */
     occ = relay_of(&last_result, 0u);
     occ.vision_function_status = NET_SENSOR_FUNCTION_READY;
-    CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_NOT_READY);
+    CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_NOT_READY);       /* pending design decision (above) */
     occ = relay_of(&last_result, 0u);
     occ.vision_age_ms = 29u;
     CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_NOT_READY);       /* younger than the Pi AGE */
@@ -1085,10 +1114,18 @@ static int f15_permission_quality_drop_same_update(void)
     CHECK(d.upper.rx_held == d0.upper.rx_held && d.upper.duplicates == d0.upper.duplicates);
     CHECK(d.app.permission_delivered == 2u);
     /* The relay path got the same drop: it does not relay a restricted
-     * quality (no reason on the wire) and the earlier ALLOW is not sent again. */
-    CHECK(d.app.relay_refused == 1u && d.app.last_relay_result == NET_SUBMIT_NOT_READY);
+     * quality (no reason on the wire) and the earlier ALLOW is not sent again.
+     * Pending design decision: 02_NODES/CIS/20_API.md (internal relay) "the
+     * quality drop is not missed on that path; the existing relay update and
+     * immediate submission are used" and 03_COMMUNICATION/30_UART_C.md
+     * (P_PERMISSION) "the new quality drop of the same original successful
+     * evaluation is also requested over the existing CIS relay, not deferred",
+     * while the DOMAIN_PERMISSION wire carries no reason to project into the
+     * P_PERMISSION QUALITY_REASON. Until that projection is decided the drop
+     * is refused (NOT_READY) and no restriction frame reaches the Pi. */
+    CHECK(d.app.relay_refused == 1u && d.app.last_relay_result == NET_SUBMIT_NOT_READY); /* pending */
     CHECK(d.permission.reason == NET_PERMISSION_BAD_QUALITY && !d.permission.power_usable);
-    CHECK(uart_n == 1u);
+    CHECK(uart_n == 1u);                                      /* pending design decision (above) */
     /* TX3: the same UPDATE back to OK (promotion by TX_SEQUENCE alone): held,
      * the restriction stays. */
     d0 = diag();
@@ -1106,7 +1143,7 @@ static int f15_permission_quality_drop_same_update(void)
     CHECK(perm_count == 2u && d.upper.rx_held == d0.upper.rx_held + 2u);
     /* Nothing reaches the Pi meanwhile: the earlier ALLOW is not repeated. */
     step_ms(1000u);
-    CHECK(uart_n == 1u && uart_bad == 0u);
+    CHECK(uart_n == 1u && uart_bad == 0u);                    /* pending design decision (above) */
     /* TX5: a new DOMAIN evaluation, OK: delivered and relayed with the next
      * LINK_SEQUENCE. */
     RUN(permission_in(5u, 21u, 4u, NET_TRISTATE_YES, NET_QUALITY_OK));
@@ -1330,6 +1367,64 @@ static int f19_permission_repeat_no_flood(void)
     return 0;
 }
 
+/* TX_SEQUENCE starts at 1 in every sender run (03_COMMUNICATION/10_CAN_FD.md,
+ * TX_SEQUENCE: first 1, +1 per frame). A DOMAIN_PERMISSION carrying TX 0 is a
+ * structure error (VSS hand-over C5: structure checks are Network's first; a
+ * structure error frame causes no generation change): neither the very first
+ * frame nor the first frame of a restarted DOMAIN run with TX 0 reaches
+ * CisApp_OnDomainPermission or the Pi, and neither moves the generation. */
+static int f20_permission_tx_zero(void)
+{
+    enum { BOOT_A = 0x444F4D41u, BOOT_B = 0x444F4D42u };
+    NetNodeDiag d0, d;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    /* The very first frame of the key, TX 0. */
+    d0 = diag();
+    RUN(permission_from(BOOT_A, 0u, 50u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(2u);
+    d = diag();
+    CHECK(perm_count == 0u && uart_n == 0u && d.app.permission_delivered == 0u);
+    CHECK(d.upper.rx_invalid == d0.upper.rx_invalid + 1u);
+    CHECK(d.upper.generation_changes == 0u && d.upper.rx_delivered == d0.upper.rx_delivered);
+    /* Run A from TX 1: taken and relayed as a first frame. */
+    RUN(permission_from(BOOT_A, 1u, 50u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 1u && uart_n == 1u);
+    CHECK(last_perm_meta.source.boot_id == BOOT_A && last_perm_meta.source.tx_sequence == 1u);
+    RUN(check_relay(&uart_out[0], 1u, 50u, NET_TRISTATE_YES, 10u, last_perm_meta.received_at_ms));
+    /* DOMAIN restarts as run B and its first frame carries TX 0: refused, the
+     * key stays on run A. */
+    step_ms(20u);
+    d0 = diag();
+    RUN(permission_from(BOOT_B, 0u, 3u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(2u);
+    d = diag();
+    CHECK(perm_count == 1u && uart_n == 1u);
+    CHECK(d.upper.rx_invalid == d0.upper.rx_invalid + 1u);
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes);
+    CHECK(d.upper.old_generation == d0.upper.old_generation);
+    CHECK(d.permission.original.update_sequence == 50u);
+    /* Run A goes on in order: its next evaluation is taken and relayed. */
+    RUN(permission_from(BOOT_A, 2u, 51u, 4u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 2u && uart_n == 2u && last_perm_meta.source.boot_id == BOOT_A);
+    RUN(check_relay(&uart_out[1], 2u, 51u, NET_TRISTATE_YES, 4u, last_perm_meta.received_at_ms));
+    /* Run B from TX 1 is the new generation; a late A frame is then refused. */
+    RUN(permission_from(BOOT_B, 1u, 3u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    d = diag();
+    CHECK(perm_count == 3u && uart_n == 3u && last_perm_meta.source.boot_id == BOOT_B);
+    CHECK(d.upper.generation_changes == d0.upper.generation_changes + 1u);
+    RUN(check_relay(&uart_out[2], 3u, 3u, NET_TRISTATE_YES, 5u, last_perm_meta.received_at_ms));
+    RUN(permission_from(BOOT_A, 3u, 52u, 4u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(2u);
+    d = diag();
+    CHECK(perm_count == 3u && uart_n == 3u && d.upper.old_generation == d0.upper.old_generation + 1u);
+    CHECK(isr_callbacks == 0u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1353,7 +1448,8 @@ int main(int argc, char **argv)
         { "f16_vision_rx_main_3ms", f16_vision_rx_main_3ms },
         { "f17_domain_reboot", f17_domain_reboot },
         { "f18_pi_reboot", f18_pi_reboot },
-        { "f19_permission_repeat_no_flood", f19_permission_repeat_no_flood }
+        { "f19_permission_repeat_no_flood", f19_permission_repeat_no_flood },
+        { "f20_permission_tx_zero", f20_permission_tx_zero }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }
