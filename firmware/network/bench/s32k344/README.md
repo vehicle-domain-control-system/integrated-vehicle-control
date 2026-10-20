@@ -76,8 +76,10 @@ NET_BOARD_US_HOOK=Board_Us32
 ## 동기화
 
 ```
-python firmware/network/tools/sync_to_s32ds.py --project <벤치 프로젝트>          # dry run
-python firmware/network/tools/sync_to_s32ds.py --project <벤치 프로젝트> --apply
+python firmware/network/tools/sync_to_s32ds.py --project <벤치 프로젝트> --board bench          # dry run
+python firmware/network/tools/sync_to_s32ds.py --project <벤치 프로젝트> --board bench --apply
 ```
+
+`--board bench`가 기본값이다. VSS 프로젝트(`src/app/vss_main.c`가 있음)에는 이 폴더를 넣지 않는다(`VssApp_On*`, `SysTick_Handler`, `Board_*`가 겹친다). 도구가 거부한다.
 
 벤치의 `src/network/`, `src/net_bench/`는 직접 고치지 않는다. 이 저장소에서 고치고 다시 동기화한다.

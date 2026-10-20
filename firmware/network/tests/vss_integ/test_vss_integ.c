@@ -27,8 +27,11 @@
 #include "driver/audio_tx/audio_tx.h"
 #include "driver/audio_control/audio_control.h"
 #include "infra/vss_time.h"
+#include "net_if/vss_net_api.h"
 #include "vss_integ_bus.h"
+#include "vss_integ_layout.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -1249,12 +1252,56 @@ static int vi12_warning_repeat_keeps_vss(void)
     return Invariants();
 }
 
+/* vi0: the two header model. VSS compiles with vss_net_api.h, the Network
+ * with network/app/net_if_*.h; the same list (vss_integ_layout.h) expanded on
+ * both sides must give the same sizes, field offsets / sizes and codes. */
+#define LAYOUT_PUT(x) do { if (n < cap) out[n] = (uint32_t)(x); n++; } while (0);
+#define LAYOUT_SIZE(T) LAYOUT_PUT(sizeof(T))
+#define LAYOUT_FIELD(T, f) LAYOUT_PUT(offsetof(T, f)) LAYOUT_PUT(sizeof(((T *)0)->f))
+#define LAYOUT_VALUE(v) LAYOUT_PUT(v)
+#define NAME_SIZE(T) "sizeof(" #T ")",
+#define NAME_FIELD(T, f) "offsetof(" #T ", " #f ")", "sizeof(" #T "." #f ")",
+#define NAME_VALUE(v) #v,
+
+static size_t VssApiLayout(uint32_t *out, size_t cap)
+{
+    size_t n = 0u;
+    VSS_INTEG_API_LAYOUT(LAYOUT_SIZE, LAYOUT_FIELD, LAYOUT_VALUE)
+    return n;
+}
+
+static int vi0_api_layout(void)
+{
+    static const char *const names[] = { VSS_INTEG_API_LAYOUT(NAME_SIZE, NAME_FIELD, NAME_VALUE) };
+    static uint32_t vss[VSS_INTEG_LAYOUT_MAX], net[VSS_INTEG_LAYOUT_MAX];
+    const size_t count = sizeof names / sizeof names[0];
+    size_t nv = VssApiLayout(vss, VSS_INTEG_LAYOUT_MAX);
+    size_t nn = IntegBus_ApiLayout(net, VSS_INTEG_LAYOUT_MAX);
+    size_t i;
+
+    CHECK(count <= VSS_INTEG_LAYOUT_MAX);
+    CHECK(nv == count);
+    CHECK(nn == count);
+    for (i = 0u; i < count; ++i)
+    {
+        if (vss[i] != net[i])
+        {
+            fprintf(stderr, "%s: first layout difference %s: VSS %lu, Network %lu\n", s_case, names[i],
+                    (unsigned long)vss[i], (unsigned long)net[i]);
+            return 1;
+        }
+    }
+    printf("%s: %lu entries identical\n", s_case, (unsigned long)count);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct {
         const char *name;
         int (*run)(void);
     } cases[] = {
+        { "vi0_api_layout", vi0_api_layout },
         { "vi1_boot_order", vi1_boot_order },
         { "vi2_clock_axis", vi2_clock_axis },
         { "vi3_tx_per_message", vi3_tx_per_message },

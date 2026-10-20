@@ -7,7 +7,7 @@ VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만
 - `include/network/app/net_if_common.h`: `04_COMMON/10_DATA_AND_ID_RULES.md` 공통 타입 중 이 펌웨어의 노드 헤더(VSS·CIS·BCM, Pi UART-C 기록)가 쓰는 것을 옮긴 것. DOMAIN 전용 타입 4개(`NetResultConfirmation`, `NetWarningType`, `NetSeverity`, `NetFunctionId`)는 이 노드 헤더에서 제외했다.
 - `include/network/app/net_if_vss.h`: `02_NODES/VSS/20_API.md` 원형을 그대로 옮긴 것. 아래 진입 헤더도 include한다.
 - `include/network/app/net_if_entry.h`: 공개 진입 `Net_Init`, `Net_MainFunction`. 선언은 VSS 사본(`vss_net_api.h`)과 글자 그대로 같다.
-- VSS 앱도 이 헤더를 그대로 쓴다. 별도 사본을 만들면 struct 배치가 어긋날 수 있다.
+- VSS 앱은 자기 사본 `src/net_if/vss_net_api.h`를 그대로 쓴다(두 헤더 모델, 아래 "VSS 연동 절차"). 두 헤더는 같은 타입을 정의하므로 한 번역 단위에 함께 넣지 않고 링크에서 만난다. struct 배치와 코드 값이 같은지는 host 시험 `vss_integ.vi0_api_layout`이 확인한다.
 
 | 함수 | 구현 | 호출 문맥 |
 |---|---|---|
@@ -115,27 +115,26 @@ VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host�
 
 ## VSS 연동 절차
 
-1. **헤더 교체:** VSS 소스의 `#include "vss_net_api.h"`를 `#include "network/app/net_if_vss.h"`로 바꾼다(include 경로에 `firmware/network/include` 추가). 두 헤더를 한 번역 단위에서 함께 include하지 않는다(같은 타입을 정의한다).
-2. **Network 대역 끄기:** `VSS_CFG_NET_STUB=0`으로 빌드해 `net_stub.c` 대신 Network 소스(`tools/s32ds_sources.txt` 목록)를 링크한다.
-3. **hook define 3개**(프로젝트 설정의 `-D` 또는 `net_board_cfg.h`):
-   - `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`: PIT ISR이 올리는 `volatile` 카운터를 읽기만 하므로 CAN ISR에서 불러도 된다(1 tick = 1.25 ms).
-   - `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`: main 전용. Network는 `Net_MainFunction` 안에서만 부른다.
-   - `NET_BOARD_NODE_CONFIG_HOOK=<VSS 쪽 함수>`: VSS가 만든다. 예시는 아래.
-   - 선택: `NET_BOARD_US_HOOK=<µs 카운터 함수>`
-4. **부팅 순서:** `HalTimer_Init` → `VssTime_Init(HalTimer_GetTicks)` → … → `Net_Init()` → 오디오 시작. 슈퍼루프는 지금처럼 `Net_MainFunction(VssTime_NowMs32())`를 부른다.
-5. VSS 노드 BOOT_ID의 출처(NVM 카운터, noinit 카운터)는 아직 정해지지 않았다. 시험대에서는 상수를 쓴다.
+**두 헤더 모델:** VSS 소스는 바꾸지 않는다. VSS는 자기 `src/net_if/vss_net_api.h`를, Network 소스는 `network/app/net_if_*.h`를 쓰고 둘은 링크에서 만난다. 두 헤더는 같은 타입을 정의하므로 한 번역 단위에 함께 넣지 않는다. VSS 헤더를 Network 헤더로 바꾸는 방식은 쓰지 않는다(VSS `check_layers.py`가 net_if의 외부 include를 막는다). 근거: host 시험 `vss_integ.vi0_api_layout`이 두 헤더의 struct 크기, 모든 필드의 offset·크기, 경계를 넘는 코드 값(`NET_SUBMIT_*`, 품질·사유·가용성, VSS 상태·이벤트·fault, `NET_AGE_SATURATED_MS`)이 같음을 확인하고, `vss_integ`의 나머지 케이스가 실제 VSS 소스와 링크해 동작을 확인한다.
 
-```c
-/* VSS 쪽 노드 설정 hook 예시. 이 파일은 network/net_node.h만 include한다. */
-#include "network/net_node.h"
+**Network 쪽 보드 파일:** 노드 설정 hook `VssBoard_NetNodeConfig`(`board/s32k344_vss/net_vss_board.c`)는 Network 타입 `NetNodeConfig`를 쓰므로 VSS 저장소가 아니라 Network 쪽에 둔다. `network/net_node.h`만 include한다. BOOT_ID 출처(NVM, noinit 카운터)는 아직 정하지 않아 시험대 상수다(HOLD, 계약 C4).
 
-bool VssNetCfg_GetNodeConfig(NetNodeConfig *out)
-{
-    out->boot_id = VssBoot_NextBootId(); /* 0이 아니고 재부팅마다 다른 값 */
-    return out->boot_id != 0u;
-}
-/* 빌드 설정: -DNET_BOARD_NODE_CONFIG_HOOK=VssNetCfg_GetNodeConfig */
-```
+**µs hook:** `NET_BOARD_US_HOOK`은 넣지 않는다. VSS에는 µs 자유 카운터가 없고, DWT 사이클 카운터를 160으로 나눈 값은 약 26.8초마다 끊긴다. `main_max_us`는 0으로 남고, 슈퍼루프 시간은 VSS `loopMaxTicks`로 본다.
+
+순서:
+
+1. **소스 넣기:** NET_git에서 dry run으로 확인한 뒤 사용자가 `--apply`로 복사한다. Network 소스는 `src/network/`, 보드 파일은 `src/net_board/`로 들어간다. 이 도구는 VSS 프로젝트(`src/app/vss_main.c`가 있음)에 벤치 파일(`--board bench`)을 넣는 것을 거부한다.
+   ```
+   python firmware/network/tools/sync_to_s32ds.py --project <VSS 프로젝트> --board vss
+   python firmware/network/tools/sync_to_s32ds.py --project <VSS 프로젝트> --board vss --apply
+   ```
+2. **`.cproject`(Debug_FLASH C 컴파일러):** `tools/sdk_swap_check.py --vss <VSS 프로젝트>` 보고서(`summary.md`)의 "VSS 프로젝트 설정" 절에 있는 include 7개와 define 목록을 그대로 옮긴다. define은 다음과 같다(생성 이름은 보고서가 프로젝트에서 읽은 값).
+   - `NETWORK_UPPER_NODE_PROFILE=6`
+   - `VSS_CFG_NET_STUB=0`(`net_stub.c` 대신 Network), `VSS_CFG_TEST_INPUT=0`(입력은 CAN만)
+   - 시간원 방식 A: `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`(PIT ISR이 올리는 `volatile` 카운터를 읽기만 하므로 CAN ISR에서 불러도 된다, 1 tick = 1.25 ms), `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`(main 전용, Network는 `Net_MainFunction` 안에서만 부른다)
+   - `NET_BOARD_NODE_CONFIG_HOOK=VssBoard_NetNodeConfig`
+   - 생성 설정 이름이 `net_board_cfg.h` 기본값과 다를 때만: VSS 프로젝트는 Functional Group 접미사가 붙어 `NET_BOARD_CAN_CONFIG=FlexCAN_Config0_VS_0`, `NET_BOARD_CAN_STATE=FlexCAN_VS_0_State0`이다. 콜백 이름, max_num_mb 16은 기본값과 같다. 설정 헤더는 기본값 `FlexCAN_Ip.h`가 접미사와 상관없이 생성 선언을 가져오므로 따로 정하지 않는다.
+3. **S32DS 빌드 → Flash → 보드 시험.** 부팅 순서는 지금 VSS 그대로다: `HalTimer_Init` → `VssTime_Init(HalTimer_GetTicks)` → … → `Net_Init()` → 오디오 시작. 슈퍼루프는 `Net_MainFunction(VssTime_NowMs32())`를 부른다.
 
 ## VSS 없는 보드 벤치 (방식 A 예)
 
@@ -170,6 +169,7 @@ int main(void)
 ## 보드 프로젝트에 넣을 소스
 
 - 제품 C 소스 목록의 정본은 `tools/s32ds_sources.txt`다. host 빌드(`NETWORK_BUILD_RTD_MOCK`)도 같은 목록을 읽어 링크까지 확인한다.
+- 보드 프로젝트에는 `tools/sync_to_s32ds.py`로 넣는다(목록의 소스, `include/network/**`, 소스 폴더의 헤더 → `src/network/`). 보드 빌드에 쓰지 않는 헤더(`net_host_mock.h`, `net_virtual.h`, DOMAIN 앱 헤더가 있어야 컴파일되는 `net_domain_c2.h`)는 넣지 않는다. 보드 폴더는 `--board`로 고른다: `bench`(S32K344 벤치 → `src/net_bench/`), `vss`(VSS 프로젝트 → `src/net_board/`), `none`.
 - RTD backend는 세 파일이다. `src/platform/rtd/net_hal_rtd.c`(시간원, ISR 시각 변환, 임계구역, 시작 순서, backend ops 등록, 링 비우기 진입), `src/platform/rtd/net_hal_rtd_can.c`(FlexCAN RX/TX/error ISR → ISR 링, 링 → 어댑터, TX MB, abort), `src/platform/rtd/net_hal_rtd_uart.c`(LPUART: 1바이트 연속 수신 → 링크별 바이트 링, 링 → 어댑터, 링크당 송신 1건, 송신 시간 초과 abort). 서로 비공개 헤더 `net_hal_rtd_internal.h`로만 연결된다.
 - `net_hal_rtd_uart.c`는 프로필에 UART 링크가 있을 때만 내용이 컴파일된다(UART-M: HOST·DOMAIN, UART-C: HOST·CIS). VSS 프로필에서는 빈 파일이므로 목록에 그대로 두어도 LPUART 심볼을 참조하지 않는다.
 - 공개 진입은 `src/node/net_entry.c`다. 보드 hook을 쓰므로 `net_board_cfg.h`와 같은 define으로 컴파일한다.
@@ -179,6 +179,7 @@ int main(void)
 ## 보드 설정 요구 (`src/platform/rtd/net_board_cfg.h`)
 
 - ConfigTools의 FlexCAN 콜백 이름(`NET_BOARD_CAN_CALLBACK`, `NET_BOARD_CAN_ERROR_CALLBACK`)은 HAL이 정의한다. 같은 이름을 정의하는 다른 파일은 빌드에서 빼야 한다.
+- 생성 설정·상태 심볼(`NET_BOARD_CAN_CONFIG`, `NET_BOARD_CAN_STATE`)의 선언은 `NET_BOARD_CAN_CFG_HEADER`(기본 `"FlexCAN_Ip.h"`)로 가져온다. RTD는 `FlexCAN_Ip.h` → `FlexCAN_Ip_DeviceReg.h` → `FlexCAN_Ip_Cfg.h` → 생성 PBcfg 헤더 순으로 include하고 그 `extern` 선언을 펼치므로, Functional Group 접미사(`FlexCAN_Ip_Sa_VS_0_PBcfg.h` 등)와 상관없이 기본값으로 된다. mock SDK도 같은 포함 관계다.
 - MB 배치 기본값: RX 0..3(마스크 0, 모든 표준 ID 수신 후 registry로 걸러냄), TX 8..11. `max_num_mb`(344=16) 안에 들어가야 한다.
 - TX MB가 `NET_BOARD_CAN_TX_TIMEOUT_MS`(기본 100 ms) 안에 끝나지 않으면 `FlexCAN_Ip_AbortTransfer`로 abort하고 그 반환값대로 정산한다. `NO_TRANSFER_IN_PROGRESS`는 abort 전에 프레임이 이미 나간 경우라(RTD는 이때 TX_COMPLETE를 부르지 않는다) 성공으로 정산한다. `TIMEOUT`은 abort가 끝나지 않은 경우라 실패로 보고하고, 그 MB는 `FlexCAN_Ip_GetBuffStatusFlag`가 설 때까지(컨트롤러가 MB를 놓을 때까지) 다시 쓰지 않는다. RTD는 TIMEOUT 뒤 그 플래그를 지우므로, 그 직전에 끝난 MB는 플래그가 다시 서지 않아 격리가 풀리지 않을 수 있다(`tx_abort_timeouts`와 `tx_quarantine_released`의 차이로 관찰, 리셋까지 TX MB 하나가 준다). 그 밖의 결과는 실패로 보고한다.
 - 시간원은 위 표의 A·B·C 중 하나다. 보드 빌드는 A를 쓴다. 셋 다 없으면(OsIf 타이머 OFF, hook 없음) 컴파일 오류(`OSIF_COUNTER_SYSTEM` 미정의)가 난다.
@@ -227,7 +228,7 @@ int main(void)
   ```
 - **구성:** VSS 라이브러리 `vss_fw_host`(`src/**/*.c`에서 `hal/s32k344/` 제외 + `hal_mock.c`, VSS `host_test.py`와 같은 플래그 + `VSS_CFG_NET_STUB=0 VSS_CFG_TEST_INPUT=0`), Network 라이브러리 `network_node_vss_integ`(`tools/s32ds_sources.txt` 목록 + mock SDK, `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`, `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`, 시험용 노드 설정·µs hook, `-funsigned-char`). GCC/Clang 전용이다(`-Wl,--wrap`).
 - **시험 프로그램:** `vss_net_api.h`와 `net_if_*.h`는 같은 타입을 정의하므로 두 번역 단위로 나눈다. `test_vss_integ.c`는 VSS 헤더만, `vss_integ_bus.c`(DOMAIN 프레임 codec, 버스, 0x340 해독, Network 진단)는 Network 헤더만 include하고, 둘은 `vss_integ_bus.h`(기본 C 타입)로만 만난다. 슈퍼루프는 tick(1.25 ms)마다 1바퀴, 오디오 출력 경계는 48 kHz 1024 frame마다 올린다. `VssApp_On*`·`VssNet_PublishStatus`는 link spy(`--wrap`)로 기록한 뒤 실제 함수를 부른다.
-- **케이스(`vss_integ.*`, 케이스당 프로세스 1개):** vi1 부팅 순서, vi2 수신 시각 축, vi3 메시지별 TX, vi4 DOMAIN 재부팅, vi5 같은 occurrence 재전송, vi6 구조 오류 선검사, vi7 Warning 수신 끊김, vi8 0x340 주기(10 s에 40±2건), vi9 링크 잠김 재제출, vi10 수신 폭주 처리 상한, vi11 한 lane의 품질 하향, vi12 같은 평가 1초 반복(도착 0~2.5 ms 흔들림)에도 경고 유지.
+- **케이스(`vss_integ.*`, 케이스당 프로세스 1개):** vi0 두 헤더 배치(`vss_integ_layout.h` 목록을 두 반쪽이 각자 헤더로 펼쳐 비교, 다르면 첫 불일치 항목과 두 값을 출력), vi1 부팅 순서, vi2 수신 시각 축, vi3 메시지별 TX, vi4 DOMAIN 재부팅, vi5 같은 occurrence 재전송, vi6 구조 오류 선검사, vi7 Warning 수신 끊김, vi8 0x340 주기(10 s에 40±2건), vi9 링크 잠김 재제출, vi10 수신 폭주 처리 상한, vi11 한 lane의 품질 하향, vi12 같은 평가 1초 반복(도착 0~2.5 ms 흔들림)에도 경고 유지.
 
 ## 제한
 

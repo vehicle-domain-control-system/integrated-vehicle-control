@@ -94,4 +94,9 @@ void FlexCAN_Ip_ClearBuffStatusFlag(uint8 instance, uint8 msgBuffIdx);
 uint8 FlexCAN_Ip_GetControllerTxErrorCounter(uint8 instance);
 uint8 FlexCAN_Ip_GetControllerRxErrorCounter(uint8 instance);
 
+/* As in RTD (FlexCAN_Ip_DeviceReg.h -> FlexCAN_Ip_Cfg.h -> generated PBcfg
+ * header): FlexCAN_Ip.h alone declares the generated config and state. The
+ * PBcfg header includes this one back; the include guards end the cycle. */
+#include "FlexCAN_Ip_Sa_PBcfg.h"
+
 #endif

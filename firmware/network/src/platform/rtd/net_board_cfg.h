@@ -21,9 +21,12 @@
 #ifndef NET_BOARD_CAN_STATE
 #define NET_BOARD_CAN_STATE             FlexCAN_State0
 #endif
-/* Generated config header that declares the two symbols above. */
+/* Header that declares the two symbols above. Default FlexCAN_Ip.h: RTD
+ * includes FlexCAN_Ip_DeviceReg.h -> FlexCAN_Ip_Cfg.h -> the generated
+ * PBcfg header (any Functional Group suffix, e.g. FlexCAN_Ip_Sa_VS_0_PBcfg.h)
+ * and expands its extern declarations, so no quoted -D is needed. */
 #ifndef NET_BOARD_CAN_CFG_HEADER
-#define NET_BOARD_CAN_CFG_HEADER        "FlexCAN_Ip_Sa_PBcfg.h"
+#define NET_BOARD_CAN_CFG_HEADER        "FlexCAN_Ip.h"
 #endif
 /* Callback names typed into ConfigTools (Controller Callback / Error Callback).
  * The HAL DEFINES functions with these names. Remove the bring-up file that

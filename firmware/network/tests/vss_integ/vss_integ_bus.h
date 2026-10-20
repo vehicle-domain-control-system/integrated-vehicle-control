@@ -15,6 +15,7 @@
  *                     cases.
  * Everything here uses plain C types only. */
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* BOOT_ID the node configuration hook gives the Network (VSS node, 0x340). */
@@ -123,5 +124,9 @@ bool IntegBus_ReadDiag(IntegNetDiag *out);
 /* Implemented by the VSS half. Called by the node configuration hook, i.e. from
  * inside Net_Init(), to record where in the VSS boot sequence it runs. */
 void IntegVss_OnNodeConfig(void);
+
+/* VSS_INTEG_API_LAYOUT (vss_integ_layout.h) expanded with the Network headers:
+ * up to cap values in list order. Returns the number of values. */
+size_t IntegBus_ApiLayout(uint32_t *out, size_t cap);
 
 #endif

@@ -8,7 +8,10 @@
 #include "network/net_node.h"
 #include "network/net_wire_can.h"
 #include "network/net_wire_can_nodes.h"
+#include "network/app/net_if_vss.h"
+#include "vss_integ_layout.h"
 #include "mock_rtd.h"
+#include <stddef.h>
 #include <string.h>
 #include <time.h>
 
@@ -350,4 +353,17 @@ bool IntegBus_ReadDiag(IntegNetDiag *out)
     out->tx_complete = d.rtd.tx_complete;
     out->main_max_us = d.main_max_us;
     return true;
+}
+
+/* ------------------------------------------------- API layout (vi0) ---- */
+#define LAYOUT_PUT(x) do { if (n < cap) out[n] = (uint32_t)(x); n++; } while (0);
+#define LAYOUT_SIZE(T) LAYOUT_PUT(sizeof(T))
+#define LAYOUT_FIELD(T, f) LAYOUT_PUT(offsetof(T, f)) LAYOUT_PUT(sizeof(((T *)0)->f))
+#define LAYOUT_VALUE(v) LAYOUT_PUT(v)
+
+size_t IntegBus_ApiLayout(uint32_t *out, size_t cap)
+{
+    size_t n = 0u;
+    VSS_INTEG_API_LAYOUT(LAYOUT_SIZE, LAYOUT_FIELD, LAYOUT_VALUE)
+    return n;
 }

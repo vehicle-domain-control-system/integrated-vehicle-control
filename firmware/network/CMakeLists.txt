@@ -119,6 +119,9 @@ if(BUILD_TESTING AND NETWORK_BUILD_WIRE_CANDIDATE)
         COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_wave1_golden.py --check)
     add_test(NAME wire.wave1_verifier_immutable
         COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/test_wave1_verifier.py)
+    # Board project copy tool: refusal and destination rules on fake projects.
+    add_test(NAME tools.sync_to_s32ds_rules
+        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/test_sync_to_s32ds.py)
     foreach(suite IN ITEMS can_bcm can_nodes can_coverage i1_can_vectors)
         add_executable(test_wire_${suite} tests/host/test_wire_${suite}.c)
         target_link_libraries(test_wire_${suite} PRIVATE network_wire_candidate)
@@ -661,6 +664,12 @@ if(NETWORK_BUILD_RTD_MOCK)
         # Drain budget 8 (below the default 16) so that three budgets of frames
         # fit the default ISR ring of 32 frames (entry test).
         target_compile_definitions(network_node_rtd_mock_tick PRIVATE NET_BOARD_ISR_DRAIN_BUDGET=8)
+        # VSS board project file (node configuration hook): compiled with the
+        # project warnings, not linked (the board project links it).
+        add_library(network_vss_board_objs OBJECT board/s32k344_vss/net_vss_board.c)
+        target_include_directories(network_vss_board_objs PRIVATE ${_node_includes})
+        target_compile_definitions(network_vss_board_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+        network_warnings(network_vss_board_objs)
     endif()
 
     if(NETWORK_NODE_PROFILE STREQUAL "CIS")
