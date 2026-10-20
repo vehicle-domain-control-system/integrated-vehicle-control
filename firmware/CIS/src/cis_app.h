@@ -15,6 +15,11 @@
 #include "vision_logic.h"
 #include "power_gate.h"
 
+/*
+ * Build with CIS_USE_NETWORK_API once the Network stack is linked: it then owns the Pi UART and
+ * the P_PERMISSION relay, and cis_net_adapter.c connects the CIS to its API.
+ */
+
 #define CIS_BOOT_ID     1u       /* [TBD] provided by the Network stack; 0 is reserved */
 
 void cis_app_init(void);
@@ -25,6 +30,10 @@ void cis_app_run(uint32_t now_ms);
 /* DOMAIN_PERMISSION arrived (the Network stack calls this from CisApp_OnDomainPermission). */
 void cis_app_on_permission(uint8_t permission, bool quality_ok, uint32_t source_age_ms,
                            uint32_t now_ms);
+
+/* Pi frames, delivered by the Network stack (CisApp_OnPiVision*) or by the own UART driver. */
+void cis_app_on_vision_result(const pi_vision_result_t *f, uint32_t now_ms);
+void cis_app_on_vision_status(const pi_vision_status_t *f, uint32_t now_ms);
 
 /* Read-only views of the current state. */
 const rear_state_t   *cis_app_rear(void);          /* raw measurement */

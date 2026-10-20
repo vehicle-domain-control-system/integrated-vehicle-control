@@ -35,6 +35,9 @@
 #include "timebase.h"
 #include "pi_uart.h"
 #include "cis_app.h"
+#ifdef CIS_USE_NETWORK_API
+#include "cis_net_adapter.h"
+#endif
 
 /* Wiring tests (set back to 0 for the distance demo):
  *   1 = PTE7 (TRIG) is held HIGH (about 5 V), green LED on. Measure with a
@@ -221,6 +224,9 @@ int main(void)
     }
 
     cis_app_init();
+#ifdef CIS_USE_NETWORK_API
+    cis_net_adapter_init();
+#endif
 
 #if HCSR04_PIN_TEST == 1
     PTE_PSOR = (1u << 7);                  /* PTE7 (TRIG) = HIGH */
@@ -270,6 +276,9 @@ int main(void)
             bool answered;
 
             cis_app_run(now_ms);
+#ifdef CIS_USE_NETWORK_API
+            cis_net_adapter_run(now_ms);
+#endif
             debug_mirror(now_ms);
 
             color = answered_color(cis_app_rear(), &answered);

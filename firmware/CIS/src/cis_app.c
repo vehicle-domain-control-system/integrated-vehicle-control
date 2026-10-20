@@ -25,7 +25,9 @@ void cis_app_init(void)
     lux_init(&s_lux);
     (void)veml7700_init();           /* g_veml_present shows whether it answered */
     vision_init(&s_vision);
+#ifndef CIS_USE_NETWORK_API
     pi_uart_init();
+#endif
     power_gate_init(&s_gate);
     s_last_perm_ms = 0u;
     s_link_seq = 0u;
@@ -37,25 +39,41 @@ void cis_app_on_permission(uint8_t permission, bool quality_ok, uint32_t source_
     power_gate_on_permission(&s_gate, permission, quality_ok, source_age_ms, now_ms);
 }
 
-/* Raspberry Pi: read all received frames first so the FIFO never fills up. */
+void cis_app_on_vision_result(const pi_vision_result_t *f, uint32_t now_ms)
+{
+    (void)vision_on_result(&s_vision, f, now_ms);
+}
+
+void cis_app_on_vision_status(const pi_vision_status_t *f, uint32_t now_ms)
+{
+    vision_on_status(&s_vision, f, now_ms);
+}
+
+/* Raspberry Pi: read all received frames first so the FIFO never fills up.
+ * With CIS_USE_NETWORK_API the Network stack owns the UART and delivers the frames
+ * through cis_app_on_vision_*(), so only the link supervision runs here. */
 static void vision_step(uint32_t now_ms)
 {
+#ifndef CIS_USE_NETWORK_API
     pi_frame_t frame;
 
     while (pi_uart_poll(&frame, now_ms)) {
         if (frame.type == PI_TYPE_VISION_RESULT) {
-            (void)vision_on_result(&s_vision, &frame.result, now_ms);
+            cis_app_on_vision_result(&frame.result, now_ms);
         } else if (frame.type == PI_TYPE_VISION_STATUS) {
-            vision_on_status(&s_vision, &frame.status, now_ms);
+            cis_app_on_vision_status(&frame.status, now_ms);
         }
     }
+#endif
     vision_check(&s_vision, now_ms);
 }
 
 /* Permission for the Pi (P_PERMISSION). The vehicle power permission comes from the
- * DOMAIN and is not relayed yet, so it is reported as unknown. */
+ * DOMAIN and is not relayed yet, so it is reported as unknown. With CIS_USE_NETWORK_API
+ * the Network stack relays the DOMAIN permission itself. */
 static void permission_tx_step(uint32_t now_ms)
 {
+#ifndef CIS_USE_NETWORK_API
     static const pi_permission_t perm = {
         CIS_BOOT_ID,                        /* cis_boot_id */
         1u,                                 /* update_sequence: no evaluation change yet */
@@ -72,6 +90,11 @@ static void permission_tx_step(uint32_t now_ms)
         s_last_perm_ms = now_ms;
         pi_uart_send(out, n);
     }
+#else
+    (void)now_ms;
+    (void)s_last_perm_ms;
+    (void)s_link_seq;
+#endif
 }
 
 static void rear_step(uint32_t now_ms)
