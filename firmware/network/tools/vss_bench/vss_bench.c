@@ -14,10 +14,12 @@
 #include <string.h>
 
 #define PROFILE NET_WIRE_CANDIDATE_ONLY
-/* S32K144 debug console limits (one staged data line, one input line). */
+/* S32K144 debug console limits: at most 16 bytes per staged data line and
+ * at most 79 ASCII characters per input line (a longer line is discarded). */
 #define CONSOLE_DATA_CHUNK 16u
-/* Bench DOMAIN BOOT_ID used by the canned scripts ("DOM1"). */
-#define SCRIPT_BOOT 0x444F4D31u
+#define CONSOLE_LINE_MAX 79u
+/* Default BOOT_ID of the canned scripts: the 144 bench BOOT ("BENC"). */
+#define SCRIPT_BOOT 0x42454E43u
 
 /* ---- text output ------------------------------------------------------- */
 
@@ -192,6 +194,29 @@ static void say_fields(VssBenchText *t, const char *prefix, const void *raw,
         uint32_t v = field_get(raw, &fields[i]);
         if (fields[i].hex) say(t, " %s=0x%08lX", fields[i].name, (unsigned long)v);
         else say(t, " %s=%lu", fields[i].name, (unsigned long)v);
+    }
+    say(t, "\n");
+}
+
+/* The "name=value" list as note lines that fit the 144 console line: each
+ * line starts with "# " and holds at most CONSOLE_LINE_MAX characters. */
+static void say_fields_note(VssBenchText *t, const void *raw, const Field *fields, size_t count)
+{
+    char item[64];
+    size_t i, used = 9u; /* "# fields:" */
+    say(t, "# fields:");
+    for (i = 0u; i < count; ++i) {
+        uint32_t v = field_get(raw, &fields[i]);
+        size_t n;
+        if (fields[i].hex) snprintf(item, sizeof(item), " %s=0x%08lX", fields[i].name, (unsigned long)v);
+        else snprintf(item, sizeof(item), " %s=%lu", fields[i].name, (unsigned long)v);
+        n = strlen(item);
+        if (used + n > CONSOLE_LINE_MAX) {
+            say(t, "\n#  ");
+            used = 3u;
+        }
+        say(t, "%s", item);
+        used += n;
     }
     say(t, "\n");
 }
@@ -429,7 +454,10 @@ static void put_identity(const Field *fields, void *raw, uint32_t boot, uint32_t
     field_put(raw, &fields[1], seq);
 }
 
-/* Builds the frame and prints the payload and the 144 command bundle. */
+/* Builds the frame and prints the 144 named send for it: notes, then
+ * "can tx begin <NAME>", data lines holding exactly the used length,
+ * "can tx commit" and "can tx status". The 144 picks the ID, FD+BRS and DLC
+ * from the name and zero-fills the padding (S32K144 debug node named send). */
 static int emit_can(VssBenchText *t, const CanMsg *m, uint32_t boot, uint32_t tx,
     int argc, const char *const *argv)
 {
@@ -469,24 +497,18 @@ static int emit_can(VssBenchText *t, const CanMsg *m, uint32_t boot, uint32_t tx
         say(t, "error: codec cannot decode its own %s frame (%s)\n", reg->name, status_name(st));
         return VSS_BENCH_USAGE;
     }
-    say(t, "# %s id=0x%03X payload=%u B frame=%u B (zero padded)\n", reg->name,
+    say(t, "# %s id=0x%03X: %u data bytes; the 144 sends %u B FD+BRS\n", reg->name,
         (unsigned)m->id, (unsigned)reg->payload_length, (unsigned)reg->frame_length);
-    say(t, "# NETBENCH: the 144 accepts this arm only after its NETBENCH send extension "
-           "is approved and flashed; stock firmware rejects registry IDs\n");
-    say(t, "# payload: ");
-    say_bytes(t, env.bytes, reg->payload_length);
-    say(t, "\n");
-    say_fields(t, "# fields:", &back, m->fields, m->field_count);
-    say(t, "can tx arm 0x%03X NETBENCH\n", (unsigned)m->id);
-    say(t, "can tx begin 0x%03X fd %s %u\n", (unsigned)m->id, env.brs ? "brs" : "nobrs",
-        (unsigned)env.length);
-    for (i = 0u; i < env.length; i += CONSOLE_DATA_CHUNK) {
-        size_t n = env.length - i < CONSOLE_DATA_CHUNK ? env.length - i : CONSOLE_DATA_CHUNK;
+    say_fields_note(t, &back, m->fields, m->field_count);
+    say(t, "can tx begin %s\n", reg->name);
+    for (i = 0u; i < reg->payload_length; i += CONSOLE_DATA_CHUNK) {
+        size_t left = reg->payload_length - i;
         say(t, "can tx data ");
-        say_bytes(t, env.bytes + i, n);
+        say_bytes(t, env.bytes + i, left < CONSOLE_DATA_CHUNK ? left : CONSOLE_DATA_CHUNK);
         say(t, "\n");
     }
     say(t, "can tx commit\n");
+    say(t, "can tx status\n");
     return VSS_BENCH_OK;
 }
 
@@ -584,69 +606,105 @@ static int can_decode_status(VssBenchText *t, int argc, const char *const *argv)
     return VSS_BENCH_OK;
 }
 
-/* Canned VSS input scenarios for the board CAN receive test (S1..S4). */
+static bool is_scenario(const char *w)
+{
+    return strcmp(w, "S1") == 0 || strcmp(w, "S2") == 0 || strcmp(w, "S3") == 0 ||
+           strcmp(w, "S4") == 0 || strcmp(w, "all") == 0;
+}
+
+/* Canned VSS input scenarios for the board CAN receive test (S1..S4).
+ * Every block of one bench session carries the same BOOT_ID: after a BOOT
+ * switch the 344 rejects the old BOOT. TX_SEQUENCE starts at --tx-base for
+ * each message; a rerun in the same session passes a larger base. */
 static int can_script(VssBenchText *t, int argc, const char *const *argv)
 {
     const char *const occurrence2[] = { "occurrence_id=2" };
-    uint32_t boot = SCRIPT_BOOT;
-    int a = 0, rc = VSS_BENCH_OK, done = 0;
-    if (argc >= 2 && strcmp(argv[0], "--boot") == 0) {
-        const char *v = argv[1];
-        if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) v += 2;
-        if (strlen(v) > 8u || !parse_number(v, 16, &boot) || boot == 0u) {
-            say(t, "error: --boot '%s' is not a non-zero 32-bit hex number\n", argv[1]);
+    uint32_t boot = SCRIPT_BOOT, base = 1u;
+    int a, rc = VSS_BENCH_OK, scenarios = 0;
+    /* Options may appear anywhere; every other word names a scenario. */
+    for (a = 0; a < argc; ++a) {
+        if (strncmp(argv[a], "--", 2u) != 0) {
+            if (!is_scenario(argv[a])) {
+                say(t, "error: unknown scenario '%s' (S1 S2 S3 S4 all)\n", argv[a]);
+                return VSS_BENCH_USAGE;
+            }
+            ++scenarios;
+            continue;
+        }
+        if (a + 1 >= argc) {
+            say(t, "error: %s needs a value\n", argv[a]);
             return VSS_BENCH_USAGE;
         }
-        a = 2;
+        if (strcmp(argv[a], "--boot") == 0) {
+            const char *v = argv[a + 1];
+            if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) v += 2;
+            if (strlen(v) > 8u || !parse_number(v, 16, &boot) || boot == 0u) {
+                say(t, "error: --boot '%s' is not a non-zero 32-bit hex number\n", argv[a + 1]);
+                return VSS_BENCH_USAGE;
+            }
+        } else if (strcmp(argv[a], "--tx-base") == 0) {
+            /* TX_SEQUENCE starts at 1 and S2b uses base + 1
+             * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md). */
+            if (!parse_number(argv[a + 1], 0, &base) || base == 0u || base == 0xFFFFFFFFu) {
+                say(t, "error: --tx-base '%s' must be 1..4294967294\n", argv[a + 1]);
+                return VSS_BENCH_USAGE;
+            }
+        } else {
+            say(t, "error: unknown option %s\n", argv[a]);
+            return VSS_BENCH_USAGE;
+        }
+        ++a;
     }
-    if (a >= argc) {
+    if (scenarios == 0) {
         say(t, "error: name a scenario: S1 S2 S3 S4 or all\n");
         return VSS_BENCH_USAGE;
     }
-    for (; a < argc && rc == VSS_BENCH_OK; ++a) {
-        bool all = strcmp(argv[a], "all") == 0;
-        bool known = all;
+    say(t, "# BOOT 0x%08lX, TX base %lu. Paste the lines as they are.\n",
+        (unsigned long)boot, (unsigned long)base);
+    say(t, "# Keep one BOOT per session. An old BOOT is rejected after a switch.\n");
+    say(t, "# To start over, reset the 344.\n");
+    say(t, "# TX continues per message. Rerun with --tx-base <n> (larger n).\n");
+    say(t, "# Next rerun in this session: --tx-base %lu\n",
+        (unsigned long)(base > 0xFFFFFFFDu ? 0xFFFFFFFEu : base + 2u));
+    say(t, "# Check can tx status after each block: lockout=0 (else reset the 144).\n");
+    for (a = 0; a < argc && rc == VSS_BENCH_OK; ++a) {
+        bool all;
+        if (strncmp(argv[a], "--", 2u) == 0) {
+            ++a;
+            continue;
+        }
+        all = strcmp(argv[a], "all") == 0;
         if (all || strcmp(argv[a], "S1") == 0) {
-            known = true;
-            say(t, "# ---- S1: VSS_EVENT TX=1 (boot 0x%08lX)\n", (unsigned long)boot);
-            say(t, "# expect: g_vss_bench event_count=1, fields equal to the line below\n");
-            rc = emit_can(t, find_can("event"), boot, 1u, 0, NULL);
-            ++done;
+            say(t, "# ---- S1: VSS_EVENT TX=%lu\n", (unsigned long)base);
+            say(t, "# expect: g_vss_bench event_count=1, fields as listed below\n");
+            rc = emit_can(t, find_can("event"), boot, base, 0, NULL);
         }
         if (rc == VSS_BENCH_OK && (all || strcmp(argv[a], "S2") == 0)) {
-            known = true;
-            say(t, "# ---- S2a: exact duplicate of S1 (same TX=1, same bytes)\n");
+            say(t, "# ---- S2a: exact duplicate of S1 (same TX=%lu, same bytes)\n",
+                (unsigned long)base);
             say(t, "# expect: no change (event_count stays 1)\n");
-            rc = emit_can(t, find_can("event"), boot, 1u, 0, NULL);
+            rc = emit_can(t, find_can("event"), boot, base, 0, NULL);
             if (rc == VSS_BENCH_OK) {
                 /* A new occurrence: a same-occurrence repeat must also age. */
-                say(t, "# ---- S2b: VSS_EVENT TX=2, new occurrence_id=2\n");
+                say(t, "# ---- S2b: VSS_EVENT TX=%lu, new occurrence_id=2\n",
+                    (unsigned long)(base + 1u));
                 say(t, "# expect: event_count=2\n");
-                rc = emit_can(t, find_can("event"), boot, 2u, 1, occurrence2);
+                rc = emit_can(t, find_can("event"), boot, base + 1u, 1, occurrence2);
             }
-            ++done;
         }
         if (rc == VSS_BENCH_OK && (all || strcmp(argv[a], "S3") == 0)) {
-            known = true;
-            say(t, "# ---- S3: VSS_WARNING_STATE TX=1\n");
+            say(t, "# ---- S3: VSS_WARNING_STATE TX=%lu\n", (unsigned long)base);
             say(t, "# expect: warning_count +1\n");
-            rc = emit_can(t, find_can("warning"), boot, 1u, 0, NULL);
-            ++done;
+            rc = emit_can(t, find_can("warning"), boot, base, 0, NULL);
         }
         if (rc == VSS_BENCH_OK && (all || strcmp(argv[a], "S4") == 0)) {
-            known = true;
-            say(t, "# ---- S4: DOMAIN_PERMISSION TX=1\n");
-            say(t, "# expect: g_net_diag app.permission_received +1, then the "
-                   "150 ms receive supervision reports a timeout\n");
-            rc = emit_can(t, find_can("perm"), boot, 1u, 0, NULL);
-            ++done;
-        }
-        if (!known) {
-            say(t, "error: unknown scenario '%s' (S1 S2 S3 S4 all)\n", argv[a]);
-            return VSS_BENCH_USAGE;
+            say(t, "# ---- S4: DOMAIN_PERMISSION TX=%lu\n", (unsigned long)base);
+            say(t, "# expect: g_net_diag app.permission_received +1, then the\n");
+            say(t, "# 150 ms receive supervision reports a timeout\n");
+            rc = emit_can(t, find_can("perm"), boot, base, 0, NULL);
         }
     }
-    return done > 0 ? rc : VSS_BENCH_USAGE;
+    return rc;
 }
 
 /* ---- UART-C messages --------------------------------------------------- */
@@ -899,7 +957,7 @@ static void usage(VssBenchText *t)
         "usage:\n"
         "  vss_bench can perm|event|warning --boot <hex> --tx <n> [field=value ...]\n"
         "  vss_bench can decode-status <hex bytes of 0x340>\n"
-        "  vss_bench can script [--boot <hex>] S1|S2|S3|S4|all ...\n"
+        "  vss_bench can script [--boot <hex>] [--tx-base <n>] S1|S2|S3|S4|all ...\n"
         "  vss_bench uart vision-status|vision-result --boot <hex> --seq <n> [field=value ...]\n"
         "  vss_bench uart decode <hex frame A5 5A ... or payload>\n");
 }

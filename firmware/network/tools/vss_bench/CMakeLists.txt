@@ -16,13 +16,14 @@ if(BUILD_TESTING)
     foreach(case IN ITEMS can_event_roundtrip can_permission_roundtrip can_warning_roundtrip
             can_decode_status can_script can_field_errors uart_crc_check
             uart_vision_status_command uart_vision_result_command uart_zero_boot_seq
-            uart_decode_types hex_parser)
+            uart_decode_types hex_parser
+            t_can_named_format t_can_payload_le t_can_script_consistent t_can_roundtrip_named)
         add_test(NAME bench_tool.${case} COMMAND test_bench_tool ${case})
     endforeach()
     # The executable itself: a generated bundle and a usage failure.
-    add_test(NAME bench_tool.cli_can_event COMMAND vss_bench can event --boot 1 --tx 1)
+    add_test(NAME bench_tool.cli_can_event COMMAND vss_bench can event --boot 0x42454E43 --tx 1)
     set_tests_properties(bench_tool.cli_can_event PROPERTIES
-        PASS_REGULAR_EXPRESSION "can tx arm 0x160 NETBENCH.*can tx commit")
+        PASS_REGULAR_EXPRESSION "can tx begin VSS_EVENT[\r\n]+can tx data 43 4E 45 42 01 00 00 00 .*can tx commit")
     add_test(NAME bench_tool.cli_usage_error COMMAND vss_bench uart vision-status --boot 0 --seq 1)
     set_tests_properties(bench_tool.cli_usage_error PROPERTIES WILL_FAIL TRUE)
 endif()

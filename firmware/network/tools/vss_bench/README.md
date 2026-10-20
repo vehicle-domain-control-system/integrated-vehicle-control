@@ -16,8 +16,10 @@ ctest --test-dir firmware/network/.build-tools -R bench_tool
 ```
 
 The executable is `.build-tools/tools/vss_bench/vss_bench`.
-Lines starting with `#` are notes. Every other line is a 144 console command
-(each one is shorter than the 80-character console line).
+Lines starting with `# ` are notes. Every other line is a 144 console command.
+Every CAN output line is ASCII, at most 79 characters long and has no leading
+or trailing spaces, so the whole output can be pasted into the 144 console.
+The 144 does not run note lines (it counts them as `NOT_SUPPORTED`).
 
 Exit codes: 0 = frame built or decoded frame accepted, 1 = decoded frame
 rejected (CRC, length or codec), 2 = bad command line or the codec refused
@@ -26,54 +28,80 @@ the values (nothing is printed to send).
 ## CAN: VSS inputs (DOMAIN -> VSS)
 
 ```
-vss_bench can perm    --boot <hex> --tx <n> [field=value ...]   # DOMAIN_PERMISSION 0x080, 20 B
-vss_bench can event   --boot <hex> --tx <n> [field=value ...]   # VSS_EVENT 0x160, 24 B
-vss_bench can warning --boot <hex> --tx <n> [field=value ...]   # VSS_WARNING_STATE 0x0C0, 64 B
+vss_bench can perm    --boot <hex> --tx <n> [field=value ...]
+vss_bench can event   --boot <hex> --tx <n> [field=value ...]
+vss_bench can warning --boot <hex> --tx <n> [field=value ...]
 ```
+
+| Command | 144 message name | Data bytes (used length) | CAN FD frame |
+|---|---|---|---|
+| `can perm` | `DOMAIN_PERMISSION` (0x080) | 19 | 20 B |
+| `can event` | `VSS_EVENT` (0x160) | 23 | 24 B |
+| `can warning` | `VSS_WARNING_STATE` (0x0C0) | 60 | 64 B |
 
 - `--boot` is hex (with or without `0x`). `--tx` is decimal or `0x` hex.
   BOOT_ID 0 is reserved and TX_SEQUENCE starts at 1, so both must be non-zero.
 - Fields not given keep documented-valid defaults. An unknown field name prints
   the settable list. Values are decimal or `0x` hex.
-- The frame is the full CAN FD length (20, 24 or 64 B). Bytes after the used
-  length are zero.
+- The output is one 144 named send: `can tx begin <NAME>`, `can tx data`
+  lines (at most 16 bytes each) carrying exactly the used length, then
+  `can tx commit` and `can tx status`. The 144 picks the ID, FD+BRS and DLC
+  from the name and fills the padding with zeros. It rejects any other data
+  length.
+- The first 8 data bytes are BOOT_ID and TX_SEQUENCE, little-endian.
 
 Example:
 
 ```
-$ vss_bench can event --boot 0x1A2B3C4D --tx 1
-# VSS_EVENT id=0x160 payload=23 B frame=24 B (zero padded)
-# NETBENCH: the 144 accepts this arm only after its NETBENCH send extension is approved and flashed; stock firmware rejects registry IDs
-# payload: 4D 3C 2B 1A 01 00 00 00 01 01 00 00 00 0A 00 F4 01 00 00 00 00 00 00
-# fields: boot_id=0x1A2B3C4D tx_sequence=1 event_kind=1 occurrence_id=1 ...
-can tx arm 0x160 NETBENCH
-can tx begin 0x160 fd brs 24
-can tx data 4D 3C 2B 1A 01 00 00 00 01 01 00 00 00 0A 00 F4
-can tx data 01 00 00 00 00 00 00 00
+$ vss_bench can event --boot 0x42454E43 --tx 1
+# VSS_EVENT id=0x160: 23 data bytes; the 144 sends 24 B FD+BRS
+# fields: boot_id=0x42454E43 tx_sequence=1 event_kind=1 occurrence_id=1
+#   original_age_ms=10 use_limit_ms=500 value_quality=0 input_availability=0
+#   related_command_id=0x00000000
+can tx begin VSS_EVENT
+can tx data 43 4E 45 42 01 00 00 00 01 01 00 00 00 0A 00 F4
+can tx data 01 00 00 00 00 00 00
 can tx commit
+can tx status
 ```
 
-The stock 144 debugger refuses manual sends on registry IDs (0x080, 0x160,
-0x0C0). `can tx arm <id> NETBENCH` works only on a 144 build that carries the
-approved NETBENCH send extension. One arm covers one request, so each bundle
-arms again.
+Use the 144 debug node 2026-10-20 build. It sends registry messages by name
+only; a numeric-ID send of 0x080, 0x160, 0x0C0 or 0x340 is rejected.
+
+Checks on the 144:
+
+- `can tx status`: before a block, `lockout=0` and TEC/REC 0; after it, the
+  send is complete. `reason=FAULT` means the 144 TX is locked: reset the 144.
+  `reason=PROBE` means a `can ping` still owns TX: wait for its end, then
+  `can rearm`.
+- 0x340 reply: `can select VSS_STATUS`, then `can show` after the next frame
+  (all fields of one frame). `vss_bench can decode-status` cross-checks it.
 
 ### Scenarios
 
 ```
-vss_bench can script [--boot <hex>] S1|S2|S3|S4|all
+vss_bench can script [--boot <hex>] [--tx-base <n>] S1|S2|S3|S4|all
 ```
+
+With the default base `n` = 1:
 
 | Scenario | Frames | Expected on the 344 |
 |---|---|---|
-| S1 | VSS_EVENT TX=1 | `event_count`=1, fields equal |
-| S2 | S1 again (exact duplicate), then TX=2 with `occurrence_id=2` | duplicate: no change; TX=2: `event_count`=2 |
-| S3 | VSS_WARNING_STATE TX=1 | `warning_count` +1 |
-| S4 | DOMAIN_PERMISSION TX=1 | `app.permission_received` +1, then a receive timeout 150 ms later |
+| S1 | VSS_EVENT TX=n | `event_count`=1, fields equal |
+| S2 | S2a: S1 again (exact duplicate, TX=n); S2b: TX=n+1 with `occurrence_id=2` | S2a: no change; S2b: `event_count`=2 |
+| S3 | VSS_WARNING_STATE TX=n | `warning_count` +1 |
+| S4 | DOMAIN_PERMISSION TX=n | `app.permission_received` +1, then a receive timeout 150 ms later |
 
-The default script BOOT_ID is `0x444F4D31`. S2b uses a new occurrence because
-a repeat of the same occurrence must carry an older original age to be
-accepted.
+- **One BOOT per session.** Every scenario uses the same BOOT_ID, by default
+  `0x42454E43` (the 144 bench BOOT). `--boot` changes it for all blocks. After
+  a BOOT switch the 344 rejects the old BOOT; to start over, reset the 344.
+- **TX continues per message.** TX_SEQUENCE starts at `--tx-base` (default 1)
+  for each message. To rerun in the same session, pass a larger base; the
+  output header prints the next safe base (`n + 2`).
+- S2b uses a new occurrence because a repeat of the same occurrence must
+  carry an older original age to be accepted.
+- Paste the whole output. Each block is `can tx begin` ... `can tx commit`,
+  then `can tx status`.
 
 ### Decode VSS_STATUS (0x340)
 
