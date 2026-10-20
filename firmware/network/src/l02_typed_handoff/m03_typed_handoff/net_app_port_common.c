@@ -30,6 +30,13 @@ void net_app_port_rx_meta(uint32_t boot_id, uint32_t tx_sequence,
     out->received_at_ms = (uint32_t)delivery->capture.captured_at_ms;
 }
 
+void net_app_port_uart_rx_meta(const NetUpperDelivery *delivery, NetUartRxMeta *out)
+{
+    /* The service delivers the frame's LINK_SEQUENCE as the transport sequence. */
+    out->link_sequence = (uint16_t)delivery->source_sequence;
+    out->received_at_ms = (uint32_t)delivery->capture.captured_at_ms;
+}
+
 void net_app_port_track(NetAppPortTxTracker *t, NetTxKey key)
 {
     size_t i;

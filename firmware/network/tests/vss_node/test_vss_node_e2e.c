@@ -162,7 +162,7 @@ static int pull_status(MockCanFrame *out, NetWireVssStatusRaw *raw)
 /* -------------------------------------------------------------- cases ---- */
 static int h01_init(void)
 {
-    NetNodeConfig again = { NODE_BOOT + 1u, 1u, 1u };
+    NetNodeConfig again = { NODE_BOOT + 1u, 1u, 1u, 0u, 0u }; /* no UART link in VSS */
     NetNodeDiag d;
     CHECK(start_node() == NET_OK);
     d = diag();
@@ -640,7 +640,7 @@ static int h12_time_source(void)
     return 0;
 #else
     /* OsIf timer OFF and no hook: no millisecond time base. */
-    NetNodeConfig c = { NODE_BOOT, 1u, 1u };
+    NetNodeConfig c = { NODE_BOOT, 1u, 1u, 0u, 0u }; /* no UART link in VSS */
     NetNodeDiag d;
     MockRtd_Reset();
     MockRtd_SetSystemTimerEnabled(false);

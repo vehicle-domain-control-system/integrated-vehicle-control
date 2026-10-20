@@ -21,6 +21,9 @@ NetSubmitResult net_app_port_submit_result(NetStatus status);
  * RX capture time (RX basis; payload ages are NOT advanced to delivery). */
 void net_app_port_rx_meta(uint32_t boot_id, uint32_t tx_sequence,
                           const NetUpperDelivery *delivery, NetCanRxMeta *out);
+/* UART RX meta per contract: the frame's LINK_SEQUENCE and the local capture
+ * time of its last byte (same RX basis as the CAN meta). */
+void net_app_port_uart_rx_meta(const NetUpperDelivery *delivery, NetUartRxMeta *out);
 
 /* Bounded tracking of submitted TX attempts so finished slots are retired.
  * Retirement only follows the engine rule (released + admission known +

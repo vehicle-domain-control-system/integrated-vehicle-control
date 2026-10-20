@@ -7,7 +7,11 @@
  *         of a status no device has taken yet and the waiting AGE are M04's
  *         (net_upper_publish.h; 20_API.md: Network only adds the sending
  *         BOOT/TX and the waiting AGE). Nothing here numbers or repeats a frame:
- *         the VSS application submits every new evaluation itself. */
+ *         the VSS application submits every new evaluation itself.
+ * Compiled for the VSS node profile only (one profile per build). */
+#include "network/net_upper_profile.h"
+
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_VSS
 #include "network/net_app_port_vss.h"
 #include <string.h>
 
@@ -193,3 +197,9 @@ NetStatus net_app_port_vss_diag(NetAppPortVssDiag *out)
     }
     return NET_OK;
 }
+
+#else
+/* Not the VSS node profile: nothing is compiled (ISO C needs one declaration
+ * per translation unit). */
+typedef int net_app_port_vss_absent;
+#endif

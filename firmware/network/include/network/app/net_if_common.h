@@ -29,6 +29,14 @@ typedef struct NetCanRxMeta
     uint32_t received_at_ms; /* local monotonic ms of RX capture; never compared across ECUs */
 } NetCanRxMeta;
 
+/* UART receive meta (10_DATA_AND_ID_RULES.md NetUartRxMeta). Session and
+ * request identities travel in the message's own context. */
+typedef struct NetUartRxMeta
+{
+    uint16_t link_sequence;  /* per-direction transmission order, not a vehicle request id */
+    uint32_t received_at_ms; /* local monotonic ms of RX capture (last byte of the frame) */
+} NetUartRxMeta;
+
 typedef uint8_t NetFlag;
 enum NetFlagCode { NET_FLAG_NO = 0, NET_FLAG_YES = 1 };
 
@@ -57,6 +65,24 @@ enum NetQualityReasonCode
     NET_QUALITY_REASON_COMMUNICATION_FAULT = 7,
     NET_QUALITY_REASON_RECOVERING = 8,
     NET_QUALITY_REASON_DATA_INVALID = 9
+};
+
+typedef uint8_t NetValidity;
+enum NetValidityCode
+{
+    NET_VALIDITY_INVALID = 0,
+    NET_VALIDITY_VALID = 1
+};
+
+/* CIS / Pi function state: readiness, not evidence of a new observation. */
+typedef uint8_t NetSensorFunctionState;
+enum NetSensorFunctionStateCode
+{
+    NET_SENSOR_FUNCTION_NOT_READY = 0,
+    NET_SENSOR_FUNCTION_READY = 1,
+    NET_SENSOR_FUNCTION_ACTIVE = 2,
+    NET_SENSOR_FUNCTION_FAULT = 3,
+    NET_SENSOR_FUNCTION_RECOVERING = 4
 };
 
 typedef uint8_t NetAvailability;

@@ -53,9 +53,11 @@ src/l05_transport_port/m09_observation/net_upper_diagnostics.c
 src/l05_transport_port/m08_device_port/net_hal_adapter.c
 src/platform/s32k344/net_s32k344_upper_port.c
 
-# L02/M03 application port (VSS facade)
+# L02/M03 application port: common helpers + node facades
+# (each facade compiles to nothing unless it is the build's node profile)
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_common.c
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
+src/l02_typed_handoff/m03_typed_handoff/net_app_port_cis.c
 
 # L05/M08 RTD backend: common part + FlexCAN part + LPUART part
 # (net_hal_rtd_uart.c compiles to nothing unless the node profile has a UART
@@ -64,6 +66,10 @@ src/platform/rtd/net_hal_rtd.c
 src/platform/rtd/net_hal_rtd_can.c
 src/platform/rtd/net_hal_rtd_uart.c
 
-# Node composition root + public entry (Net_Init / Net_MainFunction)
+# Node composition root (common part + node profile tables; each table
+# compiles to nothing unless it is the build's node profile) + public entry
+# (Net_Init / Net_MainFunction, every profile)
 src/node/net_node.c
+src/node/net_node_profile_vss.c
+src/node/net_node_profile_cis.c
 src/node/net_entry.c

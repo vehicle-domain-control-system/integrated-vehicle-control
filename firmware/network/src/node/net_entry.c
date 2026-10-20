@@ -1,6 +1,8 @@
 /* Network public entry (not a layer): Net_Init() / Net_MainFunction(nowMs)
  * (network/app/net_if_entry.h) wrap the composition root NetNode_Init() /
- * NetNode_Step() (net_node.c) and add nothing to their meaning.
+ * NetNode_Step() (net_node.c) and add nothing to their meaning. They are the
+ * public entry of every node profile (VSS, CIS, ...); the VSS firmware is the
+ * first caller and fixes the names and arguments.
  *
  * VSS contract (firmware/vss src/net_if/vss_net_api.h, src/app/vss_main.c,
  * src/infra/vss_time.h):
@@ -54,6 +56,8 @@ void Net_Init(void)
     memset(&cfg, 0, sizeof(cfg));
     cfg.local_epoch = 1u;           /* NetNodeConfig: any nonzero value, 1 is fine */
     cfg.can_port_epoch = 1u;
+    cfg.uart_m_port_epoch = 1u;     /* ignored for a link the node profile lacks */
+    cfg.uart_c_port_epoch = 1u;
     if (!NET_BOARD_NODE_CONFIG_HOOK(&cfg)) {
         entry.init_result = (uint8_t)NET_ENTRY_INIT_CONFIG_REFUSED;
         return;

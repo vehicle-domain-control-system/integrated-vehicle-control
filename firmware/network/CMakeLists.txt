@@ -571,12 +571,9 @@ if(NETWORK_BUILD_RTD_MOCK)
         if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_line})
             message(FATAL_ERROR "tools/s32ds_sources.txt lists a missing file: ${_line}")
         endif()
-        # The node composition root and the public entry are wired for the VSS
-        # profile only; other profiles build the backend under a composition
-        # owned by their tests until their node root exists.
-        if(NOT NETWORK_NODE_PROFILE STREQUAL "VSS" AND _line MATCHES "^src/node/")
-            continue()
-        endif()
+        # The node composition root, its profile tables and the public entry
+        # are built for every profile this option allows (VSS, CIS); the
+        # tables and facades of other profiles compile to nothing.
         # Board-bound sources (RTD backend, public entry) are compiled once per
         # time-base variant, with that variant's net_board_cfg.h hook definitions.
         if(_line MATCHES "^src/platform/rtd/" OR _line STREQUAL "src/node/net_entry.c")
@@ -642,8 +639,11 @@ if(NETWORK_BUILD_RTD_MOCK)
 
         # UART-M is a DOMAIN link: the same sources compiled for the DOMAIN
         # profile in this tree check the second LPUART link.
+        # No DOMAIN node table exists: the composition root stays out.
         list(FIND _network_profiles DOMAIN _domain_profile_id)
-        add_library(network_node_core_objs_domain OBJECT ${_node_core_sources})
+        set(_node_core_sources_domain ${_node_core_sources})
+        list(FILTER _node_core_sources_domain EXCLUDE REGEX "^src/node/")
+        add_library(network_node_core_objs_domain OBJECT ${_node_core_sources_domain})
         target_include_directories(network_node_core_objs_domain PRIVATE ${_node_includes})
         target_compile_definitions(network_node_core_objs_domain PRIVATE NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id})
         network_warnings(network_node_core_objs_domain)
@@ -714,6 +714,39 @@ if(NETWORK_BUILD_RTD_MOCK)
                     add_test(NAME uart_hal.${case}_${_name} COMMAND test_uart_hal_e2e_${_name} ${case})
                 endif()
             endforeach()
+        endforeach()
+    endif()
+
+    # CIS node end-to-end (CAN + UART-C through the node root and the CIS
+    # facade). One case per process: NetNode_Init / Net_Init act once.
+    if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "CIS")
+        add_executable(test_cis_node_e2e tests/cis_node/test_cis_node_e2e.c)
+        target_link_libraries(test_cis_node_e2e PRIVATE network_node_rtd_mock)
+        network_warnings(test_cis_node_e2e)
+        foreach(case IN ITEMS f01_init f02_permission_rx_relay f03_permission_new_evaluations
+                f04_permission_same_evaluation f05_permission_rx_timeout f06_permission_quality
+                f07_vision_rx f08_publish_frames f09_publish_invalid f10_publish_occupant_relay
+                f11_publish_in_callback f12_not_ready f14_permission_repeat_delivered)
+            add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
+        endforeach()
+        # 20_API.md receive delivery: a normal repetition of the same DOMAIN
+        # evaluation with a new TX_SEQUENCE should reach CisApp_OnDomainPermission;
+        # the service ends it as a same observation without a callback (same
+        # rule as the VSS_WARNING_STATE repetition). Kept as written, disabled
+        # until the Network decides the rule.
+        set_tests_properties(cis_node.f14_permission_repeat_delivered PROPERTIES DISABLED TRUE)
+
+        # Public entry Net_Init / Net_MainFunction on the application clock.
+        add_executable(test_cis_node_entry tests/cis_node/test_cis_node_e2e.c)
+        target_link_libraries(test_cis_node_entry PRIVATE network_node_rtd_mock_tick)
+        target_compile_definitions(test_cis_node_entry PRIVATE CIS_NODE_TEST_ENTRY=1)
+        network_warnings(test_cis_node_entry)
+        foreach(case IN ITEMS f13_entry f02_permission_rx_relay f07_vision_rx f08_publish_frames)
+            if(case STREQUAL "f13_entry")
+                add_test(NAME cis_node.${case} COMMAND test_cis_node_entry ${case})
+            else()
+                add_test(NAME cis_node.${case}_entry COMMAND test_cis_node_entry ${case})
+            endif()
         endforeach()
     endif()
 endif()

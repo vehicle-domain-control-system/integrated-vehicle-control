@@ -2,8 +2,8 @@
 #define NETWORK_APP_NET_IF_ENTRY_H
 
 /* Network public entry points called by the node application super-loop.
- * Implemented by the Network (src/node/net_entry.c); names and arguments are
- * the ones the VSS firmware already calls (firmware/vss src/net_if/
+ * Implemented by the Network (src/node/net_entry.c) for every node profile;
+ * names and arguments are the ones the VSS firmware already calls (firmware/vss src/net_if/
  * vss_net_api.h, src/app/vss_main.c). Declarations must stay identical.
  *
  * Context rules:
@@ -11,10 +11,10 @@
  *   - Net_Init(): once per power cycle, after the board clock is running
  *     (VSS: after VssTime_Init) and before Net_MainFunction(). Takes BOOT_ID
  *     and the epochs from the board hook NET_BOARD_NODE_CONFIG_HOOK
- *     (net_board_cfg.h) and starts the CAN controller. Later calls change
- *     nothing; a failed init leaves Net_MainFunction() inert (see NetNodeDiag).
+ *     (net_board_cfg.h) and starts the node's links (CAN; UART-C on CIS).
+ *     Later calls change nothing; a failed init leaves Net_MainFunction() inert (see NetNodeDiag).
  *   - Net_MainFunction(nowMs): once per super-loop pass. Every Network ->
- *     application callback (VssApp_On*) runs synchronously inside it, never
+ *     application callback (VssApp_On*, CisApp_On*) runs synchronously inside it, never
  *     from an interrupt. The CAN ISR only stores frames and raw ticks; this
  *     call converts the ticks, delivers, supervises and transmits, with a
  *     bounded amount of work per pass.

@@ -33,7 +33,7 @@ VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만
 ### `Net_Init()`
 
 - 인자가 없으므로 BOOT_ID와 epoch는 보드 hook `NET_BOARD_NODE_CONFIG_HOOK`에서 얻는다. 원형은 `bool f(NetNodeConfig *out)`이다.
-  - hook에 들어올 때 `out`은 `boot_id` 0, 두 epoch 1이다. hook은 0이 아니고 재부팅마다 바뀌는 BOOT_ID를 넣고 true를 반환한다. epoch는 그대로 두어도 된다.
+  - hook에 들어올 때 `out`은 `boot_id` 0, epoch(로컬, CAN, UART-M, UART-C) 모두 1이다. 프로필에 없는 UART 링크의 epoch는 쓰지 않는다. hook은 0이 아니고 재부팅마다 바뀌는 BOOT_ID를 넣고 true를 반환한다. epoch는 그대로 두어도 된다.
   - false를 반환하거나 BOOT_ID가 0이면 초기화하지 않는다. 이유는 `NetNodeDiag.entry_init_result`에 남는다(`CONFIG_REFUSED`, `BOOT_ID_ZERO`, hook 없이 빌드하면 `NO_CONFIG_HOOK`, 조립 실패면 `NODE_FAILED`와 `stage`/`stage_status`).
 - 실제로 동작하는 것은 첫 호출뿐이다. 두 번째 호출부터는 `entry_init_calls`만 올리고 아무것도 바꾸지 않는다(실패한 첫 호출도 다시 시도하지 않는다).
 - 초기화가 실패하면 `Net_MainFunction`은 아무것도 하지 않고, `VssNet_PublishStatus`는 `NET_SUBMIT_NOT_READY`를 반환한다.
@@ -125,6 +125,7 @@ int main(void)
 - RTD backend는 세 파일이다. `src/platform/rtd/net_hal_rtd.c`(시간원, ISR 시각 변환, 임계구역, 시작 순서, backend ops 등록, 링 비우기 진입), `src/platform/rtd/net_hal_rtd_can.c`(FlexCAN RX/TX/error ISR → ISR 링, 링 → 어댑터, TX MB, abort), `src/platform/rtd/net_hal_rtd_uart.c`(LPUART: 1바이트 연속 수신 → 링크별 바이트 링, 링 → 어댑터, 링크당 송신 1건, 송신 시간 초과 abort). 서로 비공개 헤더 `net_hal_rtd_internal.h`로만 연결된다.
 - `net_hal_rtd_uart.c`는 프로필에 UART 링크가 있을 때만 내용이 컴파일된다(UART-M: HOST·DOMAIN, UART-C: HOST·CIS). VSS 프로필에서는 빈 파일이므로 목록에 그대로 두어도 LPUART 심볼을 참조하지 않는다.
 - 공개 진입은 `src/node/net_entry.c`다. 보드 hook을 쓰므로 `net_board_cfg.h`와 같은 define으로 컴파일한다.
+- 조립 루트는 공통 부분 `src/node/net_node.c`와 노드 프로필 표 `src/node/net_node_profile_<node>.c`(VSS, CIS)로 나뉜다. App facade(`net_app_port_vss.c`, `net_app_port_cis.c`)와 프로필 표는 빌드의 `NETWORK_UPPER_NODE_PROFILE`이 자기 노드일 때만 내용이 컴파일되므로, 목록 전체를 그대로 넣어도 다른 노드의 심볼(`CisApp_*` 등)을 참조하지 않는다.
 - RTD 헤더를 include하는 Network 파일은 `src/platform/rtd/` 안에만 있다.
 
 ## 보드 설정 요구 (`src/platform/rtd/net_board_cfg.h`)

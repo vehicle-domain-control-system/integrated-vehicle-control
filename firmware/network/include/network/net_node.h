@@ -5,23 +5,32 @@
  * selected at compile time (NETWORK_UPPER_NODE_PROFILE):
  *   App Port facade (L02/M03) -> typed ECU adapter (L02/M03) -> NetUpper
  *   (L01/L03/L04/L05) -> NetHalAdapter (L05/M08) -> RTD backend (platform).
- * Currently wired profile: VSS (6). Other profiles fail at compile time.
+ * src/node/net_node.c holds the common part (init order, step, diag); the
+ * profile table src/node/net_node_profile_<node>.c holds what differs per
+ * node (links, receive policies, facade binding, permission supervision,
+ * M04 publish table). Wired profiles: VSS (6), CIS (1). Others fail at
+ * compile time.
  *
  * Public entry: Net_Init() / Net_MainFunction(nowMs) (network/app/net_if_entry.h,
- * src/node/net_entry.c) wrap NetNode_Init() / NetNode_Step(). NetNode_* stay
- * for internal and bench use (main context only, never from an ISR):
+ * src/node/net_entry.c) wrap NetNode_Init() / NetNode_Step() for every
+ * profile. NetNode_* stay for internal and bench use (main context only,
+ * never from an ISR):
  *     Clock/Port/IntCtrl/OsIf init ... ;
- *     NetNode_Init(&cfg);                 // starts FlexCAN
+ *     NetNode_Init(&cfg);                 // starts FlexCAN (and the LPUART links)
  *     for (;;) { NetNode_Step(); App_Service(); }
- * VssApp_On* callbacks run inside NetNode_Step(). With the application clock
- * (net_board_cfg.h time base A) Network time only advances through
- * Net_MainFunction(nowMs). */
+ * The node's XxxApp_On* callbacks run inside NetNode_Step(). With the
+ * application clock (net_board_cfg.h time base A) Network time only advances
+ * through Net_MainFunction(nowMs). */
 #include "network/net_upper.h"
 #include "network/net_upper_monitor.h"
 #include "network/net_hal_adapter.h"
 #include "network/net_hal_rtd.h"
-#include "network/net_app_port_vss.h"
 #include "network/net_upper_publish.h"
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_VSS
+#include "network/net_app_port_vss.h"
+#elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
+#include "network/net_app_port_cis.h"
+#endif
 
 typedef struct {
     /* Network-owned CAN BOOT_ID for this power cycle (0 reserved). Must change
@@ -33,6 +42,9 @@ typedef struct {
     uint64_t local_epoch;
     /* CAN port epoch (nonzero). Any value; 1 is fine. */
     uint64_t can_port_epoch;
+    /* UART link port epochs: nonzero for each UART link of the node profile
+     * (UART-C in CIS); a link the profile lacks is ignored. Any value; 1 is fine. */
+    uint64_t uart_m_port_epoch, uart_c_port_epoch;
 } NetNodeConfig;
 
 /* Outcome of the first Net_Init() (NetNodeDiag.entry_init_result). */
@@ -58,8 +70,14 @@ typedef struct {
     NetUpperObservation upper;    /* M09 raw counters */
     NetHalObservation hal;        /* M08 adapter counters */
     NetHalRtdDiag rtd;            /* RTD backend counters / init failure */
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_VSS
     NetAppPortVssDiag app;        /* App Port counters, last permission */
     NetUpperPublishView status_tx; /* M04 slot of VSS_STATUS: BOOT/TX, waits, repetitions */
+#elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
+    NetAppPortCisDiag app;        /* App Port counters, last permission, relay */
+    /* M04 slots: BOOT/TX (CAN) or LINK_SEQUENCE (UART-C), waits, repetitions */
+    NetUpperPublishView rear_tx, environment_tx, occupant_tx, status_tx, pi_permission_tx;
+#endif
     bool permission_valid;
     NetPermissionView permission; /* DOMAIN_PERMISSION supervision view */
     /* Public entry (net_entry.c). ISR ring counters are in rtd. */
@@ -74,7 +92,7 @@ typedef struct {
 /* Once per power cycle. After a call that got past argument checks, later
  * calls return NET_BUSY and leave the node (running or failed) untouched. */
 NetStatus NetNode_Init(const NetNodeConfig *config);
-/* One main pass: ISR ring -> adapter (bounded), RX dispatch -> VssApp_*,
+/* One main pass: ISR ring -> adapter (bounded), RX dispatch -> XxxApp_*,
  * permission supervision, TX supervision, M04 publish service. */
 void NetNode_Step(void);
 NetStatus NetNode_GetDiag(NetNodeDiag *out);
