@@ -14,7 +14,8 @@
  *         VEML7700 VCC -> 5 V, GND -> GND, SDA -> PTA2 (J1-1), SCL -> PTA3 (J1-3).
  *         Raspberry Pi: OpenSDA USB (J7) -> Pi USB port (LPUART1, 115200 8N1).
  * Debugger variables:
- *   rear : g_distance_mm, g_status, g_reason, g_sequence, g_age_ms
+ *   rear : g_distance_mm, g_status, g_reason, g_sequence, g_age_ms (raw measurement)
+ *          g_out_status, g_out_valid, g_out_reason (after the power gate)
  *   DHT22: g_temp_c01 (0.01 degC), g_hum_c01 (0.01 %RH), g_env_*_valid, g_env_*_seq,
  *          g_env_*_age_ms, g_env_*_reason, g_dht_ok / g_dht_no_response /
  *          g_dht_timeout / g_dht_checksum (read results), g_dht_raw[5]
@@ -32,12 +33,8 @@
 
 #include "regs_s32k144.h"
 #include "timebase.h"
-#include "hcsr04.h"
-#include "dht22.h"
-#include "veml7700.h"
 #include "pi_uart.h"
-#include "vision_logic.h"
-#include "rear_logic.h"
+#include "cis_app.h"
 
 /* Wiring tests (set back to 0 for the distance demo):
  *   1 = PTE7 (TRIG) is held HIGH (about 5 V), green LED on. Measure with a
@@ -52,9 +49,8 @@
 #define HCSR04_PIN_TEST 0
 #endif
 
-#define NEAR_MM         500u
+#define NEAR_MM         500u     /* red at or below 50 cm, green above (adjustable) */
 
-#define CIS_BOOT_ID     1u       /* [TBD] must change with every CIS start; 0 is reserved */     /* red at or below 50 cm, green above (adjustable) */
 
 #define LED_BLUE_PIN    0u       /* PTD0,  active low */
 #define LED_RED_PIN     15u      /* PTD15, active low */
@@ -64,16 +60,14 @@
 #define BLINK_HALF_MS   250u
 #define LED_HOLD_MS     400u     /* keep the last good colour this long after a missed measurement */
 
-static rear_state_t g_rear;
-static env_state_t  g_env;
-static lux_state_t  g_lux_state;
-static vision_state_t g_vision;
-
 volatile uint32_t g_distance_mm;
 volatile uint32_t g_status;
 volatile uint32_t g_reason;
 volatile uint32_t g_sequence;
 volatile uint32_t g_age_ms;
+volatile uint32_t g_out_status;     /* reported after the power gate (5 = INACTIVE) */
+volatile uint32_t g_out_valid;
+volatile uint32_t g_out_reason;
 
 volatile uint32_t g_occ_count;
 volatile uint32_t g_occ_presence;
@@ -161,6 +155,61 @@ static uint32_t answered_color(const rear_state_t *s, bool *answered)
     return 0u;
 }
 
+/* Copies the state into the debugger variables. */
+static void debug_mirror(uint32_t now_ms)
+{
+    const rear_state_t *rear = cis_app_rear();
+    const rear_output_t *rout = cis_app_rear_output();
+    const env_state_t *env = cis_app_env();
+    const lux_state_t *lux = cis_app_lux();
+    const vision_state_t *vis = cis_app_vision();
+
+    g_distance_mm = (uint32_t)rear->value.value;
+    g_status = (uint32_t)rear->status;
+    g_reason = (uint32_t)rear->value.reason;
+    g_sequence = rear->value.sequence;
+    g_age_ms = cis_value_age_ms(&rear->value, now_ms);
+    g_out_status = (uint32_t)rout->status;
+    g_out_valid = rout->valid;
+    g_out_reason = (uint32_t)rout->reason;
+
+    g_occ_count = (uint32_t)vis->count.value;
+    g_occ_presence = (uint32_t)vis->presence.value;
+    g_occ_count_valid = vis->count.valid;
+    g_occ_presence_valid = vis->presence.valid;
+    g_occ_count_reason = (uint32_t)vis->count.reason;
+    g_occ_presence_reason = (uint32_t)vis->presence.reason;
+    g_occ_seq = vis->count.sequence;
+    g_occ_age_ms = cis_value_age_ms(&vis->count, now_ms);
+    g_pi_boot_id = vis->pi_boot_id;
+    g_pi_link_up = vis->link_up;
+    g_pi_vision_state = vis->pi_vision_status;
+    g_pi_assembly_timeouts = pi_uart_assembly_timeouts();
+    g_pi_frames_ok = pi_uart_frames_ok();
+    g_pi_bad_crc = pi_uart_bad_crc();
+    g_pi_bad_format = pi_uart_bad_format();
+    g_pi_skipped = pi_uart_skipped_bytes();
+    g_pi_overruns = pi_uart_overruns();
+    g_pi_line_errors = pi_uart_line_errors();
+
+    g_temp_c01 = env->temperature.value;
+    g_hum_c01 = env->humidity.value;
+    g_env_temp_valid = env->temperature.valid;
+    g_env_hum_valid = env->humidity.valid;
+    g_env_temp_seq = env->temperature.sequence;
+    g_env_hum_seq = env->humidity.sequence;
+    g_env_temp_age_ms = cis_value_age_ms(&env->temperature, now_ms);
+    g_env_hum_age_ms = cis_value_age_ms(&env->humidity, now_ms);
+    g_env_temp_reason = (uint32_t)env->temperature.reason;
+    g_env_hum_reason = (uint32_t)env->humidity.reason;
+
+    g_lux = (uint32_t)lux->illuminance.value;
+    g_lux_valid = lux->illuminance.valid;
+    g_lux_seq = lux->illuminance.sequence;
+    g_lux_age_ms = cis_value_age_ms(&lux->illuminance, now_ms);
+    g_lux_reason = (uint32_t)lux->illuminance.reason;
+}
+
 int main(void)
 {
     WDOG_disable();
@@ -171,14 +220,7 @@ int main(void)
         for (;;) { }
     }
 
-    rear_init(&g_rear);
-    hcsr04_init();
-    env_init(&g_env);
-    dht22_init();
-    lux_init(&g_lux_state);
-    (void)veml7700_init();                  /* g_veml_present shows whether it answered */
-    vision_init(&g_vision);
-    pi_uart_init();
+    cis_app_init();
 
 #if HCSR04_PIN_TEST == 1
     PTE_PSOR = (1u << 7);                  /* PTE7 (TRIG) = HIGH */
@@ -218,8 +260,6 @@ int main(void)
 #endif
 
     {
-        uint32_t last_perm_ms = 0u;
-        uint16_t link_seq = 0u;             /* UART-C LINK_SEQUENCE of the frames sent to the Pi */
         uint32_t last_color = 0u;
         uint32_t last_answer_ms = 0u;
         bool have_answer = false;
@@ -228,86 +268,11 @@ int main(void)
             uint32_t now_ms = timebase_now_ms();    /* also keeps the 16-bit counter tracked */
             uint32_t color;
             bool answered;
-            pi_frame_t frame;
 
-            /* Raspberry Pi: read all received frames first so the FIFO never fills up. */
-            while (pi_uart_poll(&frame, now_ms)) {
-                if (frame.type == PI_TYPE_VISION_RESULT) {
-                    (void)vision_on_result(&g_vision, &frame.result, now_ms);
-                } else if (frame.type == PI_TYPE_VISION_STATUS) {
-                    vision_on_status(&g_vision, &frame.status, now_ms);
-                }
-            }
-            vision_check(&g_vision, now_ms);
-            g_occ_count = (uint32_t)g_vision.count.value;
-            g_occ_presence = (uint32_t)g_vision.presence.value;
-            g_occ_count_valid = g_vision.count.valid;
-            g_occ_presence_valid = g_vision.presence.valid;
-            g_occ_count_reason = (uint32_t)g_vision.count.reason;
-            g_occ_presence_reason = (uint32_t)g_vision.presence.reason;
-            g_occ_seq = g_vision.count.sequence;
-            g_occ_age_ms = cis_value_age_ms(&g_vision.count, now_ms);
-            g_pi_boot_id = g_vision.pi_boot_id;
-            g_pi_link_up = g_vision.link_up;
-            g_pi_vision_state = g_vision.pi_vision_status;
-            g_pi_assembly_timeouts = pi_uart_assembly_timeouts();
-            g_pi_frames_ok = pi_uart_frames_ok();
-            g_pi_bad_crc = pi_uart_bad_crc();
-            g_pi_bad_format = pi_uart_bad_format();
-            g_pi_skipped = pi_uart_skipped_bytes();
-            g_pi_overruns = pi_uart_overruns();
-            g_pi_line_errors = pi_uart_line_errors();
+            cis_app_run(now_ms);
+            debug_mirror(now_ms);
 
-            /* Permission for the Pi (P_PERMISSION, every 500 ms). The vehicle power permission
-             * comes from the Domain and is not wired in yet, so it is reported as unknown. */
-            if (hcsr04_idle() && (uint32_t)(now_ms - last_perm_ms) >= 500u) {
-                static const pi_permission_t perm = {
-                    CIS_BOOT_ID,                        /* cis_boot_id [TBD: boot counter, O-006] */
-                    1u,                                 /* update_sequence: no evaluation change yet */
-                    PI_PERMISSION_UNKNOWN,
-                    PI_QUALITY_NO_DATA,
-                    (uint8_t)CIS_REASON_NO_DATA,
-                    1500u,                              /* use_limit_ms (proposal) */
-                    0xFFFFu                             /* source_age_ms: unknown */
-                };
-                uint8_t out[PI_FRAME_MAX];
-                size_t n = pi_build_permission(out, link_seq++, &perm);
-                last_perm_ms = now_ms;
-                pi_uart_send(out, n);
-            }
-
-            if (hcsr04_step(&g_rear, now_ms)) {
-                g_distance_mm = (uint32_t)g_rear.value.value;
-                g_status = (uint32_t)g_rear.status;
-                g_reason = (uint32_t)g_rear.value.reason;
-                g_sequence = g_rear.value.sequence;
-            }
-            g_age_ms = cis_value_age_ms(&g_rear.value, now_ms);
-
-            /* The DHT22 read blocks for ~5 ms: only start it while no echo is pending. */
-            dht22_step(&g_env, now_ms, hcsr04_idle());
-            env_check_stale(&g_env, now_ms);
-            g_temp_c01 = g_env.temperature.value;
-            g_hum_c01 = g_env.humidity.value;
-            g_env_temp_valid = g_env.temperature.valid;
-            g_env_hum_valid = g_env.humidity.valid;
-            g_env_temp_seq = g_env.temperature.sequence;
-            g_env_hum_seq = g_env.humidity.sequence;
-            g_env_temp_age_ms = cis_value_age_ms(&g_env.temperature, now_ms);
-            g_env_hum_age_ms = cis_value_age_ms(&g_env.humidity, now_ms);
-            g_env_temp_reason = (uint32_t)g_env.temperature.reason;
-            g_env_hum_reason = (uint32_t)g_env.humidity.reason;
-
-            /* I2C transactions also block for up to ~1 ms: same rule as the DHT22. */
-            veml7700_step(&g_lux_state, now_ms, hcsr04_idle());
-            lux_check_stale(&g_lux_state, now_ms);
-            g_lux = (uint32_t)g_lux_state.illuminance.value;
-            g_lux_valid = g_lux_state.illuminance.valid;
-            g_lux_seq = g_lux_state.illuminance.sequence;
-            g_lux_age_ms = cis_value_age_ms(&g_lux_state.illuminance, now_ms);
-            g_lux_reason = (uint32_t)g_lux_state.illuminance.reason;
-
-            color = answered_color(&g_rear, &answered);
+            color = answered_color(cis_app_rear(), &answered);
             if (answered) {
                 last_color = color;
                 last_answer_ms = now_ms;
