@@ -408,7 +408,11 @@ NetStatus net_hal_rtd_can_arm(void)
 /* A quarantined MB (abort timed out) is reused only once its message buffer
  * flag shows the controller finished with it: the abort completed or the
  * frame went out. The RTD disabled that MB's interrupt in the abort, so no
- * ISR clears the flag; it is cleared here before the MB is handed out again. */
+ * ISR clears the flag; it is cleared here before the MB is handed out again.
+ * The RTD clears the flag itself right after a timed-out abort, so an MB
+ * that finished just before that clear never shows it again and stays
+ * quarantined until reset (seen as tx_abort_timeouts above
+ * tx_quarantine_released). */
 static void release_quarantined(uint32_t i)
 {
     TxSlot *slot = &can.tx[i];

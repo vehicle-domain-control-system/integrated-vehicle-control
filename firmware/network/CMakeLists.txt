@@ -788,7 +788,7 @@ if(NETWORK_BUILD_RTD_MOCK)
                 f15_permission_quality_drop_same_update f16_vision_rx_main_3ms f17_domain_reboot
                 f18_pi_reboot f19_permission_repeat_no_flood f20_permission_tx_zero
                 f21_permission_quality_drop_relayed f22_relay_sequence_cis_owned
-                f23_vision_repeat_delivered f24_occupant_restricted_quality)
+                f23_vision_repeat_delivered f24_occupant_restricted_quality f25_vision_repeat_long_age)
             add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
         endforeach()
 

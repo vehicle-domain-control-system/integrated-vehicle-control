@@ -49,6 +49,9 @@ typedef struct {
     /* Last accepted P_VISION_RESULT (CIS_OCCUPANT relay origin). */
     Receipt vision;
     NetWirePVisionResult vision_raw;
+    /* Pi AGE of that judgement when it was first received (not a
+     * repetition): the lowest vision_age_ms a relay of it may carry. */
+    uint16_t vision_first_age;
     NetAppPortCisDiag diag;
 } CisPort;
 
@@ -133,6 +136,9 @@ static NetStatus on_vision_result(void *ctx, const NetWirePVisionResult *raw, co
      * this observation. */
     receipt_of(d, raw->vision_age_ms, &port.vision);
     port.vision_raw = *raw;
+    /* A repetition of the same judgement keeps the AGE of its first receipt:
+     * an application may still hold the copy it took then. */
+    if (!d->repeat) port.vision_first_age = raw->vision_age_ms;
     CisApp_OnPiVisionResult(&v, &meta);
     inc(&port.diag.vision_result_delivered);
     return NET_OK;
@@ -340,17 +346,22 @@ static bool field_restricted(uint8_t pi_validity, uint8_t pi_reason, uint8_t val
  *   NET_INVALID_ARGUMENT: a record that can never be that relay, so a
  *     resubmission cannot succeed (VSS contract C10 (VSS_NODE_INTEGRATION.md),
  *     02_NODES/CIS/20_API.md send return: combination error): another Pi
- *     identity (BOOT, VISION_SEQUENCE), an AGE below the Pi AGE, another
- *     presence / count, or a validity above the Pi one;
+ *     identity (BOOT, VISION_SEQUENCE), an AGE below the Pi AGE of that
+ *     judgement's first receipt, another presence / count, or a validity
+ *     above the Pi one;
  *   NET_OK: the same identity and values, each field's validity / reason the
  *     Pi's or a restriction of it. vision_function_status is the CIS's own
- *     function state (02_NODES/CIS/10_DATA.md) and is not compared. */
+ *     function state (02_NODES/CIS/10_DATA.md) and is not compared.
+ * The AGE bound is the first receipt's: repetitions of the judgement
+ * (02_NODES/CIS/20_API.md receive delivery) raise the current AGE while the
+ * application may still hold its copy of the first delivery. The AGE sent is
+ * not the record's: it is the latest receipt's Pi AGE plus the time since. */
 static NetStatus occupant_origin(const NetCisOccupant *o)
 {
     const NetWirePVisionResult *v = &port.vision_raw;
     if (!port.vision.seen) return NET_HOLD;
     if (o->pi_boot_id != v->pi_boot_id || o->vision_sequence != v->vision_sequence ||
-        o->vision_age_ms < v->vision_age_ms ||
+        o->vision_age_ms < port.vision_first_age ||
         o->occupant_presence != v->occupant_presence || o->occupant_count != v->occupant_count ||
         !field_restricted(v->presence_validity, v->presence_reason, o->presence_validity, o->presence_reason) ||
         !field_restricted(v->count_validity, v->count_reason, o->count_validity, o->count_reason))

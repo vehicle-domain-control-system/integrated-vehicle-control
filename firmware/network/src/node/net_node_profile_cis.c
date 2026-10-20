@@ -6,7 +6,8 @@
  *   P_VISION_RESULT  0x60 (UART-C RX): 100 / 300 ms, P_VISION_STATUS 0x61: 1000 /
  *                            3000 ms; their receive supervision is the CIS
  *                            application's, through the two callbacks
- *                            (02_NODES/CIS/20_API.md, receive delivery)
+ *                            (02_NODES/CIS/20_API.md, receive delivery); no
+ *                            Network AGE limit below the saturated wire AGE
  *   UART-C stream          : 50 ms frame assembly bound (20_UART_M.md shared
  *                            framing, proposed), LINK_SEQUENCE from 1 per direction
  *   CIS_REAR 0x0A0, CIS_ENVIRONMENT 0x300, CIS_OCCUPANT 0x310, CIS_STATUS 0x320
@@ -68,8 +69,17 @@ static void upper(NetUpperConfig *c)
             c->rx_policy[i].maximum_age_ms = 500u;
             c->rx_repeat_delivery[i] = true;
         }
-        if (r->link == NET_WIRE_UART_C && (r->id_type == 0x60u || r->id_type == 0x61u))
+        if (r->link == NET_WIRE_UART_C && (r->id_type == 0x60u || r->id_type == 0x61u)) {
             c->rx_repeat_delivery[i] = true;
+            /* A Pi judgement / status repeated with its original AGE may be
+             * older than 2000 ms (a status stays the same for seconds;
+             * 30_UART_C.md: the numbers grow only on a new judgement / state
+             * evaluation and repetitions keep the original AGE basis). It is
+             * still delivered: it feeds the receive supervision, and its
+             * freshness is the CIS application's decision. The bound only
+             * catches the saturated wire AGE (65535) plus margin. */
+            c->rx_policy[i].maximum_age_ms = 65535u + 1000u;
+        }
     }
     /* UART-C receiver (Pi -> CIS) and the CIS -> Pi LINK_SEQUENCE. */
     c->uart_policy[NET_WIRE_UART_C - 1u].candidate_time_policy_selected = true;

@@ -44,7 +44,7 @@ VSS 펌웨어(브랜치 `feat/vss-firmware` 커밋 `8fcf25c`, 2026-10-20 S32K344
 
 VSS 앱이 받은 필드를 다루는 방식이다. Network는 바꾸지 않으며, 통합 하네스(`tests/vss_integ`)의 기대값이 이를 따른다.
 
-- **`VSS_EVENT`:** `event_kind` 1~5만 사용한다(WELCOME·GOODBYE·LOCK_COMPLETE·UNLOCK_COMPLETE·LOCK_ERROR). 중복 판정 키는 `{origin, DOMAIN, boot_id, occurrence_id}`이고, `occurrence_id`는 DOMAIN 한 기동 안에서 단조 증가해야 한다. 사용 한도 L = min(`use_limit_ms`, 500, 2000) ms이고, `use_limit_ms`·`occurrence_id`·`tx_sequence`가 0이면 거부한다. 같은 occurrence 재전송은 사용 한도 안이면 중복, 뒤면 기한 초과로 거부되어 다시 울리지 않는다. VSS 기동 전에 발생한 Event는 재생하지 않는다(`02_NODES/VSS/10_DATA.md` 입력 연결·시간·복구의 한정 계약).
+- **`VSS_EVENT`:** `event_kind` 1~5만 사용한다(WELCOME·GOODBYE·LOCK_COMPLETE·UNLOCK_COMPLETE·LOCK_ERROR). 중복 판정 키는 `{origin, DOMAIN, boot_id, occurrence_id}`이고, `occurrence_id`는 DOMAIN 한 기동 안에서 단조 증가해야 한다. 사용 한도 L = min(`use_limit_ms`, 500, 2000) ms이고, `use_limit_ms`·`occurrence_id`·`tx_sequence`가 0이면 거부한다. 같은 occurrence 재전송은 사용 한도 안이면 중복, 뒤면 기한 초과로 거부되어 다시 울리지 않는다. `original_age_ms`가 65535(포화)인 Event는 AGE가 불완전하므로 재생하지 않는다. VSS 기동 전에 발생한 Event는 재생하지 않는다(`02_NODES/VSS/10_DATA.md` 입력 연결·시간·복구의 한정 계약).
 - **`VSS_WARNING_STATE`:** lane은 후방 활성, 후방 위험(CLEAR/CAUTION/EMERGENCY), 탑승자, 끼임이다. `*_source_boot`/`*_source_sequence`가 둘 다 0이 아니어야 출처가 있는 근거다. quality OK + reason NONE이면 확정, 그 밖은 미확정이다. 끼임 경고는 PRODUCT origin(실제 CAN)에서 재생하지 않는다.
   - TTL / Hold: 끼임 250/250, 탑승자 1000/500, 후방 150/150, 후방 활성 500/0 ms.
   - 우선순위: 끼임 9 > 후방 비상 8 > 탑승자 7 > 후방 주의 6 > 잠금 오류 5 > 해제 4 > 잠금 3 > Goodbye 2 > Welcome 1.
@@ -180,7 +180,7 @@ int main(void)
 
 - ConfigTools의 FlexCAN 콜백 이름(`NET_BOARD_CAN_CALLBACK`, `NET_BOARD_CAN_ERROR_CALLBACK`)은 HAL이 정의한다. 같은 이름을 정의하는 다른 파일은 빌드에서 빼야 한다.
 - MB 배치 기본값: RX 0..3(마스크 0, 모든 표준 ID 수신 후 registry로 걸러냄), TX 8..11. `max_num_mb`(344=16) 안에 들어가야 한다.
-- TX MB가 `NET_BOARD_CAN_TX_TIMEOUT_MS`(기본 100 ms) 안에 끝나지 않으면 `FlexCAN_Ip_AbortTransfer`로 abort하고 그 반환값대로 정산한다. `NO_TRANSFER_IN_PROGRESS`는 abort 전에 프레임이 이미 나간 경우라(RTD는 이때 TX_COMPLETE를 부르지 않는다) 성공으로 정산한다. `TIMEOUT`은 abort가 끝나지 않은 경우라 실패로 보고하고, 그 MB는 `FlexCAN_Ip_GetBuffStatusFlag`가 설 때까지(컨트롤러가 MB를 놓을 때까지) 다시 쓰지 않는다. 그 밖의 결과는 실패로 보고한다.
+- TX MB가 `NET_BOARD_CAN_TX_TIMEOUT_MS`(기본 100 ms) 안에 끝나지 않으면 `FlexCAN_Ip_AbortTransfer`로 abort하고 그 반환값대로 정산한다. `NO_TRANSFER_IN_PROGRESS`는 abort 전에 프레임이 이미 나간 경우라(RTD는 이때 TX_COMPLETE를 부르지 않는다) 성공으로 정산한다. `TIMEOUT`은 abort가 끝나지 않은 경우라 실패로 보고하고, 그 MB는 `FlexCAN_Ip_GetBuffStatusFlag`가 설 때까지(컨트롤러가 MB를 놓을 때까지) 다시 쓰지 않는다. RTD는 TIMEOUT 뒤 그 플래그를 지우므로, 그 직전에 끝난 MB는 플래그가 다시 서지 않아 격리가 풀리지 않을 수 있다(`tx_abort_timeouts`와 `tx_quarantine_released`의 차이로 관찰, 리셋까지 TX MB 하나가 준다). 그 밖의 결과는 실패로 보고한다.
 - 시간원은 위 표의 A·B·C 중 하나다. 보드 빌드는 A를 쓴다. 셋 다 없으면(OsIf 타이머 OFF, hook 없음) 컴파일 오류(`OSIF_COUNTER_SYSTEM` 미정의)가 난다.
 - ISR 링: `NET_BOARD_CAN_ISR_RING`(기본 32, 1 이상), `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 1 이상 16 이하). 범위를 벗어나면 컴파일 오류다.
 - UART 링크(CIS·DOMAIN 프로필): `NET_BOARD_UART_C_INSTANCE`/`NET_BOARD_UART_C_CONFIG`(기본 11 / `Lpuart_Uart_Ip_xHwConfigPB_11`), `NET_BOARD_UART_M_INSTANCE`/`NET_BOARD_UART_M_CONFIG`(DOMAIN 보드 미정, 자리 표시 기본값 0 / `Lpuart_Uart_Ip_xHwConfigPB_0`), 링크별 송신 시간 초과(기본 100 ms), `NET_BOARD_UART_ISR_RING`(기본 256 B). 콜백은 `NET_BOARD_UART_CALLBACK`을 정의하면 HAL이 그 이름으로 정의하고, 정의하지 않으면 보드 콜백이 Network 인스턴스 이벤트를 `NetHalRtdUart_OnEvent()`(`net_hal_rtd_uart.h`)로 넘긴다(DS344: LPUART0 콘솔과 LPUART11이 `Uart344_BringupCallback`을 공유하므로 이 방식).

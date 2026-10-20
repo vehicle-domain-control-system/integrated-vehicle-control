@@ -1518,10 +1518,13 @@ static int f21_permission_quality_drop_relayed(void)
  * whose UPDATE is below the earlier run's) and a quality restriction; within
  * the run it never goes back. A DOMAIN repetition and a DOMAIN_PERMISSION
  * that changes nothing the relay carries (its operation quality only) are no
- * relay event: no frame, the revision stays. */
+ * relay event: no frame, the revision stays. A run change with the same
+ * UPDATE, value and quality is a relay event. Two relay events in one main
+ * pass use two revisions but leave as one frame (the record no device has
+ * taken yet is replaced: 02_NODES/CIS/20_API.md current value keeping). */
 static int f22_relay_sequence_cis_owned(void)
 {
-    enum { BOOT_A = 0x444F4D41u, BOOT_B = 0x444F4D42u };
+    enum { BOOT_A = 0x444F4D41u, BOOT_B = 0x444F4D42u, BOOT_C = 0x444F4D43u };
     NetNodeDiag d;
     unsigned i;
     CHECK(start_node() == NET_OK);
@@ -1569,10 +1572,32 @@ static int f22_relay_sequence_cis_owned(void)
     step_ms(1u);
     CHECK(perm_count == 7u && uart_n == 5u);
     RUN(check_relay(&uart_out[4], 5u, 5u, NET_TRISTATE_YES, 2u, last_perm_meta.received_at_ms));
+    /* DOMAIN restarts as run C with the same UPDATE, value and quality as the
+     * last relay: an accepted run change is a relay event of its own (one
+     * frame, revision 6). */
+    step_ms(49u);
+    RUN(permission_from(BOOT_C, 1u, 5u, 2u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 8u && last_perm_meta.source.boot_id == BOOT_C && uart_n == 6u);
+    RUN(check_relay(&uart_out[5], 6u, 6u, NET_TRISTATE_YES, 2u, last_perm_meta.received_at_ms));
+    /* A new evaluation and its quality drop within one main pass: both reach
+     * the application and both are relay events (revisions 7 and 8), but the
+     * record not yet sent is replaced: one frame, revision 8, LINK_SEQUENCE
+     * +1 only. */
+    step_ms(49u);
+    RUN(permission_from(BOOT_C, 2u, 6u, 3u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    RUN(permission_from(BOOT_C, 3u, 6u, 3u, NET_TRISTATE_YES, NET_QUALITY_INVALID));
+    step_ms(1u);
+    CHECK(perm_count == 10u && last_perm.power_permission_quality == NET_QUALITY_INVALID && uart_n == 7u);
+    RUN(check_relay_quality(&uart_out[6], 7u, 8u, NET_TRISTATE_YES, NET_QUALITY_INVALID,
+                            NET_QUALITY_REASON_DATA_INVALID, 3u, last_perm_meta.received_at_ms));
+    step_ms(20u);
+    CHECK(uart_n == 7u);
     for (i = 1u; i < uart_n; ++i)
         CHECK(uart_out[i].m.data.p_permission.update_sequence > uart_out[i - 1u].m.data.p_permission.update_sequence);
     d = diag();
-    CHECK(d.pi_permission_tx.revision == 5u && d.app.relay_submitted == 5u && d.app.relay_refused == 0u);
+    CHECK(d.pi_permission_tx.revision == 8u && d.app.relay_submitted == 8u && d.app.relay_refused == 0u);
+    CHECK(d.pi_permission_tx.counters.replaced == 1u && d.pi_permission_tx.next_sequence == 8u);
     CHECK(d.app.permission_repeats == 1u && uart_bad == 0u && isr_callbacks == 0u);
     return 0;
 }
@@ -1805,6 +1830,104 @@ static int f24_occupant_restricted_quality(void)
     CHECK(d.app.occupant_not_current == 4u);
     CHECK(d.app.publish[NET_APP_PORT_CIS_OCCUPANT].not_accepted == 4u);
     CHECK(d.upper.rx_held == 0u && isr_callbacks == 0u);
+    /* The application keeps its copy of the first delivery of judgement 903
+     * while the Pi repeats it twice (receive delivery: the current AGE grows).
+     * The restricted relay of that first copy is accepted: its AGE is not
+     * below the AGE of the judgement's first receipt. The frame carries the
+     * last repetition's AGE plus the time since that receipt. */
+    {
+        NetCisOccupant first;
+        uint64_t prev_at;
+        uint16_t prev_age = 30u, link = 3u;
+        unsigned n;
+        m = vision_message(link, 903u, prev_age);
+        RUN(line_send(&m, &last));
+        step_ms(1u);
+        CHECK(result_count == 3u && last_result.vision_sequence == 903u);
+        first = relay_of(&last_result, 0u);
+        prev_at = last_result_meta.received_at_ms;
+        for (n = 0u; n < 2u; ++n) {
+            run_until_ms(prev_at + 96u);
+            prev_age = (uint16_t)(prev_age + 100u);
+            m = vision_message(++link, 903u, prev_age);
+            RUN(line_send(&m, &last));
+            step_ms(1u);
+            CHECK(result_count == 4u + n && last_result.vision_age_ms == prev_age);
+            prev_at = last_result_meta.received_at_ms;
+        }
+        CHECK(first.vision_age_ms == 30u && last_result.vision_age_ms == 230u);
+        first.presence_validity = NET_VALIDITY_INVALID;
+        first.presence_reason = NET_QUALITY_REASON_DATA_INVALID;
+        CHECK(CisNet_PublishOccupant(&first) == NET_SUBMIT_OK);
+        step_ms(1u);
+        CHECK(can_count(0x310u, 0u) == 5u);
+        k = can_find(0x310u, 0u, 4u);
+        CHECK(k >= 0);
+        e = envelope(&can_out[k].f);
+        CHECK(net_wire_can_decode_cis_occupant(NET_WIRE_CANDIDATE_ONLY, &e, &orr) == NET_WIRE_OK);
+        CHECK(orr.vision_sequence == 903u && orr.presence_validity == NET_VALIDITY_INVALID);
+        CHECK(orr.vision_age_ms == 230u + (can_out[k].at - prev_at));
+        /* A record below the first receipt's AGE is still refused. */
+        first.vision_age_ms = 29u;
+        CHECK(CisNet_PublishOccupant(&first) == NET_SUBMIT_INVALID_ARGUMENT);
+        d = diag();
+        CHECK(d.upper.rx_held == 0u && d.app.occupant_not_current == 5u);
+    }
+    return 0;
+}
+
+/* P_VISION_STATUS keeps one state evaluation for seconds and P_VISION_RESULT
+ * may repeat one judgement for seconds (30_UART_C.md: STATUS_SEQUENCE /
+ * VISION_SEQUENCE grow only on a new evaluation / judgement and repetitions
+ * keep the original AGE basis), so a repetition's AGE passes 2000 ms. Each
+ * repetition still reaches the existing callback (02_NODES/CIS/20_API.md
+ * receive delivery: it feeds the CIS receive supervision, 300 / 3000 ms); the
+ * use of an old observation is the CIS application's decision. The same
+ * status is repeated every 1000 ms five times and the same judgement every
+ * 100 ms for 3 s: every one is delivered with its AGE, nothing is held. */
+static int f25_vision_repeat_long_age(void)
+{
+    NetUpperUartMessage m;
+    NetNodeDiag d0, d;
+    uint64_t last, start;
+    uint16_t link = 0u;
+    unsigned t, results = 0u, statuses = 0u;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    d0 = diag();
+    start = now_ms();
+    for (t = 0u; t <= 4000u; t += 100u) {
+        run_until_ms(start + t);
+        if (t < 3000u) {
+            /* Judgement 500 again, its AGE grown by the 100 ms. */
+            m = vision_message(++link, 500u, (uint16_t)(20u + t));
+            RUN(line_send(&m, &last));
+            step_ms(1u);
+            ++results;
+            CHECK(result_count == results && last_result.vision_sequence == 500u);
+            /* The AGE sent, or raised by a ms when the receive gap rounds up. */
+            CHECK(last_result.vision_age_ms >= 20u + t && last_result.vision_age_ms <= 22u + t);
+            CHECK(last_result_meta.link_sequence == link);
+        }
+        if (t % 1000u == 0u) {
+            /* Status evaluation 77 again, its AGE grown by the 1000 ms. */
+            m = vision_status_message(++link, 77u);
+            m.data.p_vision_status.status_age_ms = (uint16_t)(40u + t);
+            RUN(line_send(&m, &last));
+            step_ms(1u);
+            ++statuses;
+            CHECK(status_count == statuses && last_status.status_sequence == 77u);
+            CHECK(last_status.status_age_ms >= 40u + t && last_status.status_age_ms <= 42u + t);
+            CHECK(last_status_meta.link_sequence == link);
+        }
+    }
+    CHECK(results == 30u && statuses == 5u);
+    CHECK(last_result.vision_age_ms >= 2920u && last_status.status_age_ms >= 4040u);
+    d = diag();
+    CHECK(d.upper.rx_held == d0.upper.rx_held && d.upper.rx_held == 0u);
+    CHECK(d.upper.repeat_delivered == d0.upper.repeat_delivered + 29u + 4u);
+    CHECK(d.app.vision_result_delivered == 30u && d.app.vision_status_delivered == 5u);
+    CHECK(isr_callbacks == 0u && can_n == 0u && uart_n == 0u);
     return 0;
 }
 
@@ -1836,7 +1959,8 @@ int main(int argc, char **argv)
         { "f21_permission_quality_drop_relayed", f21_permission_quality_drop_relayed },
         { "f22_relay_sequence_cis_owned", f22_relay_sequence_cis_owned },
         { "f23_vision_repeat_delivered", f23_vision_repeat_delivered },
-        { "f24_occupant_restricted_quality", f24_occupant_restricted_quality }
+        { "f24_occupant_restricted_quality", f24_occupant_restricted_quality },
+        { "f25_vision_repeat_long_age", f25_vision_repeat_long_age }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

@@ -16,10 +16,12 @@
  * promotion. vision_function_status is the CIS's own function state.
  * Returns: NOT_READY before any Pi judgement is accepted; INVALID_ARGUMENT for
  * a record that can never be that relay (another identity, another value, a
- * promoted validity, an AGE below the Pi AGE), so a resubmission cannot
- * succeed; nothing is sent then. vision_age_ms may already include the
- * application's own hold time; Network counts the time since the receipt
- * itself, once.
+ * promoted validity, an AGE below the Pi AGE of that judgement's first
+ * receipt), so a resubmission cannot succeed; nothing is sent then.
+ * vision_age_ms may be the AGE of the first delivery of the judgement, with
+ * or without the application's own hold time; the AGE sent is the latest
+ * receipt's Pi AGE (repetitions included) plus the time since it, counted by
+ * Network once.
  *
  * P_PERMISSION: CisNetPriv_RelayPiPermission() takes the DOMAIN_PERMISSION the
  * dispatcher just delivered to CisApp_OnDomainPermission() and, for a relay

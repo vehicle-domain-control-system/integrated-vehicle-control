@@ -14,8 +14,8 @@
  * (Network -> VSS) and VssNet_PublishStatus (VSS -> Network) record each call
  * and then run the real function.
  *
- * Expected results come from the VSS integration checks and the VSS
- * contracts C1..C12 (both in VSS_NODE_INTEGRATION.md) and docs/network. One
+ * Expected results come from "VSS 연동 확인 시험" (VSS_NODE_INTEGRATION.md),
+ * the VSS contracts C1..C12 (VSS_NODE_INTEGRATION.md) and docs/network. One
  * case per process. */
 #include "hal_mock.h"
 #include "app/vss_main.h"
@@ -49,7 +49,7 @@ static const char *s_case = "";
 /* DOMAIN sends VSS_WARNING_STATE every 50 ms (contract C11). */
 #define WARNING_PERIOD_TICKS 40u
 /* VSS receive watch of the warning stream and the occupant hazard Hold
- * (VSS receive handling in VSS_NODE_INTEGRATION.md: TTL / Hold occupant
+ * ("VSS 수신 처리" (VSS_NODE_INTEGRATION.md): TTL / Hold occupant
  * 1000 / 500 ms). */
 #define RX_WATCH_MS 150u
 #define OCCUPANT_HOLD_MS 500u
@@ -849,10 +849,11 @@ static int vi6_structure_rejected(void)
     return Invariants();
 }
 
-/* VI7 warning stream lost (VSS integration checks, C11): the occupant hazard
- * plays while VSS_WARNING_STATE comes every 50 ms. The frames stop: 150 ms
- * after the last receive time VSS takes the input as lost, the Hold of 500 ms
- * runs from there, then the warning stops. */
+/* VI7 warning stream lost ("VSS 연동 확인 시험" (VSS_NODE_INTEGRATION.md),
+ * VSS contract C11): the occupant hazard plays while VSS_WARNING_STATE comes
+ * every 50 ms. The frames stop: 150 ms after the last receive time VSS takes
+ * the input as lost, the Hold of 500 ms runs from there, then the warning
+ * stops. */
 static int vi7_warning_rx_loss(void)
 {
     VssWarningObservation obs;

@@ -32,8 +32,8 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 - `vision_function_status`는 CIS 자기 기능 상태다. Pi `VISION_STATUS`와 비교하지 않는다.
 - 반환값:
   - Pi 판정을 아직 받지 못했으면 `NET_SUBMIT_NOT_READY`다.
-  - 다시 보내도 성립하지 않는 기록은 `NET_SUBMIT_INVALID_ARGUMENT`이고 아무것도 보내지 않는다. 다른 Pi 식별(이미 새 Pi 판정이 들어온 뒤의 옛 기록 포함), 값 변경, 품질 승격, Pi AGE보다 작은 `vision_age_ms`가 여기에 든다. NOT_READY로 돌려주면 앱이 영원히 재시도하기 때문이다.
-- `vision_age_ms`에는 앱이 붙잡고 있던 시간을 더해서 넣어도 된다(Pi AGE보다 작으면 안 된다). Network는 수신 시각부터 송신까지의 경과를 직접 한 번 더한다.
+  - 다시 보내도 성립하지 않는 기록은 `NET_SUBMIT_INVALID_ARGUMENT`이고 아무것도 보내지 않는다. 다른 Pi 식별(이미 새 Pi 판정이 들어온 뒤의 옛 기록 포함), 값 변경, 품질 승격, 그 Pi 판정을 처음 받았을 때의 AGE보다 작은 `vision_age_ms`가 여기에 든다. NOT_READY로 돌려주면 앱이 영원히 재시도하기 때문이다.
+- `vision_age_ms`의 하한은 그 Pi 판정을 처음 받았을 때의 AGE다. 같은 판정이 반복으로 다시 와도 하한은 그대로라, 앱은 첫 전달에서 복사해 둔 기록을 그대로 내도 된다(붙잡고 있던 시간을 더해도 된다). 보내는 AGE는 기록 값이 아니라 마지막으로 받은 그 판정(반복 포함)의 Pi AGE에 그 수신 뒤 경과를 Network가 한 번 더한 값이다.
 - 시험: `cis_node.f10_publish_occupant_relay`, `f24_occupant_restricted_quality`.
 
 ## P_PERMISSION relay
@@ -47,7 +47,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
   - 전원 허용 값과 `VALUE_QUALITY`: 0x080 전원 필드를 받은 그대로. 비OK 품질도 명시 상태로 보낸다
   - `QUALITY_REASON`: 고정 대응표. OK→NONE(0), STALE→STALE(5), INVALID→DATA_INVALID(9), NO_DATA→NO_DATA(6)(`net_upper_pi_permission_reason()`). 서비스는 다른 사유의 relay를 거절한다
   - SOURCE_AGE: DOMAIN AGE + CIS 대기
-- **UPDATE_SEQUENCE는 CIS가 소유하는 relay 번호다.** M04 P_PERMISSION 슬롯이 번호를 주며, 소유자는 이것 하나다. CIS 기동마다 1부터 시작하고 relay 기록마다 +1이다. DOMAIN UPDATE_SEQUENCE를 옮기지 않으므로 DOMAIN이 재부팅해 번호가 작아져도 relay 번호는 뒤로 가지 않는다. 진단은 `NetNodeDiag.pi_permission_tx.revision`(마지막으로 준 번호)이다.
+- **UPDATE_SEQUENCE는 CIS가 소유하는 relay 번호다.** M04 P_PERMISSION 슬롯이 번호를 주며, 소유자는 이것 하나다. CIS 기동마다 1부터 시작하고 relay 기록마다 +1이다. DOMAIN UPDATE_SEQUENCE를 옮기지 않으므로 DOMAIN이 재부팅해 번호가 작아져도 relay 번호는 뒤로 가지 않는다. 한 바퀴 안에 relay 이벤트가 둘 오면(예: 새 평가와 그 품질 하향) 번호는 둘 쓰고, 아직 나가지 않은 앞 기록은 교체되어 프레임은 마지막 것 하나만 나간다. 진단은 `NetNodeDiag.pi_permission_tx.revision`(마지막으로 준 번호)이다.
 - **같은 UPDATE의 품질 하향**(예: OK → INVALID, 새 TX)도 즉시 보낸다. 값은 그대로, 품질과 사유만 바뀐 relay이고 새 relay 번호를 받는다. 같은 UPDATE에서 값이 바뀌거나 품질이 OK로 돌아간 프레임은 수신에서 보류한다(`cis_node.f15_permission_quality_drop_same_update`, `f21_permission_quality_drop_relayed`).
 - **보내지 않는 때:**
   - 같은 DOMAIN 평가를 새 TX로 반복한 0x080(약 50 ms마다)은 `CisApp_OnDomainPermission`에만 전달한다(`NetNodeDiag.app.permission_repeats`). 그래서 P_PERMISSION은 CAN 프레임마다 나가지 않는다(`cis_node.f19_permission_repeat_no_flood`).
@@ -62,6 +62,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 - **이전 BOOT로는 돌아갈 수 없다.** 끝난 BOOT를 키(CAN ID, UART-C 수신 방향)마다 최근 4개 기억하고, 그 BOOT의 늦은 프레임은 콜백 없이 버린다(`NetNodeDiag.upper.old_generation`). 같은 BOOT_ID로 재기동한 송신 노드는 이 규칙으로 복구되지 않는다.
 - **같은 관측의 반복:** 수신 중단 감시가 있는 주기 메시지(0x080, P_VISION_RESULT, P_VISION_STATUS)는 같은 원 관측을 새 TX/LINK_SEQUENCE로 반복해도 기존 콜백으로 전달한다(`20_API.md` 수신 전달). 원 관측 번호는 그대로이고 AGE는 늘어난 값이다. 정확한 중복(같은 순번, 같은 바이트)은 버린다. 반복은 `NetNodeDiag.upper.repeat_delivered`로 센다.
 - **늦게 도착한 반복:** AGE가 "직전 AGE + 수신 간격"보다 CAN 5 ms, UART 50 ms 이내로 모자라면 그 하한으로 올려 전달한다(`repeat_age_raised`). 문서의 전달 여유 후보(PROPOSED)다. 더 모자라면 보류한다.
+- **오래된 Pi 반복:** P_VISION_RESULT/STATUS는 AGE가 2000 ms를 넘은 반복도 콜백으로 전달한다(수신 AGE 상한은 포화 65535 + 1000 ms뿐). 같은 상태·판정이 몇 초씩 이어질 수 있고, 오래된 관측을 쓸지는 CIS 앱이 정한다(`cis_node.f25_vision_repeat_long_age`).
 
 ## 진단
 
@@ -77,5 +78,5 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 ## 시험
 
 - `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON`)의 `cis_node.*`: `tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다.
-- 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`, `f23_vision_repeat_delivered`(Pi 판정 반복·늦은 반복 50 ms 여유·정확한 중복).
+- 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`, `f23_vision_repeat_delivered`(Pi 판정 반복·늦은 반복 50 ms 여유·정확한 중복), `f25_vision_repeat_long_age`(2초 넘는 Pi 반복).
 - P_PERMISSION relay와 Occupant 품질: `cis_node.f21_permission_quality_drop_relayed`, `f22_relay_sequence_cis_owned`, `f24_occupant_restricted_quality`.
