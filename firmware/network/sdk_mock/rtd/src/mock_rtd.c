@@ -4,6 +4,12 @@
  *    configured Callback runs with FLEXCAN_EVENT_RX_COMPLETE (as in the IRQ).
  *  - Send() copies the payload into the MB; the frame stays pending until the
  *    bus side pulls it, then TX_COMPLETE runs. BUSY if the MB is pending.
+ *  - AbortTransfer() on a pending TX MB returns the result set by
+ *    MockRtd_CanSetAbortResult (default SUCCESS: aborted). With
+ *    NO_TRANSFER_IN_PROGRESS the frame went out during the abort (the bus
+ *    side gets it first, no TX_COMPLETE); with TIMEOUT the MB stays held by the
+ *    controller, its message buffer flag clear, until MockRtd_CanFinishAbort
+ *    sets the flag (GetBuffStatusFlag / ClearBuffStatusFlag).
  *  - OsIf system counter: 1 tick/us, 32-bit wrap; disabled timer -> 0 ticks/ms.
  *  - Lpuart_Uart_Ip (interrupt transfers): AsyncReceive/SetRxBuffer arm a
  *    user buffer; an injected byte is stored there and RX_FULL runs when the
@@ -32,9 +38,17 @@ typedef struct {
     uint32 mask, id;
     Flexcan_Ip_MsgBuffType *buf;
     bool tx_pending;
+    bool abort_pending;  /* timed-out abort not finished: MB held by the controller */
+    bool iflag;          /* message buffer flag (set when a timed-out abort finishes) */
     uint32 tx_id;
     Flexcan_Ip_DataInfoType tx_info;
     uint8 tx_data[64];
+    /* Frame that went out while an abort ran (NO_TRANSFER_IN_PROGRESS): on
+     * the bus already, handed to the far end without TX_COMPLETE. */
+    bool sent_in_abort;
+    uint32 sent_id;
+    Flexcan_Ip_DataInfoType sent_info;
+    uint8 sent_data[64];
 } MockMb;
 
 typedef struct {
@@ -43,7 +57,8 @@ typedef struct {
     Flexcan_Ip_StateType *state;
     Flexcan_Ip_RxMaskType mask_type;
     MockMb mb[MOCK_MB];
-    uint32 aborts;
+    uint32 aborts, sends_on_aborting;
+    Flexcan_Ip_StatusType abort_result;
     uint8 tec, rec;
 } MockCan;
 
@@ -144,6 +159,9 @@ Flexcan_Ip_StatusType FlexCAN_Ip_Send(uint8 i, uint8 mb, const Flexcan_Ip_DataIn
     if (!mb_ok(c, mb) || info == NULL || data == NULL || info->data_length > 64u) return FLEXCAN_STATUS_ERROR;
     if (!c->started) return FLEXCAN_STATUS_ERROR;
     if (c->mb[mb].tx_pending) return FLEXCAN_STATUS_BUSY;
+    /* After a timed-out abort the RTD state is idle again, so the real driver
+     * would write the MB the controller still holds: counted, not refused. */
+    if (c->mb[mb].abort_pending) ++c->sends_on_aborting;
     c->mb[mb].tx_pending = true; c->mb[mb].tx_id = id; c->mb[mb].tx_info = *info;
     memcpy(c->mb[mb].tx_data, data, info->data_length); /* copied at Send, like the MB write */
     return FLEXCAN_STATUS_SUCCESS;
@@ -157,10 +175,36 @@ Flexcan_Ip_StatusType FlexCAN_Ip_GetTransferStatus(uint8 i, uint8 mb)
 Flexcan_Ip_StatusType FlexCAN_Ip_AbortTransfer(uint8 i, uint8 mb)
 {
     MockCan *c = get(i);
+    Flexcan_Ip_StatusType result;
+    MockMb *m;
     if (!mb_ok(c, mb)) return FLEXCAN_STATUS_ERROR;
-    if (!c->mb[mb].tx_pending && !c->mb[mb].rx_armed) return FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS;
-    c->mb[mb].tx_pending = false; c->mb[mb].rx_armed = false; ++c->aborts;
-    return FLEXCAN_STATUS_SUCCESS;
+    m = &c->mb[mb];
+    if (!m->tx_pending && !m->rx_armed) return FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS;
+    ++c->aborts;
+    m->rx_armed = false;
+    result = m->tx_pending ? c->abort_result : FLEXCAN_STATUS_SUCCESS;
+    c->abort_result = FLEXCAN_STATUS_SUCCESS;
+    if (result == FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS && m->tx_pending) {
+        /* Transmitted before the abort took the MB: on the bus, no TX_COMPLETE. */
+        m->sent_in_abort = true;
+        m->sent_id = m->tx_id; m->sent_info = m->tx_info;
+        memcpy(m->sent_data, m->tx_data, sizeof(m->sent_data));
+    } else if (result == FLEXCAN_STATUS_TIMEOUT) {
+        m->abort_pending = true;        /* held by the controller, flag clear */
+        m->iflag = false;
+    }
+    m->tx_pending = false;
+    return result;
+}
+boolean FlexCAN_Ip_GetBuffStatusFlag(uint8 i, uint8 mb)
+{
+    MockCan *c = get(i);
+    return (mb_ok(c, mb) && c->mb[mb].iflag) ? TRUE : FALSE;
+}
+void FlexCAN_Ip_ClearBuffStatusFlag(uint8 i, uint8 mb)
+{
+    MockCan *c = get(i);
+    if (mb_ok(c, mb)) c->mb[mb].iflag = false;
 }
 uint8 FlexCAN_Ip_GetControllerTxErrorCounter(uint8 i) { MockCan *c = get(i); return c ? c->tec : 0u; }
 uint8 FlexCAN_Ip_GetControllerRxErrorCounter(uint8 i) { MockCan *c = get(i); return c ? c->rec : 0u; }
@@ -200,7 +244,21 @@ int MockRtd_CanTransmitNext(uint8 i, MockCanFrame *out)
     MockCan *c = get(i);
     int best = -1;
     uint8 mb;
-    if (c == NULL || !c->started || c->ack_missing) return -1;
+    if (c == NULL || !c->started) return -1;
+    for (mb = 0u; mb < c->cfg->max_num_mb; ++mb) {
+        MockMb *m = &c->mb[mb];
+        if (!m->sent_in_abort) continue;
+        /* Already on the bus during an abort: handed over first, no callback. */
+        if (out != NULL) {
+            memset(out, 0, sizeof(*out));
+            out->id = m->sent_id; out->fd = m->sent_info.fd_enable != FALSE; out->brs = m->sent_info.enable_brs != FALSE;
+            out->length = m->sent_info.data_length; out->dlc = MockRtd_DlcForLength(out->length);
+            memcpy(out->data, m->sent_data, out->length);
+        }
+        m->sent_in_abort = false;
+        return (int)mb;
+    }
+    if (c->ack_missing) return -1;
     for (mb = 0u; mb < c->cfg->max_num_mb; ++mb)
         if (c->mb[mb].tx_pending && (best < 0 || c->mb[mb].tx_id < c->mb[best].tx_id)) best = (int)mb;
     if (best < 0) return -1;
@@ -223,6 +281,16 @@ void MockRtd_CanRaiseBusOff(uint8 i)
     if (c && c->cfg && c->cfg->ErrorCallback) { c->tec = 255u; c->cfg->ErrorCallback(i, FLEXCAN_EVENT_BUSOFF, 0x4u, c->state); }
 }
 uint32 MockRtd_CanAborts(uint8 i) { MockCan *c = get(i); return c ? c->aborts : 0u; }
+void MockRtd_CanSetAbortResult(uint8 i, Flexcan_Ip_StatusType result) { MockCan *c = get(i); if (c) c->abort_result = result; }
+void MockRtd_CanFinishAbort(uint8 i)
+{
+    MockCan *c = get(i);
+    uint8 mb;
+    if (c == NULL || c->cfg == NULL) return;
+    for (mb = 0u; mb < c->cfg->max_num_mb; ++mb)
+        if (c->mb[mb].abort_pending) { c->mb[mb].abort_pending = false; c->mb[mb].iflag = true; }
+}
+uint32 MockRtd_CanSendsOnAbortingMb(uint8 i) { MockCan *c = get(i); return c ? c->sends_on_aborting : 0u; }
 
 /* -------------------------------------------------------------- LPUART -- */
 static MockUart *uget(uint8 i)
@@ -385,6 +453,17 @@ void MockRtd_UartRaiseError(uint8 i, Lpuart_Uart_Ip_StatusType status)
     u->st->IsRxBusy = FALSE;      /* the RTD error handler completes the reception */
     uevent(i, u, LPUART_UART_IP_EVENT_ERROR);
 }
+
+#if (LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT == STD_ON)
+void MockRtd_UartRaiseIdle(uint8 i)
+{
+    MockUart *u = uget(i);
+    if (u == NULL) return;
+    u->st->ReceiveStatus = LPUART_UART_IP_STATUS_RX_IDLE_STATE;
+    u->st->IsRxBusy = FALSE;      /* completed before the idle event, as for ERROR */
+    uevent(i, u, LPUART_UART_IP_EVENT_IDLE_STATE);
+}
+#endif
 
 void MockRtd_UartSetTxStall(uint8 i, bool stall) { if (i < MOCK_UART_INSTANCES) uart[i].tx_stall = stall; }
 void MockRtd_UartSetReceiveRefused(uint8 i, bool refused) { if (i < MOCK_UART_INSTANCES) uart[i].rx_refused = refused; }

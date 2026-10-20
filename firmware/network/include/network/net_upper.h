@@ -14,8 +14,9 @@
 #define NET_UPPER_POLL_BUDGET 32u
 /* Ended BOOTs kept per receive key (CAN: sender and CAN ID; UART-C: the
  * node's receive direction). A frame of one of them is an old generation and
- * is refused. Same depth as the VSS receiver (VSS hand-over C4: the 4 most
- * recently replaced BOOTs). docs/network/interface/04_COMMON/
+ * is refused. Same depth as the VSS receiver (VSS contract C4
+ * (VSS_NODE_INTEGRATION.md): the 4 most recently replaced BOOTs are kept).
+ * docs/network/interface/04_COMMON/
  * 10_DATA_AND_ID_RULES.md (generation): an accepted change of the sending run
  * invalidates that sender's earlier context. */
 #define NET_UPPER_ENDED_BOOTS 4u

@@ -676,6 +676,16 @@ if(NETWORK_BUILD_RTD_MOCK)
         target_include_directories(network_node_rtd_mock_route PUBLIC ${_node_includes} sdk_mock/rtd/include)
         target_compile_definitions(network_node_rtd_mock_route PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
         network_warnings(network_node_rtd_mock_route)
+        # Receive idle timeout interrupt on (the generated-config switch of a
+        # real project; both bring-up configs keep it OFF): the LPUART idle
+        # event path of the backend and the mock.
+        add_library(network_node_rtd_mock_idle STATIC
+            $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
+        target_include_directories(network_node_rtd_mock_idle PUBLIC ${_node_includes} sdk_mock/rtd/include)
+        target_compile_definitions(network_node_rtd_mock_idle PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id}
+            LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT=STD_ON)
+        target_compile_definitions(network_node_rtd_mock_idle PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
+        network_warnings(network_node_rtd_mock_idle)
 
         # UART-M is a DOMAIN link: the same sources compiled for the DOMAIN
         # profile in this tree check the second LPUART link.
@@ -712,9 +722,10 @@ if(NETWORK_BUILD_RTD_MOCK)
                 add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
             endforeach()
         endforeach()
-        # Repetition delivery and DOMAIN restart: the OsIf counter build under
-        # the plain case name, the board hook build with its suffix.
-        foreach(case IN ITEMS h16_warning_repeat_delivered h17_domain_boot_switch)
+        # Repetition delivery, DOMAIN restart and the TX abort result: the OsIf
+        # counter build under the plain case name, the board hook build with
+        # its suffix.
+        foreach(case IN ITEMS h16_warning_repeat_delivered h17_domain_boot_switch h18_abort_result)
             add_test(NAME vss_node.${case} COMMAND test_vss_node_e2e_ostimer ${case})
             add_test(NAME vss_node.${case}_hook COMMAND test_vss_node_e2e_hook ${case})
         endforeach()
@@ -739,6 +750,7 @@ if(NETWORK_BUILD_RTD_MOCK)
             "route|network_node_rtd_mock_route|UART_HAL_TEST_ROUTE=1|u10_callback_routing"
             "tick|network_node_rtd_mock_tick|UART_HAL_TEST_TIME_TICK=1|u01_rx_frame u07_tx u13_main_period_3ms"
             "hook|network_node_rtd_mock_hook|UART_HAL_TEST_TIME_HOOK=1|u01_rx_frame u07_tx u13_main_period_3ms"
+            "idle|network_node_rtd_mock_idle|UART_HAL_TEST_IDLE=1|u15_idle_event_rearm"
             "uart_m|network_node_rtd_mock_uart_m||u01_rx_frame u05_line_error u07_tx u08_tx_timeout u13_main_period_3ms u14_link_sequence_wrap")
         foreach(_build IN LISTS _uart_hal_builds)
             string(REPLACE "|" ";" _build "${_build}")
@@ -754,7 +766,7 @@ if(NETWORK_BUILD_RTD_MOCK)
             endif()
             network_warnings(test_uart_hal_e2e_${_name})
             foreach(case IN LISTS _cases)
-                if(_name STREQUAL "ostimer" OR _name STREQUAL "route")
+                if(_name STREQUAL "ostimer" OR _name STREQUAL "route" OR _name STREQUAL "idle")
                     add_test(NAME uart_hal.${case} COMMAND test_uart_hal_e2e_${_name} ${case})
                 else()
                     add_test(NAME uart_hal.${case}_${_name} COMMAND test_uart_hal_e2e_${_name} ${case})
@@ -774,7 +786,9 @@ if(NETWORK_BUILD_RTD_MOCK)
                 f07_vision_rx f08_publish_frames f09_publish_invalid f10_publish_occupant_relay
                 f11_publish_in_callback f12_not_ready f14_permission_repeat_delivered
                 f15_permission_quality_drop_same_update f16_vision_rx_main_3ms f17_domain_reboot
-                f18_pi_reboot f19_permission_repeat_no_flood f20_permission_tx_zero)
+                f18_pi_reboot f19_permission_repeat_no_flood f20_permission_tx_zero
+                f21_permission_quality_drop_relayed f22_relay_sequence_cis_owned
+                f23_vision_repeat_delivered f24_occupant_restricted_quality)
             add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
         endforeach()
 

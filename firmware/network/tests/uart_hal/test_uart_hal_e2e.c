@@ -10,6 +10,7 @@
  *   CIS, routing (UART_HAL_TEST_ROUTE): this file is the board callback
  *   CIS, application tick hooks (UART_HAL_TEST_TIME_TICK)
  *   CIS, NET_BOARD_NOW_MS_HOOK (UART_HAL_TEST_TIME_HOOK)
+ *   CIS, receive idle timeout interrupt on (UART_HAL_TEST_IDLE)
  *   DOMAIN profile (UART-M), OsIf counter
  * The node root for these profiles does not exist yet: the composition below
  * is the minimum one (backend, adapter, NetUpper, typed ECU adapter). */
@@ -1019,6 +1020,64 @@ static int u14_link_sequence_wrap(void)
     return 0;
 }
 
+#if defined(UART_HAL_TEST_IDLE)
+static void line_idle(void)
+{
+    in_isr = true;
+    MockRtd_UartRaiseIdle(LPUART);
+    in_isr = false;
+}
+
+/* LPUART receive idle line (a generated config with the timeout interrupt;
+ * the RTD error IRQ handler completes the reception, then runs the callback
+ * with IDLE_STATE). The backend re-arms the one-byte reception as after
+ * ERROR, without a loss mark (no byte was lost): the next byte is received
+ * and the next frame delivered, also when the idle falls inside a frame. A
+ * refused re-arm is retried by the main context. */
+static int u15_idle_event_rearm(void)
+{
+    NetWireUartFrame f;
+    NetHalRtdDiag d;
+    CHECK(start() == NET_OK);
+    step_ms(2u);
+    RUN(rx_once(1u, 700u));
+    /* The line goes idle after the frame: the event ends the reception. */
+    line_idle();
+    d = rdiag();
+    CHECK(MockRtd_UartRxArmed(LPUART) && d.uart[DIAG].uart_rx_armed);   /* re-armed in the callback */
+    CHECK(d.uart[DIAG].uart_rx_idle_events == 1u && d.uart[DIAG].uart_rx_rearm_errors == 0u);
+    CHECK(d.uart[DIAG].uart_rx_errors == 0u && d.uart[DIAG].uart_rx_overrun == 0u);
+    CHECK(d.uart[DIAG].uart_rx_loss_marks == 0u);
+    /* The next byte is taken and the next frame delivered whole. */
+    RUN(rx_once(2u, 701u));
+    /* Idle inside a frame (a pause on the line): nothing lost, the frame goes on. */
+    f = rx_frame(3u, 702u);
+    CHECK(f.length != 0u);
+    CHECK(line_send(f.bytes, 10u) == 10u);
+    line_idle();
+    CHECK(line_send(f.bytes + 10u, f.length - 10u) == f.length - 10u);
+    CHECK(run_until_rx(3u, 30u));
+    CHECK(rx_count == 3u && delivered_is(3u, 702u));
+    /* A refused re-arm after the idle event: the reception stays stopped until
+     * the main context re-arms it. */
+    MockRtd_UartSetReceiveRefused(LPUART, true);
+    line_idle();
+    d = rdiag();
+    CHECK(!MockRtd_UartRxArmed(LPUART) && !d.uart[DIAG].uart_rx_armed && d.uart[DIAG].uart_rx_rearm_errors == 1u);
+    MockRtd_UartSetReceiveRefused(LPUART, false);
+    step_ms(1u);
+    d = rdiag();
+    CHECK(MockRtd_UartRxArmed(LPUART) && d.uart[DIAG].uart_rx_armed);
+    RUN(rx_once(4u, 703u));
+    d = rdiag();
+    CHECK(d.uart[DIAG].uart_rx_idle_events == 3u && d.uart[DIAG].uart_rx_loss_marks == 0u);
+    CHECK(d.uart[DIAG].uart_rx_errors == 0u && stream()->byte_losses == 0u);
+    RUN(link_healthy());
+    CHECK(isr_callbacks == 0u);
+    return 0;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1031,6 +1090,9 @@ int main(int argc, char **argv)
 #endif
         { "u11_can_uart_mixed", u11_can_uart_mixed }, { "u12_isr_ring_overflow", u12_isr_ring_overflow },
         { "u13_main_period_3ms", u13_main_period_3ms }, { "u14_link_sequence_wrap", u14_link_sequence_wrap }
+#if defined(UART_HAL_TEST_IDLE)
+        , { "u15_idle_event_rearm", u15_idle_event_rearm }
+#endif
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

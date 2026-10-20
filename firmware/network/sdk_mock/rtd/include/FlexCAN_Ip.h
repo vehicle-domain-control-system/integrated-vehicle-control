@@ -89,6 +89,8 @@ Flexcan_Ip_StatusType FlexCAN_Ip_Send(uint8 instance, uint8 mb_idx, const Flexca
                                       uint32 msg_id, const uint8 * mb_data);
 Flexcan_Ip_StatusType FlexCAN_Ip_GetTransferStatus(uint8 instance, uint8 mb_idx);
 Flexcan_Ip_StatusType FlexCAN_Ip_AbortTransfer(uint8 u8Instance, uint8 mb_idx);
+boolean FlexCAN_Ip_GetBuffStatusFlag(uint8 instance, uint8 msgBuffIdx);
+void FlexCAN_Ip_ClearBuffStatusFlag(uint8 instance, uint8 msgBuffIdx);
 uint8 FlexCAN_Ip_GetControllerTxErrorCounter(uint8 instance);
 uint8 FlexCAN_Ip_GetControllerRxErrorCounter(uint8 instance);
 

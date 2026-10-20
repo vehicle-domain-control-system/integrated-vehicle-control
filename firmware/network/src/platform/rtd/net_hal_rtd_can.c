@@ -28,6 +28,7 @@
  *   FlexCAN_Ip_Init, FlexCAN_Ip_SetRxMaskType, FlexCAN_Ip_SetRxIndividualMask,
  *   FlexCAN_Ip_ConfigRxMb, FlexCAN_Ip_Receive, FlexCAN_Ip_SetErrorInt,
  *   FlexCAN_Ip_SetStartMode, FlexCAN_Ip_Send, FlexCAN_Ip_AbortTransfer,
+ *   FlexCAN_Ip_GetBuffStatusFlag, FlexCAN_Ip_ClearBuffStatusFlag,
  *   FlexCAN_Ip_GetControllerTxErrorCounter, FlexCAN_Ip_GetControllerRxErrorCounter.
  *   GetStartMode/GetStopMode are deliberately unused (absent on S32K1 RTD). */
 #include <stdint.h>
@@ -69,8 +70,10 @@ typedef char net_board_isr_ring_nonzero[(NET_BOARD_CAN_ISR_RING >= 1u) ? 1 : -1]
 
 typedef struct {
     /* busy: MB owned by a transfer until its outcome is reported.
-     * done: TX_COMPLETE seen in the ISR, SUCCEEDED + release not yet reported. */
-    volatile bool busy, aborting, done;
+     * done: TX_COMPLETE seen in the ISR, SUCCEEDED + release not yet reported.
+     * quarantined: the abort timed out; the transfer is reported, but the MB
+     * stays busy until its flag shows the controller finished with it. */
+    volatile bool busy, aborting, done, quarantined;
     NetTxKey key;
     uint64_t submitted_at_ms;
     union { uint32_t align; uint8_t bytes[64]; } data; /* RTD reads payload words */
@@ -149,6 +152,7 @@ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t)
             slot->busy = true;
             slot->aborting = false;
             slot->done = false;
+            slot->quarantined = false;
             slot->key = t->key;
             slot->submitted_at_ms = net_hal_rtd_now_locked();
             break;
@@ -237,7 +241,10 @@ static void tx_complete(uint32_t mb)
     TxSlot *slot = &can.tx[idx];
     RingEntry *e;
     uint32_t key = net_board_irq_save();
-    if (!slot->busy || slot->done) { inc(&rtd.diag.unexpected_events); net_board_irq_restore(key); return; }
+    /* A quarantined MB's transfer is already reported (its abort timed out). */
+    if (!slot->busy || slot->done || slot->quarantined) {
+        inc(&rtd.diag.unexpected_events); net_board_irq_restore(key); return;
+    }
     e = ring_reserve(RING_TX_DONE);
     if (e != NULL) {
         e->tx_slot = (uint8_t)idx;
@@ -398,36 +405,87 @@ NetStatus net_hal_rtd_can_arm(void)
     return NET_OK;
 }
 
+/* A quarantined MB (abort timed out) is reused only once its message buffer
+ * flag shows the controller finished with it: the abort completed or the
+ * frame went out. The RTD disabled that MB's interrupt in the abort, so no
+ * ISR clears the flag; it is cleared here before the MB is handed out again. */
+static void release_quarantined(uint32_t i)
+{
+    TxSlot *slot = &can.tx[i];
+    uint8 mb = (uint8)(TX_FIRST + i);
+    uint32_t key;
+    if (!slot->quarantined) return;
+    if (FlexCAN_Ip_GetBuffStatusFlag(NET_BOARD_CAN_INSTANCE, mb) == FALSE) return;
+    FlexCAN_Ip_ClearBuffStatusFlag(NET_BOARD_CAN_INSTANCE, mb);
+    key = net_board_irq_save();
+    slot->quarantined = false;
+    slot->aborting = false;
+    slot->busy = false;
+    inc(&rtd.diag.tx_quarantine_released);
+    net_board_irq_restore(key);
+}
+
+/* A TX MB older than NET_BOARD_CAN_TX_TIMEOUT_MS is aborted. The abort result
+ * decides the report (RTD FlexCAN_Ip_AbortTransfer):
+ *   NO_TRANSFER_IN_PROGRESS: the frame was transmitted before the abort took
+ *     the MB (the RTD then raises no TX_COMPLETE): SUCCEEDED + release,
+ *     counted apart (tx_abort_already_sent);
+ *   TIMEOUT: the abort did not finish; the outcome is unknown, so FAILED +
+ *     release is reported (never a success claim) and the MB is quarantined
+ *     until its flag shows it idle (tx_abort_timeouts, release_quarantined);
+ *   SUCCESS / other: aborted, FAILED + release.
+ * A TX_COMPLETE that raced the abort is reported by the ring instead. */
+static void abort_expired(uint32_t i)
+{
+    TxSlot *slot = &can.tx[i];
+    Flexcan_Ip_StatusType st;
+    NetTxEvent ev;
+    NetUpperCapture c;
+    uint32_t key;
+    st = FlexCAN_Ip_AbortTransfer(NET_BOARD_CAN_INSTANCE, (uint8)(TX_FIRST + i));
+    key = net_board_irq_save();
+    rtd.diag.tx_abort_last_status = (uint32_t)st;
+    if (!slot->busy || slot->done) {
+        slot->aborting = false;
+        net_board_irq_restore(key); /* completed in the meantime; the ring reports it */
+        return;
+    }
+    memset(&ev, 0, sizeof(ev));
+    ev.key = slot->key; ev.admission_observed = true; ev.accepted = true; ev.release_observed = true;
+    inc(&rtd.diag.tx_timeout_aborts);
+    if (st == FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS) {
+        ev.outcome = NET_TX_SUCCEEDED;
+        slot->busy = false;
+        slot->aborting = false;
+        inc(&rtd.diag.tx_abort_already_sent);
+    } else if (st == FLEXCAN_STATUS_TIMEOUT) {
+        ev.outcome = NET_TX_FAILED;
+        slot->quarantined = true;   /* busy stays set: the MB is not handed out */
+        inc(&rtd.diag.tx_abort_timeouts);
+    } else {
+        ev.outcome = NET_TX_FAILED;
+        slot->busy = false;
+        slot->aborting = false;
+    }
+    memset(&c, 0, sizeof(c));
+    c.port_epoch = rtd.can_epoch; c.captured_at_ms = net_hal_rtd_now_locked(); c.timestamp_known = true;
+    net_board_irq_restore(key);
+    (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
+}
+
 void net_hal_rtd_can_service(uint64_t now)
 {
     uint32_t i, key;
     for (i = 0u; i < TX_COUNT; ++i) {
         TxSlot *slot = &can.tx[i];
         bool expired;
+        release_quarantined(i);
         key = net_board_irq_save();
         expired = slot->busy && !slot->aborting && !slot->done &&
                   now - slot->submitted_at_ms >= NET_BOARD_CAN_TX_TIMEOUT_MS;
         if (expired) slot->aborting = true;
         net_board_irq_restore(key);
-        if (!expired) continue;
-        (void)FlexCAN_Ip_AbortTransfer(NET_BOARD_CAN_INSTANCE, (uint8)(TX_FIRST + i));
-        key = net_board_irq_save();
-        if (slot->busy && !slot->done) {
-            /* Not completed before the abort: never claim success. */
-            NetTxEvent ev;
-            NetUpperCapture c;
-            memset(&ev, 0, sizeof(ev));
-            ev.key = slot->key; ev.admission_observed = true; ev.accepted = true;
-            ev.outcome = NET_TX_FAILED; ev.release_observed = true;
-            slot->busy = false;
-            memset(&c, 0, sizeof(c));
-            c.port_epoch = rtd.can_epoch; c.captured_at_ms = net_hal_rtd_now_locked(); c.timestamp_known = true;
-            inc(&rtd.diag.tx_timeout_aborts);
-            net_board_irq_restore(key);
-            (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
-        } else {
-            net_board_irq_restore(key); /* completed in the meantime; the ring reports it */
-        }
+        if (expired) abort_expired(i);
     }
     rtd.diag.tx_error_counter = FlexCAN_Ip_GetControllerTxErrorCounter(NET_BOARD_CAN_INSTANCE);
     rtd.diag.rx_error_counter = FlexCAN_Ip_GetControllerRxErrorCounter(NET_BOARD_CAN_INSTANCE);

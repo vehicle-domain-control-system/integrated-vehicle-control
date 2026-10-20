@@ -8,23 +8,29 @@
  * CIS_ENVIRONMENT, CIS_OCCUPANT, CIS_STATUS on CAN, P_PERMISSION on UART-C).
  * The application only sees network/app/net_if_cis.h.
  *
- * CisNet_PublishOccupant: the service accepts a CIS_OCCUPANT only as the
- * relay of the P_VISION_RESULT it accepted last (same Pi BOOT, VISION_SEQUENCE,
- * values, validities, reasons and a vision function state equal to the Pi
- * VISION_STATUS code, AGE counted from that receipt). A record that is not
- * that relay, for example a CIS-restricted validity, returns NOT_READY and
- * nothing is sent. vision_age_ms may already include the application's own
- * hold time (it must not be below the Pi AGE); Network counts the time since
- * the receipt itself, once.
+ * CisNet_PublishOccupant: a CIS_OCCUPANT relays the P_VISION_RESULT accepted
+ * last (02_NODES/CIS/20_API.md, 10_DATA.md Pi original observation and CIS
+ * evaluation): the same Pi BOOT, VISION_SEQUENCE, presence and count, the AGE
+ * counted from that receipt, and each field's validity / reason either the
+ * Pi's or a CIS restriction of it (INVALID with the CIS reason); never a
+ * promotion. vision_function_status is the CIS's own function state.
+ * Returns: NOT_READY before any Pi judgement is accepted; INVALID_ARGUMENT for
+ * a record that can never be that relay (another identity, another value, a
+ * promoted validity, an AGE below the Pi AGE), so a resubmission cannot
+ * succeed; nothing is sent then. vision_age_ms may already include the
+ * application's own hold time; Network counts the time since the receipt
+ * itself, once.
  *
  * P_PERMISSION: CisNetPriv_RelayPiPermission() takes the DOMAIN_PERMISSION the
- * dispatcher just delivered to CisApp_OnDomainPermission() and submits the
- * relay record to the M04 slot (repetition period from the node table). Only
- * OK power quality is relayed: the wire has no reason for the other
- * qualities, so they return NOT_READY and the slot keeps nothing new.
- * A repetition of the same DOMAIN evaluation with a new TX_SEQUENCE reaches
- * CisApp_OnDomainPermission() but is not relayed again; the first frame of a
- * new DOMAIN run is (30_UART_C.md P_PERMISSION). */
+ * dispatcher just delivered to CisApp_OnDomainPermission() and, for a relay
+ * event (new original evaluation, accepted change of the DOMAIN run, actual
+ * change of the power quality), submits the relay record to the M04 slot:
+ * the DOMAIN power value, quality and AGE as received, the fixed reason of
+ * that quality (net_upper_pi_permission_reason), CIS_BOOT_ID and USE_LIMIT;
+ * M04 gives the relay revision (UPDATE_SEQUENCE). Network does not repeat the
+ * record (period 0). A repetition of the same DOMAIN evaluation with a new
+ * TX_SEQUENCE reaches CisApp_OnDomainPermission() but is not relayed again;
+ * the first frame of a new DOMAIN run is (30_UART_C.md P_PERMISSION). */
 #include "network/net_ecu_adapter.h"
 #include "network/net_app_port.h"
 #include "network/net_upper_publish.h"
@@ -65,10 +71,11 @@ typedef struct {
     NetCanRxMeta last_permission_meta;
     uint32_t relay_submitted;  /* relay records handed to the P_PERMISSION slot */
     uint32_t relay_refused;    /* relay calls that did not return OK */
+    uint32_t relay_unchanged;  /* relay calls with no relay event (the last record stands) */
     NetSubmitResult last_relay_result;
     NetStatus last_relay_engine;
     NetAppPortCisPublishDiag publish[NET_APP_PORT_CIS_PUBLISH_COUNT];
-    uint32_t occupant_not_current; /* occupant records refused as not the accepted Pi relay */
+    uint32_t occupant_not_current; /* occupant records refused: no Pi judgement yet, or not its relay */
 } NetAppPortCisDiag;
 
 /* RX typed callback table to pass to net_ecu_adapter_init() for the CIS node:

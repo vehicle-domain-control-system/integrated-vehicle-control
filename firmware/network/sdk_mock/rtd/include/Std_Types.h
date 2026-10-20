@@ -1,7 +1,8 @@
 #ifndef STD_TYPES_H
 #define STD_TYPES_H
-/* Host mock of the AUTOSAR/RTD platform types used by the Network RTD HAL.
- * Independently written minimal subset; NOT the NXP file. */
+/* Host mock of the AUTOSAR/RTD platform types used by the Network RTD HAL
+ * (minimal subset).
+ * Independently written; NOT the NXP file. */
 #include <stdint.h>
 #include <stddef.h>
 

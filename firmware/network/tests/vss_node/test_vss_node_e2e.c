@@ -802,8 +802,8 @@ static int send_warning(const NetWireVssWarningStateRaw *w)
 }
 
 /* A warning lane that lost its quality keeps the last valid source sequence
- * and lets its AGE grow (VSS hand-over C12), while another lane brings a new
- * evaluation in the same frame. 04_COMMON/10_DATA_AND_ID_RULES.md (repeat and
+ * and lets its AGE grow (VSS contract C12 (VSS_NODE_INTEGRATION.md)), while
+ * another lane brings a new evaluation in the same frame. 04_COMMON/10_DATA_AND_ID_RULES.md (repeat and
  * current quality): an actual quality drop of the same original observation
  * with a new TX_SEQUENCE is accepted and delivered; a higher TX_SEQUENCE alone
  * never changes the original value nor promotes the quality back to OK.
@@ -926,7 +926,8 @@ static int warning_ages_are(const NetVssWarningState *w, const NetWireVssWarning
 }
 
 /* DOMAIN repeats one warning evaluation every 50 ms with a new TX_SEQUENCE and
- * the AGE grown (VSS hand-over C11: periodic, receive watch 150 ms in VSS).
+ * the AGE grown (VSS contract C11 (VSS_NODE_INTEGRATION.md): periodic,
+ * receive watch 150 ms in VSS).
  * 04_COMMON/10_DATA_AND_ID_RULES.md (repeat and current quality) and
  * 02_NODES/CIS/20_API.md (receive delivery, same rule for every node
  * callback): a normal repetition with a new TX_SEQUENCE is delivered to the
@@ -1035,7 +1036,8 @@ static int send_event(uint32_t boot, uint32_t tx, uint32_t occurrence)
     return 0;
 }
 
-/* DOMAIN restart (VSS hand-over C4, C6; 04_COMMON/10_DATA_AND_ID_RULES.md
+/* DOMAIN restart (VSS contract C4, C6 (VSS_NODE_INTEGRATION.md);
+ * 04_COMMON/10_DATA_AND_ID_RULES.md
  * generation): run A sends from TX 5, run B (another BOOT_ID) from TX 1 again.
  * Each CAN ID moves to B on its own first valid B frame and passes it on; a
  * late frame of A is then an old generation and is refused. A frame with a
@@ -1127,6 +1129,95 @@ static int h17_domain_boot_switch(void)
     return 0;
 }
 
+/* Wait out the TX timeout (100 ms after the frame went to its MB) and let
+ * the abort report settle. */
+static void past_tx_timeout(uint32_t sent_at)
+{
+    while (now_ms() < sent_at + 100u) step_ms(1u);
+    step_ms(2u);
+}
+
+/* The result of FlexCAN_Ip_AbortTransfer after the TX timeout decides the
+ * report (RTD: NO_TRANSFER_IN_PROGRESS when the frame was transmitted before
+ * the abort took the MB, and then no TX_COMPLETE comes; TIMEOUT when the abort
+ * did not finish, the MB still held by the controller):
+ *   NO_TRANSFER_IN_PROGRESS: the frame is on the bus, so the transfer is
+ *     settled as sent (not failed) and counted apart;
+ *   TIMEOUT: FAILED (no success claim), and that MB is not handed out again
+ *     until its message buffer flag shows the controller finished with it;
+ *     other MBs carry the traffic meanwhile. */
+static int h18_abort_result(void)
+{
+    NetVssStatus s;
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d;
+    uint32_t sent_at, n;
+    int mb, held_mb;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    /* 1) No ACK; the abort finds the frame already transmitted. */
+    MockRtd_CanSetAckMissing(BUS, true);
+    s = status_ready(1u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    sent_at = now_ms();
+    CHECK(diag().rtd.tx_sent == 1u);
+    MockRtd_CanSetAbortResult(BUS, FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS);
+    past_tx_timeout(sent_at);
+    d = diag();
+    CHECK(MockRtd_CanAborts(BUS) == 1u);
+    CHECK(d.rtd.tx_timeout_aborts == 1u && d.rtd.tx_abort_already_sent == 1u && d.rtd.tx_abort_timeouts == 0u);
+    CHECK(d.rtd.tx_abort_last_status == (uint32_t)FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS);
+    CHECK(d.upper.tx_succeeded == 1u && d.upper.tx_failed == 0u && d.upper.tx_released == 1u);
+    CHECK(d.status_tx.counters.tx_failed == 0u && d.rtd.tx_complete == 0u);
+    mb = pull_status(&f, &raw);                     /* the frame the bus got */
+    CHECK(mb >= 0 && raw.update_sequence == 1u && raw.tx_sequence == 1u);
+    /* 2) The abort times out: FAILED, the MB held. */
+    s = status_ready(2u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    sent_at = now_ms();
+    MockRtd_CanSetAbortResult(BUS, FLEXCAN_STATUS_TIMEOUT);
+    past_tx_timeout(sent_at);
+    d = diag();
+    CHECK(MockRtd_CanAborts(BUS) == 2u);
+    CHECK(d.rtd.tx_timeout_aborts == 2u && d.rtd.tx_abort_timeouts == 1u && d.rtd.tx_abort_already_sent == 1u);
+    CHECK(d.rtd.tx_abort_last_status == (uint32_t)FLEXCAN_STATUS_TIMEOUT);
+    CHECK(d.upper.tx_failed == 1u && d.upper.tx_succeeded == 1u && d.upper.tx_released == 2u);
+    CHECK(d.status_tx.counters.tx_failed == 1u && d.rtd.tx_quarantine_released == 0u);
+    held_mb = mb;                                   /* the first free TX MB again */
+    /* 3) Traffic goes on through the other MBs while that one is held. */
+    MockRtd_CanSetAckMissing(BUS, false);
+    for (n = 0u; n < 4u; ++n) {
+        s = status_ready(3u + n, 0u);
+        CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+        step_ms(1u);
+        mb = pull_status(&f, &raw);
+        CHECK(mb >= 0 && mb != held_mb);
+        CHECK(raw.update_sequence == 3u + n && raw.tx_sequence == 3u + n);
+        step_ms(2u);
+    }
+    d = diag();
+    CHECK(MockRtd_CanSendsOnAbortingMb(BUS) == 0u && d.rtd.tx_quarantine_released == 0u);
+    CHECK(d.upper.tx_succeeded == 5u && d.rtd.tx_complete == 4u);
+    /* 4) The controller finishes the abort: the MB is released and used again. */
+    MockRtd_CanFinishAbort(BUS);
+    step_ms(1u);
+    d = diag();
+    CHECK(d.rtd.tx_quarantine_released == 1u);
+    s = status_ready(7u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    mb = pull_status(&f, &raw);
+    CHECK(mb == held_mb && raw.update_sequence == 7u && raw.tx_sequence == 7u);
+    step_ms(2u);
+    d = diag();
+    CHECK(MockRtd_CanSendsOnAbortingMb(BUS) == 0u);
+    CHECK(d.upper.tx_succeeded == 6u && d.upper.tx_failed == 1u && d.rtd.tx_complete == 5u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1139,7 +1230,8 @@ int main(int argc, char **argv)
         { "h13_status_not_repeated", h13_status_not_repeated }, { "h13_pending_age", h13_pending_age },
         { "h14_rx_burst", h14_rx_burst }, { "h15_warning_quality_drop", h15_warning_quality_drop },
         { "h16_warning_repeat_delivered", h16_warning_repeat_delivered },
-        { "h17_domain_boot_switch", h17_domain_boot_switch }
+        { "h17_domain_boot_switch", h17_domain_boot_switch },
+        { "h18_abort_result", h18_abort_result }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

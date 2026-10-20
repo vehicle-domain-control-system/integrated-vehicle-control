@@ -71,9 +71,18 @@ NetStatus net_upper_diagnostics(const NetUpper *, NetUpperDiagnostics *out);
 
 /* Copy only a current accepted DOMAIN_PERMISSION, never caller permission.
  * The explicit use-limit is an Owner-selected candidate value; no default is
- * invented. Quality/reason mapping not represented by CAN remains HOLD.
+ * invented. This engine-level helper (the permission guard's relay option)
+ * relays OK power quality only and copies the DOMAIN UPDATE_SEQUENCE; the CIS
+ * node relay is the App Port facade (net_app_port_cis.c) with the M04 relay
+ * revision and the quality table below.
  * Requires explicitly bound UART-C sequence allocation, never a hidden seed.
  * Original500ms retention still applies even if use_limit_ms is larger. */
 NetStatus net_upper_cis_publish_pi_permission(NetUpper *, uint32_t cis_boot,
     uint16_t selected_use_limit_ms, const NetAgePolicy *, NetTxKey *out);
+
+/* P_PERMISSION QUALITY_REASON for a relayed DOMAIN power quality (VALUE_QUALITY
+ * code): OK -> NONE (0), STALE -> STALE (5), INVALID -> DATA_INVALID (9),
+ * NO_DATA -> NO_DATA (6); 0xFF for a code outside VALUE_QUALITY. The service
+ * accepts a P_PERMISSION relay only with this reason for its quality. */
+uint8_t net_upper_pi_permission_reason(uint8_t power_quality);
 #endif

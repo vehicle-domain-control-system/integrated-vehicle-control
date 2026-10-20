@@ -14,9 +14,9 @@
  * (Network -> VSS) and VssNet_PublishStatus (VSS -> Network) record each call
  * and then run the real function.
  *
- * Expected results come from the VSS hand-over (VSS_NETWORK_HANDOFF section 8
- * "integration checks", contracts C1..C12) and docs/network. One case per
- * process. */
+ * Expected results come from the VSS integration checks and the VSS
+ * contracts C1..C12 (both in VSS_NODE_INTEGRATION.md) and docs/network. One
+ * case per process. */
 #include "hal_mock.h"
 #include "app/vss_main.h"
 #include "app/vss_flow.h"
@@ -49,7 +49,8 @@ static const char *s_case = "";
 /* DOMAIN sends VSS_WARNING_STATE every 50 ms (contract C11). */
 #define WARNING_PERIOD_TICKS 40u
 /* VSS receive watch of the warning stream and the occupant hazard Hold
- * (hand-over section 5: TTL / Hold occupant 1000 / 500 ms). */
+ * (VSS receive handling in VSS_NODE_INTEGRATION.md: TTL / Hold occupant
+ * 1000 / 500 ms). */
 #define RX_WATCH_MS 150u
 #define OCCUPANT_HOLD_MS 500u
 
@@ -209,7 +210,7 @@ typedef struct {
     uint32_t lastWarningTick;
     uint8_t occupant;              /* NetFlag */
     uint8_t rear;                  /* NetRearWarningState */
-    /* Occupant lane without a valid evaluation (hand-over C12): the last valid
+    /* Occupant lane without a valid evaluation (VSS contract C12): the last valid
      * source sequence is kept and the AGE grows from its time. */
     bool occupantLost;
     uint32_t occupantKeptSequence, occupantValidTick;
@@ -848,10 +849,10 @@ static int vi6_structure_rejected(void)
     return Invariants();
 }
 
-/* VI7 warning stream lost (section 8, C11): the occupant hazard plays while
- * VSS_WARNING_STATE comes every 50 ms. The frames stop: 150 ms after the last
- * receive time VSS takes the input as lost, the Hold of 500 ms runs from
- * there, then the warning stops. */
+/* VI7 warning stream lost (VSS integration checks, C11): the occupant hazard
+ * plays while VSS_WARNING_STATE comes every 50 ms. The frames stop: 150 ms
+ * after the last receive time VSS takes the input as lost, the Hold of 500 ms
+ * runs from there, then the warning stops. */
 static int vi7_warning_rx_loss(void)
 {
     VssWarningObservation obs;
@@ -1138,7 +1139,7 @@ static int vi10_rx_flood_budget(void)
 
 /* VI11 C12 with a new evaluation on another lane: the occupant hazard plays;
  * then the occupant lane loses its quality (the last valid source sequence
- * kept, STALE, AGE growing, hand-over C12) while the rear lane brings new
+ * kept, STALE, AGE growing, VSS contract C12) while the rear lane brings new
  * evaluations and turns EMERGENCY. 04_COMMON/10_DATA_AND_ID_RULES.md (repeat
  * and current quality): such a frame is accepted and delivered; VSS/10_DATA.md:
  * the lanes are independent. Every frame reaches VSS, the warning stream has

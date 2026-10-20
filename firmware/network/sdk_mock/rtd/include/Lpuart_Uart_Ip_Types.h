@@ -5,12 +5,17 @@
  * order of the user configuration follow the S32K3 RTD 7.0.1 / S32K1 RTD
  * 3.0.0 headers as used by the bring-up projects (interrupt transfers, DMA
  * and the receive idle timeout disabled, as in their generated config).
+ * The receive idle timeout can be switched on for a test build by defining
+ * LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT as STD_ON (the generated
+ * Lpuart_Uart_Ip_Defines.h setting in a real project).
  * Only what the Network HAL and the host tests use.
  * Independently written; NOT the NXP file. */
 #include "Std_Types.h"
 
 #define LPUART_UART_IP_HAS_DMA_ENABLED           STD_OFF
+#ifndef LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT
 #define LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT  STD_OFF
+#endif
 
 typedef enum {
     LPUART_UART_IP_USING_DMA        = 0U,

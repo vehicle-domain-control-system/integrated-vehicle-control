@@ -858,8 +858,12 @@ static int product_holds(void)
         permission.data.p_permission.cis_boot_id=40u;permission.data.p_permission.update_sequence=30u;
         permission.data.p_permission.value_quality=3u;permission.data.p_permission.quality_reason=6u;
         permission.data.p_permission.use_limit_ms=1500u;
+        /* CAN has no quality_reason: P_PERMISSION carries the fixed reason of the
+         * relayed power quality (NO_DATA -> NO_DATA); any other reason is HOLD. */
+        CHECK(net_upper_submit_uart(&service,&permission,&actual,&policy,&key)==NET_OK);
+        CHECK(net_upper_cancel(&service,key)==NET_OK && net_upper_retire(&service,key)==NET_OK);
+        permission.data.p_permission.quality_reason=7u;
         CHECK(net_upper_submit_uart(&service,&permission,&actual,&policy,&key)==NET_HOLD);
-        /* CAN has no quality_reason: an apparently reasonable NO_DATA reason is not a proved mapping. */
         can.data.domain_permission.tx_sequence=21u;can.data.domain_permission.power_permission_quality=0u;
         can.data.domain_permission.update_sequence=31u; /* New quality evaluation, not transport refresh. */
         can.data.domain_permission.operation_quality=0u;can.data.domain_permission.source_age_ms=499u;
@@ -877,7 +881,7 @@ static int product_holds(void)
         }
         CHECK(net_upper_retire(&service,key)==NET_OK);
     }
-    printf("{\"case\":\"uart_product_holds\",\"missing_context\":\"HOLD\",\"forged_can_receipt\":\"HOLD\",\"unproven_no_data_reason\":\"HOLD\",\"relay_499_plus_1\":\"EXPIRED_NO_PORT_BORROW\"}\n");
+    printf("{\"case\":\"uart_product_holds\",\"missing_context\":\"HOLD\",\"forged_can_receipt\":\"HOLD\",\"no_data_other_reason\":\"HOLD\",\"no_data_fixed_reason\":\"OK\",\"relay_499_plus_1\":\"EXPIRED_NO_PORT_BORROW\"}\n");
     return 0;
 }
 

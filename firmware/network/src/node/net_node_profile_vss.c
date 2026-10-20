@@ -28,10 +28,12 @@ static const NetUpperPublishEntry publish_table[] = {
  * the receive callback on the periodic routes with a receive timeout
  * (10_CAN_FD.md period / receive timeout: 0x0C0 and 0x080 50 / 150 ms):
  *   VSS_WARNING_STATE -> VssApp_OnDomainWarningState: the VSS receive watch
- *     of 150 ms is in VSS INPUT and is refreshed by a newer TX (VSS hand-over
- *     C11), so a DOMAIN repeating one evaluation keeps the warning alive;
+ *     of 150 ms is in VSS INPUT and is refreshed by a newer TX (VSS contract
+ *     C11 (VSS_NODE_INTEGRATION.md)), so a DOMAIN repeating one evaluation
+ *     keeps the warning alive;
  *   DOMAIN_PERMISSION -> VssNetPriv_OnDomainPermission (Network supervision
- *     record, VSS hand-over C9; the guard reads the same refreshed receipt).
+ *     record, VSS contract C9 (VSS_NODE_INTEGRATION.md); the guard reads the
+ *     same refreshed receipt).
  * VSS_EVENT has no receive timeout (on occurrence): a retransmitted
  * occurrence is not delivered twice. */
 static void upper(NetUpperConfig *c)

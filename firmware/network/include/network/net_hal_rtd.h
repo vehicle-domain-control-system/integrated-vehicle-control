@@ -64,6 +64,9 @@ typedef struct {
     uint32_t uart_tx_waiting_max;   /* most transfers waiting at once */
     uint32_t uart_tx_complete;      /* END_TRANSFER with transmit status SUCCESS */
     uint32_t uart_tx_timeout_aborts;/* AbortSendingData after NET_BOARD_UART_x_TX_TIMEOUT_MS */
+    uint32_t uart_tx_abort_errors;  /* of those, AbortSendingData not SUCCESS */
+    uint32_t uart_tx_abort_last_status; /* raw Lpuart_Uart_Ip_StatusType of the last abort */
+    uint32_t uart_rx_idle_events;   /* receive idle-line events (timeout interrupt builds): re-armed */
     uint32_t uart_tx_send_errors;   /* AsyncSend refused */
     uint32_t uart_tx_expired;       /* deadline passed before the transfer could start */
 } NetHalRtdUartDiag;
@@ -85,7 +88,16 @@ typedef struct {
     /* CAN frames stored right after a loss (ring full or MB overrun): loss
      * boundaries. The stored frame itself is complete and delivered. */
     uint32_t rx_loss_events;
-    uint32_t tx_sent, tx_busy, tx_send_errors, tx_complete, tx_timeout_aborts;
+    uint32_t tx_sent, tx_busy, tx_send_errors, tx_complete;
+    /* TX MB timeout (NET_BOARD_CAN_TX_TIMEOUT_MS) and its abort result:
+     * tx_timeout_aborts: aborts of a transfer not completed before them;
+     * tx_abort_already_sent: of those, NO_TRANSFER_IN_PROGRESS (the frame had
+     *   gone out): reported SUCCEEDED, not FAILED;
+     * tx_abort_timeouts: of those, TIMEOUT: reported FAILED, the MB kept out
+     *   of use until its flag shows it idle (tx_quarantine_released);
+     * tx_abort_last_status: raw Flexcan_Ip_StatusType of the last abort. */
+    uint32_t tx_timeout_aborts, tx_abort_already_sent, tx_abort_timeouts, tx_quarantine_released;
+    uint32_t tx_abort_last_status;
     uint32_t err_events, busoff_events, last_error_status, unexpected_events;
     uint8_t tx_error_counter, rx_error_counter;
     /* ISR ring (ISR -> main hand-off) */

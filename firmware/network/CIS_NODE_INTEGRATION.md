@@ -21,27 +21,43 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 
 - BOOT_ID와 CAN TX_SEQUENCE, UART LINK_SEQUENCE는 Network(M04 `net_upper_publish.c`)가 프레임마다 쓴다. 앱은 채우지 않는다.
 - 콜백 안에서 `CisNet_Publish*`를 불러도 된다. 메시지마다 1건만 보관하고(최신 우선), 같은 `Net_MainFunction()` 안에서 보낸다.
-- 반환값: 링크·문맥 미준비(`Net_Init` 전, CAN bus-off, Occupant의 원 관측 불일치) → `NET_SUBMIT_NOT_READY`, 인자 오류(NULL, 예약 코드) → `NET_SUBMIT_INVALID_ARGUMENT`. 보관 슬롯은 교체 방식이라 `NET_SUBMIT_NO_CAPACITY`는 나오지 않는다.
+- 반환값: 링크·문맥 미준비(`Net_Init` 전, CAN bus-off, Occupant의 Pi 판정 미수신) → `NET_SUBMIT_NOT_READY`, 인자 오류(NULL, 예약 코드, 다시 보내도 성립하지 않는 Occupant 조합) → `NET_SUBMIT_INVALID_ARGUMENT`. 보관 슬롯은 교체 방식이라 `NET_SUBMIT_NO_CAPACITY`는 나오지 않는다.
 
 ## Occupant relay
 
-- Network는 CIS_OCCUPANT를 **마지막으로 수용한 P_VISION_RESULT의 relay로만** 받는다. 같은 Pi BOOT, VISION_SEQUENCE, 값, validity, reason이어야 하고, `vision_function_status`는 Pi `vision_status` 코드와 같아야 한다.
-- CIS가 validity를 더 제한한 기록, 다른 기능 상태, 이미 새 Pi 판정이 들어온 뒤의 옛 기록은 `NET_SUBMIT_NOT_READY`이고 아무것도 보내지 않는다.
+근거: `02_NODES/CIS/20_API.md` `CisNet_PublishOccupant`, `02_NODES/CIS/10_DATA.md` Pi 원 관측과 CIS 추가 평가.
+
+- CIS_OCCUPANT는 **마지막으로 수용한 P_VISION_RESULT의 relay**다. Pi 원 식별(Pi BOOT, VISION_SEQUENCE)과 값(presence, count)은 그 Pi 판정과 같아야 한다.
+- 필드별 validity·reason은 Pi와 같거나 **더 제한된 쪽만** 된다. INVALID에 CIS가 확인한 사유(예: 모순 → DATA_INVALID, 수신 중단 → COMMUNICATION_FAULT, 만료 → STALE)를 실을 수 있다. Pi가 INVALID인 필드를 VALID로 올릴 수는 없다.
+- `vision_function_status`는 CIS 자기 기능 상태다. Pi `VISION_STATUS`와 비교하지 않는다.
+- 반환값:
+  - Pi 판정을 아직 받지 못했으면 `NET_SUBMIT_NOT_READY`다.
+  - 다시 보내도 성립하지 않는 기록은 `NET_SUBMIT_INVALID_ARGUMENT`이고 아무것도 보내지 않는다. 다른 Pi 식별(이미 새 Pi 판정이 들어온 뒤의 옛 기록 포함), 값 변경, 품질 승격, Pi AGE보다 작은 `vision_age_ms`가 여기에 든다. NOT_READY로 돌려주면 앱이 영원히 재시도하기 때문이다.
 - `vision_age_ms`에는 앱이 붙잡고 있던 시간을 더해서 넣어도 된다(Pi AGE보다 작으면 안 된다). Network는 수신 시각부터 송신까지의 경과를 직접 한 번 더한다.
+- 시험: `cis_node.f10_publish_occupant_relay`, `f24_occupant_restricted_quality`.
 
 ## P_PERMISSION relay
 
-- 새 DOMAIN 평가(새 UPDATE_SEQUENCE)를 받으면 같은 `Net_MainFunction()`에서 바로 Pi로 보낸다. CIS_BOOT_ID는 이 노드의 Network BOOT_ID, USE_LIMIT는 1500 ms(기존 후보), SOURCE_AGE는 DOMAIN AGE + CIS 대기다.
-- DOMAIN이 재부팅한 뒤 새 BOOT의 첫 0x080도 바로 보낸다(수용한 세대 변경). 그 UPDATE_SEQUENCE가 이전 BOOT보다 작거나 같아도 보낸다.
-- 같은 DOMAIN 평가를 새 TX로 반복한 0x080(약 50 ms마다)은 `CisApp_OnDomainPermission`에는 전달하지만 Pi로 다시 보내지 않는다(`NetNodeDiag.app.permission_repeats`). 그래서 P_PERMISSION은 CAN 프레임마다 나가지 않는다(`cis_node.f19_permission_repeat_no_flood`).
-- 전원 품질이 OK가 아닌 허용은 보내지 않는다(Wire에 사유를 표현할 수 없음). 이전 ALLOW는 다시 나가지 않는다.
-- 같은 DOMAIN 평가(같은 UPDATE_SEQUENCE)의 품질 하향을 새 TX로 받으면 `CisApp_OnDomainPermission`과 relay 경로 모두에 전달한다(relay는 위 규칙대로 보내지 않고 `relay_refused`를 올린다). 같은 UPDATE에서 값이 바뀌거나 품질이 OK로 돌아간 프레임은 보류한다(`cis_node.f15_permission_quality_drop_same_update`).
-- **Network 반복 없음(결정 대기).** P_PERMISSION은 M04에 주기 0으로 등록되어 있고, 제출 1건이 프레임 1건이다. `30_UART_C.md`의 500 ms 반복/1500 ms 수신 중단은 아직 구현하지 않는다. 원 stamp로 다시 보내는 반복은 첫 프레임 500 ms 뒤 원 DOMAIN AGE가 500 ms에 이르러(`10_DATA_AND_ID_RULES.md` 소비 시점 경계) 서비스가 거절하고, DOMAIN이 같은 평가를 반복하면 지금 수용한 0x080과도 맞지 않게 되기 때문이다. 반복 기준(원 500 ms와 USE_LIMIT 1500 ms 중 무엇을 따를지, 반복 프레임의 AGE, 원 receipt 대조)은 문서 담당 결정을 기다린다. 그때까지 Pi 쪽 1500 ms 수신 중단을 피하는 것은 DOMAIN의 약 200 ms 재평가다(`cis_node.f03_permission_new_evaluations`, `f04_permission_same_evaluation`).
+근거: `03_COMMUNICATION/30_UART_C.md` P_PERMISSION, `02_NODES/CIS/20_API.md` `CisNetPriv_RelayPiPermission`, `04_COMMON/10_DATA_AND_ID_RULES.md` 번호 공간, `02_NODES/PI/10_DATA.md` `NetPiPermission`.
+
+- **보내는 때:** 새 DOMAIN 평가, 수용한 DOMAIN 세대 변경(재부팅 뒤 새 BOOT의 첫 0x080), 실제 전원 품질 제한 변경이다. 받은 같은 `Net_MainFunction()`에서 바로 Pi로 보낸다.
+- **내용:**
+  - CIS_BOOT_ID: 이 노드의 Network BOOT_ID
+  - USE_LIMIT: 1500 ms(기존 후보)
+  - 전원 허용 값과 `VALUE_QUALITY`: 0x080 전원 필드를 받은 그대로. 비OK 품질도 명시 상태로 보낸다
+  - `QUALITY_REASON`: 고정 대응표. OK→NONE(0), STALE→STALE(5), INVALID→DATA_INVALID(9), NO_DATA→NO_DATA(6)(`net_upper_pi_permission_reason()`). 서비스는 다른 사유의 relay를 거절한다
+  - SOURCE_AGE: DOMAIN AGE + CIS 대기
+- **UPDATE_SEQUENCE는 CIS가 소유하는 relay 번호다.** M04 P_PERMISSION 슬롯이 번호를 주며, 소유자는 이것 하나다. CIS 기동마다 1부터 시작하고 relay 기록마다 +1이다. DOMAIN UPDATE_SEQUENCE를 옮기지 않으므로 DOMAIN이 재부팅해 번호가 작아져도 relay 번호는 뒤로 가지 않는다. 진단은 `NetNodeDiag.pi_permission_tx.revision`(마지막으로 준 번호)이다.
+- **같은 UPDATE의 품질 하향**(예: OK → INVALID, 새 TX)도 즉시 보낸다. 값은 그대로, 품질과 사유만 바뀐 relay이고 새 relay 번호를 받는다. 같은 UPDATE에서 값이 바뀌거나 품질이 OK로 돌아간 프레임은 수신에서 보류한다(`cis_node.f15_permission_quality_drop_same_update`, `f21_permission_quality_drop_relayed`).
+- **보내지 않는 때:**
+  - 같은 DOMAIN 평가를 새 TX로 반복한 0x080(약 50 ms마다)은 `CisApp_OnDomainPermission`에만 전달한다(`NetNodeDiag.app.permission_repeats`). 그래서 P_PERMISSION은 CAN 프레임마다 나가지 않는다(`cis_node.f19_permission_repeat_no_flood`).
+  - relay가 싣는 것(DOMAIN BOOT, UPDATE, 전원 값, 전원 품질)이 마지막 relay와 같은 0x080(예: operation 품질만 바뀜)도 보내지 않는다(`NetNodeDiag.app.relay_unchanged`).
+- **Network는 P_PERMISSION을 반복하지 않는다(주기 0).** 새 평가·세대 변경·품질 제한 때만 보낸다. Pi의 1500 ms 수신 감시는 DOMAIN의 약 200 ms 재평가(`10_CAN_FD.md` DOMAIN_PERMISSION)가 채운다. DOMAIN이 멈추면 Pi는 1500 ms 뒤 수신 중단으로 판단한다. 이전 ALLOW를 연장하지 않으며, 원 stamp로 다시 보내는 반복은 원 Power 사용 기한 500 ms(`10_DATA_AND_ID_RULES.md` 소비 시점 경계)도 넘길 수 없다(`cis_node.f03_permission_new_evaluations`, `f04_permission_same_evaluation`, `f22_relay_sequence_cis_owned`).
 - DOMAIN 0x080이 150 ms 끊기면 `NetNodeDiag.permission.reason`이 `NET_PERMISSION_RX_TIMEOUT`이 된다.
 
 ## 재부팅과 같은 관측의 반복 (수신)
 
-- **DOMAIN 재부팅:** 새 BOOT_ID로 TX 1부터 오는 0x080을 첫 프레임에서 새 세대로 받아 콜백하고 relay한다. 구조 검증을 통과한 프레임만 세대를 바꾼다. TX_SEQUENCE 0은 `10_CAN_FD.md`의 "최초 1"에 따라 구조 오류로 버린다(`rx_invalid`, 콜백·relay 없음, `cis_node.f20_permission_tx_zero`).
+- **DOMAIN 재부팅:** 새 BOOT_ID로 TX 1부터 오는 0x080을 첫 프레임에서 새 세대로 받아 콜백하고 relay한다. 구조 검증을 통과한 프레임만 세대를 바꾼다. TX_SEQUENCE 0은 예약값이다(`10_CAN_FD.md` TX_SEQUENCE "최초 1"). 그래서 구조 오류로 버린다(`rx_invalid`, 콜백·relay 없음, `cis_node.f20_permission_tx_zero`).
 - **Pi 재부팅:** Pi가 새 BOOT로 LINK_SEQUENCE를 처음부터 다시 보내면, LINK_SEQUENCE 창 비교보다 먼저 새 세대로 받는다. CRC·길이·형식을 통과한 프레임만 바꾼다. P_VISION_RESULT와 P_VISION_STATUS는 같은 링크(Pi→CIS)를 쓰므로, 둘 중 먼저 온 새 BOOT 프레임이 링크를 바꾸고 다른 메시지는 자기 첫 새 BOOT 프레임에서 기준을 다시 잡는다.
 - **이전 BOOT로는 돌아갈 수 없다.** 끝난 BOOT를 키(CAN ID, UART-C 수신 방향)마다 최근 4개 기억하고, 그 BOOT의 늦은 프레임은 콜백 없이 버린다(`NetNodeDiag.upper.old_generation`). 같은 BOOT_ID로 재기동한 송신 노드는 이 규칙으로 복구되지 않는다.
 - **같은 관측의 반복:** 수신 중단 감시가 있는 주기 메시지(0x080, P_VISION_RESULT, P_VISION_STATUS)는 같은 원 관측을 새 TX/LINK_SEQUENCE로 반복해도 기존 콜백으로 전달한다(`20_API.md` 수신 전달). 원 관측 번호는 그대로이고 AGE는 늘어난 값이다. 정확한 중복(같은 순번, 같은 바이트)은 버린다. 반복은 `NetNodeDiag.upper.repeat_delivered`로 센다.
@@ -49,8 +65,8 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 
 ## 진단
 
-- `NetNodeDiag.app`: 수신 콜백 수, 마지막 permission, relay 제출·거절, 함수별 미수용·콜백 안 제출 수, `occupant_not_current`.
-- `NetNodeDiag.rear_tx`, `environment_tx`, `occupant_tx`, `status_tx`, `pi_permission_tx`: M04 슬롯(BOOT/TX 또는 LINK_SEQUENCE, 교체, 대기 Age, 반복).
+- `NetNodeDiag.app`: 수신 콜백 수, 마지막 permission, relay 제출·거절·변화 없음(`relay_unchanged`), 함수별 미수용·콜백 안 제출 수, `occupant_not_current`(Occupant 거절: Pi 판정 전이거나 그 relay가 아님).
+- `NetNodeDiag.rear_tx`, `environment_tx`, `occupant_tx`, `status_tx`, `pi_permission_tx`: M04 슬롯(BOOT/TX 또는 LINK_SEQUENCE, 교체, 대기 Age, 반복). `pi_permission_tx.revision`은 마지막 relay 번호다.
 
 ## 보드 설정
 
@@ -61,4 +77,5 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 ## 시험
 
 - `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON`)의 `cis_node.*`: `tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다.
-- 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`.
+- 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`, `f23_vision_repeat_delivered`(Pi 판정 반복·늦은 반복 50 ms 여유·정확한 중복).
+- P_PERMISSION relay와 Occupant 품질: `cis_node.f21_permission_quality_drop_relayed`, `f22_relay_sequence_cis_owned`, `f24_occupant_restricted_quality`.

@@ -1,4 +1,5 @@
 #include "net_upper_private.h"
+#include "network/net_upper_control.h"
 #include "../../l04_frame_codec/net_wire_internal.h"
 #include <string.h>
 #define INC(x) net_upper_observe_increment(&(x))
@@ -73,6 +74,23 @@ static bool receipt_matches(const NetUpper *s,const NetUpperAdmission *a, const 
         source->observed_at_ms==a->delivery.capture.captured_at_ms &&
         source->original_age_ms==net_upper_can_max_age(&a->can);
 }
+/* P_PERMISSION QUALITY_REASON of a relayed DOMAIN power quality: a fixed
+ * table, the same value for the same quality (the DOMAIN_PERMISSION wire has
+ * no reason field, so nothing else is derived). VALUE_QUALITY codes
+ * (04_COMMON/10_DATA_AND_ID_RULES.md NetValueQuality) to NetQualityReason
+ * codes (same document, quality reason): OK -> NONE, STALE -> STALE,
+ * INVALID -> DATA_INVALID, NO_DATA -> NO_DATA. Outside the codes: 0xFF, which
+ * no relay record can carry. */
+uint8_t net_upper_pi_permission_reason(uint8_t power_quality)
+{
+    switch(power_quality) {
+    case 0u:return 0u;
+    case 1u:return 5u;
+    case 2u:return 9u;
+    case 3u:return 6u;
+    default:return 0xFFu;
+    }
+}
 static NetStatus uart_origin(const NetUpper *s, const NetUpperUartMessage *m,
     const NetWireUartFrame *frame, const NetSourceStamp *source)
 {
@@ -88,6 +106,17 @@ static NetStatus uart_origin(const NetUpper *s, const NetUpperUartMessage *m,
            memcmp(frame->bytes+28u,original.bytes,r->payload_length)!=0) return NET_HOLD;
     }
     if(m->link==NET_WIRE_UART_C && m->type==0x62u) {
+        /* The relay record against the original receipt it relays: the stamp
+         * is that DOMAIN_PERMISSION receipt (id, capture time, AGE basis) and
+         * the power value, power quality and AGE are the received ones. The
+         * quality is relayed as received, restricted ones included
+         * (30_UART_C.md P_PERMISSION: an actual quality restriction is
+         * submitted at once; 02_NODES/CIS/20_API.md internal relay: a
+         * normal-format DENY/STALE/INVALID is kept and relayed as an explicit
+         * state), with the fixed reason of net_upper_pi_permission_reason().
+         * UPDATE_SEQUENCE is the CIS relay revision (04_COMMON/
+         * 10_DATA_AND_ID_RULES.md number spaces: not a lossless copy of the
+         * DOMAIN number), so it is not compared with the DOMAIN one. */
         const NetUpperAdmission *a=net_upper_admission_at(s,route_index(NET_WIRE_CAN,0x080u));
         const NetWireDomainPermissionRaw *p;
         if(a==NULL)return NET_HOLD;
@@ -95,13 +124,27 @@ static NetStatus uart_origin(const NetUpper *s, const NetUpperUartMessage *m,
         const NetWirePPermission *relay=&m->data.p_permission;
         if(!receipt_matches(s,a,source) || relay->vehicle_power_permission!=p->vehicle_power_permission ||
            relay->value_quality!=p->power_permission_quality || relay->source_age_ms!=p->source_age_ms ||
-           relay->update_sequence!=p->update_sequence) return NET_HOLD;
-        /* Quality reason has no field in DOMAIN_PERMISSION. Unknown/invalid
-         * projection needs Owner agreement; do not invent a reason. */
-        if(relay->value_quality!=0u || relay->quality_reason!=0u) return NET_HOLD;
+           relay->quality_reason!=net_upper_pi_permission_reason(p->power_permission_quality)) return NET_HOLD;
     }
     return NET_OK;
 }
+/* One field of a CIS_OCCUPANT relay against the Pi judgement it relays: the
+ * same validity and reason, or a restriction (INVALID, any reason). A VALID
+ * field needs a VALID Pi field: no promotion (02_NODES/CIS/10_DATA.md, Pi
+ * original observation and CIS evaluation: the original Pi quality is kept and
+ * later actual faults only restrict it; 02_NODES/CIS/20_API.md
+ * CisNet_PublishOccupant: a higher TX_SEQUENCE never allows INVALID -> VALID). */
+static bool occupant_field_restricted(uint8_t pi_validity,uint8_t pi_reason,uint8_t validity,uint8_t reason)
+{
+    return validity==0u || (validity==pi_validity && reason==pi_reason);
+}
+/* CIS_OCCUPANT relays the P_VISION_RESULT accepted last
+ * (02_NODES/CIS/20_API.md CisNet_PublishOccupant): the stamp is that receipt
+ * and the Pi identity (BOOT, VISION_SEQUENCE), AGE basis and values
+ * (presence, count) are the Pi's. Each field's validity / reason is the
+ * Pi's or a restriction of it, and vision_function_status is the CIS's own
+ * function state (02_NODES/CIS/10_DATA.md: no raw cast of the Pi
+ * VISION_STATUS), so it is not compared. */
 static NetStatus vision_origin(const NetUpper *s,const NetUpperCanMessage *m,
     const NetSourceStamp *source)
 {
@@ -117,10 +160,9 @@ static NetStatus vision_origin(const NetUpper *s,const NetUpperCanMessage *m,
        source->observed_at_ms!=a->delivery.capture.captured_at_ms ||
        source->original_age_ms!=v->vision_age_ms || c->pi_boot_id!=v->pi_boot_id ||
        c->vision_sequence!=v->vision_sequence || c->vision_age_ms!=v->vision_age_ms ||
-       c->occupant_presence!=v->occupant_presence || c->presence_validity!=v->presence_validity ||
-       c->presence_reason!=v->presence_reason || c->occupant_count!=v->occupant_count ||
-       c->count_validity!=v->count_validity || c->count_reason!=v->count_reason ||
-       c->vision_function_status!=v->vision_status)return NET_HOLD;
+       c->occupant_presence!=v->occupant_presence || c->occupant_count!=v->occupant_count ||
+       !occupant_field_restricted(v->presence_validity,v->presence_reason,c->presence_validity,c->presence_reason) ||
+       !occupant_field_restricted(v->count_validity,v->count_reason,c->count_validity,c->count_reason))return NET_HOLD;
     return NET_OK;
 }
 static void config_commit(NetUpper *s,const NetUpperConfig *c)
@@ -349,9 +391,9 @@ NetStatus net_upper_capture(NetUpper *s,const NetUpperEvent *e)
  * deep; the oldest one goes first. A BOOT that never ran on the key and is not
  * ended starts a new generation: it needs no TX_SEQUENCE relation to the old
  * run (a restarted sender counts from 1 again). A sender that restarts with
- * the same BOOT_ID is not recognized (VSS hand-over C4: BOOT_ID differs on
- * every start). Structure errors are refused before this point (decode, CAN
- * TX_SEQUENCE 0), so they never move a key. */
+ * the same BOOT_ID is not recognized (VSS contract C4 (VSS_NODE_INTEGRATION.md):
+ * BOOT_ID differs on every start). Structure errors are refused before this
+ * point (decode, CAN TX_SEQUENCE 0), so they never move a key. */
 static bool boot_ended(const NetUpperEndedBoots *e,uint32_t boot)
 {
     size_t i;
@@ -461,10 +503,11 @@ static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now
     status=net_upper_wire_status(net_upper_can_identity(&m,&boot,&sequence));if(status!=NET_OK)return status;
     /* TX_SEQUENCE starts at 1 in every sender run and grows per frame
      * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md, TX_SEQUENCE:
-     * first 1), so 0 is never sent. A frame carrying 0 is a structure error,
-     * refused before the run, order and receipt rules: it never starts a
-     * generation and never reaches the Owner (VSS hand-over C5: structure
-     * checks are Network's first; a structure error moves no generation). */
+     * first 1), so 0 is a reserved value and never sent. A frame carrying 0
+     * is a structure error, refused before the run, order and receipt rules:
+     * it never starts a generation and never reaches the Owner (VSS contract
+     * C5 (VSS_NODE_INTEGRATION.md): structure checks are Network's first; a
+     * structure error moves no generation). */
     if(sequence==0u)return NET_REJECTED;
     if(!event->capture.timestamp_known || event->capture.errors!=0u || event->capture.overflow!=0u ||
        event->capture.captured_at_ms>now)return NET_HOLD;

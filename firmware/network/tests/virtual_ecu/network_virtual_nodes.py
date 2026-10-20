@@ -182,7 +182,9 @@ def cis_permission_relay(w):
     w.run()
     rx = one(w.events('app_rx', 'CIS', call='CisApp_OnDomainPermission', update=5), 'CIS permission delivery')
     need(rx['power'] == 1 and rx['boot'] == BOOT['DOMAIN'], rx)
-    relay = w.events('peer_rx', 'PI', type=0x62, update=5)
+    # UPDATE_SEQUENCE is the CIS relay revision (04_COMMON/10_DATA_AND_ID_RULES.md
+    # number spaces): 1 for the first relay of this CIS run, not the DOMAIN 5.
+    relay = w.events('peer_rx', 'PI', type=0x62, update=1)
     need(relay, 'P_PERMISSION at the Pi')
     need(relay[0]['cis_boot'] == BOOT['CIS'] and relay[0]['power'] == 1 and relay[0]['link_sequence'] == 1, relay[0])
     need(w.events('wire', 'CIS', link=2, type=0x62), 'P_PERMISSION bytes on UART-C')

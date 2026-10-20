@@ -91,6 +91,9 @@ typedef struct {
     union { NetUpperCanMessage can; NetUpperUartMessage uart; } content;
     NetSourceStamp source; /* original stamp of the latest submission */
     uint32_t next_sequence, in_flight_sequence; /* CAN TX_SEQUENCE, first 1 */
+    /* UART-C P_PERMISSION: last relay revision (UPDATE_SEQUENCE) given to a
+     * submission, 0 before the first. */
+    uint32_t revision;
     NetTxKey key;
     uint64_t next_due_ms;
     NetUpperPublishCounters counters;
@@ -115,6 +118,7 @@ typedef struct {
     uint32_t period_ms;
     uint32_t boot_id;       /* CAN BOOT_ID; 0 for UART entries */
     uint32_t next_sequence; /* CAN: next TX_SEQUENCE; UART: next LINK_SEQUENCE of the direction */
+    uint32_t revision;      /* UART-C P_PERMISSION: last relay revision given; 0 otherwise */
     NetUpperPublishCounters counters;
 } NetUpperPublishView;
 
@@ -127,6 +131,16 @@ NetStatus net_upper_publish_init(NetUpperPublisher *, NetUpper *, const NetUpper
 /* Copy the latest content of a registered message; returns at once
  * (OK = copied, not TX success). BOOT_ID/TX_SEQUENCE (CAN) and the link
  * sequence (UART) in the copy are ignored: M04 assigns them per frame.
+ * UART-C P_PERMISSION: the UPDATE_SEQUENCE in the copy is ignored as well;
+ * it is the CIS relay revision, owned here (one owner of the number): every
+ * accepted submission gets the next revision of this power cycle, from 1, and
+ * keeps it on any later send of that same record (04_COMMON/
+ * 10_DATA_AND_ID_RULES.md number spaces: the P_PERMISSION relay
+ * UPDATE_SEQUENCE is CIS-owned, not the DOMAIN number; 02_NODES/PI/10_DATA.md
+ * update_sequence: new relay evaluation, kept on repeated frames). The caller
+ * submits only for a relay event (new original evaluation, accepted DOMAIN
+ * run change, actual quality restriction change). After revision 0xFFFFFFFF
+ * the submission is HOLD (sequence_hold), never a wrap to an old number.
  * source NULL: a local evaluation, stamped now. Otherwise the original stamp
  * of a relayed receipt; its original_age_ms must equal the content's AGE.
  * May be called from inside an RX callback of the same service; the step's

@@ -171,6 +171,14 @@ NetStatus net_upper_publish_can(NetUpperPublisher *p, const NetUpperCanMessage *
     return NET_OK;
 }
 
+/* The record field that carries a sender-owned relay revision, NULL for
+ * records without one. P_PERMISSION UPDATE_SEQUENCE is the CIS relay revision
+ * (net_upper_publish.h, net_upper_publish_uart). */
+static uint32_t *relay_revision(NetUpperUartMessage *m)
+{
+    return (m->link == NET_WIRE_UART_C && m->type == 0x62u) ? &m->data.p_permission.update_sequence : NULL;
+}
+
 NetStatus net_upper_publish_uart(NetUpperPublisher *p, const NetUpperUartMessage *m,
     const NetSourceStamp *source, NetUpperPublishNote *note)
 {
@@ -180,6 +188,7 @@ NetStatus net_upper_publish_uart(NetUpperPublisher *p, const NetUpperUartMessage
     NetSourceStamp value;
     NetStatus st;
     size_t i;
+    uint32_t *revision;
     bool in_step = false;
     if (!ready(p) || m == NULL || net_wire_ranges_overlap(p, sizeof(*p), m, sizeof(*m)) ||
         (source != NULL && net_wire_ranges_overlap(p, sizeof(*p), source, sizeof(*source))) ||
@@ -192,12 +201,19 @@ NetStatus net_upper_publish_uart(NetUpperPublisher *p, const NetUpperUartMessage
     if (link_down(p->service, m->link)) return NET_HOLD;
     if (uart_exhausted(p->service, m->link)) { INC(slot->counters.sequence_hold); return NET_HOLD; }
     local = *m;
+    revision = relay_revision(&local);
+    if (revision != NULL) {
+        /* One revision per accepted submission; never a wrap back to 1. */
+        if (slot->revision == UINT32_MAX) { INC(slot->counters.sequence_hold); return NET_HOLD; }
+        *revision = slot->revision + 1u;
+    }
     local.sequence = (uint16_t)p->service->next_uart_sequence[uart_index(m->link)];
     st = net_upper_wire_status(net_upper_uart_encode(p->service->config.profile, &local, &probe));
     if (st != NET_OK) return st;
     st = stamp(p, slot, source, net_upper_uart_max_age(&local), &value, &in_step);
     if (st != NET_OK) return st;
     local.sequence = 0u; /* assigned per frame by the service */
+    if (revision != NULL) slot->revision = *revision; /* kept in the content for every send of it */
     slot->content.uart = local;
     commit(p, slot, source == NULL, &value, in_step, note);
     return NET_OK;
@@ -380,6 +396,7 @@ NetStatus net_upper_publish_view(const NetUpperPublisher *p, NetWireLink link, u
     } else {
         v.next_sequence = p->service->next_uart_sequence[uart_index(link)];
         v.sequence_held = uart_exhausted(p->service, link);
+        v.revision = slot->revision;
     }
     *out = v;
     return NET_OK;

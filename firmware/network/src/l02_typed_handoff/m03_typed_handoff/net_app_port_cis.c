@@ -9,14 +9,16 @@
  *         ... distributes the same verified original input").
  *   - TX: CisNet_Publish* -> explicit field copy -> M04 publish slot (local
  *         copy; not TX success). BOOT_ID, TX_SEQUENCE / LINK_SEQUENCE, the
- *         replacement of a record no device has taken yet, the waiting AGE and
- *         the repetition are M04's (net_upper_publish.h). Nothing here numbers
- *         or repeats a frame.
+ *         P_PERMISSION relay revision (UPDATE_SEQUENCE), the replacement of a
+ *         record no device has taken yet, the waiting AGE and the repetition
+ *         are M04's (net_upper_publish.h). Nothing here numbers or repeats a
+ *         frame.
  * Compiled for the CIS node profile only (one profile per build). */
 #include "network/net_upper_profile.h"
 
 #if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
 #include "network/net_app_port_cis.h"
+#include "network/net_upper_control.h"
 #include "network/net_wire_can_nodes.h"
 #include <string.h>
 
@@ -24,6 +26,13 @@ typedef struct {
     bool seen;
     NetSourceStamp source;      /* the receipt as the service will record it */
 } Receipt;
+
+/* What the last relay record M04 took carried from its DOMAIN_PERMISSION. */
+typedef struct {
+    bool seen;
+    uint32_t domain_boot, update_sequence;
+    uint8_t value, quality;
+} RelayBasis;
 
 typedef struct {
     bool bound, in_publish;
@@ -36,6 +45,7 @@ typedef struct {
     Receipt permission;
     NetDomainPermission permission_value;
     NetCanRxMeta permission_meta;
+    RelayBasis relayed;
     /* Last accepted P_VISION_RESULT (CIS_OCCUPANT relay origin). */
     Receipt vision;
     NetWirePVisionResult vision_raw;
@@ -84,10 +94,12 @@ static NetStatus on_domain_permission(void *ctx, const NetWireDomainPermissionRa
     /* 30_UART_C.md: P_PERMISSION is submitted at once on a new original
      * evaluation, an accepted change of the DOMAIN run (its first frame, even
      * with an UPDATE_SEQUENCE not above the earlier run's) or an actual
-     * quality restriction; a repetition of the same evaluation with a new
-     * TX_SEQUENCE is none of these. It reaches the application (receive
-     * supervision) but submits no relay record: no P_PERMISSION per CAN
-     * frame. */
+     * quality restriction (a lower power quality of the same evaluation
+     * arrives as a new observation, not as a repetition); a repetition of
+     * the same evaluation with a new TX_SEQUENCE is none of these. It reaches
+     * the application (receive supervision) but submits no relay record: no
+     * P_PERMISSION per CAN frame, and Network does not repeat P_PERMISSION
+     * (period 0, net_node_profile_cis.c). */
     if (d->repeat) {
         inc(&port.diag.permission_repeats);
         return NET_OK;
@@ -175,6 +187,20 @@ static NetSubmitResult relay_result(NetStatus st)
     return port.diag.last_relay_result;
 }
 
+/* A relay event (30_UART_C.md P_PERMISSION, 04_COMMON/10_DATA_AND_ID_RULES.md
+ * number spaces): a new original DOMAIN evaluation, an accepted change of the
+ * DOMAIN run, or an actual change of the relayed power quality (or value)
+ * against the last relay record M04 took. Each one gets the next relay
+ * revision in M04. A DOMAIN_PERMISSION that changes nothing the relay
+ * carries (for example its operation quality only) is none of them. */
+static bool relay_event(const NetDomainPermission *p, const NetCanRxMeta *meta)
+{
+    const RelayBasis *r = &port.relayed;
+    return !r->seen || r->domain_boot != meta->source.boot_id ||
+        r->update_sequence != p->update_sequence ||
+        r->value != p->vehicle_power_permission || r->quality != p->power_permission_quality;
+}
+
 NetSubmitResult CisNetPriv_RelayPiPermission(const NetDomainPermission *permission, const NetCanRxMeta *meta)
 {
     NetUpperUartMessage m;
@@ -189,22 +215,35 @@ NetSubmitResult CisNetPriv_RelayPiPermission(const NetDomainPermission *permissi
         meta->source.tx_sequence != port.permission_meta.source.tx_sequence ||
         meta->received_at_ms != port.permission_meta.received_at_ms)
         return relay_result(NET_HOLD);
-    /* The wire carries no reason for a non-OK power quality and the service
-     * relays OK quality only (net_upper_control.h): nothing new is kept, and
-     * the earlier relay record no longer matches the accepted DOMAIN receipt,
-     * so the service refuses to send it again. */
-    if (permission->power_permission_quality != NET_QUALITY_OK) return relay_result(NET_HOLD);
+    if (!relay_event(permission, meta)) {
+        /* Nothing new for the Pi: the last relay record stands. */
+        inc(&port.diag.relay_unchanged);
+        port.diag.last_relay_engine = NET_OK;
+        port.diag.last_relay_result = NET_SUBMIT_OK;
+        return NET_SUBMIT_OK;
+    }
     memset(&m, 0, sizeof(m));
     m.link = NET_WIRE_UART_C;
     m.type = 0x62u;
     r->cis_boot_id = port.cis_boot_id;
-    r->update_sequence = permission->update_sequence;   /* kept on repetitions */
+    r->update_sequence = 0u;   /* the CIS relay revision: M04 gives it (net_upper_publish_uart) */
+    /* The DOMAIN power value and quality as received, restricted ones too
+     * (02_NODES/CIS/20_API.md internal relay: a normal-format DENY / STALE /
+     * INVALID is kept and relayed as an explicit state; no allow is made up),
+     * with the fixed reason of that quality. */
     r->vehicle_power_permission = permission->vehicle_power_permission;
     r->value_quality = permission->power_permission_quality;
-    r->quality_reason = NET_QUALITY_REASON_NONE;
+    r->quality_reason = net_upper_pi_permission_reason(permission->power_permission_quality);
     r->use_limit_ms = port.pi_use_limit_ms;
     r->source_age_ms = permission->source_age_ms;       /* DOMAIN AGE; M04 adds the local wait once */
     st = net_upper_publish_uart(port.publisher, &m, &port.permission.source, NULL);
+    if (st == NET_OK) {
+        port.relayed.seen = true;
+        port.relayed.domain_boot = meta->source.boot_id;
+        port.relayed.update_sequence = permission->update_sequence;
+        port.relayed.value = permission->vehicle_power_permission;
+        port.relayed.quality = permission->power_permission_quality;
+    }
     return relay_result(st);
 }
 
@@ -288,17 +327,35 @@ NetSubmitResult CisNet_PublishEnvironment(const NetCisEnvironment *message)
     return finish(NET_APP_PORT_CIS_ENVIRONMENT, net_upper_publish_can(port.publisher, &m, NULL, &note), &note);
 }
 
-/* The record is the relay of the accepted Pi observation (see header). */
-static bool is_current_relay(const NetCisOccupant *o)
+/* One field against the Pi field: the same validity and reason, or a
+ * restriction (INVALID, any reason); never a promotion. The same rule as the
+ * service's CIS_OCCUPANT origin check (net_upper_service.c vision_origin). */
+static bool field_restricted(uint8_t pi_validity, uint8_t pi_reason, uint8_t validity, uint8_t reason)
+{
+    return validity == NET_VALIDITY_INVALID || (validity == pi_validity && reason == pi_reason);
+}
+
+/* The record against the accepted Pi judgement it relays (see header):
+ *   NET_HOLD (NOT_READY): no Pi judgement accepted yet;
+ *   NET_INVALID_ARGUMENT: a record that can never be that relay, so a
+ *     resubmission cannot succeed (VSS contract C10 (VSS_NODE_INTEGRATION.md),
+ *     02_NODES/CIS/20_API.md send return: combination error): another Pi
+ *     identity (BOOT, VISION_SEQUENCE), an AGE below the Pi AGE, another
+ *     presence / count, or a validity above the Pi one;
+ *   NET_OK: the same identity and values, each field's validity / reason the
+ *     Pi's or a restriction of it. vision_function_status is the CIS's own
+ *     function state (02_NODES/CIS/10_DATA.md) and is not compared. */
+static NetStatus occupant_origin(const NetCisOccupant *o)
 {
     const NetWirePVisionResult *v = &port.vision_raw;
-    return port.vision.seen &&
-        o->pi_boot_id == v->pi_boot_id && o->vision_sequence == v->vision_sequence &&
-        o->vision_age_ms >= v->vision_age_ms &&
-        o->occupant_presence == v->occupant_presence && o->presence_validity == v->presence_validity &&
-        o->presence_reason == v->presence_reason && o->occupant_count == v->occupant_count &&
-        o->count_validity == v->count_validity && o->count_reason == v->count_reason &&
-        o->vision_function_status == v->vision_status;
+    if (!port.vision.seen) return NET_HOLD;
+    if (o->pi_boot_id != v->pi_boot_id || o->vision_sequence != v->vision_sequence ||
+        o->vision_age_ms < v->vision_age_ms ||
+        o->occupant_presence != v->occupant_presence || o->occupant_count != v->occupant_count ||
+        !field_restricted(v->presence_validity, v->presence_reason, o->presence_validity, o->presence_reason) ||
+        !field_restricted(v->count_validity, v->count_reason, o->count_validity, o->count_reason))
+        return NET_INVALID_ARGUMENT;
+    return NET_OK;
 }
 
 NetSubmitResult CisNet_PublishOccupant(const NetCisOccupant *message)
@@ -307,6 +364,7 @@ NetSubmitResult CisNet_PublishOccupant(const NetCisOccupant *message)
     NetWireCisOccupantRaw *r = &m.data.cis_occupant;
     NetWireCanEnvelope probe;
     NetUpperPublishNote note;
+    NetStatus origin;
     if (message == NULL) return refuse(NET_APP_PORT_CIS_OCCUPANT, NET_INVALID_ARGUMENT);
     if (!enter()) return refuse(NET_APP_PORT_CIS_OCCUPANT, NET_NOT_CONFIGURED);
     memset(&m, 0, sizeof(m));
@@ -327,10 +385,11 @@ NetSubmitResult CisNet_PublishOccupant(const NetCisOccupant *message)
         port.in_publish = false;
         return refuse(NET_APP_PORT_CIS_OCCUPANT, NET_INVALID_ARGUMENT);
     }
-    if (!is_current_relay(message)) {
+    origin = occupant_origin(message);
+    if (origin != NET_OK) {
         port.in_publish = false;
         inc(&port.diag.occupant_not_current);
-        return refuse(NET_APP_PORT_CIS_OCCUPANT, NET_HOLD);
+        return refuse(NET_APP_PORT_CIS_OCCUPANT, origin);
     }
     /* Pi AGE at the receipt; the time since it is counted by the service, once. */
     r->vision_age_ms = port.vision_raw.vision_age_ms;

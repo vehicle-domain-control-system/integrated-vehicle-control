@@ -17,6 +17,9 @@
  *            (M06 resyncs). The RTD error handler completes the reception, so
  *            it is re-armed here; a refused re-arm is retried by
  *            net_hal_rtd_service().
+ *   IDLE   : only with the generated timeout interrupt ON (bring-up configs:
+ *            OFF): the RTD completes the reception before the event as for
+ *            ERROR, so it is re-armed the same way; no loss mark.
  *   loss   : a loss or error is reported in stream order, right before the
  *            next received byte, as its own capture flagged with
  *            NetUpperCapture.overflow (lost bytes) / .errors (line errors).
@@ -38,7 +41,8 @@
  *   END_TRANSFER with transmit status SUCCESS -> fact + stamp; the main context
  *            reports SUCCEEDED + release and starts the next waiting transfer.
  *   timeout: net_hal_rtd_service() aborts a transfer older than the link
- *            timeout (AbortSendingData) and reports FAILED + release.
+ *            timeout (AbortSendingData, its result recorded) and reports
+ *            FAILED + release.
  * Callback wiring (net_board_cfg.h NET_BOARD_UART_CALLBACK): the HAL defines
  * the generated-config callback, or board code routes the Network instance
  * to NetHalRtdUart_OnEvent() (net_hal_rtd_uart.h).
@@ -252,6 +256,21 @@ static void rx_error(UartLink *u)
     rx_rearm(u);
 }
 
+#if defined(LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT) && (LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT == STD_ON)
+/* Receive idle line (generated config with the timeout interrupt): the RTD
+ * error handler completes the reception before this event, as for ERROR, so
+ * it is re-armed the same way. No byte was lost and no line error happened:
+ * no loss mark, the stream goes on. */
+static void rx_idle(UartLink *u)
+{
+    uint32_t key = net_board_irq_save();
+    inc(&u->diag->uart_rx_idle_events);
+    set_armed(u, false);
+    net_board_irq_restore(key);
+    rx_rearm(u);
+}
+#endif
+
 static void tx_end(UartLink *u)
 {
     uint32_t key = net_board_irq_save();
@@ -286,7 +305,11 @@ void NetHalRtdUart_OnEvent(uint8 instance, Lpuart_Uart_Ip_EventType event)
     if (event == LPUART_UART_IP_EVENT_RX_FULL) rx_full(u);
     else if (event == LPUART_UART_IP_EVENT_END_TRANSFER) tx_end(u);
     else if (event == LPUART_UART_IP_EVENT_ERROR) rx_error(u);
-    /* TX_EMPTY (and the receive idle event when enabled): nothing to do. */
+#if defined(LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT) && (LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT == STD_ON)
+    else if (event == LPUART_UART_IP_EVENT_IDLE_STATE) rx_idle(u);
+#endif
+    /* TX_EMPTY: nothing to do. The idle event exists only with the timeout
+     * interrupt configured (both bring-up configs: OFF). */
 }
 
 #ifdef NET_BOARD_UART_CALLBACK
@@ -487,8 +510,12 @@ void net_hal_rtd_uart_service(uint64_t now)
         if (expired) u->aborting = true;
         net_board_irq_restore(key);
         if (expired) {
-            (void)Lpuart_Uart_Ip_AbortSendingData(u->instance);
+            /* The transfer is reported FAILED + release whatever the abort
+             * returns (no success claim); a non-SUCCESS result is recorded. */
+            Lpuart_Uart_Ip_StatusType ast = Lpuart_Uart_Ip_AbortSendingData(u->instance);
             key = net_board_irq_save();
+            u->diag->uart_tx_abort_last_status = (uint32_t)ast;
+            if (ast != LPUART_UART_IP_STATUS_SUCCESS) inc(&u->diag->uart_tx_abort_errors);
             if (!u->tx_done) {
                 /* Not ended before the abort: never claim success. */
                 NetUpperCapture c;

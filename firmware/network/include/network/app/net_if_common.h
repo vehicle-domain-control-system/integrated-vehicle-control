@@ -3,6 +3,9 @@
 
 /* Application Port common types, transcribed from the interface contract:
  *   docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md
+ * The common types the node headers of this firmware use (VSS, CIS, BCM, Pi
+ * UART-C records). The DOMAIN-only types of that document (NetResultConfirmation,
+ * NetWarningType, NetSeverity, NetFunctionId) are not in this node header.
  * These are the ONLY Network types an ECU application includes. Engine,
  * wire DTO (NetWire*Raw) and SDK types stay below this boundary.
  * Numeric codes equal the CAN wire codes; conversion is still field by field

@@ -104,7 +104,8 @@ target_link_options(test_vss_integ PRIVATE
     -Wl,--wrap=VssNet_PublishStatus)
 
 # One case per process: Net_Init acts once per process, VSS boots once.
-# Cases follow the VSS hand-over "integration checks" and contracts C1..C10.
+# Cases follow the VSS integration checks and contracts C1..C12
+# (VSS_NODE_INTEGRATION.md).
 foreach(case IN ITEMS vi1_boot_order vi2_clock_axis vi3_tx_per_message vi4_domain_reboot
         vi5_same_occurrence vi6_structure_rejected vi7_warning_rx_loss vi8_status_period
         vi9_link_locked_resubmit vi10_rx_flood_budget vi11_warning_quality_drop

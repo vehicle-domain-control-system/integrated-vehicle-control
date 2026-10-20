@@ -11,7 +11,8 @@
  *   repeat and current quality: a new TX_SEQUENCE / LINK_SEQUENCE carrying the
  *     same original observation is a normal repetition, an exact duplicate is
  *     not; quality and AGE: a re-reception never lowers the accumulated AGE.
- * VSS hand-over C4: the receiver keeps the 4 most recently replaced BOOTs. */
+ * VSS contract C4 (VSS_NODE_INTEGRATION.md): the receiver keeps the 4 most
+ * recently replaced BOOTs. */
 #define PROFILE NET_WIRE_CANDIDATE_ONLY
 #define CHECK(x) do { if (!(x)) { printf("FAIL %s:%d %s\n",case_name,__LINE__,#x); return 1; } } while (0)
 static const char *case_name;
@@ -231,9 +232,10 @@ static int uart_c_generation(void)
 }
 
 /* CAN TX_SEQUENCE starts at 1 in every sender run (docs/network/interface/
- * 03_COMMUNICATION/10_CAN_FD.md, TX_SEQUENCE: first 1). A frame carrying 0 is
- * a structure error (VSS hand-over C5: structure checks are Network's first,
- * a structure error frame causes no generation change): refused as invalid
+ * 03_COMMUNICATION/10_CAN_FD.md, TX_SEQUENCE: first 1), so 0 is a reserved
+ * value. A frame carrying 0 is a structure error (VSS contract C5
+ * (VSS_NODE_INTEGRATION.md): structure checks are Network's first, a
+ * structure error frame causes no generation change): refused as invalid
  * with no Owner call, as the very first frame of a key, as the first frame of
  * a new run and inside the accepted run; the key never moves on it. */
 static int tx_zero_refused(void)

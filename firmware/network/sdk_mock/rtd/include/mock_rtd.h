@@ -32,11 +32,27 @@ void MockRtd_SetSystemTimerEnabled(bool enabled); /* false = OsIf timer OFF (as 
 int MockRtd_CanInject(uint8 instance, const MockCanFrame *frame);
 /* Node -> bus. Arbitration: lowest identifier among pending TX MBs.
  * Fires TX_COMPLETE for that MB and returns its index, -1 if none pending.
- * With ACK missing, nothing completes (frames stay pending). */
+ * With ACK missing, nothing completes (frames stay pending). A frame that
+ * went out during an abort (NO_TRANSFER_IN_PROGRESS) comes first, without
+ * TX_COMPLETE. */
 int MockRtd_CanTransmitNext(uint8 instance, MockCanFrame *out);
 void MockRtd_CanSetAckMissing(uint8 instance, bool missing);
 void MockRtd_CanRaiseBusOff(uint8 instance);
 uint32 MockRtd_CanAborts(uint8 instance);
+/* Result of the next AbortTransfer on a pending TX MB (then back to SUCCESS),
+ * as the RTD returns it:
+ *   SUCCESS (default): aborted; the frame never goes out.
+ *   NO_TRANSFER_IN_PROGRESS: the frame went out while the abort ran; it is
+ *     taken by MockRtd_CanTransmitNext without TX_COMPLETE (the RTD disabled
+ *     the MB interrupt in the abort).
+ *   TIMEOUT: the abort did not finish; the MB stays in the controller (its
+ *     message buffer flag clear) until MockRtd_CanFinishAbort. */
+void MockRtd_CanSetAbortResult(uint8 instance, Flexcan_Ip_StatusType result);
+/* The controller finishes a timed-out abort: the MB becomes idle and its
+ * message buffer flag is set (no interrupt). */
+void MockRtd_CanFinishAbort(uint8 instance);
+/* Send calls on an MB whose timed-out abort had not finished yet. */
+uint32 MockRtd_CanSendsOnAbortingMb(uint8 instance);
 
 /* LPUART virtual line (instances 0..15). The node side uses the
  * Lpuart_Uart_Ip API; these hooks are the far end of the wire.
@@ -54,6 +70,12 @@ uint32 MockRtd_UartTransmitTake(uint8 instance, uint8 *out, uint32 max);
  * receive status, the reception is completed (no longer armed) and the
  * Callback runs with ERROR. */
 void MockRtd_UartRaiseError(uint8 instance, Lpuart_Uart_Ip_StatusType status);
+#if (LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT == STD_ON)
+/* Receive idle line as raised by the RTD error IRQ with the timeout
+ * interrupt: the reception is completed (no longer armed), the receive status
+ * is RX_IDLE_STATE and the Callback runs with IDLE_STATE. */
+void MockRtd_UartRaiseIdle(uint8 instance);
+#endif
 /* Stalled line: TransmitTake moves nothing (no peer reading, flow stuck). */
 void MockRtd_UartSetTxStall(uint8 instance, bool stall);
 /* AsyncReceive refuses (ERROR) while set: models a failed re-arm. */
