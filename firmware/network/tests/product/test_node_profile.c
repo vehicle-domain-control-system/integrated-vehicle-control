@@ -202,7 +202,7 @@ static int uart_boundary(void)
         NetUpperCanMessage actual;m.link=NET_WIRE_UART_C;m.type=0x60u;m.sequence=7u;
         m.data.p_vision_result.pi_boot_id=41u;m.data.p_vision_result.vision_sequence=77u;m.data.p_vision_result.vision_age_ms=10u;
         m.data.p_vision_result.occupant_presence=1u;m.data.p_vision_result.presence_validity=1u;m.data.p_vision_result.occupant_count=3u;m.data.p_vision_result.count_validity=1u;m.data.p_vision_result.vision_status=2u;
-        CHECK(inject_uart(&m)==0&&owner.calls==1u);CHECK(CisNet_PublishOccupant(&service,9u,10u,&p,&key)==NET_OK);
+        CHECK(inject_uart(&m)==0&&owner.calls==1u);CHECK(net_upper_cis_publish_occupant(&service,9u,10u,&p,&key)==NET_OK);
         CHECK(net_upper_step(&service,0u)==NET_OK&&physical.count==1u);CHECK(net_upper_can_decode(NET_WIRE_CANDIDATE_ONLY,&physical.held[0]->can,&actual)==NET_WIRE_OK);
         CHECK(actual.id==0x310u&&actual.data.cis_occupant.pi_boot_id==41u&&actual.data.cis_occupant.vision_sequence==77u&&actual.data.cis_occupant.vision_age_ms==10u);
     }else if(node()==NET_WIRE_NODE_DOMAIN){
@@ -221,7 +221,7 @@ static int uart_boundary(void)
         e.kind=NET_UPPER_UART_BYTE;e.link=NET_WIRE_UART_C;e.capture=captured();e.byte=0xa5u;
         memcpy(before,&service,sizeof(service));CHECK(net_upper_capture(&service,&e)==NET_UNSUPPORTED&&memcmp(before,&service,sizeof(service))==0);
         CHECK(net_upper_receiver(&service,0u)==NULL&&net_upper_receiver(&service,1u)==NULL&&owner.calls==0u);
-        if(node()==NET_WIRE_NODE_CIS)CHECK(CisNet_PublishOccupant(&service,9u,10u,&p,&key)==NET_HOLD);
+        if(node()==NET_WIRE_NODE_CIS)CHECK(net_upper_cis_publish_occupant(&service,9u,10u,&p,&key)==NET_HOLD);
     }return 0;
 }
 static int footprint(void)

@@ -107,7 +107,7 @@ static NetWireCisRearRaw sample(void)
 static int begin_borrow(NetUpper *s,PhysicalPort *p,NetTxKey *out)
 {
     NetWireCisRearRaw r=sample();NetSourceStamp source={77u,100u,10u};NetAgePolicy policy={true,5000u,true};
-    CHECK(CisNet_PublishRear(s,&r,&source,&policy,out)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(s,&r,&source,&policy,out)==NET_OK);
     CHECK(net_upper_step(s,1u)==NET_OK&&p->borrowed!=NULL);return 0;
 }
 static int finish_borrow(NetUpper *s,PhysicalPort *p,NetTxKey key)

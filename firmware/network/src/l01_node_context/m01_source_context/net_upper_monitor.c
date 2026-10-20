@@ -69,7 +69,7 @@ static NetStatus relay(NetPermissionGuard *g,const NetPermissionView *v)
     }
     if(!v->has_original || (v->reason!=NET_PERMISSION_CURRENT && v->reason!=NET_PERMISSION_RESTRICTED) ||
        v->delivery.receipt_id==g->relayed_receipt)return NET_NO_WORK;
-    st=CisNet_PublishPiPermission(g->service,g->policy.cis_boot,g->policy.pi_use_limit_ms,
+    st=net_upper_cis_publish_pi_permission(g->service,g->policy.cis_boot,g->policy.pi_use_limit_ms,
         &g->policy.relay_age,&g->relay_key);
     if(st==NET_OK){g->relay_active=true;g->relayed_receipt=v->delivery.receipt_id;}
     return st;

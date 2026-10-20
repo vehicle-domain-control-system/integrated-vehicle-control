@@ -74,6 +74,6 @@ NetStatus net_upper_diagnostics(const NetUpper *, NetUpperDiagnostics *out);
  * invented. Quality/reason mapping not represented by CAN remains HOLD.
  * Requires explicitly bound UART-C sequence allocation, never a hidden seed.
  * Original500ms retention still applies even if use_limit_ms is larger. */
-NetStatus CisNet_PublishPiPermission(NetUpper *, uint32_t cis_boot,
+NetStatus net_upper_cis_publish_pi_permission(NetUpper *, uint32_t cis_boot,
     uint16_t selected_use_limit_ms, const NetAgePolicy *, NetTxKey *out);
 #endif

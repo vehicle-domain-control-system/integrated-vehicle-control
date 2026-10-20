@@ -162,7 +162,7 @@ static void external_owner_step(void)
     }
     if(relay_vision) {
         NetTxKey key; NetAgePolicy policy={true,10000u,true}; NetStatus s;
-        s=CisNet_PublishOccupant(&service,401u,next_sequence++,&policy,&key);
+        s=net_upper_cis_publish_occupant(&service,401u,next_sequence++,&policy,&key);
         printf("{\"event\":\"vision_relay\",\"node\":\"%s\",\"status\":\"%s\"}\n",node_name,status_name(s));
         if(s==NET_OK) { remember(key); relay_vision=false; }
     }
@@ -227,7 +227,7 @@ static NetStatus publish_command(const char *line)
         if(a>UINT16_MAX || c>UINT8_MAX || d>UINT16_MAX) return NET_INVALID_ARGUMENT;
         rear.boot_id=401u; rear.tx_sequence=b; rear.update_sequence=b; rear.rear_distance_deci_cm=(uint16_t)a;
         rear.validity=(uint8_t)c; rear.source_age_ms=(uint16_t)d; source.observed_at_ms=backend.now_ms; source.original_age_ms=d;
-        s=CisNet_PublishRear(&service,&rear,&source,&policy,&key); if(s==NET_OK) remember(key); return s;
+        s=net_upper_cis_publish_rear(&service,&rear,&source,&policy,&key); if(s==NET_OK) remember(key); return s;
     }
     if(sscanf(line,"context %u",&a)==1) {
         NetWireMContext *r=&m.data.m_context; m.link=NET_WIRE_UART_M; m.type=0x01u;
@@ -273,9 +273,9 @@ static NetStatus command(const char *line)
         rear.boot_id=401u; rear.validity=1u; rear.rear_distance_deci_cm=123u; source.observed_at_ms=backend.now_ms;
         for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
             rear.tx_sequence=100u+(uint32_t)i; rear.update_sequence=rear.tx_sequence;
-            s=CisNet_PublishRear(&service,&rear,&source,&policy,&keys[i]); if(s!=NET_OK) return s;
+            s=net_upper_cis_publish_rear(&service,&rear,&source,&policy,&keys[i]); if(s!=NET_OK) return s;
         }
-        s=CisNet_PublishRear(&service,&rear,&source,&policy,&extra);
+        s=net_upper_cis_publish_rear(&service,&rear,&source,&policy,&extra);
         printf("{\"event\":\"tx_saturation\",\"node\":\"%s\",\"queued\":%u,\"extra_status\":\"%s\",\"output_unchanged\":%s}\n",node_name,(unsigned)NET_UPPER_TX_CAPACITY,status_name(s),(extra.epoch==77u&&extra.token==88u)?"true":"false");
         for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
             if(net_upper_cancel(&service,keys[i])!=NET_OK || net_upper_retire(&service,keys[i])!=NET_OK) return NET_HOLD;

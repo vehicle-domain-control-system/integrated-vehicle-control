@@ -84,10 +84,10 @@ static int queued_vision_reset(void)
 {
     NetUpperUartMessage v=uart_sample(0u);NetTxKey key;uint64_t receipt;
     CHECK(setup(NET_WIRE_NODE_CIS)==0);CHECK(uart_message(&v)==NET_OK);receipt=service.next_receipt;
-    CHECK(CisNet_PublishOccupant(&service,61u,3u,&epoch_policy,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_occupant(&service,61u,3u,&epoch_policy,&key)==NET_OK);
     CHECK(expected_status(signal_link(NET_UPPER_LINK_RESET,NET_WIRE_UART_C,2u),NET_HOLD));
     CHECK(assert_local_hold(key)==0);CHECK(service.next_receipt==receipt&&service.config.port_epoch[NET_WIRE_CAN]==1u);
-    key.epoch=99u;key.token=88u;CHECK(CisNet_PublishOccupant(&service,61u,4u,&epoch_policy,&key)==NET_HOLD);
+    key.epoch=99u;key.token=88u;CHECK(net_upper_cis_publish_occupant(&service,61u,4u,&epoch_policy,&key)==NET_HOLD);
     CHECK(key.epoch==99u&&key.token==88u);return 0;
 }
 static int newer_receipt_immutable(void)

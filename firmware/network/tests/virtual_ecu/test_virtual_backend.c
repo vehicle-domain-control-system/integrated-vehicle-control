@@ -24,7 +24,7 @@ static int publish(NetTxKey *key)
 {
     NetWireCisRearRaw rear={0}; NetSourceStamp source={1u,1000u,0u}; NetAgePolicy age={true,1000u,true};
     rear.boot_id=4u; rear.tx_sequence=1u; rear.update_sequence=1u; rear.rear_distance_deci_cm=321u; rear.validity=1u;
-    CHECK(CisNet_PublishRear(&upper,&rear,&source,&age,key)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&upper,&rear,&source,&age,key)==NET_OK);
     CHECK(net_upper_step(&upper,32u)==NET_OK); return 0;
 }
 static int phases(void)
@@ -134,7 +134,7 @@ static int deadline(void)
         memset(&upper,0,sizeof(upper)); CHECK(setup()==0);
         rear.boot_id=4u; rear.tx_sequence=1u; rear.update_sequence=1u;
         rear.rear_distance_deci_cm=321u; rear.validity=1u;
-        CHECK(CisNet_PublishRear(&upper,&rear,&source,&retention,&key)==NET_OK);
+        CHECK(net_upper_cis_publish_rear(&upper,&rear,&source,&retention,&key)==NET_OK);
         CHECK(net_upper_step(&upper,32u)==NET_OK);
         CHECK(backend.pending[0].borrow!=NULL);
         packet=backend.pending[0].borrow->packet;
@@ -149,7 +149,7 @@ static int deadline(void)
         CHECK(net_upper_tx_snapshot(&upper,key,&s)==NET_OK && s.outcome==NET_TX_SUCCEEDED && s.reference_released);
         CHECK(net_upper_retire(&upper,key)==NET_OK);
         memset(&upper,0,sizeof(upper)); CHECK(setup()==0); retention.maximum_age_ms=UINT64_MAX-1000u;
-        CHECK(CisNet_PublishRear(&upper,&rear,&source,&retention,&key)==NET_OK);
+        CHECK(net_upper_cis_publish_rear(&upper,&rear,&source,&retention,&key)==NET_OK);
         CHECK(net_upper_step(&upper,32u)==NET_OK && backend.pending[0].borrow!=NULL);
         packet=backend.pending[0].borrow->packet;
         CHECK(packet.transmit_deadline_ms==UINT64_MAX && packet.expires_at_equality);

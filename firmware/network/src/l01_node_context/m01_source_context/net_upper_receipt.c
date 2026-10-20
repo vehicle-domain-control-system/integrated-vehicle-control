@@ -33,7 +33,7 @@ NetStatus net_upper_received_uart(const NetUpper *s, NetWireLink link,
     *out=value;return NET_OK;
 }
 
-NetStatus CisNet_PublishPiPermission(NetUpper *s, uint32_t cis_boot,
+NetStatus net_upper_cis_publish_pi_permission(NetUpper *s, uint32_t cis_boot,
     uint16_t use_limit, const NetAgePolicy *policy, NetTxKey *out)
 {
     NetUpperCanMessage original;NetUpperDelivery delivery;NetSourceStamp source;

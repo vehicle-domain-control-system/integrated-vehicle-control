@@ -120,7 +120,7 @@ static int rear_product(NetHalPlatform platform)
     CHECK(init(&a,&fa,platform)==0); CHECK(init(&b,&fb,platform==NET_HAL_S32K144?NET_HAL_S32K344:NET_HAL_S32K144)==0);
     memset(&owner,0,sizeof(owner)); CHECK(service(&sender,&a,NET_WIRE_NODE_CIS)==0); CHECK(service(&receiver,&b,NET_WIRE_NODE_DOMAIN)==0);
     source.observation_id=77u; source.observed_at_ms=100u;
-    CHECK(CisNet_PublishRear(&sender,&r,&source,&policy,&k)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&source,&policy,&k)==NET_OK);
     fa.now=102u; CHECK(net_upper_step(&sender,32u)==NET_OK); CHECK(fa.count==1u);
     CHECK(fa.borrowed[0]->platform==platform && fa.borrowed[0]->packet.can.length==20u);
     CHECK(net_upper_tx_snapshot(&sender,k,&state)==NET_OK && !state.admission_known && state.outcome==NET_TX_UNKNOWN);
@@ -131,7 +131,7 @@ static int rear_product(NetHalPlatform platform)
     CHECK(complete(&a,k,NET_WIRE_CAN)==0); CHECK(net_upper_step(&sender,32u)==NET_OK);
     CHECK(net_upper_tx_snapshot(&sender,k,&state)==NET_OK && state.outcome==NET_TX_SUCCEEDED && state.reference_released);
     CHECK(net_upper_retire(&sender,k)==NET_OK && fa.bad==0u && fb.bad==0u);
-    printf("{\"path\":\"CisNet_PublishRear->Queue->CANCodec->S32K%uAdapter->FakeHAL->S32K%uAdapter->RXCodec->TypedAdapter->FakeDomainIf\",\"mm\":123,\"age_ms\":3,\"hardware\":\"NOT_RUN\"}\n",(unsigned)platform,(unsigned)b.platform);
+    printf("{\"path\":\"net_upper_cis_publish_rear->Queue->CANCodec->S32K%uAdapter->FakeHAL->S32K%uAdapter->RXCodec->TypedAdapter->FakeDomainIf\",\"mm\":123,\"age_ms\":3,\"hardware\":\"NOT_RUN\"}\n",(unsigned)platform,(unsigned)b.platform);
     return 0;
 }
 static int uart_product(void)
@@ -341,7 +341,7 @@ static int backend_violation(void)
     CHECK(init(&b,&fb,NET_HAL_S32K344)==0 && service(&sender,&b,NET_WIRE_NODE_CIS)==0);
     fb.synchronous=2u; fb.submit_status=NET_REJECTED;
     source.observation_id=77u; source.observed_at_ms=100u;
-    CHECK(CisNet_PublishRear(&sender,&r,&source,&policy,&upper_key)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&source,&policy,&upper_key)==NET_OK);
     r.rear_distance_deci_cm=321u;
     CHECK(net_upper_step(&sender,32u)==NET_OK && fb.count==1u && fb.capture_status==NET_OK);
     CHECK(net_upper_step(&sender,32u)==NET_HOLD);
@@ -390,7 +390,7 @@ static int reset_causal(bool settled_first)
     NetTxKey k; NetUpperTxSnapshot state; NetUpperCapture reset=capture(2u,100u);
     CHECK(init(&a,&fa,NET_HAL_S32K144)==0 && service(&sender,&a,NET_WIRE_NODE_CIS)==0);
     source.observation_id=77u; source.observed_at_ms=100u;
-    CHECK(CisNet_PublishRear(&sender,&r,&source,&policy,&k)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&source,&policy,&k)==NET_OK);
     CHECK(net_upper_step(&sender,32u)==NET_OK && fa.count==1u);
     if(settled_first) CHECK(complete(&a,k,NET_WIRE_CAN)==0);
     CHECK(net_hal_capture_link(&a,NET_UPPER_LINK_RESET,NET_WIRE_CAN,&reset)==NET_OK);
@@ -466,11 +466,11 @@ static int tx_capture_error(void)
     NetTxEvent event={0}; NetUpperCapture c=capture(1u,100u);
     CHECK(init(&a,&fa,NET_HAL_S32K144)==0 && service(&sender,&a,NET_WIRE_NODE_CIS)==0);
     source.observation_id=77u; source.observed_at_ms=100u;
-    CHECK(CisNet_PublishRear(&sender,&r,&source,&policy,&first)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&source,&policy,&first)==NET_OK);
     CHECK(net_upper_step(&sender,32u)==NET_OK && complete(&a,first,NET_WIRE_CAN)==0);
     CHECK(net_upper_step(&sender,32u)==NET_OK);
     ++r.tx_sequence;
-    CHECK(CisNet_PublishRear(&sender,&r,&source,&policy,&second)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&source,&policy,&second)==NET_OK);
     CHECK(net_upper_step(&sender,32u)==NET_OK);
     event.key=second; event.admission_observed=true; event.accepted=true;
     event.outcome=NET_TX_SUCCEEDED; event.release_observed=true; c.errors=4u; c.overflow=2u;

@@ -763,7 +763,7 @@ static int run_route(size_t index)
   forged=m;forged.data.cis_occupant.vision_age_ms=1u;changed=source;changed.original_age_ms=1u;
   CHECK(net_upper_submit_can(&tx,&forged,&changed,&age,&key)==NET_HOLD);
   CHECK(key.epoch==99u && key.token==99u && tx.next_token==1u);
-  CHECK(CisNet_PublishOccupant(&tx,m.data.cis_occupant.boot_id,m.data.cis_occupant.tx_sequence,&age,&key)==NET_OK);
+  CHECK(net_upper_cis_publish_occupant(&tx,m.data.cis_occupant.boot_id,m.data.cis_occupant.tx_sequence,&age,&key)==NET_OK);
  } else CHECK(net_upper_submit_can(&tx,&m,&source,&age,&key)==NET_OK);
  CHECK(net_upper_tx_snapshot(&tx,key,&state)==NET_OK && state.queued && !state.submitted);
  CHECK(tx_port.submitted==0u);

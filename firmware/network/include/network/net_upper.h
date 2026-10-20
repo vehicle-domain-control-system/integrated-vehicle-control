@@ -192,11 +192,11 @@ NetStatus net_upper_submit_uart(NetUpper *, const NetUpperUartMessage *,
     const NetSourceStamp *, const NetAgePolicy *, NetTxKey *out);
 NetStatus net_upper_submit_uart_auto(NetUpper *, const NetUpperUartMessage *,
     const NetSourceStamp *, const NetAgePolicy *, NetTxKey *out);
-NetStatus CisNet_PublishRear(NetUpper *, const NetWireCisRearRaw *,
+NetStatus net_upper_cis_publish_rear(NetUpper *, const NetWireCisRearRaw *,
     const NetSourceStamp *, const NetAgePolicy *, NetTxKey *out);
 /* Relay the latest actual Owner-accepted Pi observation, preserving capture
  * and every raw Vision identity/quality. Caller supplies only CIS transport identity. */
-NetStatus CisNet_PublishOccupant(NetUpper *, uint32_t cis_boot, uint32_t tx_sequence,
+NetStatus net_upper_cis_publish_occupant(NetUpper *, uint32_t cis_boot, uint32_t tx_sequence,
     const NetAgePolicy *, NetTxKey *out);
 NetStatus net_upper_tx_snapshot(const NetUpper *, NetTxKey, NetUpperTxSnapshot *out);
 NetStatus net_upper_retire(NetUpper *, NetTxKey);

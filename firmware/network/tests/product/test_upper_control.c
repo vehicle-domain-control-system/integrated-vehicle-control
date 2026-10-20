@@ -95,7 +95,7 @@ static NetStatus publish_rear(uint32_t sequence,NetTxKey *out)
     rear.boot_id=41u;rear.tx_sequence=sequence;rear.update_sequence=77u;
     rear.rear_distance_deci_cm=123u;rear.validity=1u;
     source.observation_id=77u;source.observed_at_ms=fake.now;
-    return CisNet_PublishRear(&service,&rear,&source,&policy,out);
+    return net_upper_cis_publish_rear(&service,&rear,&source,&policy,out);
 }
 static NetUpperUartMessage vision(uint16_t sequence)
 {
@@ -197,7 +197,7 @@ static int tx_detail(void)
     CHECK(setup(NET_WIRE_NODE_CIS,false)==0);
     rear.boot_id=41u;rear.tx_sequence=2u;rear.update_sequence=77u;
     rear.rear_distance_deci_cm=123u;rear.validity=1u;rear.source_age_ms=5u;
-    CHECK(CisNet_PublishRear(&service,&rear,&source,&policy,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&service,&rear,&source,&policy,&key)==NET_OK);
     rear.rear_distance_deci_cm=321u;source.original_age_ms=99u;policy.maximum_age_ms=1u;
     CHECK(net_upper_tx_detail(&service,key,&detail)==NET_OK && detail.state.queued);
     CHECK(detail.can.data.cis_rear.rear_distance_deci_cm==123u && detail.source.original_age_ms==5u);
@@ -400,7 +400,7 @@ static int permission_relay(void)
 {
     NetTxKey key;NetAgePolicy p=age_policy();NetUpperTxDetail d;NetWirePPermission decoded;uint16_t seq;
     CHECK(setup(NET_WIRE_NODE_CIS,false)==0 && permission(0u,0u,7u,37u)==NET_OK);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_OK);
     fake.now=103u;CHECK(net_upper_step(&service,32u)==NET_OK);
     CHECK(net_upper_tx_detail(&service,key,&d)==NET_OK && d.source.original_age_ms==37u);
     CHECK(net_wire_p_permission_decode(PROFILE,&fake.borrowed[0]->uart,&decoded,&seq)==NET_WIRE_OK);
@@ -413,28 +413,28 @@ static int permission_hold(void)
 {
     NetTxKey key={88u,99u};NetAgePolicy p=age_policy();
     CHECK(setup(NET_WIRE_NODE_CIS,false)==0);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_NO_WORK);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_NO_WORK);
     CHECK(permission(0u,1u,1u,0u)==NET_OK);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_HOLD && key.token==99u);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_HOLD && key.token==99u);
     CHECK(permission(0u,0u,2u,0u)==NET_OK);fake.now=599u;
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_OK);
     fake.now=600u;CHECK(net_upper_step(&service,32u)==NET_EXPIRED && fake.submissions==0u);
     CHECK(net_upper_retire(&service,key)==NET_OK);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_EXPIRED);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_EXPIRED);
     CHECK(setup(NET_WIRE_NODE_DOMAIN,false)==0);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_REJECTED);return 0;
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_REJECTED);return 0;
 }
 static int permission_epoch(void)
 {
     NetTxKey key;NetAgePolicy p=age_policy();NetUpperTxDetail d;
     CHECK(setup(NET_WIRE_NODE_CIS,false)==0 && permission(0u,0u,1u,0u)==NET_OK);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_OK);
     CHECK(reset_link(NET_WIRE_CAN,2u)==NET_HOLD); /* reset drains before queued relay dispatch */
     CHECK(net_upper_tx_detail(&service,key,&d)==NET_OK);
     CHECK(!d.state.submitted && !d.state.accepted && d.state.local_status==NET_HOLD && fake.submissions==0u);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_HOLD);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_HOLD);
     CHECK(permission(0u,0u,2u,0u)==NET_OK);
-    CHECK(CisNet_PublishPiPermission(&service,81u,1500u,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_pi_permission(&service,81u,1500u,&p,&key)==NET_OK);
     CHECK(net_upper_step(&service,32u)==NET_OK && fake.submissions==1u);return 0;
 }
 static int diagnostics(void)

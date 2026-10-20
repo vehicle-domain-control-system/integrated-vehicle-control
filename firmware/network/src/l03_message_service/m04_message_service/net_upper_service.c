@@ -315,7 +315,7 @@ NetStatus net_upper_submit_inspection_uart(NetUpper *s,const NetUpperUartMessage
     if(st==NET_OK)++s->next_uart_sequence[i];
     return st;
 }
-NetStatus CisNet_PublishRear(NetUpper *s,const NetWireCisRearRaw *rear,
+NetStatus net_upper_cis_publish_rear(NetUpper *s,const NetWireCisRearRaw *rear,
     const NetSourceStamp *source,const NetAgePolicy *policy,NetTxKey *out)
 {
     NetUpperCanMessage m;

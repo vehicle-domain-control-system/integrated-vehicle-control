@@ -413,7 +413,7 @@ static NetStatus tx_publish(NetTxKey *key)
 {
 #if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
     NetAgePolicy policy = { true, 1000u, true };
-    return CisNet_PublishPiPermission(&service, CIS_BOOT, 1500u, &policy, key);
+    return net_upper_cis_publish_pi_permission(&service, CIS_BOOT, 1500u, &policy, key);
 #else
     NetWireMDomainAliveRaw a;
     NetSourceStamp s;

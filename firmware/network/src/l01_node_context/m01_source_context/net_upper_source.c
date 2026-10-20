@@ -9,7 +9,7 @@ static bool younger(uint16_t old_age, uint16_t new_age, uint64_t elapsed)
     uint16_t floor=elapsed >= (uint64_t)(UINT16_MAX-old_age) ? UINT16_MAX : (uint16_t)(old_age+elapsed);
     return new_age < floor;
 }
-NetStatus CisNet_PublishOccupant(NetUpper *s,uint32_t cis_boot,uint32_t tx_sequence,
+NetStatus net_upper_cis_publish_occupant(NetUpper *s,uint32_t cis_boot,uint32_t tx_sequence,
     const NetAgePolicy *policy,NetTxKey *out)
 {
     size_t i;const NetUpperAdmission *a=NULL;const NetWirePVisionResult *v;

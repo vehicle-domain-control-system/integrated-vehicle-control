@@ -447,7 +447,7 @@ static int relay_occupant(NetUpperCanMessage *observed)
     NetUpperDelivery *origin=&cis->metadata[index_of(NET_WIRE_UART_C,0x60u)];
     const NetWirePVisionResult *raw=&cis->uart_cache[index_of(NET_WIRE_UART_C,0x60u)].data.p_vision_result;
     tick+=7u;cis->now=tick;
-    CHECK(CisNet_PublishOccupant(&cis->service,401u,1u,&policy,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_occupant(&cis->service,401u,1u,&policy,&key)==NET_OK);
     CHECK(net_upper_step(&cis->service,NET_UPPER_RX_CAPACITY)==NET_OK && cis->borrowed!=NULL);
     CHECK(net_upper_can_decode(PROFILE,&cis->packet.can,observed)==NET_WIRE_OK);
     CHECK(observed->data.cis_occupant.pi_boot_id==raw->pi_boot_id && observed->data.cis_occupant.vision_sequence==raw->vision_sequence);
@@ -455,7 +455,7 @@ static int relay_occupant(NetUpperCanMessage *observed)
     CHECK(observed->data.cis_occupant.presence_validity==raw->presence_validity && observed->data.cis_occupant.count_validity==raw->count_validity);
     CHECK(deliver_packet(&nodes[DOMAIN],&cis->packet,0u)==NET_OK);
     CHECK(finish_tx(cis,NET_TX_SUCCEEDED)==0);
-    printf("{\"scenario\":\"%s\",\"wire\":\"CIS_OCCUPANT\",\"tx_entry\":\"CisNet_PublishOccupant/actual_Pi_receipt/queue/codec\",\"rx_entry\":\"capture/step/typed_owner\",\"pi_boot\":%u,\"vision_sequence\":%u,\"wire_age\":%u,\"new_owner_timestamp\":false}\n",scenario,raw->pi_boot_id,raw->vision_sequence,observed->data.cis_occupant.vision_age_ms);
+    printf("{\"scenario\":\"%s\",\"wire\":\"CIS_OCCUPANT\",\"tx_entry\":\"net_upper_cis_publish_occupant/actual_Pi_receipt/queue/codec\",\"rx_entry\":\"capture/step/typed_owner\",\"pi_boot\":%u,\"vision_sequence\":%u,\"wire_age\":%u,\"new_owner_timestamp\":false}\n",scenario,raw->pi_boot_id,raw->vision_sequence,observed->data.cis_occupant.vision_age_ms);
     return 0;
 }
 

@@ -39,7 +39,7 @@ fail-closed; actual product injection uses `net_*_upper_port.c` and `NetHalAdapt
   storage, stable event copies and one serialized superloop.
 - `NetEcuAdapter`: 48 typed publish functions and typed receive callbacks; a
   missing callback fails closed. No vehicle decision algorithm is synthesized.
-- `CisNet_PublishRear`, `CisNet_PublishOccupant`, `CisNet_PublishPiPermission`:
+- `net_upper_cis_publish_rear`, `net_upper_cis_publish_occupant`, `net_upper_cis_publish_pi_permission`:
   product relays retain accepted receipt, original identity and source age.
 - `NetUpperQuery`: context validation, bounded getter progression, raw provenance,
   real local TX success counting, Query End and cancellation.

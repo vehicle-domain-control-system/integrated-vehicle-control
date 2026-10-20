@@ -57,7 +57,7 @@ static NetStatus fake_submit(void *context, const NetUpperPacket *packet, NetTxK
     if (p->reenter != NULL) {
         p->nested_step = net_upper_step(p->reenter, 1u);
         p->nested_cancel = net_upper_cancel(p->reenter, key);
-        p->nested_submit = CisNet_PublishRear(p->reenter, &p->nested_rear,
+        p->nested_submit = net_upper_cis_publish_rear(p->reenter, &p->nested_rear,
             &p->nested_source, &p->nested_policy, &p->nested_key);
     }
     return NET_OK;
@@ -173,7 +173,7 @@ static int product_rear(void)
     NetTxKey key; NetUpperEvent e; NetUpperTxSnapshot state;
     CHECK(init_service(&sender, &sender_port, NET_WIRE_NODE_CIS, NULL) == NET_OK);
     CHECK(init_service(&receiver, &receiver_port, NET_WIRE_NODE_DOMAIN, &domain) == NET_OK);
-    CHECK(CisNet_PublishRear(&sender, &r, &s, &p, &key) == NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender, &r, &s, &p, &key) == NET_OK);
     CHECK(net_upper_tx_snapshot(&sender, key, &state) == NET_OK && state.queued);
     r.rear_distance_deci_cm = 999u; s.original_age_ms = 999u;
     sender_port.now = 103u;
@@ -191,7 +191,7 @@ static int product_rear(void)
     CHECK(domain.rear.source_age_ms == 4u && domain.delivery.capture.captured_at_ms == 103u);
     CHECK(net_upper_tx_snapshot(&sender, key, &state) == NET_OK && state.outcome == NET_TX_UNKNOWN);
     CHECK(net_upper_retire(&sender, key) == NET_HOLD);
-    printf("{\"case\":\"%s\",\"entry\":\"CisNet_PublishRear\",\"wire_id\":160,\"wire_age\":3,\"owner\":\"FakeDomainIf\",\"rear_mm\":123,\"received_age\":4,\"remote_execution_claimed\":false,\"result\":\"PASS\"}\n", case_name);
+    printf("{\"case\":\"%s\",\"entry\":\"net_upper_cis_publish_rear\",\"wire_id\":160,\"wire_age\":3,\"owner\":\"FakeDomainIf\",\"rear_mm\":123,\"received_age\":4,\"remote_execution_claimed\":false,\"result\":\"PASS\"}\n", case_name);
     return 0;
 }
 static int event_orders(void)
@@ -202,7 +202,7 @@ static int event_orders(void)
         NetWireCisRearRaw r=rear_value(1u,123u); NetSourceStamp s=stamp(1u);
         NetAgePolicy p=policy(); NetTxKey key; NetUpperTxSnapshot snap;
         CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_CIS,NULL)==NET_OK);
-        CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_OK);
+        CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_OK);
         (void)net_upper_step(&sender,32u);
         for(j=0u;j<3u;++j) {
             NetUpperEvent e=tx_event(key,orders[i][j]);
@@ -234,10 +234,10 @@ static int capacity(void)
     CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_CIS,NULL)==NET_OK);
     for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
         r=rear_value((uint32_t)i+1u,123u);s=stamp(i+1u);
-        CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&keys[i])==NET_OK);
+        CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&keys[i])==NET_OK);
     }
     r=rear_value(100u,123u);s=stamp(100u);
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&rejected)==NET_NO_CAPACITY);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&rejected)==NET_NO_CAPACITY);
     CHECK(rejected.epoch==1234u&&rejected.token==5678u);
     (void)net_upper_step(&sender,32u);
     CHECK(sender_port.submissions>0u);
@@ -245,14 +245,14 @@ static int capacity(void)
         NetUpperEvent release=tx_event(keys[0],2u);
         CHECK(push(&sender_port,&release));(void)net_upper_step(&sender,32u);
         CHECK(net_upper_retire(&sender,keys[0])==NET_HOLD);
-        CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&rejected)==NET_NO_CAPACITY);
+        CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&rejected)==NET_NO_CAPACITY);
         release=tx_event(keys[0],0u);CHECK(push(&sender_port,&release));
         release=tx_event(keys[0],1u);CHECK(push(&sender_port,&release));
         (void)net_upper_step(&sender,32u);
     }
     CHECK(net_upper_tx_snapshot(&sender,keys[0],&snap)==NET_OK&&snap.outcome==NET_TX_SUCCEEDED);
     CHECK(net_upper_retire(&sender,keys[0])==NET_OK);
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&rejected)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&rejected)==NET_OK);
     CHECK(rejected.token==keys[NET_UPPER_TX_CAPACITY-1u].token+1u);
     return 0;
 }
@@ -264,7 +264,7 @@ static int reentry(void)
     sender_port.reenter=&sender;sender_port.nested_rear=rear_value(2u,321u);
     sender_port.nested_source=stamp(2u);sender_port.nested_policy=p;
     sender_port.nested_key.epoch=77u;sender_port.nested_key.token=88u;
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_OK);
     (void)net_upper_step(&sender,32u);
     CHECK(sender_port.nested_step==NET_BUSY&&sender_port.nested_cancel==NET_BUSY&&sender_port.nested_submit==NET_BUSY);
     CHECK(sender_port.nested_key.epoch==77u&&sender_port.nested_key.token==88u);
@@ -355,11 +355,11 @@ static int time_failures(void)
     NetAgePolicy p=policy();NetTxKey key={77u,88u};
     CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_CIS,NULL)==NET_OK);
     sender_port.clock_status=NET_HOLD;
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)!=NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)!=NET_OK);
     CHECK(key.epoch==77u&&key.token==88u&&sender_port.submissions==0u);
     sender_port.clock_status=NET_OK;sender_port.now=99u;
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)!=NET_OK);
-    sender_port.now=100u;CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)!=NET_OK);
+    sender_port.now=100u;CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_OK);
     sender_port.now=99u;(void)net_upper_step(&sender,32u);CHECK(sender_port.submissions==0u);
     return 0;
 }
@@ -384,7 +384,7 @@ static int reset_borrow(void)
     NetAgePolicy p=policy();NetTxKey key;NetUpperEvent e={0};
     NetUpperPacket saved;const NetUpperPacket *address;
     CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_CIS,NULL)==NET_OK);
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_OK);
     (void)net_upper_step(&sender,32u);
     address=sender_port.borrowed[0];CHECK(address!=NULL);saved=*address;
     e.kind=NET_UPPER_LINK_RESET;e.link=NET_WIRE_CAN;e.capture.port_epoch=2u;
@@ -400,7 +400,7 @@ static int conflict(void)
     NetWireCisRearRaw r=rear_value(1u,123u);NetSourceStamp s=stamp(1u);
     NetAgePolicy p=policy();NetTxKey key;NetUpperTxSnapshot snap;NetUpperEvent e;
     CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_CIS,NULL)==NET_OK);
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_OK);(void)net_upper_step(&sender,32u);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_OK);(void)net_upper_step(&sender,32u);
     e=tx_event(key,3u);CHECK(push(&sender_port,&e));(void)net_upper_step(&sender,32u);
     CHECK(push(&sender_port,&e));(void)net_upper_step(&sender,32u);
     e.tx.outcome=NET_TX_FAILED;CHECK(push(&sender_port,&e));(void)net_upper_step(&sender,32u);
@@ -474,11 +474,11 @@ static int tx_age_mismatch(void)
     NetWireCisRearRaw decoded;NetWirePVisionResult vision;uint16_t sequence;
     CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_CIS,NULL)==NET_OK);
     r.source_age_ms=100u;
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_HOLD);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_HOLD);
     CHECK(key.epoch==88u && key.token==99u && sender.next_token==1u);
     CHECK(sender_port.submissions==0u);
     s.original_age_ms=100u;
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_OK && key.token==1u);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_OK && key.token==1u);
     sender_port.now=110u;CHECK(net_upper_step(&sender,32u)==NET_OK);
     CHECK(net_wire_can_decode_rear(NET_WIRE_CANDIDATE_ONLY,&sender_port.borrowed[0]->can,&decoded)==NET_WIRE_OK);
     CHECK(decoded.source_age_ms==110u);
@@ -527,7 +527,7 @@ static int wrong_link_outcome(void)
     NetAgePolicy p=policy();NetTxKey key;NetUpperEvent e;NetUpperTxSnapshot state;
     NetUpperObservation before,after;
     CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_CIS,NULL)==NET_OK);
-    CHECK(CisNet_PublishRear(&sender,&r,&s,&p,&key)==NET_OK);
+    CHECK(net_upper_cis_publish_rear(&sender,&r,&s,&p,&key)==NET_OK);
     CHECK(net_upper_step(&sender,32u)==NET_OK);
     e=tx_event(key,3u);e.link=NET_WIRE_UART_C;
     CHECK(net_upper_capture(&sender,&e)==NET_OK);
