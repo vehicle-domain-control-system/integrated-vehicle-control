@@ -123,7 +123,7 @@ void PiApp_OnCisPermission(
 | `message` | `const NetPiPermission *` · IN/read-only · OUT 없음 | [`NetPiPermission`](10_DATA.md#type-netpipermission) 전체 의미 record. NULL 불가. Network 검증 후 Pi 차량용 관측 허용 소비 담당에게 전달, 반환까지 borrowed; 보관할 의미와 시간근거는 App이 복사. |
 | `meta` | `const NetUartRxMeta *` · IN/read-only | [`NetUartRxMeta`](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netuartrxmeta)는 수신 Network 생산. 로컬 수신 시각/그 홉 전송 순번; 원 관측 sequence/현재 Session/command ID로 대체하지 않음. callback 반환까지 borrowed. |
 
-**호출·사용:** CIS relay BOOT/revision, 허용·품질·사유·use_limit·원 DOMAIN 판단 AGE를 받는다. [허용 소비와 원본 Age](10_DATA.md#허용-소비와-원본-age)에 따라 원 AGE에 수신 이후 경과를 누적하고 수용한 세대와 원본 사용 기한/USE_LIMIT를 함께 검사한다. 후방 원 500ms를 적용하며 `USE_LIMIT=500ms` 전송값은 조건부 권장 프로필이다. UART-C 반복 500ms/수신 중단 1500ms를 원 수명과 혼동하지 않는다.
+**호출·사용:** CIS relay BOOT/revision, 허용·품질·사유·use_limit·원 DOMAIN 판단 AGE를 받는다. [허용 소비와 원본 Age](10_DATA.md#허용-소비와-원본-age)에 따라 원 AGE에 수신 이후 경과를 누적하고 수용한 세대와 원본 사용 기한/USE_LIMIT를 함께 검사한다. 후방 원 500ms를 적용하며 `USE_LIMIT=500ms` 전송값은 조건부 권장 프로필이다. UART-C 수신 중단 1500ms(반복 없음)를 원 수명과 혼동하지 않는다.
 
 **반환·실패:** [수신 전달](#local-rx-return)을 적용한다. `void`는 실제 실행·소비 성공이 아니며 오류를 기능 Result로 합성하지 않는다.
 

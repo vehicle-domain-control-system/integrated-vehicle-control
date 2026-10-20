@@ -157,7 +157,7 @@ IN은 전부 호출 동안 borrowed/read-only이며 저장하지 않는다. OUT�
 
 현재 payload의 CIS Boot/revision만으로 DOMAIN 원 Boot/update를 복원할 수 없다. 실제 원 연결 근거가 없는 `sourceAssociationVerified`는 false/HOLD이며 새 side-channel·Wire 필드·ACK를 도입하지 않는다.
 
-후방 활성 Power의 원 **500ms 사용기한·도달 시 비사용**, DOMAIN의 실제 **약200ms 재평가**는 합의다. CAN50ms 송신/150ms 수신 중단과 UART-C500ms 반복/1500ms 수신 중단은 별도 기준을 유지한다. 값이 같아도 실제 새 평가가 완료되면 새 원 순번·평가시각을 전달하고 가능한 즉시 relay하며500ms 반복 타이머를 기다리지 않는다. 단순 반복은 원·relay 평가 번호를 유지하고 AGE만 경과대로 증가한다. CAN 수신 후500ms를 기다린 동일 판단은 이미 원500ms에 도달했으므로 허용에 사용하지 않는다. USE_LIMIT1500ms 기존 후보는 원500ms를 연장하지 않고 wire500ms 변경은 동일 후방 원 판단의 양끝 의미가 입증될 때만 조건부다. source association·O05 생성/합성·사유·실제 무효화 연결은 별도 OPEN이다.
+후방 활성 Power의 원 **500ms 사용기한·도달 시 비사용**, DOMAIN의 실제 **약200ms 재평가**는 합의다. CAN50ms 송신/150ms 수신 중단과 UART-C 1500ms 수신 중단(P_PERMISSION 반복 없음)은 별도 기준을 유지한다. 값이 같아도 실제 새 평가가 완료되면 새 원 순번·평가시각을 전달하고 즉시 relay한다. CAN 단순 반복은 원 평가 번호를 유지하며 relay하지 않는다(P_PERMISSION 반복 없음). CAN 수신 후500ms를 기다린 동일 판단은 이미 원500ms에 도달했으므로 허용에 사용하지 않는다. USE_LIMIT1500ms 기존 후보는 원500ms를 연장하지 않고 wire500ms 변경은 동일 후방 원 판단의 양끝 의미가 입증될 때만 조건부다. source association·O05 생성/합성·사유·실제 무효화 연결은 별도 OPEN이다.
 
 값0/OK는 출처·시간이 현재 유효할 때 확인된 불허, 255 또는 NO_DATA/INVALID/STALE는 허용 확인 불가다. 값1/INVALID도 원 값과 품질을 그대로 보관할 수 있으나 허용으로 사용하지 않는다. 확인 불가를 정상 불허0/OK로 합성하지 않는다. 포화AGE65535와 USE_LIMIT0의 raw 표현은 정상 사용 승인과 다르다. Pi 프로세스 종료·물리 전원 차단은 이 Network 경계에서 결정하지 않는다.
 

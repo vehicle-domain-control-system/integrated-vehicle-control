@@ -100,11 +100,11 @@ typedef struct NetCisOccupant
 | `vision_sequence` | `uint32_t` | Pi 새 판정 번호, 중계 시 보존 | Pi runtime/비전 원본. CIS는 수신한 값을 보존; CIS CAN Boot/TX_SEQUENCE로 대체하지 않음. |
 | `vision_age_ms` | `uint16_t` | Pi 원본 판정 후 누적 ms | Pi 원 판정 Age + CIS 수신 후 보관/송신 대기. 각 구간을 한 번만 추가; 새 수신·상태평가로 0 초기화 금지. |
 | `occupant_presence` | `NetTriState` | 0=없음; 1=있음; 255=확인 불가 | Pi 원 값. CIS 추가 검사 실패 때 정상 없음/0명을 합성하지 않음; 해당 validity를 함께 소비. |
-| `presence_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
-| `presence_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
+| `presence_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. Pi 원 품질과 같거나 더 제한된 쪽만(VALID 승격 금지). |
+| `presence_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. Pi 원 품질과 같거나 더 제한된 쪽만(VALID 승격 금지). |
 | `occupant_count` | `uint8_t` | 0~5명,255=확인 불가 | Pi 원 값. CIS 추가 검사 실패 때 정상 없음/0명을 합성하지 않음; 해당 validity를 함께 소비. |
-| `count_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
-| `count_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. |
+| `count_validity` | `NetValidity` | 0=INVALID; 1=VALID | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. Pi 원 품질과 같거나 더 제한된 쪽만(VALID 승격 금지). |
+| `count_reason` | `NetQualityReason` | CIS 품질 사유 | CIS 최종 전달 평가. 원 Pi 품질을 보존하고 이후 실제 장애로만 사용을 제한한다. 한 벌의 CAN 품질로 두 근거 전체를 동시에 표현하지 않는다. 아래 품질 권장안 참조. Pi 원 품질과 같거나 더 제한된 쪽만(VALID 승격 금지). |
 | `vision_function_status` | `NetSensorFunctionState` | CIS 기능 상태 | CIS 기능 평가 owner. 이 occupant update와 함께 고정한 CIS 비전 기능 상태; Pi VISION_STATUS 단순 raw cast 금지. |
 <a id="type-netcisrear"></a>
 ## `NetCisRear`
@@ -355,7 +355,7 @@ Pi Network는 원 판정 Age에 **Pi 제출→실제 UART 송신 대기**만 더
 
 DOMAIN 원 허용의 합성은 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission), Pi 수신의 사용 기한 검사는 [공통 시간표](../../04_COMMON/10_DATA_AND_ID_RULES.md#section-timing)를 따른다. [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)에도 같은 원본 사용 기한을 적용한다. 실제 기능 사용과 통신 중계를 나눈다.
 
-후방 활성 Permission은 약 200ms마다 실제 재평가하고 원본 평가의 사용 기한은 500ms다. 값이 바뀌면 즉시 제출하며, 같은 값이어도 실제 새 평가가 성공하면 그 평가 번호·시각을 전달한다. CAN 50ms 송신/150ms 수신 중단과 UART-C 500ms 반복/1500ms 수신 중단은 유지한다. 반복 프레임 때문에 원 AGE를 0으로 만들거나 이전 허용을 연장하지 않는다.
+후방 활성 Permission은 약 200ms마다 실제 재평가하고 원본 평가의 사용 기한은 500ms다. 값이 바뀌면 즉시 제출하며, 같은 값이어도 실제 새 평가가 성공하면 그 평가 번호·시각을 전달한다. CAN 50ms 송신/150ms 수신 중단과 UART-C는 반복 없이 1500ms 수신 중단을 유지한다. 반복 프레임 때문에 원 AGE를 0으로 만들거나 이전 허용을 연장하지 않는다.
 
 CIS Network는 같은 검증된 `NetDomainPermission`/`NetCanRxMeta`를 `CisApp_OnDomainPermission()`과 private `CisNetPriv_RelayPiPermission()`에 분배한다. CIS App은 후방 기능을 제어하고, Network 내부 relay는 원 허용을 제한·전달한다. 공개 App에 별도의 Pi 허용 생성 API를 요구하지 않는다.
 

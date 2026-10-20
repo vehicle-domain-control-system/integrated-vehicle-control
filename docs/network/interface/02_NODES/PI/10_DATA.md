@@ -96,7 +96,7 @@ DOMAIN 원 허용 → CIS 내부 중계 → Pi · [`P_PERMISSION`](../../03_COMM
 typedef struct NetPiPermission
 {
     uint32_t cis_boot_id; /**< CIS_BOOT_ID: CIS runtime이 채우는 중계 세대 */
-    uint32_t update_sequence; /**< UPDATE_SEQUENCE: CIS 허용 중계의 새 의미 평가 번호; 반복 프레임에서는 유지 */
+    uint32_t update_sequence; /**< UPDATE_SEQUENCE: CIS 소유 relay 번호; CIS 기동마다 1부터, relay 사유마다 +1 */
     NetTriState vehicle_power_permission; /**< VEHICLE_POWER_PERMISSION: 0=불허; 1=허용; 255=확인 불가 */
     NetValueQuality value_quality; /**< VALUE_QUALITY: 허용 상태 품질 */
     NetQualityReason quality_reason; /**< QUALITY_REASON: 품질 사유 */
@@ -110,10 +110,10 @@ typedef struct NetPiPermission
 | 멤버 | 정확한 C 타입 | 값·단위·범위 / 역할 | 원 소유자·유효 조건 |
 |---|---|---|---|
 | `cis_boot_id` | `uint32_t` | CIS runtime이 채우는 중계 세대 | CIS runtime. 원 DOMAIN Boot가 아니며 Pi는 수용된 CIS 세대 기준으로 stale relay를 배제. |
-| `update_sequence` | `uint32_t` | CIS 허용 중계의 새 의미 평가 번호; 반복 프레임에서는 유지 | CIS 내부 relay의 새 의미 평가 번호 후보. 원 DOMAIN revision/세대 변경 또는 허용 품질 제한을 반영; 500ms 반복 frame에서는 유지. |
+| `update_sequence` | `uint32_t` | CIS 소유 relay 번호 | CIS 내부 relay가 소유하는 번호. CIS 기동마다 1부터, 새 원 평가·수용 세대 변경·실제 품질 제한 변경마다 +1. DOMAIN 번호를 옮기지 않으며 같은 CIS 기동 안에서 줄지 않는다. |
 | `vehicle_power_permission` | `NetTriState` | 0=불허; 1=허용; 255=확인 불가 | DOMAIN 원 판단에서 파생. CIS가 확인하지 않은 허용을 새로 생성하지 않음. |
-| `value_quality` | `NetValueQuality` | 허용 상태 품질 | 원 DOMAIN power 품질 + CIS 수신/만료 검사. 전송 가능한 보수 평가만; 품질 제한/사유 우선순위 CONTRACT_OPEN. |
-| `quality_reason` | `NetQualityReason` | 품질 사유 | 원 DOMAIN power 품질 + CIS 수신/만료 검사. 전송 가능한 보수 평가만; 품질 제한/사유 우선순위 CONTRACT_OPEN. |
+| `value_quality` | `NetValueQuality` | 허용 상태 품질 | 원 DOMAIN power 품질을 그대로 싣는다. CIS는 품질을 만들어 내지 않으며, 수신·만료 검사를 통과하지 못한 원본은 relay하지 않는다. |
+| `quality_reason` | `NetQualityReason` | 품질 사유 | 원 DOMAIN power 품질의 고정 대응: OK→NONE, STALE→STALE, INVALID→DATA_INVALID, NO_DATA→NO_DATA. |
 | `use_limit_ms` | `uint16_t` | 초안 1500ms | 기존 1500ms 후보. 같은 후방 Power 원본이면 500ms로 전달하는 조건부 권장 프로필이 있으며, 원 수명·양단 바이트·만료 검증 전 최종 값으로 바꾸지 않음. |
 | `source_age_ms` | `uint16_t` | Domain 허용 판단 후 누적 ms | DOMAIN 원 판단 Age + CAN 수신 후 CIS relay 대기. 한 번 누적; Pi 현재 Age는 여기에 Pi 수신 후 경과를 더함. |
 
@@ -168,7 +168,7 @@ P_PERMISSION에는 DOMAIN 원 BOOT/순번이 직접 없다. CIS는 수용한 DOM
 
 허용은 값 1과 OK 품질만으로 결정하지 않고 수용한 세대·순번·원 시간 근거를 함께 확인한다. 0/OK는 확인된 불허, 255 또는 NO_DATA/INVALID/STALE는 허용 확인 불가다. 기동 변경·만료·연결 상실 뒤에는 새 유효 원 판단을 확인하기 전 이전 ALLOW를 복원하지 않는다. 공유 CAN의 Power/Operation 원천·공통 AGE 합성은 미결로 유지한다.
 
-UART-C의 500ms 반복만으로 원 기한 500ms 이내의 연속 ALLOW를 보증하지 않는다. 새 DOMAIN 평가가 CIS에 도착하면 원 근거를 유지하여 가능한 즉시 중계하고 실제 지연·실패를 확인해야 한다. Pi의 통신 수신·해석·만료 검증과 비전 기능 적용은 별개다. 비전 기능에 사용할지는 Pi 모듈이 결정하며, 카메라 중지·프로세스 종료·물리 전원 차단을 이 계약의 새 요구로 만들지 않는다. 비전 기능을 적용하지 않는 구성에서도 통신 문서와 수신 시험은 진행할 수 있다.
+P_PERMISSION은 반복되지 않으므로 원 기한 500ms 이내의 연속 ALLOW는 DOMAIN의 새 평가 relay(약 200ms)로만 유지된다. 새 DOMAIN 평가가 CIS에 도착하면 원 근거를 유지하여 가능한 즉시 중계하고 실제 지연·실패를 확인해야 한다. Pi의 통신 수신·해석·만료 검증과 비전 기능 적용은 별개다. 비전 기능에 사용할지는 Pi 모듈이 결정하며, 카메라 중지·프로세스 종료·물리 전원 차단을 이 계약의 새 요구로 만들지 않는다. 비전 기능을 적용하지 않는 구성에서도 통신 문서와 수신 시험은 진행할 수 있다.
 
 <a id="delta-pi-permission"></a>
 **추가 소비 조건:** FAILED/NO_DATA 시 과거 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. UNKNOWN의 원인별 C2 Quality 투영과 Network→CIS→Pi 실제 전달은 수용·검증 대기이며, 정상 형식의 무효 품질을 과거 ALLOW로 대체하지 않는 기존 소비 원칙은 유지한다. 검증된 relay가 실패·품질 하향을 전달하면 원본 AGE가 500ms 이내라도 이전 ALLOW를 사용하지 않고 다음 성공 평가/TTL 만료까지 무효화를 미루지 않는다. Pi Wire에는 원 DOMAIN 성공 Sequence가 없으므로 relay revision을 그것으로 간주하지 않는다. 재수신·실패 시점에 원본 AGE를 0으로 초기화하지 않으며 지연된 구 ALLOW로 복원하지 않는다. 실제 relay·Queue·수신 연결은 미검증이고 Pi 카메라/비전 기능 적용 선택은 모듈 범위다. [적용 조건](../../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)

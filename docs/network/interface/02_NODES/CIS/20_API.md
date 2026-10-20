@@ -141,7 +141,7 @@ NetSubmitResult CisNet_PublishEnvironment(
 <a id="api-cisnet_publishoccupant"></a>
 ## `CisNet_PublishOccupant()`
 
-같은 원 관측의 품질이 저하되면 원 Pi 값·BOOT/VISION_SEQUENCE·생성 기준점을 유지한 채 현재 품질과 실제 제한 근거를 제출한다. 현재 AGE는 경과에 따라 증가하며 순번 증가·AGE=0으로 새 관측을 꾸미지 않는다. 높은 CAN TX_SEQUENCE만으로 원값 변경이나 INVALID→VALID를 허용하지 않는다. 복사·인계에 실패하면 원 raw·Meta·품질·순서 중 일부만 먼저 commit하지 않는다. 기존 C2 경로의 DOMAIN 저장·Getter까지 같은 수용 결과로 연결하는 실제 구현은 검증 대기다.
+같은 원 관측의 품질이 저하되면 원 Pi 값·BOOT/VISION_SEQUENCE·생성 기준점을 유지한 채 현재 품질과 실제 제한 근거를 제출한다. 현재 AGE는 경과에 따라 증가하며 순번 증가·AGE=0으로 새 관측을 꾸미지 않는다. 높은 CAN TX_SEQUENCE만으로 원값 변경이나 INVALID→VALID를 허용하지 않는다. 복사·인계에 실패하면 원 raw·Meta·품질·순서 중 일부만 먼저 commit하지 않는다. 기존 C2 경로의 DOMAIN 저장·Getter까지 같은 수용 결과로 연결하는 실제 구현은 검증 대기다. Network는 Pi 원 식별(Pi BOOT, VISION_SEQUENCE)과 값(presence, count)이 마지막으로 수용한 Pi 판정과 같고, 각 필드의 validity·reason이 Pi와 같거나 더 제한된(INVALID, CIS 사유) 기록만 받는다. `vision_function_status`는 CIS 자기 기능 상태다.
 
 ```c
 NetSubmitResult CisNet_PublishOccupant(
@@ -159,7 +159,7 @@ NetSubmitResult CisNet_PublishOccupant(
 
 **호출·사용:** 같은 occupant 갱신에 연결한 Pi 원본 BOOT/vision_sequence/AGE·presence/count와 CIS 최종 품질·vision_function_status를 제출한다. 원 Pi record는 cache에 보존한다.
 
-**반환·실패:** [송신 반환](#local-tx-return)을 적용한다. 품질이 INVALID/STALE인 정상 형식의 자료는 그 품질을 보존해 제출할 수 있다.
+**반환·실패:** [송신 반환](#local-tx-return)을 적용한다. Pi 판정을 아직 받지 못했으면 `NET_SUBMIT_NOT_READY`, 값 변경·품질 승격·식별 불일치처럼 다시 보내도 성립하지 않는 조합은 `NET_SUBMIT_INVALID_ARGUMENT`다. 품질이 INVALID/STALE인 정상 형식의 자료는 그 품질을 보존해 제출할 수 있다.
 
 **보관·재시도:** [현재값 보관](#pending-current-value)을 적용하며 원 평가 순번·Age를 보존한다.
 
@@ -251,7 +251,7 @@ void CisApp_OnPiVisionStatus(
 <a id="api-cisnetpriv_relaypipermission"></a>
 ## `CisNetPriv_RelayPiPermission()` — NETWORK_PRIVATE
 
-새 DOMAIN 평가·수용한 원 세대 변경·품질 제한 발생 시 중계 기록을 갱신하여 가능한 한 즉시 제출한다. 같은 원 평가의 500ms 반복은 relay 순번을 유지하고 AGE만 누적한다. DOMAIN 후방 원 기한 500ms와 UART-C 수신 중단 1500ms는 별개다. `USE_LIMIT`의 기존 1500ms 후보를 500ms로 바꾸는 것은 조건부 권장 프로필이며 최종 송신값은 미확정이다.
+새 DOMAIN 평가·수용한 원 세대 변경·품질 제한 발생 시 중계 기록을 갱신하여 가능한 한 즉시 제출한다. 같은 원 평가는 다시 보내지 않는다(Network 반복 없음). DOMAIN 후방 원 기한 500ms와 UART-C 수신 중단 1500ms는 별개다. `USE_LIMIT`의 기존 1500ms 후보를 500ms로 바꾸는 것은 조건부 권장 프로필이며 최종 송신값은 미확정이다.
 
 ```c
 NetSubmitResult CisNetPriv_RelayPiPermission(
@@ -267,15 +267,15 @@ NetSubmitResult CisNetPriv_RelayPiPermission(
 | `permission` | `const NetDomainPermission *` · IN/read-only · OUT 없음 | 현재 검증된 [DOMAIN 원 허용](../../04_COMMON/10_DATA_AND_ID_RULES.md#type-netdomainpermission). power 품질과 원본 관측의 AGE·revision을 복사한다. App이 생성한 별도 Pi 허용 객체를 입력받지 않는다. |
 | `meta` | `const NetCanRxMeta *` · IN/read-only | 수신 DOMAIN generation·수신시각. relay 수용 전에 필요한 근거를 복사; 반환 후 외부 포인터 보관 금지. |
 
-CIS permission Dispatcher의 owner 처리 문맥에서 `CisApp_OnDomainPermission()`과 이 내부 relay에 같은 검증된 원 입력을 분배한다. Network는 [NetPiPermission](../PI/10_DATA.md#type-netpipermission)의 `cis_boot_id`를 runtime에서 채우고, 새 relay 의미 평가에서만 update_sequence를 바꾼다. 반복 전송은 순번 유지·Age 증가다. **DOMAIN 원 허용을 제한하는 유효성 검사는 수행할 수 있으나 새 허용 판단을 생성하지 않는다.**
+CIS permission Dispatcher의 owner 처리 문맥에서 `CisApp_OnDomainPermission()`과 이 내부 relay에 같은 검증된 원 입력을 분배한다. Network는 [NetPiPermission](../PI/10_DATA.md#type-netpipermission)의 `cis_boot_id`를 runtime에서 채운다. update_sequence는 CIS가 소유하는 relay 번호로, CIS 기동마다 1부터 새 원 평가·수용 세대 변경·실제 품질 제한 변경마다 +1이다. **DOMAIN 원 허용을 제한하는 유효성 검사는 수행할 수 있으나 새 허용 판단을 생성하지 않는다.**
 
-반환은 `NET_SUBMIT_OK/NET_SUBMIT_INVALID_ARGUMENT/NET_SUBMIT_NOT_READY/NET_SUBMIT_NO_CAPACITY`의 로컬 수용 결과다. NULL/형식 오류, 수용된 DOMAIN 문맥 부재, 유한 보관 미확보를 구분한다. 정상 형식의 불허/STALE/INVALID도 명시 상태로 보관·전달할 수 있다. 이전 허용을 새 OK/age0으로 재사용하지 않고, 원 DOMAIN 세대 변경/만료 시 기존 relay 허용을 무효화한다. 수신 중단 시 Pi consumer가 만료를 확인하는 supervision 연결은 BINDING_OPEN이다.
+반환은 `NET_SUBMIT_OK/NET_SUBMIT_INVALID_ARGUMENT/NET_SUBMIT_NOT_READY/NET_SUBMIT_NO_CAPACITY`의 로컬 수용 결과다. NULL/형식 오류, 수용된 DOMAIN 문맥 부재, 유한 보관 미확보를 구분한다. 정상 형식의 불허/STALE/INVALID/NO_DATA도 명시 상태로 보관·전달한다(사유는 고정 대응표). 이전 허용을 새 OK/age0으로 재사용하지 않고, 원 DOMAIN 세대 변경/만료 시 기존 relay 허용을 무효화한다. 수신 중단 시 Pi consumer가 만료를 확인하는 supervision 연결은 BINDING_OPEN이다.
 
-`USE_LIMIT=1500ms`는 기존 후보, `500ms`는 같은 후방 Power 원본을 중계한다는 근거와 양단 바이트·만료 검증을 전제로 한 조건부 권장 프로필이다. 원 DOMAIN 재평가·원 기한은 약 200ms·500ms다. relay 사유의 구체적인 변환, 순번 rollover, 실제 실패/무수신 관측 연결은 검증이 남아 있다. SOURCE_AGE에는 원 판단 이후 아직 반영하지 않은 구간의 경과만 한 번 누적한다.
+`USE_LIMIT=1500ms`는 기존 후보, `500ms`는 같은 후방 Power 원본을 중계한다는 근거와 양단 바이트·만료 검증을 전제로 한 조건부 권장 프로필이다. 원 DOMAIN 재평가·원 기한은 약 200ms·500ms다. relay 사유는 전원 품질의 고정 대응표(OK→NONE, STALE→STALE, INVALID→DATA_INVALID, NO_DATA→NO_DATA)다. 순번 rollover와 실제 실패/무수신 관측 연결은 검증이 남아 있다. SOURCE_AGE에는 원 판단 이후 아직 반영하지 않은 구간의 경과만 한 번 누적한다.
 
-[DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)에서 파생하여 [P_PERMISSION](../../03_COMMUNICATION/30_UART_C.md#message-p-permission)으로 전달하고, 반대편은 [PiApp_OnCisPermission](../PI/20_API.md#api-piapp_oncispermission)이다. 같은 원 허용의 App 소비와 내부 Pi relay를 나누며 공개 Pi 허용 생성 API를 중복 설치하지 않는다. 후방 원 기한 500ms와 CAN 수신 중단 150ms·UART-C 반복 500ms/수신 중단 1500ms, 별도 USE_LIMIT 후보의 차이는 [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)와 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)을 함께 확인한다. **PROPOSED_DESIGN · BINDING_OPEN**.
+[DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)에서 파생하여 [P_PERMISSION](../../03_COMMUNICATION/30_UART_C.md#message-p-permission)으로 전달하고, 반대편은 [PiApp_OnCisPermission](../PI/20_API.md#api-piapp_oncispermission)이다. 같은 원 허용의 App 소비와 내부 Pi relay를 나누며 공개 Pi 허용 생성 API를 중복 설치하지 않는다. 후방 원 기한 500ms와 CAN 수신 중단 150ms·UART-C 수신 중단 1500ms(반복 없음), 별도 USE_LIMIT 후보의 차이는 [Pi 허용 소비](../PI/10_DATA.md#허용-소비와-원본-age)와 [DOMAIN_PERMISSION](../../03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)을 함께 확인한다. **PROPOSED_DESIGN · BINDING_OPEN**.
 
-**중계 경로 확인 대기:** 실패 무효화 권장안을 DOMAIN이 수용해 품질 하향을 전달하면 원본 성공 평가 Sequence가 같더라도 해당 내부 경로에서 품질 저하 전달을 누락하지 않아야 한다. 기존 relay 갱신·즉시 제출 요청을 사용하고 원 시각/AGE를 유지한다. 500ms 반복·다음 성공 평가까지 품질 하향을 유예하지 않는 안이며 Queue 적체·송신 실패 뒤 과거 ALLOW가 되살아나지 않는지 검증한다. Pi 실제 수신·적용은 local OK로 보장하지 않는다. [번호 공간과 상태](../../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)
+**중계 경로:** DOMAIN이 품질 하향을 전달하면 원본 성공 평가 Sequence가 같더라도 내부 경로에서 즉시 relay한다(새 relay 번호, 원 시각/AGE 유지). 다음 성공 평가까지 유예하지 않으며, Queue 적체·송신 실패 뒤 과거 ALLOW가 되살아나지 않는지 검증한다. Pi 실제 수신·적용은 local OK로 보장하지 않는다. [번호 공간과 상태](../../04_COMMON/10_DATA_AND_ID_RULES.md#delta-permission-sequences)
 
 ## 사용 순서와 구현 한계
 
