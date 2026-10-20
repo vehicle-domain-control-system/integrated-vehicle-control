@@ -6,6 +6,11 @@
 #include "cis_state.h"
 #include "net_api_shim.h"
 
+/* The Network stack accepts CIS_OCCUPANT only as the relay of the last P_VISION_RESULT it
+ * delivered (same values, validities, reasons, function state). The original is kept here. */
+static NetVisionResult s_pi_orig;
+static bool            s_pi_orig_valid;
+
 static uint32_t s_t_rear, s_t_occ, s_t_env, s_t_stat;
 static bool     s_due_rear, s_due_occ, s_due_env, s_due_stat;
 
@@ -18,12 +23,19 @@ static uint32_t s_status_eval_ms;
 
 void cis_net_adapter_init(void)
 {
+    Net_Init();
     s_t_rear = s_t_occ = s_t_env = s_t_stat = 0u;
     s_due_rear = s_due_occ = s_due_env = s_due_stat = true;
     cis_fault_init(&s_fault);
+    s_pi_orig_valid = false;
     s_have_status = false;
     s_status_sequence = 0u;
     s_status_eval_ms = 0u;
+}
+
+void cis_net_adapter_poll(uint32_t now_ms)
+{
+    Net_MainFunction(now_ms);
 }
 
 static uint16_t sat16(uint32_t v)
@@ -51,6 +63,8 @@ void CisApp_OnPiVisionResult(const NetVisionResult *message, const NetUartRxMeta
     if (message == 0 || meta == 0) {
         return;
     }
+    s_pi_orig = *message;
+    s_pi_orig_valid = true;
     f.pi_boot_id = message->pi_boot_id;
     f.vision_sequence = message->vision_sequence;
     f.vision_age_ms = message->vision_age_ms;
@@ -99,20 +113,41 @@ static void fill_rear(NetCisRear *m, uint32_t now_ms)
     m->proximity_status = (NetProximityStatus)o->status;
 }
 
-static void fill_occupant(NetCisOccupant *m, uint32_t now_ms)
+/* True while the CIS has not restricted either value: the current state is still the
+ * Pi's own judgement, so it can go out as the relay of the original result. A value the
+ * CIS has restricted (stale, link lost, contradiction, new Pi boot) is not submitted:
+ * the Network stack refuses it, and the DOMAIN supervises the missing message itself. */
+static bool occupant_is_relay(const vision_state_t *v)
 {
-    const vision_state_t *v = cis_app_vision();
+    if (!s_pi_orig_valid || !v->link_up || !v->have_context ||
+        v->pi_boot_id != s_pi_orig.pi_boot_id ||
+        v->count.sequence != s_pi_orig.vision_sequence) {
+        return false;
+    }
+    return (v->presence.valid == (s_pi_orig.presence_validity == NET_VALIDITY_VALID)) &&
+           (v->count.valid == (s_pi_orig.count_validity == NET_VALIDITY_VALID)) &&
+           (v->presence.valid || (uint8_t)v->presence.reason == s_pi_orig.presence_reason) &&
+           (v->count.valid || (uint8_t)v->count.reason == s_pi_orig.count_reason);
+}
 
-    m->pi_boot_id = v->pi_boot_id;
-    m->vision_sequence = v->count.sequence;
-    m->vision_age_ms = cis_value_age_ms(&v->count, now_ms);
-    m->occupant_presence = (NetTriState)v->presence.value;
-    m->presence_validity = v->presence.valid ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
-    m->presence_reason = (NetQualityReason)v->presence.reason;
-    m->occupant_count = (uint8_t)v->count.value;
-    m->count_validity = v->count.valid ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
-    m->count_reason = (NetQualityReason)v->count.reason;
-    m->vision_function_status = (NetSensorFunctionState)vision_function_status(v);
+/* The original Pi record, unchanged. Its AGE is the Pi's: the Network stack adds the time
+ * since it received the result, once. */
+static bool fill_occupant(NetCisOccupant *m)
+{
+    if (!occupant_is_relay(cis_app_vision())) {
+        return false;
+    }
+    m->pi_boot_id = s_pi_orig.pi_boot_id;
+    m->vision_sequence = s_pi_orig.vision_sequence;
+    m->vision_age_ms = s_pi_orig.vision_age_ms;
+    m->occupant_presence = s_pi_orig.occupant_presence;
+    m->presence_validity = s_pi_orig.presence_validity;
+    m->presence_reason = s_pi_orig.presence_reason;
+    m->occupant_count = s_pi_orig.occupant_count;
+    m->count_validity = s_pi_orig.count_validity;
+    m->count_reason = s_pi_orig.count_reason;
+    m->vision_function_status = s_pi_orig.vision_status;       /* the Pi's own code */
+    return true;
 }
 
 /* A value that is not valid is sent as the "invalid" marker of its field, never as a number. */
@@ -228,8 +263,7 @@ void cis_net_adapter_run(uint32_t now_ms)
     }
     if (period_due(now_ms, &s_t_occ, NETA_OCCUPANT_PERIOD_MS, &s_due_occ)) {
         NetCisOccupant m;
-        fill_occupant(&m, now_ms);
-        s_due_occ = (CisNet_PublishOccupant(&m) != NET_SUBMIT_OK);
+        s_due_occ = fill_occupant(&m) && (CisNet_PublishOccupant(&m) != NET_SUBMIT_OK);
         s_t_occ = now_ms;
     }
     if (period_due(now_ms, &s_t_env, NETA_ENVIRONMENT_PERIOD_MS, &s_due_env)) {

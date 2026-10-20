@@ -135,6 +135,10 @@ typedef struct NetCisStatus {
     uint16_t source_age_ms;
 } NetCisStatus;
 
+/* Network entry points, called from the super-loop only (net_if_entry.h). */
+void Net_Init(void);
+void Net_MainFunction(uint32_t nowMs);
+
 /* Provided by the Network stack (CIS Network). */
 NetSubmitResult CisNet_PublishRear(const NetCisRear *message);
 NetSubmitResult CisNet_PublishEnvironment(const NetCisEnvironment *message);

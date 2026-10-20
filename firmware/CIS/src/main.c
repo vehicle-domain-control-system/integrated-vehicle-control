@@ -275,6 +275,9 @@ int main(void)
             uint32_t color;
             bool answered;
 
+#ifdef CIS_USE_NETWORK_API
+            cis_net_adapter_poll(now_ms);
+#endif
             cis_app_run(now_ms);
 #ifdef CIS_USE_NETWORK_API
             cis_net_adapter_run(now_ms);

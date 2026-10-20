@@ -18,7 +18,12 @@
 #define NETA_ENVIRONMENT_PERIOD_MS  200u
 #define NETA_STATUS_PERIOD_MS       250u
 
+/* Net_Init() once, after the clock runs; then Net_MainFunction() once per pass. */
 void cis_net_adapter_init(void);
+
+/* Net_MainFunction(): delivers the received frames to the CisApp_On* callbacks. Call it
+ * before cis_app_run(). */
+void cis_net_adapter_poll(uint32_t now_ms);
 
 /* Call after cis_app_run(). A message the stack did not accept is offered again next time. */
 void cis_net_adapter_run(uint32_t now_ms);
