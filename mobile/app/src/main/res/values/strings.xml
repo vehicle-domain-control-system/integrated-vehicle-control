@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="header_separator">·</string>
+    <string name="open_alerts">알림 보기</string>
+    <string name="value_reported">차량 반영</string>
+
+    <string name="permission_title">블루투스 권한이 필요합니다</string>
+    <string name="permission_reason_nearby">차량(ESP32 게이트웨이)을 찾고 연결하려면 \'근처 기기\' 권한(BLUETOOTH_SCAN·BLUETOOTH_CONNECT)이 필요합니다. 위치는 수집하지 않습니다 — 근접 판정은 차량이 합니다.</string>
+    <string name="permission_reason_location">Android 11 이하에서는 BLE 기기 검색에 위치 권한(ACCESS_FINE_LOCATION)이 필요합니다. 차량 검색에만 쓰고 위치를 수집하지 않습니다.</string>
+    <string name="permission_request">권한 허용하기</string>
+    <string name="permission_denied">권한이 거부되어 실차에 연결할 수 없습니다. 요청 창이 더 이상 뜨지 않으면 설정 &gt; 앱 &gt; VDCS Mobile &gt; 권한에서 직접 허용하세요.</string>
+    <string name="permission_open_settings">앱 설정 열기</string>
+    <string name="permission_use_demo">권한 없이 데모 모드로 보기</string>
+
+    <string name="quick_lock">잠금</string>
+    <string name="quick_unlock">잠금 해제</string>
+    <string name="quick_climate">공조</string>
+    <string name="quick_light">실내등</string>
+    <string name="home_warning_title">경고</string>
+
+    <string name="connection_title">연결</string>
+    <string name="connection_registration">등록</string>
+    <string name="connection_registered">등록됨</string>
+    <string name="connection_not_registered">등록 안 됨</string>
+    <string name="connection_connect">연결</string>
+    <string name="connection_disconnect">해제</string>
+    <string name="connection_unregister">등록 해제</string>
+    <string name="mode_real">실차</string>
+    <string name="mode_demo">데모 (가상 차량)</string>
+    <string name="unregister_title">등록을 해제할까요?</string>
+    <string name="unregister_confirm_real">해제하고 블루투스 설정 열기</string>
+    <string name="unregister_confirm_demo">해제</string>
+    <string name="unregister_cancel">취소</string>
+    <string name="exit_title">앱을 종료할까요?</string>
+    <string name="exit_confirm">예</string>
+    <string name="exit_cancel">아니오</string>
+
+    <string name="car_summary_title">차량 요약</string>
+    <string name="car_view_unsupported">이 기기에서는 3D 를 표시할 수 없습니다 (OpenGL ES 3.0 미지원)</string>
+    <string name="car_view_init_failed">3D 를 준비하지 못했습니다</string>
+
+    <string name="climate_target_title">목표 온도</string>
+    <string name="climate_step_down_symbol">−</string>
+    <string name="climate_step_up_symbol">+</string>
+    <string name="climate_step_down">0.5°C 내리기</string>
+    <string name="climate_step_up">0.5°C 올리기</string>
+    <string name="climate_apply">적용</string>
+    <string name="climate_auto">자동 공조</string>
+    <string name="climate_fan">팬</string>
+    <string name="climate_heat_removal">과열 보호</string>
+    <string name="climate_temp_direction">온도 조절</string>
+    <string name="climate_output">출력</string>
+    <string name="climate_fan_commanded">팬 지시</string>
+    <string name="climate_fan_measured">팬 측정</string>
+
+    <string name="light_enabled">실내등</string>
+    <string name="light_level">밝기</string>
+    <string name="light_color">색상</string>
+    <string name="light_physical_feedback">실제 점등 확인</string>
+    <string name="key_proximity_unlock">근접 자동 잠금 해제</string>
+    <string name="key_last_auto_unlock">마지막 자동 해제</string>
+
+    <string name="warning_ack">읽음 처리</string>
+    <string name="warning_ack_all">모두 읽음 처리</string>
+    <string name="warning_confirm_archived">앱에서 확인</string>
+    <string name="alerts_open_title">지금 발생 중</string>
+    <string name="alerts_past_title">지난 경고</string>
+
+    <string name="door_title">도어</string>
+    <string name="door_lock">잠금</string>
+    <string name="door_open">개폐</string>
+    <string name="door_integrity">무결성</string>
+    <string name="cabin_title">실내 환경</string>
+    <string name="cabin_temperature">실내 온도</string>
+    <string name="cabin_humidity">습도</string>
+    <string name="cabin_illuminance">조도</string>
+    <string name="cabin_occupant">탑승자</string>
+    <string name="cabin_occupant_count">탑승 인원</string>
+    <string name="availability_title">기능 가용성</string>
+    <string name="ecu_title">ECU 상태</string>
+    <string name="ecu_empty">수신된 ECU 상태 없음</string>
+    <string name="ecu_fault_category">오류 분류</string>
+    <string name="requests_title">요청 이력</string>
+    <string name="requests_empty">보낸 요청 없음</string>
+    <string name="requests_sent_ago">%1$s 전송</string>
+    <string name="requests_resend">다시 보내기</string>
+
+    <string name="demo_title">시연 조작 (데모)</string>
+    <string name="demo_door">도어 (물리 개폐)</string>
+    <string name="demo_door_open">도어 열기</string>
+    <string name="demo_door_close">도어 닫기</string>
+    <string name="demo_warning_type">경고 종류</string>
+    <string name="demo_warning_type_option">%1$d. %2$s</string>
+    <string name="demo_severity">심각도</string>
+    <string name="demo_warning_raise">경고 발생</string>
+    <string name="demo_warning_clear">경고 해제</string>
+    <string name="demo_warning_clear_all">경고 모두 해제</string>
+    <string name="demo_cabin_temperature">실내 온도</string>
+    <string name="demo_step_down">−0.5</string>
+    <string name="demo_step_up">+0.5</string>
+    <string name="demo_apply">적용</string>
+</resources>
