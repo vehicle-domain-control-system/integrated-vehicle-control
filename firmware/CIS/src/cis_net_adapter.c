@@ -4,7 +4,13 @@
 #include "cis_app.h"
 #include "cis_fault.h"
 #include "cis_state.h"
-#include "net_api_shim.h"
+#ifdef NET_NODE_BUILD
+/* S32DS project with the Network sources: the real declarations (src/network/include). */
+#include "network/app/net_if_cis.h"
+#include "network/app/net_if_entry.h"
+#else
+#include "net_api_shim.h"                   /* stand-alone copy of the same declarations */
+#endif
 
 /* The Network stack accepts CIS_OCCUPANT only as the relay of the last P_VISION_RESULT it
  * delivered (same values, validities, reasons, function state). The original is kept here. */
