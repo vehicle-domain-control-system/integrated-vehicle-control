@@ -113,40 +113,54 @@ static void fill_rear(NetCisRear *m, uint32_t now_ms)
     m->proximity_status = (NetProximityStatus)o->status;
 }
 
-/* True while the CIS has not restricted either value: the current state is still the
- * Pi's own judgement, so it can go out as the relay of the original result. A value the
- * CIS has restricted (stale, link lost, contradiction, new Pi boot) is not submitted:
- * the Network stack refuses it, and the DOMAIN supervises the missing message itself. */
-static bool occupant_is_relay(const vision_state_t *v)
+/* CIS_OCCUPANT (CIS 20_API.md, 10_DATA.md "Pi original observation and CIS evaluation"):
+ * the identity (Pi BOOT, VISION_SEQUENCE) and the values (presence, count) are those of the
+ * last Pi judgement that was accepted. The validity and reason of each field are the same as the
+ * Pi's or MORE restricted (INVALID with the CIS reason: stale, link lost, contradiction, Pi
+ * fault); a restriction is never lifted. vision_function_status is the CIS's own function state.
+ * Nothing is sent before a judgement of the current Pi boot has arrived (the stack answers
+ * NOT_READY), and a value change or a quality upgrade would be refused as an invalid argument. */
+static bool same_judgement(const vision_state_t *v)
 {
-    if (!s_pi_orig_valid || !v->link_up || !v->have_context ||
-        v->pi_boot_id != s_pi_orig.pi_boot_id ||
-        v->count.sequence != s_pi_orig.vision_sequence) {
-        return false;
-    }
-    return (v->presence.valid == (s_pi_orig.presence_validity == NET_VALIDITY_VALID)) &&
-           (v->count.valid == (s_pi_orig.count_validity == NET_VALIDITY_VALID)) &&
-           (v->presence.valid || (uint8_t)v->presence.reason == s_pi_orig.presence_reason) &&
-           (v->count.valid || (uint8_t)v->count.reason == s_pi_orig.count_reason);
+    return s_pi_orig_valid && v->have_context &&
+           v->pi_boot_id == s_pi_orig.pi_boot_id &&
+           v->count.sequence == s_pi_orig.vision_sequence &&
+           v->presence.sequence == s_pi_orig.vision_sequence;
 }
 
-/* The original Pi record, unchanged. Its AGE is the Pi's: the Network stack adds the time
- * since it received the result, once. */
-static bool fill_occupant(NetCisOccupant *m)
+/* The Pi's own valid flag; the CIS value may be equal or worse, never better. */
+static NetValidity restricted_validity(bool cis_valid, NetValidity pi_validity)
 {
-    if (!occupant_is_relay(cis_app_vision())) {
+    return (cis_valid && pi_validity == NET_VALIDITY_VALID) ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
+}
+
+static bool fill_occupant(NetCisOccupant *m, uint32_t now_ms)
+{
+    const vision_state_t *v = cis_app_vision();
+    NetValidity pv;
+    NetValidity cv;
+    uint16_t age;
+
+    if (!same_judgement(v)) {
         return false;
     }
+    pv = restricted_validity(v->presence.valid, s_pi_orig.presence_validity);
+    cv = restricted_validity(v->count.valid, s_pi_orig.count_validity);
+
     m->pi_boot_id = s_pi_orig.pi_boot_id;
     m->vision_sequence = s_pi_orig.vision_sequence;
-    m->vision_age_ms = s_pi_orig.vision_age_ms;
-    m->occupant_presence = s_pi_orig.occupant_presence;
-    m->presence_validity = s_pi_orig.presence_validity;
-    m->presence_reason = s_pi_orig.presence_reason;
+    /* the Pi's age plus the time held here; never below the Pi's age */
+    age = cis_value_age_ms(&v->count, now_ms);
+    m->vision_age_ms = (age < s_pi_orig.vision_age_ms) ? s_pi_orig.vision_age_ms : age;
+    m->occupant_presence = s_pi_orig.occupant_presence;     /* the value is the Pi's */
+    m->presence_validity = pv;
+    m->presence_reason = (pv == NET_VALIDITY_VALID) ? s_pi_orig.presence_reason
+                                                    : (NetQualityReason)v->presence.reason;
     m->occupant_count = s_pi_orig.occupant_count;
-    m->count_validity = s_pi_orig.count_validity;
-    m->count_reason = s_pi_orig.count_reason;
-    m->vision_function_status = s_pi_orig.vision_status;       /* the Pi's own code */
+    m->count_validity = cv;
+    m->count_reason = (cv == NET_VALIDITY_VALID) ? s_pi_orig.count_reason
+                                                 : (NetQualityReason)v->count.reason;
+    m->vision_function_status = (NetSensorFunctionState)vision_function_status(v);
     return true;
 }
 
@@ -263,7 +277,7 @@ void cis_net_adapter_run(uint32_t now_ms)
     }
     if (period_due(now_ms, &s_t_occ, NETA_OCCUPANT_PERIOD_MS, &s_due_occ)) {
         NetCisOccupant m;
-        s_due_occ = fill_occupant(&m) && (CisNet_PublishOccupant(&m) != NET_SUBMIT_OK);
+        s_due_occ = fill_occupant(&m, now_ms) && (CisNet_PublishOccupant(&m) != NET_SUBMIT_OK);
         s_t_occ = now_ms;
     }
     if (period_due(now_ms, &s_t_env, NETA_ENVIRONMENT_PERIOD_MS, &s_due_env)) {
