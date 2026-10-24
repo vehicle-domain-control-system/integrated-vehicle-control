@@ -1,0 +1,63 @@
+{
+  "authority": "Two R4 WIRE_PROPOSED CAN FD frames for U3 independent structural diagnostics only. No policy adoption; synthetic input bytes not produced by Adapter under test.",
+  "source": "inputs/contracts/03_COMMUNICATION/10_CAN_FD.md; inputs/contracts/04_COMMON/10_DATA_AND_ID_RULES.md",
+  "profile": {
+    "ide": "standard11",
+    "fdf": 1,
+    "brs": 1,
+    "rtr": 0,
+    "dlc": 11,
+    "wire_length": 20,
+    "used_length": 19,
+    "padding_index": 19,
+    "padding_value": 0
+  },
+  "vectors": [
+    {
+      "id": "REF-RAW-CIS-01",
+      "message": "CIS_REAR",
+      "can_id": "0x0A0",
+      "hex_bytes": "44 33 22 11 04 03 02 01 09 00 00 00 2C 01 90 01 01 00 00 00",
+      "expected_fields": {
+        "boot_id": "0x11223344",
+        "tx_sequence": "0x01020304",
+        "update_sequence": 9,
+        "source_age_ms": 300,
+        "rear_distance_raw_0_1cm": 400,
+        "validity": 1,
+        "quality_reason": 0,
+        "proximity_status": 0,
+        "padding": 0
+      },
+      "scope": "Diagnostic only; 400 raw is based on WIRE_PROPOSED 0.1cm/raw, not approved C2 conversion."
+    },
+    {
+      "id": "REF-RAW-PERM-01",
+      "message": "DOMAIN_PERMISSION",
+      "can_id": "0x080",
+      "hex_bytes": "44 33 22 11 04 03 02 01 FF 03 FF 00 03 01 00 00 00 FF FF 00",
+      "expected_fields": {
+        "boot_id": "0x11223344",
+        "tx_sequence": "0x01020304",
+        "vehicle_power_permission_raw": 255,
+        "power_permission_quality_raw": 3,
+        "power_operation_state_raw": 255,
+        "operation_allowed_raw": 0,
+        "operation_quality_raw": 3,
+        "update_sequence": 1,
+        "source_age_ms": 65535,
+        "padding": 0
+      },
+      "scope": "Artificial RAW negative-quality frame to decode/display only. 0+NO_DATA is NOT an adopted deny, AGE=65535 not fresh or producer-proof; do not synthesize this as an outgoing permission."
+    }
+  ],
+  "invariants": [
+    "Never derive expected bytes by calling I1 encoder under test.",
+    "Do not assert ALLOW or actual consumer validity from structurally accepted raw frames.",
+    "Source age is field data; no implicit reset with a new TX sequence."
+  ],
+  "expected_sha256_of_bytes": {
+    "REF-RAW-CIS-01": "504712fb16f18b1b5f687fbbcfccfb711f92166eebf9ea0f259bf814d41ac9f1",
+    "REF-RAW-PERM-01": "c9a7b5e3eed0d60a02370cd155709c76a1a0fba356a295201122fc445d10a91e"
+  }
+}
