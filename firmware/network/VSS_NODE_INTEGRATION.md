@@ -95,9 +95,9 @@ VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host�
 ### ISR → main 인계 (`net_board_cfg.h`)
 
 - CAN ISR은 Network 코어를 부르지 않는다. 수신 프레임, TX 완료, bus-off 사실을 **원시 시각과 함께 backend 내부 ISR 링**에만 넣는다. `net_hal_capture_*` 호출과 ms 변환은 모두 `Net_MainFunction` 안(main 문맥)에서 한다.
-- 링 크기 `NET_BOARD_CAN_ISR_RING`(기본 32)은 두 main 바퀴 사이에 쌓일 수 있는 수신 프레임 수다. TX 완료와 bus-off는 따로 자리를 잡아 두어 버려지지 않는다.
+- 링 크기 `NET_BOARD_CAN_ISR_RING`(기본 24, VSS 프로필 값. 노드별 값은 각 노드 문서의 "용량" 절)은 두 main 바퀴 사이에 쌓일 수 있는 수신 프레임 수다. TX 완료와 bus-off는 따로 자리를 잡아 두어 버려지지 않는다.
 - 링이 차서 들어오지 못한 수신 프레임은 버리고 `isr_ring_overflow`를 올린다. MB overrun(그 MB의 앞 프레임이 덮어써짐)은 `rx_overruns`로 센다. 손실 뒤 처음 링에 들어간 프레임은 그 자체로 온전하므로 받은 그대로 전달하고, 손실 경계는 `rx_loss_events`로 한 번 센다(`docs/network/sw_detail/functions/CAN_PORT_RECOVERY.md` RX overflow: 실제 손실만 기록, 합성 없음, 결과 OK). 링크는 잠그지 않는다.
-- 한 바퀴에 링에서 꺼내는 수는 `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 어댑터 RX 큐 16 이하)으로 제한한다. 나머지는 다음 바퀴에서 꺼낸다. `Net_MainFunction` 1회 실행을 짧게(수 ms, 15 ms 미만) 유지하기 위한 것이다.
+- 한 바퀴에 링에서 꺼내는 수는 `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, VSS 프로필 값, 어댑터 RX 큐 `NET_HAL_RX_CAPACITY` 16 이하)으로 제한한다. 나머지는 다음 바퀴에서 꺼낸다. `Net_MainFunction` 1회 실행을 짧게(수 ms, 15 ms 미만) 유지하기 위한 것이다.
 
 ### 시간원: 셋 중 하나
 
@@ -182,14 +182,44 @@ int main(void)
 
 - ConfigTools의 FlexCAN 콜백 이름(`NET_BOARD_CAN_CALLBACK`, `NET_BOARD_CAN_ERROR_CALLBACK`)은 HAL이 정의한다. 같은 이름을 정의하는 다른 파일은 빌드에서 빼야 한다.
 - 생성 설정·상태 심볼(`NET_BOARD_CAN_CONFIG`, `NET_BOARD_CAN_STATE`)의 선언은 `NET_BOARD_CAN_CFG_HEADER`(기본 `"FlexCAN_Ip.h"`)로 가져온다. RTD는 `FlexCAN_Ip.h` → `FlexCAN_Ip_DeviceReg.h` → `FlexCAN_Ip_Cfg.h` → 생성 PBcfg 헤더 순으로 include하고 그 `extern` 선언을 펼치므로, Functional Group 접미사(`FlexCAN_Ip_Sa_VS_0_PBcfg.h` 등)와 상관없이 기본값으로 된다. mock SDK도 같은 포함 관계다.
-- MB 배치 기본값: RX 0..3(마스크 0, 모든 표준 ID 수신 후 registry로 걸러냄), TX 8..11. `max_num_mb`(344=16) 안에 들어가야 한다.
+- MB 배치 기본값: RX 0..3(마스크 0, 모든 표준 ID 수신 후 registry로 걸러냄), TX 8부터 `NET_HAL_TX_CAPACITY`개(VSS 2개: 8..9). `max_num_mb`(344=16) 안에 들어가야 한다.
 - TX MB가 `NET_BOARD_CAN_TX_TIMEOUT_MS`(기본 100 ms) 안에 끝나지 않으면 `FlexCAN_Ip_AbortTransfer`로 abort하고 그 반환값대로 정산한다. `NO_TRANSFER_IN_PROGRESS`는 abort 전에 프레임이 이미 나간 경우라(RTD는 이때 TX_COMPLETE를 부르지 않는다) 성공으로 정산한다. `TIMEOUT`은 abort가 끝나지 않은 경우라 실패로 보고하고, 그 MB는 `FlexCAN_Ip_GetBuffStatusFlag`가 설 때까지(컨트롤러가 MB를 놓을 때까지) 다시 쓰지 않는다. RTD는 TIMEOUT 뒤 그 플래그를 지우므로, 그 직전에 끝난 MB는 플래그가 다시 서지 않아 격리가 풀리지 않을 수 있다(`tx_abort_timeouts`와 `tx_quarantine_released`의 차이로 관찰, 리셋까지 TX MB 하나가 준다). 그 밖의 결과는 실패로 보고한다.
 - 시간원은 위 표의 A·B·C 중 하나다. 보드 빌드는 A를 쓴다. 셋 다 없으면(OsIf 타이머 OFF, hook 없음) 컴파일 오류(`OSIF_COUNTER_SYSTEM` 미정의)가 난다.
-- ISR 링: `NET_BOARD_CAN_ISR_RING`(기본 32, 1 이상), `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 1 이상 16 이하). 범위를 벗어나면 컴파일 오류다.
+- ISR 링: `NET_BOARD_CAN_ISR_RING`(기본 24, 1 이상), `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 1 이상 `NET_HAL_RX_CAPACITY` 이하). 범위를 벗어나면 컴파일 오류다. 기본값은 빌드 프로필의 값(`include/network/net_capacity.h`)이고 여기 적은 것은 VSS 값이다. 아래 "용량" 절.
 - UART 링크(CIS·DOMAIN 프로필): `NET_BOARD_UART_C_INSTANCE`/`NET_BOARD_UART_C_CONFIG`(기본 11 / `Lpuart_Uart_Ip_xHwConfigPB_11`), `NET_BOARD_UART_M_INSTANCE`/`NET_BOARD_UART_M_CONFIG`(DOMAIN 보드 미정, 자리 표시 기본값 0 / `Lpuart_Uart_Ip_xHwConfigPB_0`), 링크별 송신 시간 초과(기본 100 ms), `NET_BOARD_UART_ISR_RING`(기본 256 B). 콜백은 `NET_BOARD_UART_CALLBACK`을 정의하면 HAL이 그 이름으로 정의하고, 정의하지 않으면 보드 콜백이 Network 인스턴스 이벤트를 `NetHalRtdUart_OnEvent()`(`net_hal_rtd_uart.h`)로 넘긴다(DS344: LPUART0 콘솔과 LPUART11이 `Uart344_BringupCallback`을 공유하므로 이 방식).
 - LPUART 이벤트: ERROR(수신 오류)와 IDLE_STATE(수신선 idle, 생성 설정 `LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT`가 ON일 때만 존재)는 RTD가 수신을 끝낸 뒤 오므로, 두 경우 모두 1바이트 수신을 다시 건다. IDLE은 손실이 아니라서 손실 표시를 남기지 않고 `uart_rx_idle_events`만 센다(시험 `uart_hal.u15_idle_event_rearm`). 두 브링업 설정은 OFF다. 송신 시간 초과의 `Lpuart_Uart_Ip_AbortSendingData` 반환값은 `uart_tx_abort_last_status`에 남고, SUCCESS가 아니면 `uart_tx_abort_errors`를 올린다(송신은 어느 경우든 실패로 보고).
-- 한 바퀴에 비우는 양은 CAN 먼저, 그다음 UART 바이트로 `NET_BOARD_ISR_DRAIN_BUDGET`을 함께 쓴다. M06은 시각 검사보다 이전에 수신된 바이트를 받지 않는다(수신기 poll 계약). 그래서 서비스 Port(`net_hal_rtd_port()`, `net_node.c`가 쓴다)는 서비스가 읽은 시각 이전에 수신되어 UART 링에 남은 바이트가 있으면 "할 일 없음"을 알리지 않고 그 바이트를 넘긴다(poll 1회에 상한 이하, 서비스 step당 poll 32회). 바이트는 UART 링(256 B, 115200 bit/s 가득 찬 선로에서 약 22 ms)이 넘칠 때만 잃는다. main 주기는 링 시간보다 짧게, 선로 평균 부하는 바퀴당 64 B 이하로 둔다(예: 3 ms 주기 시험 `uart_hal.u13_main_period_3ms`, `cis_node.f16_vision_rx_main_3ms`).
+- 한 바퀴에 비우는 양은 CAN 먼저, 그다음 UART 바이트로 `NET_BOARD_ISR_DRAIN_BUDGET`을 함께 쓴다. M06은 시각 검사보다 이전에 수신된 바이트를 받지 않는다(수신기 poll 계약). 그래서 서비스 Port(`net_hal_rtd_port()`, `net_node.c`가 쓴다)는 서비스가 읽은 시각 이전에 수신되어 UART 링에 남은 바이트가 있으면 "할 일 없음"을 알리지 않고 그 바이트를 넘긴다(poll 1회에 비우기 상한 이하, 서비스 step당 poll은 `NET_UPPER_POLL_BUDGET`회: CIS 24, DOMAIN 32). 바이트는 UART 링(256 B, 115200 bit/s 가득 찬 선로에서 약 22 ms)이 넘칠 때만 잃는다. main 주기는 링 시간보다 짧게, 선로 평균 부하는 바퀴당 step 2회 × poll(CIS 48 B, DOMAIN 64 B, 같은 바퀴의 CAN 사건 포함) 이하로 둔다(예: 3 ms 주기 시험 `uart_hal.u13_main_period_3ms`, `cis_node.f16_vision_rx_main_3ms`).
 - BOOT_ID는 0이 아니어야 하고 재부팅마다 바뀌어야 한다. `Net_Init`을 쓰면 `NET_BOARD_NODE_CONFIG_HOOK`이 주고, `NetNode_Init`을 직접 쓰면 `NetNodeConfig.boot_id`로 준다.
+
+## 용량
+
+값은 `include/network/net_capacity.h`의 VSS 블록이 정한다(빌드의 `NETWORK_UPPER_NODE_PROFILE=6`). 모두 `#ifndef`라 보드 프로젝트가 `-D`로 바꿀 수 있지만, 여러 파일이 함께 쓰는 구조체의 칸 수이므로 한 빌드의 모든 파일에 같은 값을 준다. 통신량 근거는 `docs/network/interface/03_COMMUNICATION/10_CAN_FD.md` 메시지 목록이다(버스 주기 프레임 약 107개/s, WINDOW 제외, 1초마다 11개가 함께 시작. RX MB는 모든 ID를 받는다). VSS는 CAN만 쓰므로 UART 링(`NET_BOARD_UART_ISR_RING`)은 쓰지 않는다.
+
+| 상수 | 값 | 기준 |
+|---|---|---|
+| `NET_UPPER_TX_CAPACITY` | 1 | publish 항목 수(VSS_STATUS). 항목마다 retire 전까지 프레임 1건만 둔다 |
+| `NET_UPPER_PUBLISH_CAPACITY` | 1 | publish 항목 수 |
+| `NET_UPPER_RX_CAPACITY` | 8 | 서비스 step 1회의 수신 사건(CAN 프레임 1개가 1건) |
+| `NET_UPPER_POLL_BUDGET` | 8 | step 1회에 Port에서 꺼내는 수, RX 용량과 같게. 바퀴당 step 2회라 16건 |
+| `NET_HAL_RX_CAPACITY` | 16 | 바퀴당 비우기 상한과 같게 |
+| `NET_BOARD_ISR_DRAIN_BUDGET` | 16 | 바퀴당 ISR 링 → 어댑터 이동 수. DOMAIN 프레임 12개 폭주를 한 바퀴에 비운다(부하 목표 시험 `vss_node.h14_rx_burst_*`, 12 이상 필요). 상한을 넘는 것은 링에서 다음 바퀴를 기다린다(계약 C8) |
+| `NET_HAL_TX_CAPACITY` | 2 | CAN TX MB 수. 송신 메시지가 VSS_STATUS 하나라 2개 |
+| `NET_BOARD_CAN_ISR_RING` | 24 | 두 바퀴 사이의 수신 프레임. 버스 전체 주기 프레임, 동시 시작 11개, DOMAIN 폭주를 담는다 |
+
+**용량 연결 조건(위 VSS 계약 C1~C12와 별개, 어기는 값은 컴파일 오류):**
+
+- C1: `NET_UPPER_POLL_BUDGET` ≤ `NET_UPPER_RX_CAPACITY`(8 ≤ 8). `net_capacity.h` 정적 검사. 예산이 더 크면 `net_upper_step()`이 `NET_INVALID_ARGUMENT`로 아무것도 받지 않는다.
+- C2: `NET_UPPER_TX_CAPACITY` ≥ 노드 publish 표 항목 수(1 ≥ 1). `src/node/net_node_profile.h`의 `NET_NODE_PUBLISH_TABLE_FITS`. publish 표가 `NET_UPPER_PUBLISH_CAPACITY`보다 크면 `NetNode_Init`이 실패한다.
+- C3: `NET_BOARD_ISR_DRAIN_BUDGET` ≤ `NET_HAL_RX_CAPACITY`(16 ≤ 16). `src/platform/rtd/net_hal_rtd.c` 정적 검사.
+
+**보드 확인 항목(C4, 실행 중 진단만 있고 정적 검사가 없다):** 실제 보드에서 문서 통신량이 흐르는 버스로 수 분 이상 돌린 뒤 `NetNode_GetDiag`로 기록한다. 링 최대 깊이는 **용량의 75 % 이하**여야 한다.
+
+| 기록 | 판정 |
+|---|---|
+| `NetNodeDiag.main_max_us` | `Net_MainFunction` 1회 최대 시간(`NET_BOARD_US_HOOK`이 있을 때). VSS 보드 빌드는 µs hook을 넣지 않아 0으로 남으므로(위 "VSS 연동 절차") 슈퍼루프 시간은 VSS `loopMaxTicks`로 본다. 수 ms(15 ms 미만)인지 본다 |
+| `rtd.isr_ring_max_depth` | 75 % 이하: `NET_BOARD_CAN_ISR_RING` 24의 18 이하. TX 완료 사실까지 센 링 전체 깊이라 보수적이다. `rtd.isr_ring_overflow` 0 |
+| `upper.rx_max_depth`, `hal.rx_max_depth`, `upper.tx_max_depth` | 기록만 한다. host 부하 시험(`vss_node.load_doc_traffic`)에서 8/8, 10/16, 1/1이었다. step당 poll·바퀴당 비우기·publish 항목 수만큼 한 번에 채우는 설계 값이라 75 % 판정 대상이 아니다. 대신 `upper.rx_dropped`, `hal.rx_dropped`가 0인지 본다 |
+| `status_tx.counters.queue_full` | 기록한다. 장치 칸이 없어 한 바퀴 미룬 수다 |
 
 ## 진단 (`NetNode_GetDiag`)
 

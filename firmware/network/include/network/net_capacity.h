@@ -79,9 +79,9 @@
 #elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_VSS
 /* VSS: publish table of 1 (VSS_STATUS), one transmitted message, so two TX
  * message buffers. CAN only: 8 events per step and 16 per pass; the drain of
- * 16 frames takes a burst of up to 16 DOMAIN frames in one pass (VSS contract
- * C8 (VSS_NODE_INTEGRATION.md): Net_MainFunction stays short, the rest waits
- * in the ring). The CAN ring holds 24 frames between two passes. No UART link
+ * 16 frames empties a burst of 12 DOMAIN frames in one pass (tests
+ * vss_node.h14_rx_burst_*; VSS contract C8 (VSS_NODE_INTEGRATION.md):
+ * Net_MainFunction stays short, the rest waits in the ring). The CAN ring holds 24 frames between two passes. No UART link
  * (the UART ring value is not used). */
 #define NET_CAPACITY_TX         1u
 #define NET_CAPACITY_PUBLISH    1u

@@ -76,7 +76,41 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 - UART-C는 LPUART11(`NET_BOARD_UART_C_INSTANCE`), 생성 설정 `Lpuart_Uart_Ip_xHwConfigPB_11`이 기본값이다. DS344는 콘솔 LPUART0과 콜백을 공유하므로 라우팅 모드(`NetHalRtdUart_OnEvent`)를 쓴다.
 - 위 기본값과 Host mock은 DS344 벤치 설정이다. CIS S32K144 프로젝트에서는 실제 생성 설정에 맞춰 UART 인스턴스/심볼, CAN 메시지 버퍼 등 `NET_BOARD_*`를 지정해야 한다. MCU identity 선택은 이 주변장치 설정을 바꾸지 않는다.
 - `NET_BOARD_NODE_CONFIG_HOOK`이 받는 `NetNodeConfig`의 `uart_c_port_epoch`는 1로 들어온다. 0으로 바꾸면 초기화가 실패한다.
-- main 주기는 UART 링 시간(256 B, 115200 bit/s 가득 찬 선로에서 약 22 ms)보다 짧고, 선로 평균 부하가 바퀴당 64 B 이하가 되게 둔다. 바퀴당 비우기 상한(16 B)을 넘는 바이트는 서비스 Port가 시각 검사 전에 넘긴다(`VSS_NODE_INTEGRATION.md` 보드 설정 절, 시험 `cis_node.f16_vision_rx_main_3ms`).
+- main 주기는 UART 링 시간(256 B, 115200 bit/s 가득 찬 선로에서 약 22 ms)보다 짧고, 선로 평균 부하가 바퀴당 48 B(서비스 step 2회 × poll 24, 같은 바퀴의 CAN 사건 포함) 이하가 되게 둔다. 바퀴당 비우기 상한(16 B)을 넘는 바이트는 서비스 Port가 시각 검사 전에 넘긴다(`VSS_NODE_INTEGRATION.md` 보드 설정 절, 시험 `cis_node.f16_vision_rx_main_3ms`).
+
+## 용량
+
+값은 `include/network/net_capacity.h`의 CIS 블록이 정한다(빌드의 `NETWORK_UPPER_NODE_PROFILE=1`). 모두 `#ifndef`라 보드 프로젝트가 `-D`로 바꿀 수 있지만, 여러 파일이 함께 쓰는 구조체의 칸 수이므로 한 빌드의 모든 파일에 같은 값을 준다. 통신량 근거는 `docs/network/interface/03_COMMUNICATION/10_CAN_FD.md`와 `30_UART_C.md`의 메시지 목록이다(버스 주기 프레임 약 107개/s, WINDOW 제외, 1초마다 11개가 함께 시작. RX MB는 모든 ID를 받는다).
+
+| 상수 | 값 | 기준 |
+|---|---|---|
+| `NET_UPPER_TX_CAPACITY` | 5 | publish 항목 수(CIS_REAR, CIS_ENVIRONMENT, CIS_OCCUPANT, CIS_STATUS, P_PERMISSION). 항목마다 retire 전까지 프레임 1건만 둔다 |
+| `NET_UPPER_PUBLISH_CAPACITY` | 5 | publish 항목 수 |
+| `NET_UPPER_RX_CAPACITY` | 24 | 서비스 step 1회의 수신 사건(UART 1바이트가 1건). 부하 목표 시험 `cis_node.f16_vision_rx_main_3ms`(Pi 프레임 12개를 3 ms 바퀴로 연달아)가 24 이상을 요구한다 |
+| `NET_UPPER_POLL_BUDGET` | 24 | step 1회에 Port에서 꺼내는 수, RX 용량과 같게. 바퀴당 step 2회라 48건 |
+| `NET_HAL_RX_CAPACITY` | 16 | 바퀴당 비우기 상한과 같게 |
+| `NET_BOARD_ISR_DRAIN_BUDGET` | 16 | 바퀴당 ISR 링 → 어댑터 이동 수(CAN 먼저, 남는 몫은 UART 바이트) |
+| `NET_HAL_TX_CAPACITY` | 4 | 장치에 동시에 넘기는 전송 수(CAN TX MB 수, UART 송신 칸). 축소 전 공통 값 그대로 |
+| `NET_BOARD_CAN_ISR_RING` | 16 | 두 바퀴 사이의 수신 프레임. 버스 전체 주기 프레임과 동시 시작 11개를 한 바퀴 약 45 ms까지 담는다 |
+| `NET_BOARD_UART_ISR_RING` | 256 | UART-C 바이트 링. 115200 bit/s 가득 찬 선로에서 약 22 ms. Pi는 1초 경계에서 한 번에 최대 55 B(P_VISION_RESULT 29 B + P_VISION_STATUS 26 B), 평균 316 B/s |
+
+**연결 조건(어기는 값은 컴파일 오류):**
+
+- C1: `NET_UPPER_POLL_BUDGET` ≤ `NET_UPPER_RX_CAPACITY`(24 ≤ 24). `net_capacity.h` 정적 검사. 예산이 더 크면 `net_upper_step()`이 `NET_INVALID_ARGUMENT`로 아무것도 받지 않는다.
+- C2: `NET_UPPER_TX_CAPACITY` ≥ 노드 publish 표 항목 수(5 ≥ 5). `src/node/net_node_profile.h`의 `NET_NODE_PUBLISH_TABLE_FITS`. publish 표가 `NET_UPPER_PUBLISH_CAPACITY`보다 크면 `NetNode_Init`이 실패한다.
+- C3: `NET_BOARD_ISR_DRAIN_BUDGET` ≤ `NET_HAL_RX_CAPACITY`(16 ≤ 16). `src/platform/rtd/net_hal_rtd.c` 정적 검사.
+
+**보드 확인 항목(C4, 실행 중 진단만 있고 정적 검사가 없다):** 실제 보드에서 문서 통신량이 흐르는 버스와 Pi 링크로 수 분 이상 돌린 뒤 `NetNode_GetDiag`로 기록한다. 링 최대 깊이는 **용량의 75 % 이하**여야 한다.
+
+| 기록 | 판정 |
+|---|---|
+| `NetNodeDiag.main_max_us` | `Net_MainFunction` 1회 최대 시간(`NET_BOARD_US_HOOK`이 있을 때, 없으면 0). 수 ms(15 ms 미만)인지 보고, main 주기 + 이 값이 UART 링 시간 약 22 ms와 CAN 링 한 바퀴 약 45 ms보다 짧은지 본다 |
+| `rtd.isr_ring_max_depth` | 75 % 이하: `NET_BOARD_CAN_ISR_RING` 16의 12 이하. TX 완료 사실까지 센 링 전체 깊이라 보수적이다. `rtd.isr_ring_overflow` 0 |
+| `rtd.uart[1].uart_isr_ring_max_depth` | 75 % 이하: `NET_BOARD_UART_ISR_RING` 256의 192 이하. `rtd.uart[1].uart_isr_ring_overflow` 0 |
+| `upper.rx_max_depth`, `hal.rx_max_depth`, `upper.tx_max_depth` | 기록만 한다. host 부하 시험(`cis_node.load_doc_traffic`)에서 24/24, 16/16, 5/5로 용량과 같았다. step당 poll·바퀴당 비우기·publish 항목 수만큼 한 번에 채우는 설계 값이라 75 % 판정 대상이 아니다. 대신 `upper.rx_dropped`, `hal.rx_dropped`가 0인지 본다 |
+| 슬롯 `counters.queue_full`(`rear_tx` … `pi_permission_tx`) | 기록한다. 장치 칸이 없어 한 바퀴 미룬 수다. 아래 알려진 제한 때문에 0이 아닐 수 있다 |
+
+**알려진 제한:** HAL TX 4칸을 CAN 송신 4종(0x0A0, 0x300, 0x310, 0x320)과 UART-C P_PERMISSION relay가 함께 쓴다. 앱 제출과 새 DOMAIN 평가가 같은 바퀴에 겹치면 relay가 한 바퀴 미뤄질 수 있다(`pi_permission_tx.counters.queue_full`). 그때 CIS→Pi LINK_SEQUENCE가 한 번호 건너뛰고, 프레임은 다음 바퀴에 나간다. host 부하 시험은 앱을 Network 한 바퀴 뒤에 두는 순서에서 손실 0이며, 이 결과는 바퀴 위상에 기댄다.
 
 ## 시험
 

@@ -49,6 +49,36 @@ BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 �
 - 큐 최대 깊이(줄지 않는다): `NetNodeDiag.upper.tx_max_depth`(서비스 송신 칸에 동시에 있던 최대 수), `upper.rx_max_depth`(서비스 수신 큐), `hal.rx_max_depth`(어댑터 수신 큐), `rtd.isr_ring_max_depth`(CAN ISR 링, TX 완료 사실 포함).
 - DOMAIN 0x080이 150 ms 끊기면 `NetNodeDiag.permission.reason`이 `NET_PERMISSION_RX_TIMEOUT`이 된다.
 
+## 용량
+
+값은 `include/network/net_capacity.h`의 BCM 블록이 정한다(빌드의 `NETWORK_UPPER_NODE_PROFILE=3`). 모두 `#ifndef`라 보드 프로젝트가 `-D`로 바꿀 수 있지만, 여러 파일이 함께 쓰는 구조체의 칸 수이므로 한 빌드의 모든 파일에 같은 값을 준다. 통신량 근거는 `docs/network/interface/03_COMMUNICATION/10_CAN_FD.md` 메시지 목록이다(버스 주기 프레임 약 107개/s, WINDOW 제외, 1초마다 11개가 함께 시작. RX MB는 모든 ID를 받는다). BCM은 CAN만 쓰므로 UART 링(`NET_BOARD_UART_ISR_RING`)은 쓰지 않는다.
+
+| 상수 | 값 | 기준 |
+|---|---|---|
+| `NET_UPPER_TX_CAPACITY` | 6 | publish 항목 수(BCM_RESULT, BCM_EVENT, BCM_DOOR_STATE, BCM_CLIMATE_STATE, BCM_LIGHT_STATE, BCM_STATUS). 항목마다 retire 전까지 프레임 1건만 둔다 |
+| `NET_UPPER_PUBLISH_CAPACITY` | 6 | publish 항목 수 |
+| `NET_UPPER_RX_CAPACITY` | 8 | 서비스 step 1회의 수신 사건(CAN 프레임 1개가 1건) |
+| `NET_UPPER_POLL_BUDGET` | 8 | step 1회에 Port에서 꺼내는 수, RX 용량과 같게. 바퀴당 step 2회라 16건 |
+| `NET_HAL_RX_CAPACITY` | 8 | 바퀴당 비우기 상한과 같게 |
+| `NET_BOARD_ISR_DRAIN_BUDGET` | 8 | 바퀴당 ISR 링 → 어댑터 이동 수. 동시 시작 11개를 두 바퀴에 나눠 꺼낸다 |
+| `NET_HAL_TX_CAPACITY` | 4 | CAN TX MB 수. 축소 전 공통 값 그대로 |
+| `NET_BOARD_CAN_ISR_RING` | 16 | 두 바퀴 사이의 수신 프레임. 버스 전체 주기 프레임과 동시 시작 11개를 한 바퀴 약 45 ms까지 담는다 |
+
+**연결 조건(어기는 값은 컴파일 오류):**
+
+- C1: `NET_UPPER_POLL_BUDGET` ≤ `NET_UPPER_RX_CAPACITY`(8 ≤ 8). `net_capacity.h` 정적 검사. 예산이 더 크면 `net_upper_step()`이 `NET_INVALID_ARGUMENT`로 아무것도 받지 않는다.
+- C2: `NET_UPPER_TX_CAPACITY` ≥ 노드 publish 표 항목 수(6 ≥ 6). `src/node/net_node_profile.h`의 `NET_NODE_PUBLISH_TABLE_FITS`. publish 표가 `NET_UPPER_PUBLISH_CAPACITY`보다 크면 `NetNode_Init`이 실패한다.
+- C3: `NET_BOARD_ISR_DRAIN_BUDGET` ≤ `NET_HAL_RX_CAPACITY`(8 ≤ 8). `src/platform/rtd/net_hal_rtd.c` 정적 검사.
+
+**보드 확인 항목(C4, 실행 중 진단만 있고 정적 검사가 없다):** 실제 보드에서 문서 통신량이 흐르는 버스로 수 분 이상 돌린 뒤 `NetNode_GetDiag`로 기록한다. 링 최대 깊이는 **용량의 75 % 이하**여야 한다.
+
+| 기록 | 판정 |
+|---|---|
+| `NetNodeDiag.main_max_us` | `Net_MainFunction` 1회 최대 시간(`NET_BOARD_US_HOOK`이 있을 때, 없으면 0). 수 ms(15 ms 미만)인지 보고, main 주기 + 이 값이 CAN 링 한 바퀴 약 45 ms보다 짧은지 본다 |
+| `rtd.isr_ring_max_depth` | 75 % 이하: `NET_BOARD_CAN_ISR_RING` 16의 12 이하. TX 완료 사실까지 센 링 전체 깊이라 보수적이다. `rtd.isr_ring_overflow` 0 |
+| `upper.rx_max_depth`, `hal.rx_max_depth`, `upper.tx_max_depth` | 기록만 한다. host 부하 시험(`bcm_node.load_doc_traffic`)에서 8/8, 7/8, 4/6이었다. step당 poll·바퀴당 비우기만큼 한 번에 채우는 설계 값이라 75 % 판정 대상이 아니다. 대신 `upper.rx_dropped`, `hal.rx_dropped`가 0인지 본다 |
+| 슬롯 `counters.queue_full`(`result_tx` … `status_tx`) | 기록한다. 장치 칸이 없어 한 바퀴 미룬 수다 |
+
 ## MCU 선택과 시험
 
 - BCM SysRS는 전용 S32K144를 지정하지만 이 저장소에 BCM 실제 보드 프로젝트는 없다. 실제 프로젝트의 `CPU_S32K144HFT0VLLT` 또는 확인한 MCU의 `NETWORK_NODE_PLATFORM=144/344`를 명시한다. 역할(profile 3)만으로 MCU를 정하지 않으며 선택 누락/충돌은 컴파일 오류다.
