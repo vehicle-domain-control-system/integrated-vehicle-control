@@ -40,6 +40,9 @@ static NetUpperPublisher publisher;
 static NetPermissionGuard permission;
 static NetNodeConfig node_config;
 static bool ready;
+/* BOOT_ID of this run: NODE_BOOT, or the decimal argument of a restarted
+ * worker (a new run of the same node). */
+static uint32_t node_boot = NODE_BOOT;
 
 static NetStatus wire_output(void *ctx, const NetUpperPacket *p, uint64_t at)
 {
@@ -84,8 +87,10 @@ void VssApp_OnDomainEvent(const NetVssEvent *m, const NetCanRxMeta *meta)
 }
 void VssApp_OnDomainWarningState(const NetVssWarningState *m, const NetCanRxMeta *meta)
 {
-    printf("{\"event\":\"app_rx\",\"node\":\"VSS\",\"call\":\"VssApp_OnDomainWarningState\",\"rear_state\":%u,",
-           (unsigned)m->rear_obstacle_state);
+    printf("{\"event\":\"app_rx\",\"node\":\"VSS\",\"call\":\"VssApp_OnDomainWarningState\",\"rear_state\":%u,"
+           "\"rear_sequence\":%u,\"rear_age\":%u,",
+           (unsigned)m->rear_obstacle_state, (unsigned)m->rear_obstacle_source_sequence,
+           (unsigned)m->rear_obstacle_original_age_ms);
     meta_json(meta);
     puts("}");
 }
@@ -93,8 +98,9 @@ void VssApp_OnDomainWarningState(const NetVssWarningState *m, const NetCanRxMeta
 void CisApp_OnDomainPermission(const NetDomainPermission *m, const NetCanRxMeta *meta)
 {
     printf("{\"event\":\"app_rx\",\"node\":\"CIS\",\"call\":\"CisApp_OnDomainPermission\",\"power\":%u,"
-           "\"update\":%u,\"age\":%u,",
-           (unsigned)m->vehicle_power_permission, (unsigned)m->update_sequence, (unsigned)m->source_age_ms);
+           "\"update\":%u,\"age\":%u,\"quality\":%u,",
+           (unsigned)m->vehicle_power_permission, (unsigned)m->update_sequence, (unsigned)m->source_age_ms,
+           (unsigned)m->power_permission_quality);
     meta_json(meta);
     puts("}");
 }
@@ -167,6 +173,9 @@ void BcmApp_OnDomainLightCommand(const NetBcmLightCommand *m, const NetCanRxMeta
 static NetStatus app_command(const char *line)
 {
     unsigned a = 0u, b = 0u;
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
+    int t = 0;
+#endif
 #if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_VSS
     if (sscanf(line, "vss_status %u", &a) == 1) {
         NetVssStatus s;
@@ -191,6 +200,28 @@ static NetStatus app_command(const char *line)
         r.quality_reason = NET_QUALITY_REASON_NONE;
         r.proximity_status = NET_PROXIMITY_VALID_DISTANCE;
         submit_line("CisNet_PublishRear", CisNet_PublishRear(&r));
+        return NET_OK;
+    }
+    if (sscanf(line, "cis_environment %u %d", &a, &t) == 2) {
+        NetCisEnvironment e;
+        if (t < -4000 || t > 12500 || a > UINT32_MAX - 2u) return NET_INVALID_ARGUMENT;
+        memset(&e, 0, sizeof(e));
+        e.temperature_centi_c = (int16_t)t;
+        e.temperature_sequence = a;
+        e.temperature_age_ms = 30u;
+        e.temperature_validity = NET_VALIDITY_VALID;
+        e.temperature_reason = NET_QUALITY_REASON_NONE;
+        e.humidity_centi_percent = 4500u;
+        e.humidity_sequence = a + 1u;
+        e.humidity_age_ms = 40u;
+        e.humidity_validity = NET_VALIDITY_VALID;
+        e.humidity_reason = NET_QUALITY_REASON_NONE;
+        e.illuminance_lux = 321u;
+        e.illuminance_sequence = a + 2u;
+        e.illuminance_age_ms = 50u;
+        e.illuminance_validity = NET_VALIDITY_VALID;
+        e.illuminance_reason = NET_QUALITY_REASON_NONE;
+        submit_line("CisNet_PublishEnvironment", CisNet_PublishEnvironment(&e));
         return NET_OK;
     }
 #elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_BCM
@@ -228,7 +259,7 @@ static int initialize(void)
     size_t i;
 
     memset(&node_config, 0, sizeof(node_config));
-    node_config.boot_id = NODE_BOOT;
+    node_config.boot_id = node_boot;
     node_config.local_epoch = 10u + p->node;
     node_config.can_port_epoch = PORT_EPOCH;
     node_config.uart_m_port_epoch = PORT_EPOCH;
@@ -279,7 +310,7 @@ static int initialize(void)
     /* In place of net_hal_rtd_start(): the backend links are connected at init. */
     ready = true;
     printf("{\"event\":\"ready\",\"node\":\"%s\",\"profile\":%u,\"boot\":%u,\"uart_c\":%s,\"publish_entries\":%u}\n",
-           NODE_NAME, (unsigned)NETWORK_UPPER_NODE_PROFILE, (unsigned)NODE_BOOT, p->uart_c ? "true" : "false",
+           NODE_NAME, (unsigned)NETWORK_UPPER_NODE_PROFILE, (unsigned)node_boot, p->uart_c ? "true" : "false",
            (unsigned)p->publish_count);
     return 0;
 }
@@ -359,10 +390,16 @@ static NetStatus command(const char *line)
     return app_command(line);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     char line[1400];
-    int rc = initialize();
+    int rc;
+    if (argc > 1) {
+        uint64_t boot;
+        if (!vcli_number(argv[1], &boot) || boot == 0u || boot > UINT32_MAX) return 2;
+        node_boot = (uint32_t)boot;
+    }
+    rc = initialize();
     if (rc != 0) {
         printf("{\"event\":\"init_failed\",\"node\":\"%s\",\"code\":%d}\n", NODE_NAME, rc);
         return rc;

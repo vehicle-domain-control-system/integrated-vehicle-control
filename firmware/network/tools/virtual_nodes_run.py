@@ -14,6 +14,14 @@ The DOMAIN profile needs the pinned C2 target header
 DOMAIN profile is excluded and reported; the DOMAIN side of the bus is then
 the HOST peer (product service, node DOMAIN, test owner, no C2 adapter).
 
+DOMAIN node (--domain-owner-src <DOMAIN src folder>, with --domain-c2-include):
+the DOMAIN node composition root (src/node/net_node_domain.c), the DOMAIN board
+file and the actual DOMAIN runtime, compiled by path from the read-only DOMAIN
+sources, run as one more worker on the Host virtual backend (its own tree,
+SDK-checked as well). A second node run then has this worker as the DOMAIN
+side of CAN and runs the DOMAIN checks (network_virtual_nodes.py
+--domain-node). Without --domain-owner-src this run is left out.
+
 Example:
   python tools/virtual_nodes_run.py --build-dir .build-virtual --generator Ninja
 Last line: RESULT passed=N failed=M (exit 1 when M > 0).
@@ -71,7 +79,7 @@ def sdk_check(trees):
     return count, bad
 
 
-def configure_and_build(args, source, build, profile, extra, target, logs):
+def configure_and_build(args, source, build, profile, extra, target, logs, label=None):
     config = [args.cmake, '-S', str(source), '-B', str(build), '-DNETWORK_TARGET=host',
               '-DCMAKE_BUILD_TYPE=Debug', '-DBUILD_TESTING=OFF', '-DNETWORK_NODE_PROFILE=' + profile,
               '-DNETWORK_BUILD_WIRE_CANDIDATE=ON', '-DNETWORK_BUILD_UPPER_STACK=ON',
@@ -80,11 +88,12 @@ def configure_and_build(args, source, build, profile, extra, target, logs):
         config += ['-G', args.generator]
     if args.cc:
         config.append('-DCMAKE_C_COMPILER=' + args.cc)
-    for label, command in (('configure', config),
+    name = label or profile
+    for stage, command in (('configure', config),
                            ('build', [args.cmake, '--build', str(build), '--target', target, '-j', str(args.jobs)])):
-        result = run(command, logs / f'{profile}_{label}.log')
+        result = run(command, logs / f'{name}_{stage}.log')
         if result.returncode:
-            print(f'{profile} {label} failed (exit {result.returncode}):')
+            print(f'{name} {stage} failed (exit {result.returncode}):')
             print(result.stdout[-4000:])
             return False
     return True
@@ -110,6 +119,33 @@ def domain_c2_ready(build):
     return ok, json.dumps(item)
 
 
+def node_run(source, root, extra, trace, log):
+    """One run of network_virtual_nodes.py: (passed, failed) of its CHECK lines."""
+    passed = failed = 0
+    result = subprocess.run([sys.executable, '-B', str(source / 'tests' / 'virtual_ecu' / 'network_virtual_nodes.py'),
+                             '--bin-dir', str(root), '--trace', str(root / trace)] + extra,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8',
+                            errors='replace')
+    log.write_text(result.stdout, encoding='utf8')
+    seen = 0
+    for line in result.stdout.splitlines():
+        m = re.match(r'CHECK (\S+) (PASS|FAIL)', line)
+        if m:
+            seen += 1
+            print(line, flush=True)
+            if m.group(2) == 'PASS':
+                passed += 1
+            else:
+                failed += 1
+    if result.returncode != 0 and seen == 0:
+        failed += 1
+        print(result.stdout[-4000:])
+    elif result.returncode != 0 and failed == 0:
+        failed += 1
+        print(f'node run exit {result.returncode} without a failed check')
+    return passed, failed
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--build-dir', required=True, type=pathlib.Path)
@@ -119,6 +155,9 @@ def main():
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--domain-c2-include', type=pathlib.Path,
                         help='folder with the pinned ' + C2_HEADER + ' (optional)')
+    parser.add_argument('--domain-owner-src', type=pathlib.Path,
+                        help='DOMAIN src folder (application/, interface/), read only: the DOMAIN node worker '
+                             'and its checks (optional, needs --domain-c2-include)')
     args = parser.parse_args()
     source = pathlib.Path(__file__).resolve().parents[1]
     root = args.build_dir.resolve()
@@ -137,6 +176,30 @@ def main():
         print(f'{profile}: node worker built (network_virtual_node_{role}, no SDK)', flush=True)
         trees.append(build)
 
+    c2 = args.domain_c2_include
+    owner = args.domain_owner_src
+    domain_node = False
+    if owner is not None:
+        if c2 is None or not (c2 / C2_HEADER).is_file():
+            failed += 1
+            print(f'DOMAIN node FAIL: --domain-owner-src needs --domain-c2-include with {C2_HEADER}', flush=True)
+        elif not (owner / 'application' / 'domain_runtime.c').is_file():
+            failed += 1
+            print(f'DOMAIN node FAIL: no application/domain_runtime.c in {owner}', flush=True)
+        else:
+            build = root / 'VIRTUAL_NODE_DOMAIN'
+            extra = ['-DNETWORK_BUILD_VIRTUAL_NODE=ON', '-DNETWORK_BUILD_DOMAIN_C2=ON',
+                     '-DNETWORK_DOMAIN_C2_INCLUDE_DIR=' + str(c2.resolve()),
+                     '-DNETWORK_DOMAIN_C2_OWNER_SOURCE_DIR=' + str(owner.resolve())]
+            if not configure_and_build(args, source, build, 'DOMAIN', extra, 'network_virtual_node_DOMAIN', logs,
+                                       'DOMAIN_NODE'):
+                print(f'RESULT passed=0 failed={failed + 1}')
+                return 1
+            print('DOMAIN: node worker built (network_virtual_node_DOMAIN: DOMAIN node root, C2 adapter, '
+                  'DOMAIN runtime, no SDK)', flush=True)
+            trees.append(build)
+            domain_node = True
+
     count, bad = sdk_check(trees)
     if bad or count == 0:
         failed += 1
@@ -147,7 +210,6 @@ def main():
         print(f'SDK check: {count} compile commands, no include path to the mock SDK, src/platform/rtd '
               f'or an NXP SDK folder', flush=True)
 
-    c2 = args.domain_c2_include
     if c2 is not None and (c2 / C2_HEADER).is_file():
         build = root / 'VIRTUAL_DOMAIN'
         extra = ['-DNETWORK_BUILD_VIRTUAL_ECU=ON', '-DNETWORK_BUILD_DOMAIN_C2=ON',
@@ -163,27 +225,12 @@ def main():
         print(f'DOMAIN profile excluded: {why}. The DOMAIN side of the bus is the HOST peer '
               f'(product service, node DOMAIN, test owner, no C2 adapter).', flush=True)
 
-    result = subprocess.run([sys.executable, '-B', str(source / 'tests' / 'virtual_ecu' / 'network_virtual_nodes.py'),
-                             '--bin-dir', str(root), '--trace', str(root / 'TRACE.jsonl')],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8',
-                            errors='replace')
-    (logs / 'nodes_run.log').write_text(result.stdout, encoding='utf8')
-    seen = 0
-    for line in result.stdout.splitlines():
-        m = re.match(r'CHECK (\S+) (PASS|FAIL)', line)
-        if m:
-            seen += 1
-            print(line, flush=True)
-            if m.group(2) == 'PASS':
-                passed += 1
-            else:
-                failed += 1
-    if result.returncode != 0 and seen == 0:
-        failed += 1
-        print(result.stdout[-4000:])
-    elif result.returncode != 0 and failed == 0:
-        failed += 1
-        print(f'node run exit {result.returncode} without a failed check')
+    runs = [([], 'TRACE.jsonl', 'nodes_run.log')]
+    if domain_node:
+        runs.append((['--domain-node'], 'TRACE_DOMAIN.jsonl', 'nodes_run_domain.log'))
+    for extra, trace, log in runs:
+        p, f = node_run(source, root, extra, trace, logs / log)
+        passed, failed = passed + p, failed + f
     print(f'RESULT passed={passed} failed={failed}')
     return 1 if failed else 0
 

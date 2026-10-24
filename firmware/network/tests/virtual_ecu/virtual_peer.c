@@ -24,6 +24,9 @@ static NetHalAdapter hal;
 static NetVirtualBackend backend;
 static uint32_t node;
 static const char *node_name;
+/* Pi BOOT_ID of this run: PI_BOOT, or the decimal second argument of a
+ * restarted Pi worker (a new Pi run). */
+static uint32_t pi_boot = PI_BOOT;
 static uint32_t next_tx = 1u;
 static uint64_t next_observation = 1u;
 static NetTxKey tracked[NET_UPPER_TX_CAPACITY];
@@ -192,7 +195,7 @@ static NetStatus pi_command(const char *line)
         if (b > 5u) return NET_INVALID_ARGUMENT;
         memset(&m, 0, sizeof(m));
         m.link = NET_WIRE_UART_C; m.type = 0x60u;
-        v->pi_boot_id = PI_BOOT; v->vision_sequence = a; v->vision_age_ms = 6u;
+        v->pi_boot_id = pi_boot; v->vision_sequence = a; v->vision_age_ms = 6u;
         v->occupant_presence = b != 0u ? 1u : 0u; v->presence_validity = 1u; v->presence_reason = 0u;
         v->occupant_count = (uint8_t)b; v->count_validity = 1u; v->count_reason = 0u;
         v->vision_status = 2u; v->vision_fault_code = 0u;
@@ -292,7 +295,13 @@ static int initialize(const char *name)
 int main(int argc, char **argv)
 {
     char line[1400];
-    int rc = initialize(argc > 1 ? argv[1] : NULL);
+    int rc;
+    if (argc > 2) {
+        uint64_t boot;
+        if (!vcli_number(argv[2], &boot) || boot == 0u || boot > UINT32_MAX) return 2;
+        pi_boot = (uint32_t)boot;
+    }
+    rc = initialize(argc > 1 ? argv[1] : NULL);
     if (rc != 0) {
         printf("{\"event\":\"init_failed\",\"code\":%d}\n", rc);
         return rc;

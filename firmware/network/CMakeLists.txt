@@ -603,8 +603,46 @@ if(NETWORK_BUILD_VIRTUAL_NODE)
         target_include_directories(network_virtual_node_${NETWORK_NODE_PROFILE} PRIVATE src/node)
         target_link_libraries(network_virtual_node_${NETWORK_NODE_PROFILE} PRIVATE network_host_virtual)
         network_warnings(network_virtual_node_${NETWORK_NODE_PROFILE})
+    elseif(NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
+        # The DOMAIN node root (src/node/net_node_domain.c) and the DOMAIN board
+        # file with the actual DOMAIN runtime, compiled by path from the pinned
+        # read-only DOMAIN sources (never copied). The worker replaces the RTD
+        # backend calls of the root by the virtual backend; its board
+        # configuration header (tests/virtual_ecu/domain_node) has no SDK part.
+        if(NOT TARGET network_domain_c2)
+            message(FATAL_ERROR "NETWORK_BUILD_VIRTUAL_NODE: the DOMAIN node needs -DNETWORK_BUILD_DOMAIN_C2=ON and NETWORK_DOMAIN_C2_INCLUDE_DIR (DOMAIN C2 headers)")
+        endif()
+        if(NOT NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR OR NOT EXISTS "${NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR}/application/domain_runtime.c")
+            message(FATAL_ERROR "NETWORK_BUILD_VIRTUAL_NODE: the DOMAIN node needs NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR (DOMAIN src folder)")
+        endif()
+        set(_domain_owner "${NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR}")
+        add_executable(network_virtual_node_DOMAIN tests/virtual_ecu/virtual_domain_node.c
+            src/node/net_node_domain.c
+            board/s32k344_domain/net_domain_board.c
+            tests/product/domain_transition_binding.c
+            "${_domain_owner}/interface/domain_interface_core.c"
+            "${_domain_owner}/application/domain_runtime.c"
+            "${_domain_owner}/application/vehicle_state_manager.c"
+            "${_domain_owner}/application/command_manager.c"
+            "${_domain_owner}/application/result_manager.c"
+            "${_domain_owner}/application/permission_manager.c"
+            "${_domain_owner}/application/cis_occupant_manager.c"
+            "${_domain_owner}/application/domain_cis_occupant_private.c"
+            "${_domain_owner}/application/cis_environment_manager.c"
+            "${_domain_owner}/application/domain_cis_environment_private.c"
+            "${_domain_owner}/application/domain_interface_state_binding.c"
+            "${_domain_owner}/application/domain_interface_result_binding.c"
+            "${_domain_owner}/application/domain_interface_query_binding.c"
+            "${_domain_owner}/application/domain_interface_cis_occupant_binding.c"
+            "${_domain_owner}/application/domain_interface_cis_environment_binding.c")
+        target_include_directories(network_virtual_node_DOMAIN PRIVATE src/node tests/virtual_ecu/domain_node
+            board/s32k344_domain tests/product "${_domain_owner}/application" "${_domain_owner}/interface")
+        target_compile_definitions(network_virtual_node_DOMAIN PRIVATE NETWORK_NODE_PLATFORM=344
+            NET_BOARD_DOMAIN_C2_HOOK=VirtualDomain_C2Config)
+        target_link_libraries(network_virtual_node_DOMAIN PRIVATE network_host_virtual network_domain_c2)
+        network_warnings(network_virtual_node_DOMAIN)
     else()
-        message(FATAL_ERROR "NETWORK_BUILD_VIRTUAL_NODE: no node profile table for ${NETWORK_NODE_PROFILE} (HOST peer, VSS, CIS, BCM)")
+        message(FATAL_ERROR "NETWORK_BUILD_VIRTUAL_NODE: no node profile table for ${NETWORK_NODE_PROFILE} (HOST peer, VSS, CIS, BCM; DOMAIN with the C2 headers and the DOMAIN sources)")
     endif()
 endif()
 
