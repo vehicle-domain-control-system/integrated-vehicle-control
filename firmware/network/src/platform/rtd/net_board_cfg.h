@@ -9,6 +9,8 @@
  * Defaults equal network_344_can_bringup (S32K344, RTD 7.0.1, CAN0
  * PTA6/PTA7, FD+BRS 500k/2M, 64 B payload, max_num_mb 16).
  * Every value can also be overridden with -D in the project settings.
+ * The ISR ring sizes and the drain budget are buffer capacities of the node
+ * profile: their defaults are in include/network/net_capacity.h, -D sets them.
  * ========================================================================== */
 
 /* ---- MCU: NETWORK_NODE_PLATFORM (144 = S32K144, 344 = S32K344) ----
@@ -96,6 +98,8 @@
  * (Lpuart_Uart_Ip_xHwConfigPB_11, wired to the S32K144 peer). UART-M has no
  * board yet; its default is a placeholder to be set by the DOMAIN project. */
 #include "network/net_upper_profile.h"
+/* Ring sizes and the drain budget below: per node profile. */
+#include "network/net_capacity.h"
 #if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_HOST || NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_DOMAIN
 #define NET_BOARD_UART_M_LINK 1
 #else
@@ -134,14 +138,12 @@
 #ifndef NET_BOARD_UART_C_TX_TIMEOUT_MS
 #define NET_BOARD_UART_C_TX_TIMEOUT_MS  NET_BOARD_UART_TX_TIMEOUT_MS
 #endif
-/* Received bytes the per-link ISR ring holds until the main context takes
- * them (net_hal_rtd_drain, then the service's Port poll on demand). A byte
- * that finds the ring full is dropped, counted and reported as a loss
- * capture (NetUpperCapture.overflow) right before the next stored byte;
- * 256 B is about 22 ms of a fully loaded 115200 bit/s line. */
-#ifndef NET_BOARD_UART_ISR_RING
-#define NET_BOARD_UART_ISR_RING         256U
-#endif
+/* NET_BOARD_UART_ISR_RING: received bytes the per-link ISR ring holds until
+ * the main context takes them (net_hal_rtd_drain, then the service's Port poll
+ * on demand). A byte that finds the ring full is dropped, counted and reported
+ * as a loss capture (NetUpperCapture.overflow) right before the next stored
+ * byte; 256 B is about 22 ms of a fully loaded 115200 bit/s line. Default per
+ * node profile in network/net_capacity.h; -D in the project settings sets it. */
 /* Callback wiring of the generated LPUART config (ConfigTools callback name):
  *  - NET_BOARD_UART_CALLBACK defined: the HAL DEFINES a function with that
  *    name and handles every instance that uses it (other instances are
@@ -218,23 +220,21 @@ extern uint64_t NET_BOARD_NOW_MS_HOOK(void);
  * synthesized, the link stays up.
  * NET_BOARD_ISR_DRAIN_BUDGET: ring entries taken per main pass, keeps one
  * Net_MainFunction() short (VSS contract: a few ms, never above 15 ms). It
- * must not exceed the adapter RX queue (NET_HAL_RX_CAPACITY, 16), which every
- * NetNode_Step() empties. The budget is shared: CAN ring entries first, then
- * received UART bytes (one adapter event per byte), up to the same total.
+ * must not exceed the adapter RX queue (NET_HAL_RX_CAPACITY), which every
+ * NetNode_Step() empties (compile-time check in net_hal_rtd.c). The budget is
+ * shared: CAN ring entries first, then received UART bytes (one adapter event
+ * per byte), up to the same total.
  * UART: M06 accepts no byte captured before its last drained timer check. The
  * service's Port (net_hal_rtd_port) therefore takes the bytes still waiting
  * in the ring, captured at or before the service's clock reading, before that
  * check (at most this budget per poll; the service's poll budget,
- * NET_UPPER_POLL_BUDGET 32 events per step, two steps per NetNode_Step(),
+ * NET_UPPER_POLL_BUDGET events per step, two steps per NetNode_Step(),
  * bounds a pass). A byte is lost only when the byte ring overflows: keep the
  * main pass period below the ring time (256 B: about 22 ms of a fully loaded
- * 115200 bit/s line) and the average line load below 64 B per pass. */
-#ifndef NET_BOARD_CAN_ISR_RING
-#define NET_BOARD_CAN_ISR_RING          32U
-#endif
-#ifndef NET_BOARD_ISR_DRAIN_BUDGET
-#define NET_BOARD_ISR_DRAIN_BUDGET      16U
-#endif
+ * 115200 bit/s line) and the average line load below the two poll budgets of
+ * a pass (2 x NET_UPPER_POLL_BUDGET bytes).
+ * Defaults of both per node profile in network/net_capacity.h; -D in the
+ * project settings sets them. */
 
 /* ---- Public entry hooks (src/node/net_entry.c) ----
  * NET_BOARD_NODE_CONFIG_HOOK  bool f(NetNodeConfig *out)  (required for Net_Init)

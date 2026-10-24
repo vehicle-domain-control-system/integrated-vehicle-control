@@ -1,11 +1,11 @@
 #ifndef NETWORK_NET_HAL_ADAPTER_H
 #define NETWORK_NET_HAL_ADAPTER_H
 #include "network/net_upper.h"
+#include "network/net_capacity.h"
 
 /* Private Network implementation boundary, NOT an NXP/RTD or Owner ABI.
- * Explicit Host candidate capacities; target sizing and ISR binding are HOLD. */
-#define NET_HAL_TX_CAPACITY 4u
-#define NET_HAL_RX_CAPACITY 16u
+ * NET_HAL_TX_CAPACITY and NET_HAL_RX_CAPACITY are per node profile
+ * (network/net_capacity.h); ISR binding is the backend's. */
 #define NET_HAL_LINK_BIT(link) (1u << (unsigned)(link))
 typedef enum { NET_HAL_S32K144 = 144, NET_HAL_S32K344 = 344 } NetHalPlatform;
 typedef struct {

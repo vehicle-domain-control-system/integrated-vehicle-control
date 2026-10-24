@@ -131,6 +131,12 @@ if(BUILD_TESTING AND NETWORK_BUILD_WIRE_CANDIDATE)
                     --cc ${CMAKE_C_COMPILER} --cmake ${CMAKE_COMMAND})
         set_tests_properties(tools.node_bundle_${case} PROPERTIES TIMEOUT 300)
     endforeach()
+    # Link conditions of the node buffer capacities (include/network/net_capacity.h):
+    # a build that breaks one does not compile, for the CIS, BCM and VSS profiles.
+    add_test(NAME tools.capacity_checks
+        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/test_capacity_checks.py
+                --cc ${CMAKE_C_COMPILER})
+    set_tests_properties(tools.capacity_checks PROPERTIES TIMEOUT 300)
     foreach(suite IN ITEMS can_bcm can_nodes can_coverage i1_can_vectors)
         add_executable(test_wire_${suite} tests/host/test_wire_${suite}.c)
         target_link_libraries(test_wire_${suite} PRIVATE network_wire_candidate)
@@ -672,8 +678,9 @@ if(NETWORK_BUILD_RTD_MOCK)
         NET_BOARD_NODE_CONFIG_HOOK=MockBoard_NodeConfig
         NET_BOARD_US_HOOK=MockBoard_Us)
     if(NETWORK_NODE_PROFILE STREQUAL "VSS")
-        # Drain budget 8 (below the default 16) so that three budgets of frames
-        # fit the default ISR ring of 32 frames (entry test).
+        # Drain budget 8 (below the VSS default 16) so that three budgets of
+        # frames fit the VSS ISR ring of 24 frames (entry test; defaults in
+        # include/network/net_capacity.h).
         target_compile_definitions(network_node_rtd_mock_tick PRIVATE NET_BOARD_ISR_DRAIN_BUDGET=8)
         # VSS board project file (node configuration hook): compiled with the
         # project warnings, not linked (the board project links it).

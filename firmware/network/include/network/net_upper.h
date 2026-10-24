@@ -5,13 +5,12 @@
 #include "network/net_upper_can.h"
 #include "network/net_upper_uart.h"
 #include "network/net_upper_profile.h"
+#include "network/net_capacity.h"
 
 /* Network-private product service. No MCU, RTOS or external Owner ABI.
- * These are bounded implementation capacities, not approved ECU sizing. */
-#define NET_UPPER_TX_CAPACITY 16u
-#define NET_UPPER_RX_CAPACITY 32u
+ * NET_UPPER_TX_CAPACITY, NET_UPPER_RX_CAPACITY and NET_UPPER_POLL_BUDGET are
+ * per node profile (network/net_capacity.h). */
 #define NET_UPPER_ROUTE_COUNT 48u
-#define NET_UPPER_POLL_BUDGET 32u
 /* Ended BOOTs kept per receive key (CAN: sender and CAN ID; UART-C: the
  * node's receive direction). A frame of one of them is an old generation and
  * is refused. Same depth as the VSS receiver (VSS contract C4

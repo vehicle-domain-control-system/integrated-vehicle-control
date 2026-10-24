@@ -23,6 +23,7 @@
 static const NetUpperPublishEntry publish_table[] = {
     { NET_WIRE_CAN, 0x340u, 0u, { true, 65535u + 1000u, true } }
 };
+NET_NODE_PUBLISH_TABLE_FITS(publish_table);
 
 /* Repetitions of the same original observation with a new TX_SEQUENCE reach
  * the receive callback on the periodic routes with a receive timeout

@@ -38,6 +38,7 @@ static const NetUpperPublishEntry publish_table[] = {
     { NET_WIRE_CAN, 0x220u, 0u, { true, 65535u + 1000u, true } },
     { NET_WIRE_CAN, 0x230u, 0u, { true, 65535u + 1000u, true } }
 };
+NET_NODE_PUBLISH_TABLE_FITS(publish_table);
 
 /* DOMAIN_PERMISSION (50 / 150 ms, 10_CAN_FD.md): repetitions of the same
  * evaluation with a new TX_SEQUENCE reach BcmNetPriv_OnDomainPermission (the

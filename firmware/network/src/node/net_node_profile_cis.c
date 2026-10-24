@@ -51,6 +51,7 @@ static const NetUpperPublishEntry publish_table[] = {
     { NET_WIRE_CAN, 0x320u, 0u, { true, 65535u + 1000u, true } },
     { NET_WIRE_UART_C, 0x62u, 0u, { true, 500u, true } }
 };
+NET_NODE_PUBLISH_TABLE_FITS(publish_table);
 
 /* Repetitions of the same original observation with a new TX_SEQUENCE /
  * LINK_SEQUENCE reach the receive callbacks on the periodic routes with a

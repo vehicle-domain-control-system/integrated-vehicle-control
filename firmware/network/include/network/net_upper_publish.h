@@ -1,6 +1,7 @@
 #ifndef NETWORK_NET_UPPER_PUBLISH_H
 #define NETWORK_NET_UPPER_PUBLISH_H
 #include "network/net_upper.h"
+#include "network/net_capacity.h"
 
 /* L03/M04 Message Service: Network-owned transmit identity for current-state
  * messages, one latest-value slot per registered message and a periodic
@@ -35,10 +36,8 @@
  * Serialized owner context only (the superloop that runs net_upper_step),
  * never an ISR. The service must not retain private failure notices
  * (config.retain_failure_notices), otherwise retirement would wait forever.
- * Capacities are bounded implementation choices, not approved ECU sizing. */
-#ifndef NET_UPPER_PUBLISH_CAPACITY
-#define NET_UPPER_PUBLISH_CAPACITY 8u
-#endif
+ * NET_UPPER_PUBLISH_CAPACITY (entries) is per node profile
+ * (network/net_capacity.h). */
 
 typedef struct {
     NetWireLink link;  /* NET_WIRE_CAN, NET_WIRE_UART_M or NET_WIRE_UART_C */

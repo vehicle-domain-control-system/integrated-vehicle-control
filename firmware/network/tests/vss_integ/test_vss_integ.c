@@ -1067,14 +1067,16 @@ static int vi9_link_locked_resubmit(void)
     return Invariants();
 }
 
-/* VI10 receive flood (C8): a burst of 30 frames between two passes and a
- * sustained flood above the drain budget; no pass delivers more frames than
- * the budget, the burst arrives complete and in order, the link stays up.
- * The host run time is a reference value only (measured on the board). */
+/* VI10 receive flood (C8): a burst between two passes (30 frames, or one less
+ * than the ISR ring holds when the ring is smaller) that is larger than the
+ * drain budget, and a sustained flood above the drain budget; no pass
+ * delivers more frames than the budget, the burst arrives complete and in
+ * order, the link stays up. The host run time is a reference value only
+ * (measured on the board). */
 static int vi10_rx_flood_budget(void)
 {
     IntegNetDiag d;
-    uint32_t i, j, first, frames;
+    uint32_t i, j, first, frames, burst;
 
     CHECK(Boot());
     s_dom.warnings = true;
@@ -1082,18 +1084,20 @@ static int vi10_rx_flood_budget(void)
     s_dom.warnings = false;
     RunMs(20u);
     d = Net();
-    CHECK(d.drain_budget >= 1u && d.ring_capacity >= 30u);
+    CHECK(d.drain_budget >= 1u && d.ring_capacity >= 2u);
+    burst = (d.ring_capacity - 1u < 30u) ? d.ring_capacity - 1u : 30u;
+    CHECK(burst > d.drain_budget); /* the burst needs more than one pass */
 
     first = s_wrCount;
     s_cbMaxPerLoop = 0u;
-    for (i = 0u; i < 30u; ++i)
+    for (i = 0u; i < burst; ++i)
     {
         CHECK(SendWarning());
     }
     Loop();
     CHECK(s_wrCount - first == d.drain_budget || s_wrCount - first == d.drain_budget - 1u);
     RunMs(10u);
-    CHECK(s_wrCount - first == 30u);
+    CHECK(s_wrCount - first == burst);
     for (i = first + 1u; i < s_wrCount; ++i)
     {
         CHECK(s_wr[i].tx == s_wr[i - 1u].tx + 1u);
