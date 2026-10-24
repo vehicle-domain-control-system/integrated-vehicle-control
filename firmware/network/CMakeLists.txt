@@ -328,7 +328,7 @@ if(NETWORK_BUILD_UPPER_STACK)
     target_link_libraries(network_product PUBLIC network_wire_candidate network_common)
     network_warnings(network_product)
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "HOST")
-        foreach(suite IN ITEMS adversarial uart query can_routes e2e rx_identity control epoch generation)
+        foreach(suite IN ITEMS adversarial uart query can_routes e2e rx_identity control epoch generation reentry)
             add_executable(test_upper_${suite} tests/product/test_upper_${suite}.c)
             target_link_libraries(test_upper_${suite} PRIVATE network_product)
             network_warnings(test_upper_${suite})
@@ -360,6 +360,7 @@ if(NETWORK_BUILD_UPPER_STACK)
                 uart_m_result rejected_owner envelope_boundaries)
             add_test(NAME product.rx_identity_${case} COMMAND test_upper_rx_identity ${case})
         endforeach()
+        add_test(NAME product.reentry_uart_owner COMMAND test_upper_reentry uart_owner)
         foreach(case IN ITEMS uart_receipt uart_receipt_no_age receipt_epoch tx_detail failure_notice
                 failure_notice_versions failure_notice_capacity failure_notice_default_off
                 quiesce_empty quiesce_queued quiesce_six_orders quiesce_conflict quiesce_uart

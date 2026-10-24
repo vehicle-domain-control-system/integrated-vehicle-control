@@ -223,6 +223,14 @@ typedef struct NetUpper {
     NetUpperAdmission admission[NET_UPPER_ADMISSION_CAPACITY];
 #if NET_UPPER_UART_RECEIVER_CAPACITY > 0
     NetUpperUartReceiver uart_rx[NET_UPPER_UART_RECEIVER_CAPACITY];
+    /* Handoff of the UART frame a receiver completes inside net_upper_step:
+     * written only on a complete frame, lent to the Owner callback until it
+     * returns and read by the step until the frame is recorded; never read in
+     * a later step. One per service, not one per call: the step is serialized
+     * (in_call, a nested step is NET_BUSY before touching it). Kept here
+     * instead of the step's stack frame. Profiles without a UART receiver
+     * have no UART frame to hand off and no such buffer. */
+    NetUpperUartDelivery uart_delivery;
 #endif
     bool uart_enabled[2];
     NetUpperLinkGeneration uart_c_generation;

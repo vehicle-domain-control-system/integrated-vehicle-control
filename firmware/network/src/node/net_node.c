@@ -60,12 +60,6 @@ static bool config_valid(const NetNodeConfig *config)
 NetStatus NetNode_Init(const NetNodeConfig *config)
 {
     const NetNodeProfile *p = &net_node_profile;
-    NetHalRtdConfig rtd_in;
-    NetHalConfig hal_cfg;
-    NetUpperConfig c;
-    NetUpperPublishConfig pub;
-    NetPermissionPolicy perm;
-    NetNodeParts parts;
     NetStatus st;
 
     /* Engine storage is fresh-storage only: once composition has started, a
@@ -75,55 +69,76 @@ NetStatus NetNode_Init(const NetNodeConfig *config)
     if (!config_valid(config)) return fail(NET_NODE_STAGE_NONE, NET_INVALID_ARGUMENT);
     init_called = true;
 
-    /* Every field: NetHalRtdConfig also carries the UART link epochs. */
-    memset(&rtd_in, 0, sizeof(rtd_in));
-    rtd_in.can_port_epoch = config->can_port_epoch;
-    if (p->uart_m) rtd_in.uart_m_port_epoch = config->uart_m_port_epoch;
-    if (p->uart_c) rtd_in.uart_c_port_epoch = config->uart_c_port_epoch;
-    st = net_hal_rtd_config(&hal, &rtd_in, &hal_cfg);
-    if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_CONFIG, st);
-    st = net_hal_adapter_init(&hal, &hal_cfg, (NetHalPlatform)NETWORK_NODE_PLATFORM);
-    if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_ADAPTER, st);
+    /* Each stage builds its configuration in a block of its own: the init
+     * call copies it and keeps no pointer to it, so the blocks share one stack
+     * area (init path only). The service configuration stays a local of its
+     * block: net_upper_init takes it apart from the service storage, and it
+     * carries this call's epochs and the adapters' ports. */
+    {
+        NetHalRtdConfig rtd_in;
+        NetHalConfig hal_cfg;
+        /* Every field: NetHalRtdConfig also carries the UART link epochs. */
+        memset(&rtd_in, 0, sizeof(rtd_in));
+        rtd_in.can_port_epoch = config->can_port_epoch;
+        if (p->uart_m) rtd_in.uart_m_port_epoch = config->uart_m_port_epoch;
+        if (p->uart_c) rtd_in.uart_c_port_epoch = config->uart_c_port_epoch;
+        st = net_hal_rtd_config(&hal, &rtd_in, &hal_cfg);
+        if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_CONFIG, st);
+        st = net_hal_adapter_init(&hal, &hal_cfg, (NetHalPlatform)NETWORK_NODE_PLATFORM);
+        if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_ADAPTER, st);
+    }
 
     st = net_ecu_adapter_init(&ecu, &service, p->node, p->callbacks(), NULL);
     if (st != NET_OK) return fail(NET_NODE_STAGE_ECU_ADAPTER, st);
 
-    memset(&c, 0, sizeof(c));
-    c.node = p->node;
-    c.local_epoch = config->local_epoch;
-    c.port_epoch[NET_WIRE_CAN] = config->can_port_epoch;
-    /* Links the profile lacks still need a nonzero epoch in the service. */
-    c.port_epoch[NET_WIRE_UART_M] = p->uart_m ? config->uart_m_port_epoch : config->can_port_epoch;
-    c.port_epoch[NET_WIRE_UART_C] = p->uart_c ? config->uart_c_port_epoch : config->can_port_epoch;
-    c.profile = NET_WIRE_CANDIDATE_ONLY;
-    c.port = net_hal_rtd_port(&hal);   /* adapter port; UART ISR bytes taken before the M06 timer check */
-    c.owner = net_ecu_adapter_owner(&ecu);
-    rx_defaults(&c);
-    p->upper(&c);
-    st = net_upper_init(&service, &c);
-    if (st != NET_OK) return fail(NET_NODE_STAGE_UPPER, st);
+    {
+        NetUpperConfig c;
+        memset(&c, 0, sizeof(c));
+        c.node = p->node;
+        c.local_epoch = config->local_epoch;
+        c.port_epoch[NET_WIRE_CAN] = config->can_port_epoch;
+        /* Links the profile lacks still need a nonzero epoch in the service. */
+        c.port_epoch[NET_WIRE_UART_M] = p->uart_m ? config->uart_m_port_epoch : config->can_port_epoch;
+        c.port_epoch[NET_WIRE_UART_C] = p->uart_c ? config->uart_c_port_epoch : config->can_port_epoch;
+        c.profile = NET_WIRE_CANDIDATE_ONLY;
+        c.port = net_hal_rtd_port(&hal);   /* adapter port; UART ISR bytes taken before the M06 timer check */
+        c.owner = net_ecu_adapter_owner(&ecu);
+        rx_defaults(&c);
+        p->upper(&c);
+        st = net_upper_init(&service, &c);
+        if (st != NET_OK) return fail(NET_NODE_STAGE_UPPER, st);
+    }
 
-    memset(&pub, 0, sizeof(pub));
-    pub.can_boot_id = config->boot_id;
-    pub.entries = p->publish;
-    pub.entry_count = p->publish_count;
-    st = net_upper_publish_init(&publisher, &service, &pub);
-    if (st != NET_OK) return fail(NET_NODE_STAGE_UPPER, st);
+    {
+        NetUpperPublishConfig pub;
+        memset(&pub, 0, sizeof(pub));
+        pub.can_boot_id = config->boot_id;
+        pub.entries = p->publish;
+        pub.entry_count = p->publish_count;
+        st = net_upper_publish_init(&publisher, &service, &pub);
+        if (st != NET_OK) return fail(NET_NODE_STAGE_UPPER, st);
+    }
 
-    parts.service = &service;
-    parts.ecu = &ecu;
-    parts.publisher = &publisher;
-    parts.config = config;
-    st = p->bind(&parts);
-    if (st != NET_OK) return fail(NET_NODE_STAGE_APP_PORT, st);
+    {
+        NetNodeParts parts;
+        parts.service = &service;
+        parts.ecu = &ecu;
+        parts.publisher = &publisher;
+        parts.config = config;
+        st = p->bind(&parts);
+        if (st != NET_OK) return fail(NET_NODE_STAGE_APP_PORT, st);
+    }
 
-    memset(&perm, 0, sizeof(perm));
-    perm.receive_timeout.bound = true;
-    perm.receive_timeout.maximum_age_ms = 150u;
-    perm.receive_timeout.expires_at_equality = true;
-    p->permission(&perm);
-    st = net_permission_init(&permission, &service, &perm);
-    if (st != NET_OK) return fail(NET_NODE_STAGE_PERMISSION, st);
+    {
+        NetPermissionPolicy perm;
+        memset(&perm, 0, sizeof(perm));
+        perm.receive_timeout.bound = true;
+        perm.receive_timeout.maximum_age_ms = 150u;
+        perm.receive_timeout.expires_at_equality = true;
+        p->permission(&perm);
+        st = net_permission_init(&permission, &service, &perm);
+        if (st != NET_OK) return fail(NET_NODE_STAGE_PERMISSION, st);
+    }
 
     st = net_hal_rtd_start();
     if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_START, st);

@@ -437,6 +437,7 @@ static bool repeat_route(const NetUpper *s,size_t idx)
     size_t j=net_upper_admission_index(idx);
     return j<NET_UPPER_ADMISSION_CAPACITY && s->config.rx_repeat_delivery[j];
 }
+#if NET_UPPER_UART_RECEIVER_CAPACITY > 0
 /* UART LINK_SEQUENCE runs modulo 65536 (next_link_sequence). Within the same
  * accepted boot a number is newer when it lies 1..2^15-1 ahead of the last
  * accepted one in that circle, so 65535 -> 0 is the next frame and a number
@@ -451,6 +452,7 @@ static NetStatus uart_admission(const NetUpperAdmission *a,uint32_t boot,uint16_
     if(ahead>=0x8000u)return NET_STALE;
     return NET_OK;
 }
+#endif
 static bool can_raw_equal(const NetWireCanEnvelope *a,const NetWireCanEnvelope *b)
 {
     return a->standard_id==b->standard_id && a->extended==b->extended &&
@@ -568,6 +570,7 @@ static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now
     if(status==NET_OK && same_observation)return NET_DUPLICATE;
     return status==NET_OK && d.observation_only?NET_HOLD:status;
 }
+#if NET_UPPER_UART_RECEIVER_CAPACITY > 0
 /* AGE the UART delivery bound is checked against (the record's own AGE). */
 static uint64_t uart_rx_age(const NetUpperUartMessage *m)
 {
@@ -578,8 +581,9 @@ static uint64_t uart_rx_age(const NetUpperUartMessage *m)
     }
     return net_upper_uart_max_age(m);
 }
-/* u is the step's handoff buffer: a raised repetition AGE is written into
- * u->message before the Owner sees it (the raw frame stays as received). */
+/* u is the service's handoff buffer (uart_delivery): a raised repetition AGE
+ * is written into u->message before the Owner sees it (the raw frame stays as
+ * received). */
 static NetStatus receive_uart(NetUpper *s,NetUpperUartDelivery *u,uint64_t now,bool *repeat_delivered)
 {
     NetUpperUartMessage *m=&u->message;size_t idx=route_index(m->link,m->type);
@@ -668,6 +672,7 @@ static NetStatus receive_uart(NetUpper *s,NetUpperUartDelivery *u,uint64_t now,b
     if(status==NET_OK && same_observation)return NET_DUPLICATE;
     return status==NET_OK && d.observation_only?NET_HOLD:status;
 }
+#endif
 static void observe_receive(NetUpper *s,NetStatus status,bool repeat_delivered)
 {
     if(repeat_delivered)INC(s->observation.repeat_delivered); /* not a new observation */
@@ -708,8 +713,7 @@ static NetStatus reset_link(NetUpper *s,const NetUpperEvent *e)
     if(link==NET_WIRE_UART_M)s->context_seen=false;
     INC(s->observation.resets);return NET_OK;
 }
-static NetStatus process_event(NetUpper *s,const NetUpperEvent *e,uint64_t now,bool *pop,
-    NetUpperUartDelivery *delivery)
+static NetStatus process_event(NetUpper *s,const NetUpperEvent *e,uint64_t now,bool *pop)
 {
     NetStatus status;*pop=true;
     if(e->kind==NET_UPPER_TX_EVENT) {
@@ -731,8 +735,10 @@ static NetStatus process_event(NetUpper *s,const NetUpperEvent *e,uint64_t now,b
         INC(s->observation.rx_dropped);return NET_HOLD;
     }
     if(e->kind==NET_UPPER_CAN_RX){bool repeat;status=receive_can(s,e,now,&repeat);observe_receive(s,status,repeat);return status;}
+#if NET_UPPER_UART_RECEIVER_CAPACITY > 0
     if(e->kind==NET_UPPER_UART_BYTE && e->link!=NET_WIRE_CAN) {
         NetWireStatus ws;size_t i=(size_t)e->link-1u;bool consumed=false,repeat=false;
+        NetUpperUartDelivery *delivery=&s->uart_delivery;
         if(!s->uart_enabled[i])return NET_HOLD;
         if(e->capture.errors!=0u || e->capture.overflow!=0u) {
             (void)net_upper_uart_receiver_signal(net_upper_receiver_mut(s,i),e->capture.port_epoch,true,false);INC(s->observation.rx_dropped);return NET_HOLD;
@@ -746,6 +752,12 @@ static NetStatus process_event(NetUpper *s,const NetUpperEvent *e,uint64_t now,b
         status=ws==NET_WIRE_OK?receive_uart(s,delivery,now,&repeat):net_upper_wire_status(ws);
         observe_receive(s,status,repeat);return status;
     }
+#else
+    /* No UART receiver: net_upper_init enables no UART link here
+     * (net_upper_profile_link is CAN only), so uart_enabled stays false and a
+     * UART byte is held exactly as on a disabled link. */
+    if(e->kind==NET_UPPER_UART_BYTE && e->link!=NET_WIRE_CAN)return NET_HOLD;
+#endif
     return NET_INVALID_ARGUMENT;
 }
 static NetStatus dispatch(NetUpper *s,NetUpperTx *r,uint64_t now)
@@ -799,9 +811,8 @@ reject:
 NetStatus net_upper_step(NetUpper *s,size_t budget)
 {
     size_t i;uint64_t now;NetStatus result=NET_NO_WORK,status;bool drained=false;
-    /* One automatic handoff buffer shared by sequential RX/poll paths. The
-     * serialized service never nests a second delivery-sized stack object. */
-    NetUpperUartDelivery delivery;
+    /* The RX and receiver-poll paths below hand a completed UART frame over in
+     * the service's uart_delivery (net_upper.h), not in a step local. */
     if(s==NULL || !s->initialized || budget>NET_UPPER_RX_CAPACITY)return NET_INVALID_ARGUMENT;
     if(s->in_call)return NET_BUSY;
     s->in_call=true;status=net_upper_read_clock(s,&now);if(status!=NET_OK){result=status;goto done;}
@@ -816,16 +827,21 @@ NetStatus net_upper_step(NetUpper *s,size_t budget)
         observe_rx_depth(s);
     }
     for(i=0u;i<budget && s->rx_count!=0u;++i) {
-        bool pop;status=process_event(s,&s->rx[s->rx_head],now,&pop,&delivery);
+        bool pop;status=process_event(s,&s->rx[s->rx_head],now,&pop);
         if(pop){s->rx_head=(s->rx_head+1u)%NET_UPPER_RX_CAPACITY;--s->rx_count;}
         if(result==NET_NO_WORK || result==NET_OK)result=status;
     }
+#if NET_UPPER_UART_RECEIVER_CAPACITY > 0
     if(drained && s->rx_count==0u) {
+        NetUpperUartDelivery *timed=&s->uart_delivery;
         for(i=0u;i<2u;++i)if(s->uart_enabled[i] && !s->quiescing[i+1u] && !s->link_failed[i+1u]) {
-            NetWireStatus ws=net_upper_uart_receiver_poll(net_upper_receiver_mut(s,i),now,s->config.port_epoch[i+1u],&delivery);
-            if(ws==NET_WIRE_OK){bool repeat;status=receive_uart(s,&delivery,now,&repeat);observe_receive(s,status,repeat);if(result==NET_NO_WORK)result=status;}
+            NetWireStatus ws=net_upper_uart_receiver_poll(net_upper_receiver_mut(s,i),now,s->config.port_epoch[i+1u],timed);
+            if(ws==NET_WIRE_OK){bool repeat;status=receive_uart(s,timed,now,&repeat);observe_receive(s,status,repeat);if(result==NET_NO_WORK)result=status;}
         }
     }
+#else
+    (void)drained; /* no receiver to poll: uart_enabled stays false (see process_event) */
+#endif
     /* Token order is enqueue order, independent of reclaimed slot index. */
     for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
         size_t j;NetUpperTx *next=NULL;
