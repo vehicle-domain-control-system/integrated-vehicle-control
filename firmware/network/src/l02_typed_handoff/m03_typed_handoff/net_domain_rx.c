@@ -298,10 +298,14 @@ return nd_rx_call(a,a->api.RxBcmInteriorLightState(&value.light));
 case 0x230u: if(a->api.RxBcmStatus==NULL)return NET_HOLD;
 ND_TRY(nd_ingress_once(a,NET_WIRE_CAN,m->id,d->source_boot,d->capture.port_epoch,d->source_sequence));
 return nd_rx_call(a,a->api.RxBcmStatus(&value.bcm_status));
-case 0x300u: if(a->api.RxCisCabinEnvironment==NULL)return NET_HOLD;
+/* Transition routes: the barrier is passed before the ingress journal and the
+ * C2 call (environment by the CIS BOOT_ID, Occupant by PI_BOOT_ID). */
+case 0x300u: ND_TRY(nd_barrier(a,NET_DOMAIN_C2_ENVIRONMENT_BARRIER,d->source_boot));
+if(a->api.RxCisCabinEnvironment==NULL)return NET_HOLD;
 ND_TRY(nd_ingress_once(a,NET_WIRE_CAN,m->id,d->source_boot,d->capture.port_epoch,d->source_sequence));
 return nd_rx_call(a,a->api.RxCisCabinEnvironment(&value.environment));
-case 0x310u: if(a->api.RxCisOccupant==NULL)return NET_HOLD;
+case 0x310u: ND_TRY(nd_barrier(a,NET_DOMAIN_C2_OCCUPANT_BARRIER,m->data.cis_occupant.pi_boot_id));
+if(a->api.RxCisOccupant==NULL)return NET_HOLD;
 ND_TRY(nd_ingress_once(a,NET_WIRE_CAN,m->id,d->source_boot,d->capture.port_epoch,d->source_sequence));
 return nd_rx_call(a,a->api.RxCisOccupant(&value.occupant));
 case 0x0a0u: if(a->api.RxCisRear==NULL)return NET_HOLD;

@@ -76,17 +76,28 @@ default:return NET_HOLD;
 }
 return nd_rx_call(a,a->api.RxMobileRequest(&v));
 }
+/* The service's own test for an M_CONTEXT it takes without its LINK_SEQUENCE
+ * window: none seen yet, or another device context or session. Its stored
+ * context changes only after the Owner returned. */
+static bool new_context(const NetDomainC2 *a,const NetWireMContext *r){
+return !a->service->context_seen||a->service->context.device_context_id!=r->device_context_id||a->service->context.session_id!=r->session_id;
+}
 NetStatus nd_rx_uart(void *context,const NetUpperUartDelivery *d,const NetUpperDelivery *meta){NetDomainC2 *a=context;
 const NetUpperUartMessage *m;
 NetStatus status;
+bool fresh;
 if(a==NULL||d==NULL||meta==NULL)return NET_INVALID_ARGUMENT;
 if(!nd_ready(a))return NET_NOT_CONFIGURED;
 m=&d->message;
 if(m->link!=NET_WIRE_UART_M)return NET_UNSUPPORTED;
-ND_TRY(nd_ingress_once(a,NET_WIRE_UART_M,m->type,0u,d->port_epoch,m->sequence));
+fresh=m->type==0x01u&&new_context(a,&m->data.m_context);
+if(fresh)ND_TRY(nd_ingress_new_context(a,d->port_epoch,m->sequence));
+else ND_TRY(nd_ingress_once(a,NET_WIRE_UART_M,m->type,0u,d->port_epoch,m->sequence));
 switch(m->type){case 0x01u:status=context_rx(a,&m->data.m_context,meta->local_elapsed_ms);
 if(status!=NET_OK)return status;
-return a->query==NULL?NET_OK:net_upper_query_on_context(a->query,d);
+status=a->query==NULL?NET_OK:net_upper_query_on_context(a->query,d);
+if(status==NET_OK&&fresh)nd_ingress_context_taken(a);
+return status;
 case 0x10u:return request_rx(a,&m->data.m_request);
 case 0x11u:return a->query==NULL?NET_HOLD:net_upper_query_begin(a->query,d);
 case 0x12u:{DomainIf_WarningAck_t v;

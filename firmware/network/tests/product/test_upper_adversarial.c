@@ -552,6 +552,96 @@ static int wrong_link_outcome(void)
     CHECK(net_upper_retire(&sender,key)==NET_OK);
     return 0;
 }
+/* DOMAIN_PERMISSION (0x080) queue: an accepted restrictive update (value not 1:
+ * DENY 0 or UNKNOWN 255) withdraws every still-queued ALLOW the Port has not
+ * taken; an ALLOW the Port already borrowed is immutable and stays as it was
+ * (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md, Permission: no
+ * earlier ALLOW is restored after a restriction). The sender is DOMAIN and no
+ * step runs between the two submissions, so the first one is still queued. */
+static NetUpperCanMessage permission_message(uint32_t sequence,uint32_t update,uint8_t value,uint8_t quality)
+{
+    NetUpperCanMessage m;
+    memset(&m,0,sizeof(m));m.id=0x080u;
+    m.data.domain_permission.boot_id=301u;m.data.domain_permission.tx_sequence=sequence;
+    m.data.domain_permission.update_sequence=update;
+    m.data.domain_permission.vehicle_power_permission=value;
+    m.data.domain_permission.power_permission_quality=quality;
+    m.data.domain_permission.power_operation_state=255u;
+    m.data.domain_permission.operation_quality=3u;
+    return m;
+}
+static NetStatus submit_permission(const NetUpperCanMessage *m,NetTxKey *key)
+{
+    NetSourceStamp s=stamp(m->data.domain_permission.tx_sequence);NetAgePolicy p=policy();
+    s.original_age_ms=net_upper_can_max_age(m);
+    return net_upper_submit_can(&sender,m,&s,&p,key);
+}
+static int sent_permission(size_t index,NetWireDomainPermissionRaw *out)
+{
+    CHECK(sender_port.submissions>index && sender_port.borrowed[index]!=NULL);
+    CHECK(sender_port.borrowed[index]->can.standard_id==0x080u);
+    CHECK(net_wire_can_decode_permission(NET_WIRE_CANDIDATE_ONLY,&sender_port.borrowed[index]->can,out)==NET_WIRE_OK);
+    return 0;
+}
+static int permission_restricts_queued(uint8_t value,uint8_t quality)
+{
+    NetUpperCanMessage allow=permission_message(1u,7u,1u,0u),withdraw=permission_message(2u,8u,value,quality);
+    NetTxKey ka,kr;NetUpperTxSnapshot a,r;NetWireDomainPermissionRaw sent;
+    CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_DOMAIN,NULL)==NET_OK);
+    CHECK(submit_permission(&allow,&ka)==NET_OK);
+    CHECK(net_upper_tx_snapshot(&sender,ka,&a)==NET_OK && a.queued && !a.submitted);
+    CHECK(submit_permission(&withdraw,&kr)==NET_OK);
+    CHECK(net_upper_tx_snapshot(&sender,ka,&a)==NET_OK);
+    CHECK(!a.queued && !a.submitted);
+    CHECK(a.admission_known && !a.accepted && a.reference_released && a.local_status==NET_STALE);
+    CHECK(net_upper_tx_snapshot(&sender,kr,&r)==NET_OK && r.queued && !r.submitted);
+    (void)net_upper_step(&sender,32u);
+    CHECK(sender_port.submissions==1u);
+    CHECK(sent_permission(0u,&sent)==0);
+    CHECK(sent.vehicle_power_permission==value && sent.power_permission_quality==quality);
+    CHECK(sent.tx_sequence==2u && sent.update_sequence==8u);
+    CHECK(net_upper_tx_snapshot(&sender,ka,&a)==NET_OK && !a.submitted);
+    return 0;
+}
+static int permission_queue_supersede(void){return permission_restricts_queued(0u,0u);}
+static int permission_queue_unknown(void){return permission_restricts_queued(255u,3u);}
+static int permission_queue_allow_kept(void)
+{
+    NetUpperCanMessage first=permission_message(1u,7u,1u,0u),second=permission_message(2u,8u,1u,0u);
+    NetTxKey k1,k2;NetUpperTxSnapshot s1,s2;NetWireDomainPermissionRaw sent;
+    CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_DOMAIN,NULL)==NET_OK);
+    CHECK(submit_permission(&first,&k1)==NET_OK);
+    CHECK(submit_permission(&second,&k2)==NET_OK);
+    CHECK(net_upper_tx_snapshot(&sender,k1,&s1)==NET_OK && s1.queued && !s1.admission_known && s1.local_status==NET_OK);
+    CHECK(net_upper_tx_snapshot(&sender,k2,&s2)==NET_OK && s2.queued);
+    (void)net_upper_step(&sender,32u);
+    CHECK(sender_port.submissions==2u);
+    CHECK(sent_permission(0u,&sent)==0 && sent.vehicle_power_permission==1u && sent.tx_sequence==1u);
+    CHECK(sent_permission(1u,&sent)==0 && sent.vehicle_power_permission==1u && sent.tx_sequence==2u);
+    CHECK(net_upper_tx_snapshot(&sender,k1,&s1)==NET_OK && s1.submitted && s1.local_status==NET_OK);
+    return 0;
+}
+static int permission_inflight_kept(void)
+{
+    NetUpperCanMessage allow=permission_message(1u,7u,1u,0u),deny=permission_message(2u,8u,0u,0u);
+    NetTxKey ka,kd;NetUpperTxSnapshot a;NetWireDomainPermissionRaw sent;
+    CHECK(init_service(&sender,&sender_port,NET_WIRE_NODE_DOMAIN,NULL)==NET_OK);
+    CHECK(submit_permission(&allow,&ka)==NET_OK);
+    (void)net_upper_step(&sender,32u);
+    CHECK(sender_port.submissions==1u);
+    CHECK(net_upper_tx_snapshot(&sender,ka,&a)==NET_OK && a.submitted && !a.reference_released);
+    CHECK(submit_permission(&deny,&kd)==NET_OK);
+    /* The borrowed ALLOW is neither withdrawn nor rewritten. */
+    CHECK(net_upper_tx_snapshot(&sender,ka,&a)==NET_OK);
+    CHECK(a.submitted && !a.admission_known && !a.reference_released && a.local_status==NET_OK);
+    CHECK(memcmp(&sender_port.first_copy,sender_port.borrowed[0],sizeof(sender_port.first_copy))==0);
+    (void)net_upper_step(&sender,32u);
+    CHECK(sender_port.submissions==2u);
+    CHECK(sent_permission(0u,&sent)==0 && sent.vehicle_power_permission==1u && sent.tx_sequence==1u);
+    CHECK(sent_permission(1u,&sent)==0 && sent.vehicle_power_permission==0u && sent.tx_sequence==2u);
+    CHECK(memcmp(&sender_port.first_copy,sender_port.borrowed[0],sizeof(sender_port.first_copy))==0);
+    return 0;
+}
 int main(int argc,char **argv)
 {
     int result=1;
@@ -574,6 +664,10 @@ int main(int argc,char **argv)
     else if(strcmp(case_name,"tx_age_mismatch")==0)result=tx_age_mismatch();
     else if(strcmp(case_name,"uart_source_rejuvenation")==0)result=uart_source_rejuvenation();
     else if(strcmp(case_name,"wrong_link_outcome")==0)result=wrong_link_outcome();
+    else if(strcmp(case_name,"permission_queue_supersede")==0)result=permission_queue_supersede();
+    else if(strcmp(case_name,"permission_queue_unknown")==0)result=permission_queue_unknown();
+    else if(strcmp(case_name,"permission_queue_allow_kept")==0)result=permission_queue_allow_kept();
+    else if(strcmp(case_name,"permission_inflight_kept")==0)result=permission_inflight_kept();
     else return 2;
     if(result==0)printf("{\"case\":\"%s\",\"entry\":\"product_net_upper\",\"fake_scope\":\"Port_and_external_Owner_only\",\"result\":\"PASS\"}\n",case_name);
     return result;

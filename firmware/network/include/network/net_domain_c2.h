@@ -74,6 +74,16 @@ typedef struct {
     bool window_transport_enabled; /* never authorizes actuator execution */
     bool window_channel_bound;
     uint8_t window_channel;
+    /* Network owns the CIS environment / Occupant BOOT transitions
+     * (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md, environment
+     * values and their invalidation; DOMAIN private transition boundary):
+     * 0x300 reaches C2 only while the environment barrier is open for the
+     * frame's CIS BOOT_ID, 0x310 only while the Occupant barrier is open for
+     * its PI_BOOT_ID (never for PI_BOOT_ID 0). A held frame makes no C2 call
+     * and no ingress record. Off (zero) delivers both routes without a
+     * transition; the DOMAIN Owner then refuses them until its transition is
+     * applied, which latches the route blocked. */
+    bool cis_transition_barriers;
 } NetDomainC2Config;
 typedef struct {
     bool used, failure_delivered;
@@ -89,6 +99,18 @@ typedef struct {
     uint32_t boot;
     uint64_t epoch, sequence;
 } NetDomainC2IngressRecord;
+typedef enum {
+    NET_DOMAIN_C2_ENVIRONMENT_BARRIER, /* 0x300, keyed by the CIS BOOT_ID */
+    NET_DOMAIN_C2_OCCUPANT_BARRIER,    /* 0x310, keyed by PI_BOOT_ID */
+    NET_DOMAIN_C2_BARRIERS
+} NetDomainC2BarrierKind;
+/* Delivery gate of one CIS transition route (cis_transition_barriers). Only an
+ * applied transition for a generation opens it; until then it stays closed. */
+typedef struct {
+    bool open;
+    uint32_t id;   /* generation the barrier is open for */
+    uint32_t held; /* frames held before C2 (diagnostic, saturating) */
+} NetDomainC2Barrier;
 typedef struct {
     unsigned char init_tag[8];
     NetUpper *service;
@@ -105,6 +127,7 @@ typedef struct {
     /* Once-invoked boundary journal; Observer failure cannot replay Core. */
     NetDomainC2IngressRecord ingress[19];
     NetDomainC2IngressRecord *current_ingress;
+    NetDomainC2Barrier barrier[NET_DOMAIN_C2_BARRIERS];
 } NetDomainC2;
 typedef struct {
     uint16_t id;

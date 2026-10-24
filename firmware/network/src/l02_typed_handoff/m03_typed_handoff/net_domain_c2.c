@@ -1,16 +1,39 @@
 #include "net_domain_private.h"
 static NetDomainC2 *bound;
 static const unsigned char init_tag[8]={0x4eu,0x43u,0x32u,0x41u,0x44u,0x50u,0x54u,0x31u};
-NetStatus nd_ingress_once(NetDomainC2 *a,NetWireLink link,uint16_t id,uint32_t boot,uint64_t epoch,uint64_t sequence)
+/* Ingress journal, one record per (link, ID), checked after the service has
+ * admitted the frame and before the C2 call. The service owns the transport
+ * order; the journal keeps one C2 failure from replaying Core and follows the
+ * service rules so that it never refuses what the service admitted:
+ *   - a blocked record stays blocked under any BOOT or context; only
+ *     net_domain_c2_accept_ingress_epoch releases it;
+ *   - an older port epoch is HOLD;
+ *   - CAN: another sender BOOT is the new generation the service accepted
+ *     (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md, communication
+ *     start and source generation: an accepted start change invalidates the
+ *     prior context of that source). The record takes that BOOT and
+ *     TX_SEQUENCE as its new baseline; no port epoch change is needed. With
+ *     cis_transition_barriers, 0x300 and 0x310 reach this point only through
+ *     their transition barrier;
+ *   - UART-M: LINK_SEQUENCE runs modulo 65536
+ *     (docs/network/interface/03_COMMUNICATION/20_UART_M.md shared framing). As
+ *     in the service window, a number 1..2^15-1 ahead is newer, the same
+ *     number is a duplicate, anything else is stale;
+ *   - fresh: a new M_CONTEXT, which the service takes without its window. */
+static NetStatus ingress(NetDomainC2 *a,NetWireLink link,uint16_t id,uint32_t boot,uint64_t epoch,uint64_t sequence,bool fresh)
 {
     size_t i;
 NetDomainC2IngressRecord *slot=NULL;
     for(i=0u;i<19u;++i){NetDomainC2IngressRecord *r=&a->ingress[i];
         if(r->used&&r->link==link&&r->id==id){
             if(r->blocked)return NET_HOLD;
-if(r->epoch>epoch||r->boot!=boot)return NET_HOLD;
-            if(r->sequence!=UINT64_MAX&&sequence==r->sequence)return NET_DUPLICATE;
-            if(r->sequence!=UINT64_MAX&&sequence<r->sequence)return NET_STALE;
+            if(r->epoch>epoch)return NET_HOLD;
+            if(r->boot!=boot){if(link!=NET_WIRE_CAN)return NET_HOLD;fresh=true;}
+            if(!fresh&&r->sequence!=UINT64_MAX){
+                if(sequence==r->sequence)return NET_DUPLICATE;
+                if(link==NET_WIRE_CAN){if(sequence<r->sequence)return NET_STALE;}
+                else if((uint16_t)((uint16_t)sequence-(uint16_t)r->sequence)>=0x8000u)return NET_STALE;
+            }
             slot=r;
 break;
         }
@@ -25,6 +48,35 @@ slot->epoch=epoch;
 slot->sequence=sequence;
 a->current_ingress=slot;
     return NET_OK;
+}
+NetStatus nd_ingress_once(NetDomainC2 *a,NetWireLink link,uint16_t id,uint32_t boot,uint64_t epoch,uint64_t sequence){
+return ingress(a,link,id,boot,epoch,sequence,false);
+}
+NetStatus nd_ingress_new_context(NetDomainC2 *a,uint64_t epoch,uint64_t sequence){
+return ingress(a,NET_WIRE_UART_M,0x01u,0u,epoch,sequence,true);
+}
+/* The service ends the window of every UART-M route when it takes a new
+ * M_CONTEXT (its context acceptance), so the next frame of each route is a
+ * new baseline there; the journal follows once the Owner took that context.
+ * Blocked records stay blocked. */
+void nd_ingress_context_taken(NetDomainC2 *a){size_t i;
+for(i=0u;i<19u;++i){NetDomainC2IngressRecord *r=&a->ingress[i];
+if(r->used&&r->link==NET_WIRE_UART_M&&r->id!=0x01u&&!r->blocked)r->sequence=UINT64_MAX;
+}
+}
+/* Transition barrier of 0x300 / 0x310 (cis_transition_barriers): pass only
+ * while open for this nonzero generation; otherwise hold before the ingress
+ * journal and the C2 call. Nothing opens a barrier yet: the transition call
+ * is not bound, so both routes stay held
+ * (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md: the environment
+ * route is held until the private transition call and receipt check are
+ * bound). */
+NetStatus nd_barrier(NetDomainC2 *a,NetDomainC2BarrierKind kind,uint32_t id){NetDomainC2Barrier *b;
+if(!a->config.cis_transition_barriers)return NET_OK;
+b=&a->barrier[kind];
+if(b->open&&id!=0u&&b->id==id)return NET_OK;
+net_upper_observe_increment(&b->held);
+return NET_HOLD;
 }
 NetDomainC2 *nd_registered(void){return bound;
 }

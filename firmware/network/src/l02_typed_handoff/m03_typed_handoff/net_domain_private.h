@@ -29,5 +29,8 @@ bool nd_ready(const NetDomainC2 *);
 NetStatus nd_rx_can(void *,const NetUpperCanMessage *,const NetUpperDelivery *);
 NetStatus nd_rx_uart(void *,const NetUpperUartDelivery *,const NetUpperDelivery *);
 NetStatus nd_ingress_once(NetDomainC2 *,NetWireLink,uint16_t,uint32_t,uint64_t,uint64_t);
+NetStatus nd_ingress_new_context(NetDomainC2 *,uint64_t,uint64_t);
+void nd_ingress_context_taken(NetDomainC2 *);
+NetStatus nd_barrier(NetDomainC2 *,NetDomainC2BarrierKind,uint32_t);
 NetStatus nd_rx_call(NetDomainC2 *,DomainIf_Status_t);
 #endif
