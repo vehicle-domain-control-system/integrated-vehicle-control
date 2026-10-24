@@ -63,7 +63,7 @@ set(_integ_net_includes ${_node_includes})
 list(TRANSFORM _integ_net_includes PREPEND "${_net_root}/")
 add_library(network_node_vss_integ STATIC ${_integ_net_sources} ${_rtd_mock_sources})
 target_include_directories(network_node_vss_integ PUBLIC ${_integ_net_includes} "${_net_root}/sdk_mock/rtd/include")
-target_compile_definitions(network_node_vss_integ PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+target_compile_definitions(network_node_vss_integ PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
 target_compile_definitions(network_node_vss_integ PRIVATE
     NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks
     NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32

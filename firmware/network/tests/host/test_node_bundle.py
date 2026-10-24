@@ -48,6 +48,10 @@ OWN = {
 }
 HOST_HEADERS = ('include/network/net_host_mock.h', 'include/network/net_virtual.h')
 VSS_BOARD = ('board/s32k344_vss/net_vss_board.c', 'board/s32k344_vss/net_vss_board.h')
+# The board copy no longer carries the S32K344 upper-port wrapper: the node root
+# passes the MCU chosen in net_board_cfg.h to net_hal_adapter_init().
+MCU_WRAPPER = ('network/src/platform/s32k344/net_s32k344_upper_port.c',
+               'network/src/platform/s32k344/net_s32k344_port.h')
 # Minimum node tags of tools/s32ds_sources.txt: path -> nodes.
 MIN_TAGS = {p: {'DOMAIN'} for p in ADAPTERS + DOMAIN_HEADERS}
 MIN_TAGS.update({p: {n} for n, files in OWN.items() for p in files})
@@ -650,6 +654,15 @@ def case_apply_safety(c):
 def case_idempotent(c):
     net = c.copy()
     out = c.root / 'i' / 'network'
+    # A listed source alone in its folder, with a header of that folder (copied by
+    # the folder rule): both leave the bundle with the list line, and the folder too.
+    port_c = 'src/bundle_probe/net_bundle_probe.c'
+    port_h = 'src/bundle_probe/net_bundle_probe.h'
+    (net / 'src' / 'bundle_probe').mkdir()
+    (net / port_h).write_text('/* bundle probe */\nextern int net_bundle_probe;\n', encoding='utf-8', newline='\n')
+    (net / port_c).write_text('#include "net_bundle_probe.h"\nint net_bundle_probe;\n', encoding='utf-8',
+                              newline='\n')
+    set_list(net, append_line(port_c))
     c.make('DOMAIN', net, out)
     before = snapshot(out)
     rc, o = c.tool(net, '--node', 'DOMAIN', '--out', out, '--apply', '--allow-dirty')
@@ -657,9 +670,7 @@ def case_idempotent(c):
             % rc, o)
     c.check(snapshot(out) == before, 'second --apply rewrote files (contents or modification times changed)')
     # Sources that leave the bundle are deleted, and folders that become empty go too.
-    port_c = 'src/platform/s32k344/net_s32k344_upper_port.c'
-    port_h = 'src/platform/s32k344/net_s32k344_port.h'
-    c.check((out / port_c).is_file() and (out / port_h).is_file(), 'precondition: s32k344 port files in the bundle')
+    c.check((out / port_c).is_file() and (out / port_h).is_file(), 'precondition: probe files in the bundle')
     set_list(net, drop_line(port_c))
     gone_h = 'include/network/net_wire_can_bcm.h'
     (net / gone_h).unlink()
@@ -668,7 +679,7 @@ def case_idempotent(c):
     for rel in (port_c, port_h, gone_h):
         c.check(not (out / rel).exists(), 'left the bundle but still there: %s' % rel)
         c.check(rel in o, 'deletion of %s not reported' % rel, o)
-    c.check(not (out / 'src' / 'platform' / 's32k344').exists(), 'empty folder src/platform/s32k344 not removed')
+    c.check(not (out / 'src' / 'bundle_probe').exists(), 'empty folder src/bundle_probe not removed')
     text = (out / RECORD).read_text(encoding='utf-8')
     c.check(port_c not in text and gone_h not in text, 'record still lists deleted files')
     rc, o = c.tool(net, '--node', 'DOMAIN', '--check', out)
@@ -703,9 +714,11 @@ def case_board_set(c):
         rc, o = c.tool(net, '--project', projects[board], '--board', board)
         c.check(rc == 0, '--board %s dry run exit %d' % (board, rc), o)
         got[board] = manifest_paths(c, o)
-        missing = sorted(set(ref[board]) - got[board])
+        missing = sorted(set(ref[board]) - got[board] - set(MCU_WRAPPER))
         c.check(not missing, '--board %s no longer copies %d file(s) of the set before the node tags: %s'
                 % (board, len(missing), missing[:8]))
+        for rel in MCU_WRAPPER:
+            c.check(rel not in got[board], '--board %s still copies the fixed-MCU wrapper %s' % (board, rel))
         added = sorted(got[board] - set(ref[board]))
         if added:
             print('note: --board %s copies %d new file(s): %s' % (board, len(added), added[:8]))

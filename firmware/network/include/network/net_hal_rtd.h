@@ -115,8 +115,8 @@ typedef struct {
     NetHalRtdUartDiag uart[2];        /* [0] UART-M, [1] UART-C */
 } NetHalRtdDiag;
 
-/* Fill the NetHalConfig (ops/context/links/epoch) for net_s32k344_upper_port_init()
- * or net_s32k144_upper_port_init(). The adapter pointer is kept for the
+/* Fill the NetHalConfig (ops/context/links/epoch) for net_hal_adapter_init()
+ * (the node root passes NETWORK_NODE_PLATFORM). The adapter pointer is kept for the
  * main-context hand-off (net_hal_rtd_drain, TX admission, TX abort). */
 NetStatus net_hal_rtd_config(NetHalAdapter *adapter, const NetHalRtdConfig *in, NetHalConfig *out);
 

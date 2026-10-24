@@ -140,7 +140,7 @@ static NetStatus start(void)
     in.uart_c_port_epoch = 1u;
     st = net_hal_rtd_config(&hal, &in, &hc);
     if (st != NET_OK) return st;
-    st = net_s32k344_upper_port_init(&hal, &hc);
+    st = net_hal_adapter_init(&hal, &hc, (NetHalPlatform)NETWORK_NODE_PLATFORM);
     if (st != NET_OK) return st;
     memset(&ops, 0, sizeof(ops));
     ops.domain_permission = on_permission;

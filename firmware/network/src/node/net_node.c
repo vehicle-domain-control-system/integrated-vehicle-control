@@ -9,11 +9,18 @@
  *                            every wired node receives it */
 #include "network/net_node.h"
 #include "net_node_profile.h"
+#include "net_board_cfg.h"
 #include <string.h>
 
 #if NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_VSS && NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_CIS && \
     NETWORK_UPPER_NODE_PROFILE != NET_UPPER_PROFILE_BCM
 #error "net_node.c: no node profile table for this NETWORK_UPPER_NODE_PROFILE (wired: VSS=6, CIS=1, BCM=3)"
+#endif
+
+/* The MCU (NETWORK_NODE_PLATFORM) is chosen in net_board_cfg.h from the S32DS
+ * CPU define or an explicit -D; the node role does not choose it. */
+#ifndef NETWORK_NODE_PLATFORM
+#error "net_node.c: no MCU selected (S32DS CPU define CPU_S32K144HFT0VLLT / CPU_S32K344, or NETWORK_NODE_PLATFORM=144 / 344)"
 #endif
 
 static NetUpper service;
@@ -75,7 +82,7 @@ NetStatus NetNode_Init(const NetNodeConfig *config)
     if (p->uart_c) rtd_in.uart_c_port_epoch = config->uart_c_port_epoch;
     st = net_hal_rtd_config(&hal, &rtd_in, &hal_cfg);
     if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_CONFIG, st);
-    st = net_s32k344_upper_port_init(&hal, &hal_cfg);
+    st = net_hal_adapter_init(&hal, &hal_cfg, (NetHalPlatform)NETWORK_NODE_PLATFORM);
     if (st != NET_OK) return fail(NET_NODE_STAGE_HAL_ADAPTER, st);
 
     st = net_ecu_adapter_init(&ecu, &service, p->node, p->callbacks(), NULL);

@@ -1,7 +1,7 @@
 """SDK swap compile: src/platform/rtd against the real RTD headers of two S32DS projects.
 
-The RTD backend (src/platform/rtd/*.c) and the public entry that shares its
-board hooks (src/node/net_entry.c) are compiled with ARM GCC 10.2,
+The RTD backend (src/platform/rtd/*.c), node composition root and the public
+entry that shares its board hooks (src/node/net_entry.c) are compiled with ARM GCC 10.2,
 -fsyntax-only, with the include paths of a real S32DS project instead of the
 mock SDK:
   DS344: <project>/RTD/include + <project>/generate/include + PlatformSDK_S32K3
@@ -59,7 +59,7 @@ import source_list  # noqa: E402  (tools/source_list.py, the reader of tools/s32
 
 NETWORK = pathlib.Path(__file__).resolve().parents[1]
 UNITS = ('src/platform/rtd/net_hal_rtd.c', 'src/platform/rtd/net_hal_rtd_can.c',
-         'src/platform/rtd/net_hal_rtd_uart.c', 'src/node/net_entry.c')
+         'src/platform/rtd/net_hal_rtd_uart.c', 'src/node/net_entry.c', 'src/node/net_node.c')
 # Board project include folders of the Network sources (same as the host node build).
 NETWORK_INCLUDES = ('include', 'src/platform/rtd', 'src/l04_frame_codec', 'src/l02_typed_handoff/m03_typed_handoff',
                     'src/l05_transport_port/m07_buffer_outcome', 'src/l05_transport_port/m09_observation',
@@ -321,6 +321,7 @@ def vss_summary(vss, section, skipped):
                + [b[2:] for b in section['board']])
     lines = [f'## VSS 프로젝트 설정 `{fwd(section["proj"])}`', '',
              f'- RTD version (FlexCAN_Ip.h): {section["version"]}',
+             '- MCU identity: `CPU_S32K344` selects 344; an explicit `NETWORK_NODE_PLATFORM=344` is also accepted. A conflicting selection is a compile error.',
              f'- Generated: `{n["_can_files"][0].name}` / `{n["_can_files"][1].name}`, config '
              f'`{n["NET_BOARD_CAN_CONFIG"]}`, state `{n["NET_BOARD_CAN_STATE"]}`, callbacks '
              f'`{n["NET_BOARD_CAN_CALLBACK"]}` / `{n["NET_BOARD_CAN_ERROR_CALLBACK"]}`, max_num_mb {n["_max_mb"]}',

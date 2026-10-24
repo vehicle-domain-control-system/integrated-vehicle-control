@@ -33,6 +33,35 @@ pins, clocks, IRQ, DMA, a linker script or an ARM compiler. Explicit
 The older `net_s32k144_port.c` / `net_s32k344_port.c` scaffold functions remain
 fail-closed; actual product injection uses `net_*_upper_port.c` and `NetHalAdapter`.
 
+## Select the RTD node MCU
+
+`NETWORK_NODE_PROFILE` selects the ECU role; it does not select its MCU.
+The shared `NetNode_Init` uses `NETWORK_NODE_PLATFORM=144` or `344`
+(`src/platform/rtd/net_board_cfg.h`) to initialize the same `NetHalAdapter`.
+In S32DS, an existing `CPU_S32K144HFT0VLLT` or `CPU_S32K344` compiler define
+supplies that selection if no explicit value is given. Missing, unknown or
+conflicting selections are compile errors. Other CPU part defines require an
+explicit `NETWORK_NODE_PLATFORM` value.
+
+Host RTD mocks require the explicit CMake option, for example:
+
+```sh
+cmake -S firmware/network -B build-network-cis -DNETWORK_TARGET=host -DBUILD_TESTING=ON -DNETWORK_BUILD_WIRE_CANDIDATE=ON -DNETWORK_BUILD_UPPER_STACK=ON -DNETWORK_BUILD_HAL_PORT_ADAPTER=ON -DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144
+```
+
+Use 344 for the existing VSS board, 144 for the CIS S32K144 RTD board integration,
+and choose BCM from its actual board project (the current BCM design specifies
+144; its board project is not present here). The mock SDK keeps its synthetic
+peripheral configuration; selecting 144 verifies adapter identity and product
+paths, not physical S32K144 pins, RTD headers or resources. `NETWORK_TARGET` alone
+still selects only the portable libraries described above.
+
+`tools/s32ds_sources.txt` is shared by both MCU choices and the mock build.
+The node calls `net_hal_adapter_init` directly with the selected identity, so
+this list no longer needs a fixed S32K344 wrapper. Standalone 144/344 upper-port
+wrapper APIs remain available in the portable adapter library. The copy tool
+continues to exclude legacy S32K144 scaffold sources.
+
 ## Product integration
 
 - `net_upper_init`, `net_upper_capture`, `net_upper_step`: fresh caller-owned
@@ -64,7 +93,7 @@ fail-closed; actual product injection uses `net_*_upper_port.c` and `NetHalAdapt
   four, checks that no include path reaches the mock SDK, `src/platform/rtd` or
   an NXP SDK, and runs facade round trips (`RESULT passed=N failed=M`).
 - SDK swap: `tools/sdk_swap_check.py` compiles `src/platform/rtd` (and
-  `net_entry.c`) with ARM GCC against the real RTD headers of an S32K344 and an
+  `net_node.c` / `net_entry.c`) with ARM GCC against the real RTD headers of an S32K344 and an
   S32K144 S32DS project, reading the board names from their generated
   configuration (only differing names become `net_board_cfg.h` -D overrides).
   The projects are only read; the report goes to `--out/summary.md`.

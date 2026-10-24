@@ -604,6 +604,8 @@ endif()
 # itself is link-checked: the untagged .c files and the .c files tagged with
 # this build's node profile (tools/s32ds_sources.cmake).
 option(NETWORK_BUILD_RTD_MOCK "Build the RTD backend node against sdk_mock/rtd (Host only)" OFF)
+set(NETWORK_NODE_PLATFORM "" CACHE STRING "RTD mock MCU identity: 144 or 344 (explicit; independent of node role)")
+set_property(CACHE NETWORK_NODE_PLATFORM PROPERTY STRINGS 144 344)
 if(NETWORK_BUILD_RTD_MOCK)
     if(NOT NETWORK_TARGET STREQUAL "host")
         message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK is Host only; a board project links the real RTD")
@@ -611,6 +613,10 @@ if(NETWORK_BUILD_RTD_MOCK)
     if(NOT NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS|BCM)$")
         message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: RTD backend build is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS, CIS, BCM)")
     endif()
+    if(NOT NETWORK_NODE_PLATFORM MATCHES "^(144|344)$")
+        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK requires explicit NETWORK_NODE_PLATFORM=144 or 344; the node role does not select an MCU")
+    endif()
+    set(_node_platform_define NETWORK_NODE_PLATFORM=${NETWORK_NODE_PLATFORM})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.txt)
     include(${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.cmake)
@@ -644,7 +650,7 @@ if(NETWORK_BUILD_RTD_MOCK)
     # SDK-independent part: compiled once, without the mock SDK include path.
     add_library(network_node_core_objs OBJECT ${_node_core_sources})
     target_include_directories(network_node_core_objs PRIVATE ${_node_includes})
-    target_compile_definitions(network_node_core_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+    target_compile_definitions(network_node_core_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
     network_warnings(network_node_core_objs)
 
     # Three time sources (net_board_cfg.h): OsIf system counter (default),
@@ -654,7 +660,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_library(network_node_${_variant} STATIC
             $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
         target_include_directories(network_node_${_variant} PUBLIC ${_node_includes} sdk_mock/rtd/include)
-        target_compile_definitions(network_node_${_variant} PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+        target_compile_definitions(network_node_${_variant} PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
         network_warnings(network_node_${_variant})
     endforeach()
     # The test supplies the board clock (MockBoard_NowMs) for the hook build.
@@ -673,7 +679,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         # project warnings, not linked (the board project links it).
         add_library(network_vss_board_objs OBJECT board/s32k344_vss/net_vss_board.c)
         target_include_directories(network_vss_board_objs PRIVATE ${_node_includes})
-        target_compile_definitions(network_vss_board_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+        target_compile_definitions(network_vss_board_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
         network_warnings(network_vss_board_objs)
     endif()
 
@@ -688,7 +694,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_library(network_node_rtd_mock_route STATIC
             $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
         target_include_directories(network_node_rtd_mock_route PUBLIC ${_node_includes} sdk_mock/rtd/include)
-        target_compile_definitions(network_node_rtd_mock_route PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
+        target_compile_definitions(network_node_rtd_mock_route PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
         network_warnings(network_node_rtd_mock_route)
         # Receive idle timeout interrupt on (the generated-config switch of a
         # real project; both bring-up configs keep it OFF): the LPUART idle
@@ -696,7 +702,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_library(network_node_rtd_mock_idle STATIC
             $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
         target_include_directories(network_node_rtd_mock_idle PUBLIC ${_node_includes} sdk_mock/rtd/include)
-        target_compile_definitions(network_node_rtd_mock_idle PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id}
+        target_compile_definitions(network_node_rtd_mock_idle PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define}
             LPUART_UART_IP_ENABLE_TIMEOUT_INTERRUPT=STD_ON)
         target_compile_definitions(network_node_rtd_mock_idle PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
         network_warnings(network_node_rtd_mock_idle)
@@ -719,12 +725,12 @@ if(NETWORK_BUILD_RTD_MOCK)
         endforeach()
         add_library(network_node_core_objs_domain OBJECT ${_node_core_sources_domain})
         target_include_directories(network_node_core_objs_domain PRIVATE ${_node_includes})
-        target_compile_definitions(network_node_core_objs_domain PRIVATE NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id})
+        target_compile_definitions(network_node_core_objs_domain PRIVATE NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id} ${_node_platform_define})
         network_warnings(network_node_core_objs_domain)
         add_library(network_node_rtd_mock_uart_m STATIC
             $<TARGET_OBJECTS:network_node_core_objs_domain> ${_node_rtd_sources_domain} ${_rtd_mock_sources})
         target_include_directories(network_node_rtd_mock_uart_m PUBLIC ${_node_includes} sdk_mock/rtd/include)
-        target_compile_definitions(network_node_rtd_mock_uart_m PUBLIC NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id})
+        target_compile_definitions(network_node_rtd_mock_uart_m PUBLIC NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id} ${_node_platform_define})
         target_compile_definitions(network_node_rtd_mock_uart_m PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
         network_warnings(network_node_rtd_mock_uart_m)
     endif()

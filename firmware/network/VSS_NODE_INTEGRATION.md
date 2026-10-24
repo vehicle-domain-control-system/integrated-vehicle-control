@@ -130,6 +130,7 @@ VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host�
    ```
 2. **`.cproject`(Debug_FLASH C 컴파일러):** `tools/sdk_swap_check.py --vss <VSS 프로젝트>` 보고서(`summary.md`)의 "VSS 프로젝트 설정" 절에 있는 include 7개와 define 목록을 그대로 옮긴다. define은 다음과 같다(생성 이름은 보고서가 프로젝트에서 읽은 값).
    - `NETWORK_UPPER_NODE_PROFILE=6`(빠뜨리면 `net_upper_profile.h`가 컴파일 오류를 낸다. 기본 프로필은 없다)
+   - MCU: 이 프로젝트의 `CPU_S32K344` define이 344를 고른다(`NETWORK_NODE_PLATFORM`을 따로 줄 필요 없다). 명시하려면 `NETWORK_NODE_PLATFORM=344`를 쓴다. 두 값이 다르거나 MCU 선택이 없으면 컴파일 오류다(기본 MCU는 없다).
    - `VSS_CFG_NET_STUB=0`(`net_stub.c` 대신 Network), `VSS_CFG_TEST_INPUT=0`(입력은 CAN만)
    - 시간원 방식 A: `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`(PIT ISR이 올리는 `volatile` 카운터를 읽기만 하므로 CAN ISR에서 불러도 된다, 1 tick = 1.25 ms), `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`(main 전용, Network는 `Net_MainFunction` 안에서만 부른다)
    - `NET_BOARD_NODE_CONFIG_HOOK=VssBoard_NetNodeConfig`
@@ -222,7 +223,7 @@ int main(void)
   ```
   cmake -S firmware/network -B firmware/network/.build-vss-integ -G Ninja \
     -DBUILD_TESTING=ON -DNETWORK_BUILD_WIRE_CANDIDATE=ON -DNETWORK_BUILD_UPPER_STACK=ON \
-    -DNETWORK_BUILD_HAL_PORT_ADAPTER=ON -DNETWORK_NODE_PROFILE=VSS -DNETWORK_BUILD_RTD_MOCK=ON \
+    -DNETWORK_BUILD_HAL_PORT_ADAPTER=ON -DNETWORK_NODE_PROFILE=VSS -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=344 \
     -DNETWORK_VSS_FW_DIR=<VSS_WT>/firmware/vss
   cmake --build firmware/network/.build-vss-integ
   ctest --test-dir firmware/network/.build-vss-integ -R vss_integ

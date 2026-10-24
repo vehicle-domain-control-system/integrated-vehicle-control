@@ -67,9 +67,10 @@ src/l05_transport_port/m08_device_port/net_upper_port.c
 src/l05_transport_port/m09_observation/net_upper_observation.c
 src/l05_transport_port/m09_observation/net_upper_diagnostics.c
 
-# L05/M08 device port bridge
+# L05/M08 device port bridge. The node root passes the MCU chosen in
+# net_board_cfg.h (NETWORK_NODE_PLATFORM) to net_hal_adapter_init(): no
+# fixed-MCU wrapper from src/platform/s32k144 or src/platform/s32k344.
 src/l05_transport_port/m08_device_port/net_hal_adapter.c
-src/platform/s32k344/net_s32k344_upper_port.c
 
 # L02/M03 application port: common helpers + node facades
 # (a facade also compiles to nothing unless it is the build's node profile)

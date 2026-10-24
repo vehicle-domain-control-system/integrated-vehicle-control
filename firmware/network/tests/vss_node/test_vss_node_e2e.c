@@ -12,6 +12,7 @@
 #include "network/net_wire_can.h"
 #include "network/net_wire_can_nodes.h"
 #include "mock_rtd.h"
+#include "net_hal_rtd_internal.h" /* Verify the composed adapter, without adding a public API. */
 #include <stdio.h>
 #include <string.h>
 
@@ -167,6 +168,8 @@ static int h01_init(void)
     NetNodeDiag d;
     CHECK(start_node() == NET_OK);
     d = diag();
+    CHECK(net_hal_rtd_core.adapter != NULL);
+    CHECK(net_hal_rtd_core.adapter->platform == (NetHalPlatform)NETWORK_NODE_PLATFORM);
     CHECK(d.stage == NET_NODE_STAGE_READY);
     CHECK(d.stage_status == NET_OK);
     CHECK(d.rtd.started);

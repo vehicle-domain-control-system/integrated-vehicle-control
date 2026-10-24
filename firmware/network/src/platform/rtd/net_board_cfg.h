@@ -11,6 +11,32 @@
  * Every value can also be overridden with -D in the project settings.
  * ========================================================================== */
 
+/* ---- MCU: NETWORK_NODE_PLATFORM (144 = S32K144, 344 = S32K344) ----
+ * The node role (NETWORK_UPPER_NODE_PROFILE) does not choose the MCU. An S32DS
+ * project chooses it with its CPU define (CPU_S32K144HFT0VLLT or CPU_S32K344);
+ * -DNETWORK_NODE_PLATFORM=144 or 344 chooses it explicitly (host builds, other
+ * CPU part defines). Both CPU defines, another value, or a value that differs
+ * from the CPU define are compile errors. Without any choice the macro stays
+ * undefined and the node composition root (src/node/net_node.c) stops the build. */
+#if defined(CPU_S32K344) && defined(CPU_S32K144HFT0VLLT)
+#error "net_board_cfg.h: CPU_S32K344 and CPU_S32K144HFT0VLLT are both defined"
+#endif
+#ifndef NETWORK_NODE_PLATFORM
+#if defined(CPU_S32K344)
+#define NETWORK_NODE_PLATFORM 344
+#elif defined(CPU_S32K144HFT0VLLT)
+#define NETWORK_NODE_PLATFORM 144
+#endif
+#endif
+#ifdef NETWORK_NODE_PLATFORM
+#if NETWORK_NODE_PLATFORM != 144 && NETWORK_NODE_PLATFORM != 344
+#error "net_board_cfg.h: NETWORK_NODE_PLATFORM must be 144 or 344"
+#elif (defined(CPU_S32K344) && NETWORK_NODE_PLATFORM != 344) || \
+      (defined(CPU_S32K144HFT0VLLT) && NETWORK_NODE_PLATFORM != 144)
+#error "net_board_cfg.h: NETWORK_NODE_PLATFORM differs from the S32DS CPU define"
+#endif
+#endif
+
 /* ---- FlexCAN instance and generated-config symbols (ConfigTools names) ---- */
 #ifndef NET_BOARD_CAN_INSTANCE
 #define NET_BOARD_CAN_INSTANCE          0U
