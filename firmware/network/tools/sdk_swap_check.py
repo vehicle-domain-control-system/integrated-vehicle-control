@@ -71,13 +71,15 @@ TIME_BASES = {
     'A': ('-DNET_BOARD_ISR_TICK_HOOK=Board_IsrTick', '-DNET_BOARD_TICK_TO_MS_HOOK=Board_TickToMs'),
     'B': ('-DNET_BOARD_NOW_MS_HOOK=Board_NowMs',),
 }
-# net_board_cfg.h defaults (the DS344 bring-up values).
+# net_board_cfg.h defaults (the DS344 bring-up values). The CAN MB layout defaults
+# follow the MCU (S32K144: 7 MBs, RX 2, TX from 2); for DS144 the MB values are
+# passed as -D, equal to those defaults.
 DEFAULTS = {'NET_BOARD_CAN_CONFIG': 'FlexCAN_Config0', 'NET_BOARD_CAN_STATE': 'FlexCAN_State0',
             'NET_BOARD_CAN_CALLBACK': 'Can0_BringupCallback',
             'NET_BOARD_CAN_ERROR_CALLBACK': 'Can0_BringupErrorCallback',
             'NET_BOARD_CAN_MAX_MB': '16U', 'NET_BOARD_CAN_RX_MB_COUNT': '4U', 'NET_BOARD_CAN_TX_MB_FIRST': '8U',
             'NET_BOARD_UART_C_INSTANCE': '11U', 'NET_BOARD_UART_C_CONFIG': 'Lpuart_Uart_Ip_xHwConfigPB_11'}
-TX_MB_USED = 4  # NET_HAL_TX_CAPACITY
+TX_MB_USED = 4  # largest NET_HAL_TX_CAPACITY of the node profiles (CIS, BCM 4; VSS 2)
 # VSS board project: time base A with the VSS clock, the Network board file,
 # the VSS build switches (VSS_NODE_INTEGRATION.md "VSS 연동 절차").
 VSS_HOOKS = ('NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks', 'NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32',

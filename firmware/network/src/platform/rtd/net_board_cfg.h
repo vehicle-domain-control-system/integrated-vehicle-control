@@ -7,7 +7,8 @@
  * public entry (src/node/net_entry.c).
  * This is the ONLY file to edit when the HAL meets a real S32DS project.
  * Defaults equal network_344_can_bringup (S32K344, RTD 7.0.1, CAN0
- * PTA6/PTA7, FD+BRS 500k/2M, 64 B payload, max_num_mb 16).
+ * PTA6/PTA7, FD+BRS 500k/2M, 64 B payload, max_num_mb 16); the CAN message
+ * buffer layout follows NETWORK_NODE_PLATFORM (S32K144: max_num_mb 7).
  * Every value can also be overridden with -D in the project settings.
  * The ISR ring sizes and the drain budget are buffer capacities of the node
  * profile: their defaults are in include/network/net_capacity.h, -D sets them.
@@ -67,9 +68,35 @@
 #endif
 
 /* ---- Message buffer layout (must fit ConfigTools max_num_mb) ----
- * 64 B payload: S32K344 CAN0 config uses 16 MBs; S32K144 CAN0 holds 7.
+ * 64 B payload. The defaults follow NETWORK_NODE_PLATFORM:
+ *   344 (and no MCU choice): 16 MBs (network_344_can_bringup), RX MBs 0..3,
+ *        TX from MB 8 (VSS: NET_HAL_TX_CAPACITY 2 -> MBs 8..9)
+ *   144: 7 MBs (network_144_can_debuger), RX MBs 0..1, TX from MB 2
+ *        (CIS, BCM: NET_HAL_TX_CAPACITY 4 -> MBs 2..5)
+ * TX uses NET_HAL_TX_CAPACITY MBs from NET_BOARD_CAN_TX_MB_FIRST (node profile,
+ * include/network/net_capacity.h). net_hal_rtd_can.c refuses at compile time
+ * a layout that overlaps or does not fit NET_BOARD_CAN_MAX_MB.
  * RX MBs accept every standard ID (individual mask 0); the M04 registry
- * filters by node profile in software, so the layout is node independent. */
+ * filters by node profile in software. Each value can be set with -D. */
+#ifdef NETWORK_NODE_PLATFORM
+#if NETWORK_NODE_PLATFORM == 144
+#define NET_BOARD_CAN_MB_LAYOUT_144 1
+#endif
+#endif
+#ifdef NET_BOARD_CAN_MB_LAYOUT_144
+#ifndef NET_BOARD_CAN_MAX_MB
+#define NET_BOARD_CAN_MAX_MB            7U
+#endif
+#ifndef NET_BOARD_CAN_RX_MB_FIRST
+#define NET_BOARD_CAN_RX_MB_FIRST       0U
+#endif
+#ifndef NET_BOARD_CAN_RX_MB_COUNT
+#define NET_BOARD_CAN_RX_MB_COUNT       2U
+#endif
+#ifndef NET_BOARD_CAN_TX_MB_FIRST
+#define NET_BOARD_CAN_TX_MB_FIRST       2U
+#endif
+#else
 #ifndef NET_BOARD_CAN_MAX_MB
 #define NET_BOARD_CAN_MAX_MB            16U
 #endif
@@ -77,10 +104,11 @@
 #define NET_BOARD_CAN_RX_MB_FIRST       0U
 #endif
 #ifndef NET_BOARD_CAN_RX_MB_COUNT
-#define NET_BOARD_CAN_RX_MB_COUNT       4U   /* S32K144: 2 */
+#define NET_BOARD_CAN_RX_MB_COUNT       4U
 #endif
 #ifndef NET_BOARD_CAN_TX_MB_FIRST
-#define NET_BOARD_CAN_TX_MB_FIRST       8U   /* S32K144: 2; uses NET_HAL_TX_CAPACITY (4) MBs */
+#define NET_BOARD_CAN_TX_MB_FIRST       8U
+#endif
 #endif
 /* A TX MB not completed within this time (no ACK, bus off) is aborted and
  * reported FAILED + released, freeing the slot. */

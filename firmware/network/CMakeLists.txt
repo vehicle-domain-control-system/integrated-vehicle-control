@@ -137,6 +137,12 @@ if(BUILD_TESTING AND NETWORK_BUILD_WIRE_CANDIDATE)
         COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/test_capacity_checks.py
                 --cc ${CMAKE_C_COMPILER})
     set_tests_properties(tools.capacity_checks PROPERTIES TIMEOUT 300)
+    # FlexCAN message buffer layout of src/platform/rtd/net_board_cfg.h: defaults per
+    # MCU (NETWORK_NODE_PLATFORM) and the compile-time range check of net_hal_rtd_can.c.
+    add_test(NAME tools.board_mb_layout
+        COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/test_board_mb_layout.py
+                --cc ${CMAKE_C_COMPILER})
+    set_tests_properties(tools.board_mb_layout PROPERTIES TIMEOUT 300)
     foreach(suite IN ITEMS can_bcm can_nodes can_coverage i1_can_vectors)
         add_executable(test_wire_${suite} tests/host/test_wire_${suite}.c)
         target_link_libraries(test_wire_${suite} PRIVATE network_wire_candidate)

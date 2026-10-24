@@ -73,8 +73,9 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 ## 보드 설정
 
 - MCU는 역할(profile 1)과 별도로 선택한다. `feat/cis-rtd-network`의 `firmware/CIS/board/README.md`와 `net_cis_board.h`는 S32K144 / S32K1 RTD 3.0.0을 대상으로 한다. 보드의 `CPU_S32K144HFT0VLLT` 또는 명시적 `NETWORK_NODE_PLATFORM=144`를 사용한다. 알려진 CPU define과 선택이 충돌하거나 둘 다 없으면 컴파일 오류다. 실제 생성 프로젝트/RTD 검증 여부는 별도다.
+- CAN 메시지 버퍼 배치는 MCU 선택(`NETWORK_NODE_PLATFORM`, S32DS에서는 CPU define)에 따라 `src/platform/rtd/net_board_cfg.h`가 기본값을 고른다. 144: `NET_BOARD_CAN_MAX_MB` 7(`network_144_can_debuger` CAN0의 `max_num_mb`, CAN FD 64 B), RX MB 0~1(`NET_BOARD_CAN_RX_MB_FIRST` 0, `NET_BOARD_CAN_RX_MB_COUNT` 2), TX MB 2~5(`NET_BOARD_CAN_TX_MB_FIRST` 2부터 `NET_HAL_TX_CAPACITY` 4개), MB 6은 쓰지 않는다. 344는 16, RX 0~3, TX 8부터다. RX MB는 모든 표준 ID를 받는다(mask 0). 실제 생성 설정의 `max_num_mb`가 다르면 네 값을 `-D`로 준다. RX와 TX가 겹치거나 `NET_BOARD_CAN_MAX_MB`를 넘는 배치(예: 144에서 `-DNET_BOARD_CAN_TX_MB_FIRST=4`, TX 4~7)는 `net_hal_rtd_can.c`의 정적 검사가 컴파일 오류로 막는다(시험 `tools.board_mb_layout`). `.build-cis`의 mock 빌드도 이 144 배치로 돈다.
 - UART-C는 LPUART11(`NET_BOARD_UART_C_INSTANCE`), 생성 설정 `Lpuart_Uart_Ip_xHwConfigPB_11`이 기본값이다. DS344는 콘솔 LPUART0과 콜백을 공유하므로 라우팅 모드(`NetHalRtdUart_OnEvent`)를 쓴다.
-- 위 기본값과 Host mock은 DS344 벤치 설정이다. CIS S32K144 프로젝트에서는 실제 생성 설정에 맞춰 UART 인스턴스/심볼, CAN 메시지 버퍼 등 `NET_BOARD_*`를 지정해야 한다. MCU identity 선택은 이 주변장치 설정을 바꾸지 않는다.
+- 위 기본값과 Host mock은 DS344 벤치 설정이다. CIS S32K144 프로젝트에서는 실제 생성 설정에 맞춰 UART 인스턴스/심볼 등 `NET_BOARD_*`를 지정해야 한다. MCU 선택은 위 CAN 메시지 버퍼 배치 기본값만 바꾸고 UART 설정은 바꾸지 않는다.
 - `NET_BOARD_NODE_CONFIG_HOOK`이 받는 `NetNodeConfig`의 `uart_c_port_epoch`는 1로 들어온다. 0으로 바꾸면 초기화가 실패한다.
 - main 주기는 UART 링 시간(256 B, 115200 bit/s 가득 찬 선로에서 약 22 ms)보다 짧고, 선로 평균 부하가 바퀴당 48 B(서비스 step 2회 × poll 24, 같은 바퀴의 CAN 사건 포함) 이하가 되게 둔다. 바퀴당 비우기 상한(16 B)을 넘는 바이트는 서비스 Port가 시각 검사 전에 넘긴다(`VSS_NODE_INTEGRATION.md` 보드 설정 절, 시험 `cis_node.f16_vision_rx_main_3ms`).
 
