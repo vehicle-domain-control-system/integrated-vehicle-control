@@ -9,9 +9,11 @@
 #   host headers net_host_mock.h and net_virtual.h) and the *.h files of the
 #   folders of the selected .c files.
 # - An unknown or repeated tag, a header line without a tag, a path listed
-#   twice, a missing file or one of the characters semicolon and square
-#   brackets is an error for every reader (tools/source_list.py and
-#   tools/s32ds_sources.cmake implement the same rules).
+#   twice or one of the characters semicolon and square brackets is an error
+#   for every reader (tools/source_list.py and tools/s32ds_sources.cmake
+#   implement the same rules). A listed file that does not exist: CMake stops
+#   (FATAL_ERROR), sync_to_s32ds.py refuses (exit 1), sdk_swap_check.py fails
+#   when it compiles the file.
 # Readers:
 # - CMakeLists.txt (NETWORK_BUILD_RTD_MOCK): compiles and links on host the
 #   untagged .c files and the .c files tagged with the build's node profile.

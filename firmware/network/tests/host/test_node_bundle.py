@@ -318,6 +318,12 @@ def case_tags(c):
     rc, o = c.run([sys.executable, '-B', net / 'tools' / 'sdk_swap_check.py', '--ds344', nope, '--ds144', nope,
                    '--arm-gcc-bin', nope, '--out', c.root / 'swap_out'])
     c.check(rc == 3 and 'SKIP' in o, 'real list: sdk_swap_check with missing paths exit %d (expected 3, SKIP)' % rc, o)
+    # A short --arm-gcc-bin (fewer than four parent folders, e.g. at the drive root)
+    # cannot give the S32DS software folder: still a missing path, not a crash.
+    short = pathlib.Path(c.root.anchor) / 'nope_arm_gcc_bin'
+    rc, o = c.run([sys.executable, '-B', net / 'tools' / 'sdk_swap_check.py', '--ds344', nope, '--ds144', nope,
+                   '--arm-gcc-bin', short, '--out', c.root / 'swap_out'])
+    c.check(rc == 3 and 'SKIP' in o, 'short --arm-gcc-bin: sdk_swap_check exit %d (expected 3, SKIP)' % rc, o)
     rc, o = c.tool(net, '--node', 'BCM', '--out', c.root / 'ok' / 'network', '--allow-dirty')
     c.check(rc == 0 and 'DRY RUN' in o, 'real list: --node dry run exit %d' % rc, o)
 

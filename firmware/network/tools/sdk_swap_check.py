@@ -364,13 +364,21 @@ def main():
         return 2
 
     gcc = args.arm_gcc_bin / ('arm-none-eabi-gcc.exe' if os.name == 'nt' else 'arm-none-eabi-gcc')
-    sdk_root = args.platform_sdk or args.arm_gcc_bin.resolve().parents[3] / 'software'
+    sdk_root = args.platform_sdk
+    if sdk_root is None:
+        # S32DS layout: <S32DS>/S32DS/build_tools/<gcc>/<gcc-arm>/bin -> <S32DS>/S32DS/software.
+        # A shorter --arm-gcc-bin has no such folder: report it as a missing path (SKIP).
+        up = args.arm_gcc_bin.resolve().parents
+        sdk_root = up[3] / 'software' if len(up) > 3 else None
     projects = {'DS344': args.ds344, 'DS144': args.ds144}
     missing = [str(x) for x in [gcc] if not x.is_file()]
+    if sdk_root is None:
+        missing.append('S32DS software folder (give --platform-sdk; %s is too short to derive it)'
+                       % args.arm_gcc_bin)
     for key, proj in projects.items():
         t = TARGETS[key]
-        for d in (proj / 'RTD' / 'include', proj / 'generate' / 'include',
-                  sdk_root / t['sdk'] / t['base'], sdk_root / t['sdk'] / t['platform']):
+        for d in (proj / 'RTD' / 'include', proj / 'generate' / 'include') + (
+                (sdk_root / t['sdk'] / t['base'], sdk_root / t['sdk'] / t['platform']) if sdk_root else ()):
             if not d.is_dir():
                 missing.append(str(d))
     if missing:

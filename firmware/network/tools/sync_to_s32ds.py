@@ -540,6 +540,8 @@ def node_out(args, entries):
     if errors:
         print('ERROR: %d file(s) failed; %s not written (the folder is not a valid bundle until a run succeeds)'
               % (errors, RECORD))
+        print('  Fix the cause, then delete or empty %s and run --apply again: the next --apply refuses '
+              'this folder (its files no longer match the old record).' % fwd(out))
         node_manifest(manifest)
         return 1
     if not same_record:
