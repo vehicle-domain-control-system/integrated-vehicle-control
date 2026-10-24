@@ -266,10 +266,15 @@ static void settle(NetUpperPublisher *p, NetUpperPublishSlot *slot)
      * offered to a device is not reused even when the device clearly refused,
      * a gap is allowed, a reuse is not (CIS_REAR_TX_DISPATCH.md, NO_CAPACITY
      * keeps the pending observation, DRIVER_REJECTED keeps the number used).
-     * The UART LINK_SEQUENCE is the service's per-direction counter. */
-    if (slot->entry.link == NET_WIRE_CAN && (cancelled || transient(t.local_status))) {
-        slot->next_sequence = slot->in_flight_sequence;
-        slot->sequence_held = false;
+     * The UART LINK_SEQUENCE is the service's per-direction counter: it comes
+     * back under the same condition when no later frame took a number. */
+    if (cancelled || transient(t.local_status)) {
+        if (slot->entry.link == NET_WIRE_CAN) {
+            slot->next_sequence = slot->in_flight_sequence;
+            slot->sequence_held = false;
+        } else {
+            (void)net_upper_uart_sequence_unused(p->service, slot->entry.link, (uint16_t)slot->in_flight_sequence);
+        }
     }
     if (cancelled) { INC(slot->counters.replaced); return; }
     if (slot->in_flight_fresh && !slot->fresh && transient(t.local_status)) {
@@ -302,14 +307,15 @@ static void offer(NetUpperPublisher *p, NetUpperPublishSlot *slot, uint64_t now,
         (void)net_upper_can_set_identity(&m, p->can_boot_id, sequence);
         st = net_upper_submit_can(p->service, &m, &slot->source, policy, &key);
     } else {
+        sequence = p->service->next_uart_sequence[uart_index(slot->entry.link)]; /* the number this frame takes */
         st = net_upper_submit_uart_auto(p->service, &slot->content.uart, &slot->source, policy, &key);
     }
     if (st == NET_OK) {
         slot->in_flight = true;
         slot->in_flight_fresh = fresh;
         slot->key = key;
+        slot->in_flight_sequence = sequence;
         if (slot->entry.link == NET_WIRE_CAN) {
-            slot->in_flight_sequence = sequence;
             if (sequence == UINT32_MAX) slot->sequence_held = true;
             else slot->next_sequence = sequence + 1u;
         }

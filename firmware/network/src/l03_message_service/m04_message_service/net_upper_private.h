@@ -19,5 +19,6 @@ NetUpperAdmission *net_upper_admission_at_mut(NetUpper *, size_t registry_index)
 const NetUpperUartReceiver *net_upper_receiver(const NetUpper *, size_t logical_uart_index);
 NetUpperUartReceiver *net_upper_receiver_mut(NetUpper *, size_t logical_uart_index);
 bool net_upper_profile_link(NetWireLink);
+bool net_upper_uart_sequence_unused(NetUpper *, NetWireLink, uint16_t);
 bool net_upper_profile_matches(uint32_t node);
 #endif

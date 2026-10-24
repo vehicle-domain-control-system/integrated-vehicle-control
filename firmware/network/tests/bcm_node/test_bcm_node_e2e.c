@@ -1203,9 +1203,11 @@ static int load_inject(size_t k, uint32_t n)
     return 0;
 }
 
+/* A frame that found no device room waits one pass in its slot (queue_full)
+ * and keeps its number: a delay, counted apart. Lost is what never left. */
 static uint32_t load_slot_lost(const NetUpperPublishView *v)
 {
-    return v->counters.queue_full + v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;
+    return v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;
 }
 
 static int load_doc_traffic(void)
@@ -1286,11 +1288,14 @@ static int load_doc_traffic(void)
            (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
            (unsigned long)d.upper.tx_max_depth, (unsigned long)NET_UPPER_TX_CAPACITY);
     printf("load detail: passes=%lu injected=%lu permission=%lu/%lu submitted=%u refused=%u drained_max=%lu/%lu "
-           "rx_invalid=%lu rx_held=%lu max_gap_ms=%lu,%lu,%lu,%lu\n",
+           "rx_invalid=%lu rx_held=%lu queue_full=%lu,%lu,%lu,%lu,%lu,%lu max_gap_ms=%lu,%lu,%lu,%lu\n",
            (unsigned long)passes, (unsigned long)injected, (unsigned long)d.app.permission_received,
            (unsigned long)permissions, load_app_submitted, load_app_refused,
            (unsigned long)d.rtd.main_drained_max, (unsigned long)d.rtd.isr_drain_budget,
            (unsigned long)d.upper.rx_invalid, (unsigned long)d.upper.rx_held,
+           (unsigned long)d.result_tx.counters.queue_full, (unsigned long)d.event_tx.counters.queue_full,
+           (unsigned long)d.door_state_tx.counters.queue_full, (unsigned long)d.climate_state_tx.counters.queue_full,
+           (unsigned long)d.light_state_tx.counters.queue_full, (unsigned long)d.status_tx.counters.queue_full,
            (unsigned long)load_tx[0].max_gap_ms, (unsigned long)load_tx[1].max_gap_ms,
            (unsigned long)load_tx[2].max_gap_ms, (unsigned long)load_tx[3].max_gap_ms);
     fflush(stdout);

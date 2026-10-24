@@ -13,6 +13,10 @@ of the node build:
          CIS and BCM with -DNET_UPPER_TX_CAPACITY=<entries - 1> do not compile
          (src/node/net_node_profile_<node>.c); the default and
          -DNET_UPPER_TX_CAPACITY=<entries> compile, the VSS default too.
+  publish NET_UPPER_PUBLISH_CAPACITY >= entries of the node publish table
+         (one publisher slot per entry): CIS and BCM with
+         -DNET_UPPER_PUBLISH_CAPACITY=<entries - 1> do not compile, the default
+         and -DNET_UPPER_PUBLISH_CAPACITY=<entries> compile.
   drain  NET_BOARD_ISR_DRAIN_BUDGET <= NET_HAL_RX_CAPACITY
          -DNET_BOARD_ISR_DRAIN_BUDGET=<HAL RX + 1> does not compile
          (src/platform/rtd/net_hal_rtd.c on sdk_mock/rtd); the default and
@@ -53,6 +57,7 @@ RTD_COMMON = 'src/platform/rtd/net_hal_rtd.c'
 CHECK_NAME = {
     'poll': 'net_capacity_NET_UPPER_POLL_BUDGET_le_NET_UPPER_RX_CAPACITY',
     'tx': 'net_node_publish_entries_le_NET_UPPER_TX_CAPACITY',
+    'publish': 'net_node_publish_entries_le_NET_UPPER_PUBLISH_CAPACITY',
     'drain': 'net_board_drain_budget_in_range',
 }
 PROBE = r'''#include <stdio.h>
@@ -183,6 +188,8 @@ def main():
             if node in ('CIS', 'BCM'):
                 c.accepted('tx', node, profile, 'NET_UPPER_TX_CAPACITY=%du' % entries)
                 c.refused('tx', node, profile, 'NET_UPPER_TX_CAPACITY=%du' % (entries - 1))
+                c.accepted('publish', node, profile, 'NET_UPPER_PUBLISH_CAPACITY=%du' % entries)
+                c.refused('publish', node, profile, 'NET_UPPER_PUBLISH_CAPACITY=%du' % (entries - 1))
             c.accepted('drain', node, RTD_COMMON, mock=True)
             c.accepted('drain', node, RTD_COMMON, 'NET_BOARD_ISR_DRAIN_BUDGET=%du' % hal_rx, mock=True)
             c.refused('drain', node, RTD_COMMON, 'NET_BOARD_ISR_DRAIN_BUDGET=%du' % (hal_rx + 1), mock=True)

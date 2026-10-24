@@ -98,7 +98,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 **연결 조건(어기는 값은 컴파일 오류):**
 
 - C1: `NET_UPPER_POLL_BUDGET` ≤ `NET_UPPER_RX_CAPACITY`(24 ≤ 24). `net_capacity.h` 정적 검사. 예산이 더 크면 `net_upper_step()`이 `NET_INVALID_ARGUMENT`로 아무것도 받지 않는다.
-- C2: `NET_UPPER_TX_CAPACITY` ≥ 노드 publish 표 항목 수(5 ≥ 5). `src/node/net_node_profile.h`의 `NET_NODE_PUBLISH_TABLE_FITS`. publish 표가 `NET_UPPER_PUBLISH_CAPACITY`보다 크면 `NetNode_Init`이 실패한다.
+- C2: `NET_UPPER_TX_CAPACITY` ≥ 노드 publish 표 항목 수(5 ≥ 5). `src/node/net_node_profile.h`의 `NET_NODE_PUBLISH_TABLE_FITS`. 같은 매크로가 `NET_UPPER_PUBLISH_CAPACITY` ≥ 항목 수(publisher 슬롯이 항목마다 하나)도 검사한다.
 - C3: `NET_BOARD_ISR_DRAIN_BUDGET` ≤ `NET_HAL_RX_CAPACITY`(16 ≤ 16). `src/platform/rtd/net_hal_rtd.c` 정적 검사.
 
 **보드 확인 항목(C4, 실행 중 진단만 있고 정적 검사가 없다):** 실제 보드에서 문서 통신량이 흐르는 버스와 Pi 링크로 수 분 이상 돌린 뒤 `NetNode_GetDiag`로 기록한다. 링 최대 깊이는 **용량의 75 % 이하**여야 한다.
@@ -109,13 +109,17 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 | `rtd.isr_ring_max_depth` | 75 % 이하: `NET_BOARD_CAN_ISR_RING` 16의 12 이하. TX 완료 사실까지 센 링 전체 깊이라 보수적이다. `rtd.isr_ring_overflow` 0 |
 | `rtd.uart[1].uart_isr_ring_max_depth` | 75 % 이하: `NET_BOARD_UART_ISR_RING` 256의 192 이하. `rtd.uart[1].uart_isr_ring_overflow` 0 |
 | `upper.rx_max_depth`, `hal.rx_max_depth`, `upper.tx_max_depth` | 기록만 한다. host 부하 시험(`cis_node.load_doc_traffic`)에서 24/24, 16/16, 5/5로 용량과 같았다. step당 poll·바퀴당 비우기·publish 항목 수만큼 한 번에 채우는 설계 값이라 75 % 판정 대상이 아니다. 대신 `upper.rx_dropped`, `hal.rx_dropped`가 0인지 본다 |
-| 슬롯 `counters.queue_full`(`rear_tx` … `pi_permission_tx`) | 기록한다. 장치 칸이 없어 한 바퀴 미룬 수다. 아래 알려진 제한 때문에 0이 아닐 수 있다 |
+| 슬롯 `counters.queue_full`(`rear_tx` … `pi_permission_tx`) | 기록한다. 장치 칸이 없어 한 바퀴 미룬 수다. 아래 알려진 제한 때문에 0이 아닐 수 있다(번호는 다음 바퀴에 그대로 쓰므로 손실 아님) |
+| `upper.rx_invalid` | 기록만 한다. RX MB가 모든 표준 ID를 받으므로 이 노드가 받지 않는 다른 노드 몫 프레임만큼 정상 운전에서도 늘어난다(host 부하 시험 10 s에 CIS 480). 버스 이상 판단에 쓰지 않는다 |
+| `rtd.rx_overruns` | 0. 1초 경계에 11개가 함께 시작할 때 RX MB 2개(`NET_BOARD_CAN_RX_MB_COUNT`)에서 덮어쓰기가 없어야 한다. 0이 아니면 `-DNET_BOARD_CAN_RX_MB_COUNT=3u -DNET_BOARD_CAN_TX_MB_FIRST=3u`(TX MB 3..6, `NET_BOARD_CAN_MAX_MB` 7 안)로 다시 본다 |
+| 링커 스택 크기(`.ld`) | Network 경로 상한 2,048 B(main → `Net_MainFunction`, `Net_Init` 각각) + 앱 콜백 + ISR 이상. host ARM 측정은 약 1.9 KB이고 함수 포인터 호출(앱 콜백)과 ISR은 빼고 잰 값이다 |
 
-**알려진 제한:** HAL TX 4칸을 CAN 송신 4종(0x0A0, 0x300, 0x310, 0x320)과 UART-C P_PERMISSION relay가 함께 쓴다. 앱 제출과 새 DOMAIN 평가가 같은 바퀴에 겹치면 relay가 한 바퀴 미뤄질 수 있다(`pi_permission_tx.counters.queue_full`). 그때 CIS→Pi LINK_SEQUENCE가 한 번호 건너뛰고, 프레임은 다음 바퀴에 나간다. host 부하 시험은 앱을 Network 한 바퀴 뒤에 두는 순서에서 손실 0이며, 이 결과는 바퀴 위상에 기댄다.
+**알려진 제한:** HAL TX 4칸을 CAN 송신 4종(0x0A0, 0x300, 0x310, 0x320)과 UART-C P_PERMISSION relay가 함께 쓴다. 1초 경계에서 CAN 4종과 새 DOMAIN 평가의 relay가 같은 바퀴에 겹치면 한 프레임이 한 바퀴 기다린다(`counters.queue_full`). 장치가 받지 않은 프레임의 번호(CAN TX_SEQUENCE, UART LINK_SEQUENCE)는 다음 바퀴에 그대로 쓰므로 번호 건너뜀과 손실은 없고, P_PERMISSION 간격은 500 ms + 한 바퀴 안이다. host 시험 `cis_node.load_second_boundary`가 이 겹침을 고정해 확인한다(앱을 Network 앞에 두고 Pi 판정을 1초 경계 직전에 맞춘다).
 
 ## 시험
 
 - `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `cis_node.*`: `tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
 - 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`, `f23_vision_repeat_delivered`(Pi 판정 반복·늦은 반복 50 ms 여유·정확한 중복), `f25_vision_repeat_long_age`(2초 넘는 Pi 반복).
 - P_PERMISSION relay와 Occupant 품질: `cis_node.f21_permission_quality_drop_relayed`, `f22_relay_sequence_cis_owned`, `f24_occupant_restricted_quality`.
-- 문서 통신량 부하: `cis_node.load_doc_traffic`. 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. CIS가 받는 것은 다른 노드 몫 7개)과 Pi UART-C(P_VISION_RESULT 29 B / 100 ms, P_VISION_STATUS 26 B / 1 s, 바이트 간격 87 µs)를 넣는다. 앱 역할은 CIS_REAR·ENVIRONMENT·STATUS를 문서 주기마다, CIS_OCCUPANT를 Pi 판정마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 10 ms 주기이고 10바퀴마다 한 번 7 ms 늦는다(17 ms). 손실 0(링·큐·M04 슬롯, CIS 몫 수신 전부 전달), 자기 프레임 간격 ≤ 주기 + 17 ms, P_PERMISSION 간격 ≤ 500 ms + 17 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD CIS ...` 한 줄로 남긴다.
+- 문서 통신량 부하: `cis_node.load_doc_traffic`. 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. CIS가 받는 것은 다른 노드 몫 7개)과 Pi UART-C(P_VISION_RESULT 29 B / 100 ms, P_VISION_STATUS 26 B / 1 s, 바이트 간격 87 µs)를 넣는다. 앱 역할은 CIS_REAR·ENVIRONMENT·STATUS를 문서 주기마다, CIS_OCCUPANT를 Pi 판정마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 10 ms 주기이고 10바퀴마다 한 번 7 ms 늦는다(17 ms). 손실 0(링·큐·M04 슬롯, CIS 몫 수신 전부 전달), 자기 프레임 간격 ≤ 주기 + 17 ms, P_PERMISSION 간격 ≤ 500 ms + 17 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD CIS ...` 한 줄로 남긴다. 슬롯 `queue_full`(한 바퀴 기다림)은 손실로 세지 않는다.
+- 1초 경계 겹침: `cis_node.load_second_boundary`. 같은 통신량에서 앱을 Network 한 바퀴 앞에 두고 Pi 판정을 1초 경계 12 ms 전에 맞춰, CAN 4종과 relay가 HAL TX 4칸보다 많이 한 바퀴에 몰리게 한다. `queue_full` ≥ 1(겹침이 실제로 일어남), 손실 0, LINK_SEQUENCE·TX_SEQUENCE 건너뜀 0, 주기 위반 0을 확인하고 `LOAD-BOUNDARY CIS ...` 한 줄로 남긴다.

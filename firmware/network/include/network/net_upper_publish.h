@@ -89,7 +89,11 @@ typedef struct {
     bool sequence_held;   /* CAN: TX_SEQUENCE 0xFFFFFFFF used, no further frame */
     union { NetUpperCanMessage can; NetUpperUartMessage uart; } content;
     NetSourceStamp source; /* original stamp of the latest submission */
-    uint32_t next_sequence, in_flight_sequence; /* CAN TX_SEQUENCE, first 1 */
+    /* next_sequence: CAN TX_SEQUENCE of the next frame, first 1.
+     * in_flight_sequence: the number the in-flight frame carries, CAN
+     * TX_SEQUENCE or UART LINK_SEQUENCE (the service's per-direction counter);
+     * given back when no device took that frame (net_upper_publish.c). */
+    uint32_t next_sequence, in_flight_sequence;
     /* UART-C P_PERMISSION: last relay revision (UPDATE_SEQUENCE) given to a
      * submission, 0 before the first. */
     uint32_t revision;

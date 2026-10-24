@@ -1344,8 +1344,8 @@ static int load_doc_traffic(void)
         pass_at += LOAD_PASS_US;
     }
     d = diag();
-    slot_lost = d.status_tx.counters.queue_full + d.status_tx.counters.not_sent +
-                d.status_tx.counters.tx_failed + d.status_tx.counters.replaced;
+    /* queue_full is a one-pass wait that keeps the number; lost is what never left. */
+    slot_lost = d.status_tx.counters.not_sent + d.status_tx.counters.tx_failed + d.status_tx.counters.replaced;
     {
         const NetLoadCount loss[] = {
             { "upper.rx_dropped", d.upper.rx_dropped },
@@ -1376,12 +1376,12 @@ static int load_doc_traffic(void)
            (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
            (unsigned long)d.upper.tx_max_depth, (unsigned long)NET_UPPER_TX_CAPACITY);
     printf("load detail: passes=%lu injected=%lu permission=%lu/%lu warning=%lu/%lu submitted=%u refused=%u "
-           "drained_max=%lu/%lu rx_invalid=%lu rx_held=%lu max_gap_ms=%lu\n",
+           "drained_max=%lu/%lu rx_invalid=%lu rx_held=%lu queue_full=%lu max_gap_ms=%lu\n",
            (unsigned long)passes, (unsigned long)injected, (unsigned long)d.app.permission_received,
            (unsigned long)permissions, (unsigned long)warning_count, (unsigned long)warnings,
            load_app_submitted, load_app_refused, (unsigned long)d.rtd.main_drained_max,
            (unsigned long)d.rtd.isr_drain_budget, (unsigned long)d.upper.rx_invalid, (unsigned long)d.upper.rx_held,
-           (unsigned long)load_tx[0].max_gap_ms);
+           (unsigned long)d.status_tx.counters.queue_full, (unsigned long)load_tx[0].max_gap_ms);
     fflush(stdout);
     CHECK(d.rtd.isr_ring_capacity == NET_BOARD_CAN_ISR_RING);
     CHECK(d.rtd.rx_frames == injected);       /* every bus frame entered the receive path */

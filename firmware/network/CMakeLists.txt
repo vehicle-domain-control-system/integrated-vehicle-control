@@ -609,6 +609,15 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
             m13_uart_link_sequence_wrap)
         add_test(NAME m04.${case} COMMAND test_m04_publish ${case})
     endforeach()
+    # UART LINK_SEQUENCE of publish slots: a frame no device took gives its
+    # number back only while no later frame of the direction took one.
+    add_executable(test_m04_link_sequence tests/product/test_m04_link_sequence.c)
+    target_link_libraries(test_m04_link_sequence PRIVATE network_product)
+    network_warnings(test_m04_link_sequence)
+    foreach(case IN ITEMS m14_uart_no_room_keeps_link_sequence m15_uart_taken_or_refused_number_used
+            m16_uart_give_back_only_newest m17_uart_give_back_wrap)
+        add_test(NAME m04.${case} COMMAND test_m04_link_sequence ${case})
+    endforeach()
 endif()
 
 # Host-only node build of the RTD backend against the independently written
@@ -845,6 +854,7 @@ if(NETWORK_BUILD_RTD_MOCK)
             add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
         endforeach()
         add_test(NAME cis_node.load_doc_traffic COMMAND test_cis_node_e2e load_doc_traffic)
+        add_test(NAME cis_node.load_second_boundary COMMAND test_cis_node_e2e load_second_boundary)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_cis_node_entry tests/cis_node/test_cis_node_e2e.c)

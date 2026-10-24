@@ -339,6 +339,22 @@ static uint32_t next_link_sequence(uint32_t used)
 {
     return used>=UINT16_MAX ? 0u : used+1u;
 }
+/* A LINK_SEQUENCE comes back when no device took the frame that carried it
+ * and no later frame of the direction has a number yet: the number never
+ * reached the line, so the next frame uses it and the far end sees no gap
+ * (docs/network/network_sw_architecture.md 5.2: the Message Service picks
+ * LINK_SEQUENCE and commits it when the driver accepts the frame; the CAN
+ * TX_SEQUENCE rule of the publisher: a gap is allowed, a reuse on the line
+ * is not). The caller decides that no device took the frame. */
+bool net_upper_uart_sequence_unused(NetUpper *s,NetWireLink link,uint16_t used)
+{
+    size_t i;
+    if(s==NULL || !s->initialized || link<NET_WIRE_UART_M || link>NET_WIRE_UART_C)return false;
+    i=(size_t)link-1u;
+    if(s->next_uart_sequence[i]!=next_link_sequence(used))return false;
+    s->next_uart_sequence[i]=used;
+    return true;
+}
 NetStatus net_upper_submit_uart_auto(NetUpper *s,const NetUpperUartMessage *m,
     const NetSourceStamp *source,const NetAgePolicy *p,NetTxKey *out)
 {

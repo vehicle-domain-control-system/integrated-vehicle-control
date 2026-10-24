@@ -41,10 +41,14 @@ extern const NetNodeProfile net_node_profile;
 /* Link condition of a publish table (network/net_capacity.h): every entry
  * holds at most one offered frame until it is retired (net_upper_publish.h,
  * in_flight), and all of them can be pending at the same time, so the M04
- * transmit queue takes one frame per entry. A profile table states it next to
- * its publish table; a smaller NET_UPPER_TX_CAPACITY does not compile. */
+ * transmit queue takes one frame per entry. The publisher keeps one slot per
+ * entry (NET_UPPER_PUBLISH_CAPACITY). A profile table states it next to its
+ * publish table; a smaller NET_UPPER_TX_CAPACITY or NET_UPPER_PUBLISH_CAPACITY
+ * does not compile. */
 #define NET_NODE_PUBLISH_TABLE_FITS(table) \
     typedef char net_node_publish_entries_le_NET_UPPER_TX_CAPACITY[ \
-        (sizeof(table) / sizeof((table)[0]) <= NET_UPPER_TX_CAPACITY) ? 1 : -1]
+        (sizeof(table) / sizeof((table)[0]) <= NET_UPPER_TX_CAPACITY) ? 1 : -1]; \
+    typedef char net_node_publish_entries_le_NET_UPPER_PUBLISH_CAPACITY[ \
+        (sizeof(table) / sizeof((table)[0]) <= NET_UPPER_PUBLISH_CAPACITY) ? 1 : -1]
 
 #endif

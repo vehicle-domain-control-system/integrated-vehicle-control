@@ -1954,20 +1954,31 @@ static int f25_vision_repeat_long_age(void)
  * frames wait a whole pass. Nothing may be lost (ISR rings, adapter and
  * service queues, M04 slots, every frame for the CIS delivered), an own frame
  * leaves within its period plus one pass (17 ms), P_PERMISSION within its
- * 500 ms period plus one pass, and no queue goes past its capacity. The LOAD
- * line reports the counts and the high-water marks against the capacities of
- * this build. */
+ * 500 ms period plus one pass, and no queue goes past its capacity. A frame
+ * that found no device room waits one pass in its M04 slot (queue_full) and
+ * keeps its number: a delay, not a loss. The LOAD line reports the counts and
+ * the high-water marks against the capacities of this build.
+ * Second boundary (load_second_boundary): the same traffic with the
+ * application before the Network pass and the Pi judgements 12 ms before a
+ * whole second, so the CIS_OCCUPANT of a judgement, the other CIS CAN
+ * messages due at that second and the P_PERMISSION relay of a new DOMAIN
+ * evaluation want more device room in one pass than NET_HAL_TX_CAPACITY: one
+ * frame waits a pass (queue_full >= 1), and still nothing is lost, no
+ * TX_SEQUENCE or LINK_SEQUENCE is skipped and every period holds. Its line
+ * starts with LOAD-BOUNDARY. */
 enum { LOAD_OWN = 4, LOAD_QUEUE = 128 };
 #define LOAD_PASS_US 10000u
 #define LOAD_LATE_US 7000u
 #define LOAD_SLACK_MS 17u
 #define LOAD_FLUSH_US 100000u
 #define LOAD_PI_PERMISSION_PERIOD_MS 500u
+#define LOAD_BOUNDARY_PI_EARLY_US (1000000u - 12000u)
 
 static NetLoadTx load_tx[LOAD_OWN];
 static uint64_t load_app_due[LOAD_OWN];
 static uint32_t load_app_sequence[LOAD_OWN];
 static bool load_app_on;
+static bool load_app_first;              /* the application before the Network pass */
 static unsigned load_occupant_results;   /* Pi judgements already relayed */
 static unsigned load_app_submitted, load_app_refused, load_foreign_tx, load_inject_lost;
 static unsigned load_relays, load_relay_bad, load_relay_link_gaps, load_relay_violations;
@@ -2061,16 +2072,19 @@ static void load_collect(void)
 }
 
 /* One superloop pass in the documented order (net_node.h,
- * VSS_NODE_INTEGRATION.md): the Network pass, then the application. */
+ * VSS_NODE_INTEGRATION.md): the Network pass, then the application. The
+ * second-boundary case runs the application first, so what it submits goes
+ * out in the same pass. */
 static void load_pass(void)
 {
+    if (load_app_first) load_app(now_ms());
 #ifdef CIS_NODE_TEST_ENTRY
     Net_MainFunction((uint32_t)now_ms());
 #else
     NetNode_Step();
 #endif
     load_collect();
-    load_app(now_ms());
+    if (!load_app_first) load_app(now_ms());
 }
 
 /* Frame n of message k on the bus (ISR context of the CAN controller). */
@@ -2108,9 +2122,11 @@ static int load_line_queue(const NetUpperUartMessage *m, uint64_t due_us)
     return 0;
 }
 
+/* A frame that found no device room waits one pass in its slot (queue_full)
+ * and keeps its number: a delay, counted apart. Lost is what never left. */
 static uint32_t load_slot_lost(const NetUpperPublishView *v)
 {
-    return v->counters.queue_full + v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;
+    return v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;
 }
 
 static uint32_t load_missing(uint32_t expected, uint32_t delivered)
@@ -2118,12 +2134,15 @@ static uint32_t load_missing(uint32_t expected, uint32_t delivered)
     return expected > delivered ? expected - delivered : 0u;
 }
 
-static int load_doc_traffic(void)
+static int load_run(bool app_first)
 {
     const uint64_t end_us = (uint64_t)NET_LOAD_DURATION_MS * 1000u;
     uint32_t sent[NET_LOAD_MESSAGE_COUNT];
     uint64_t due_us[NET_LOAD_MESSAGE_COUNT];
-    uint64_t pass_at = LOAD_PASS_US, pi_at = 0u, t;
+    /* Second boundary: Pi judgements 12 ms early, so the occupant of a
+     * judgement and the CAN messages due at a whole second go in one pass. */
+    const uint64_t pi_offset_us = app_first ? LOAD_BOUNDARY_PI_EARLY_US : 0u;
+    uint64_t pass_at = LOAD_PASS_US, pi_at = pi_offset_us, t;
     uint32_t passes = 0u, results = 0u, statuses = 0u, permissions = 0u, injected = 0u;
     uint32_t lost, violations, tx_frames;
     uint16_t link = 0u;
@@ -2132,6 +2151,7 @@ static int load_doc_traffic(void)
     NetUpperUartMessage m;
     CHECK(start_node() == NET_OK);
     load_init_own();
+    load_app_first = app_first;
     load_app_on = true;
     for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
         sent[k] = 0u;
@@ -2159,7 +2179,7 @@ static int load_doc_traffic(void)
         if (t == pi_at) {
             m = vision_message(++link, ++results, 20u);
             RUN(load_line_queue(&m, t));
-            if (t % 1000000u == 0u) {
+            if ((t - pi_offset_us) % 1000000u == 0u) {
                 m = vision_status_message(++link, ++statuses);
                 RUN(load_line_queue(&m, t));
             }
@@ -2217,9 +2237,9 @@ static int load_doc_traffic(void)
         violations = net_load_report("load late", late, sizeof(late) / sizeof(late[0]));
     }
     tx_frames = net_load_tx_frames(load_tx, LOAD_OWN);
-    printf("LOAD CIS rx_frames=%lu tx_frames=%lu lost=%lu period_violations=%lu can_ring_max=%lu/%lu "
+    printf("%s CIS rx_frames=%lu tx_frames=%lu lost=%lu period_violations=%lu can_ring_max=%lu/%lu "
            "hal_rx_max=%lu/%lu upper_rx_max=%lu/%lu upper_tx_max=%lu/%lu uart_ring_max=%lu/%lu\n",
-           (unsigned long)d.rtd.rx_frames, (unsigned long)tx_frames, (unsigned long)lost, (unsigned long)violations,
+           app_first ? "LOAD-BOUNDARY" : "LOAD", (unsigned long)d.rtd.rx_frames, (unsigned long)tx_frames, (unsigned long)lost, (unsigned long)violations,
            (unsigned long)d.rtd.isr_ring_max_depth, (unsigned long)NET_BOARD_CAN_ISR_RING,
            (unsigned long)d.hal.rx_max_depth, (unsigned long)NET_HAL_RX_CAPACITY,
            (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
@@ -2255,7 +2275,26 @@ static int load_doc_traffic(void)
      * the four CAN messages of the CIS submitted in one pass. */
     CHECK(d.rtd.isr_ring_max_depth >= 7u && d.upper.tx_max_depth >= 4u);
     CHECK(d.hal.rx_max_depth >= 1u && d.upper.rx_max_depth >= 1u && d.rtd.uart[1].uart_isr_ring_max_depth >= 1u);
+    if (app_first) {
+        /* The overlap happened: in some pass the four CAN messages and the
+         * P_PERMISSION relay wanted more device room than NET_HAL_TX_CAPACITY,
+         * one frame waited a pass (no loss, no number gap, periods kept). */
+        CHECK(d.rear_tx.counters.queue_full + d.environment_tx.counters.queue_full + d.occupant_tx.counters.queue_full +
+              d.status_tx.counters.queue_full + d.pi_permission_tx.counters.queue_full >= 1u);
+    }
     return 0;
+}
+
+static int load_doc_traffic(void)
+{
+    return load_run(false);
+}
+
+/* The application before the Network pass: at the second boundary the CIS
+ * CAN messages and a new DOMAIN evaluation meet in one pass. */
+static int load_second_boundary(void)
+{
+    return load_run(true);
 }
 
 int main(int argc, char **argv)
@@ -2288,6 +2327,7 @@ int main(int argc, char **argv)
         { "f23_vision_repeat_delivered", f23_vision_repeat_delivered },
         { "f24_occupant_restricted_quality", f24_occupant_restricted_quality },
         { "load_doc_traffic", load_doc_traffic },
+        { "load_second_boundary", load_second_boundary },
         { "f25_vision_repeat_long_age", f25_vision_repeat_long_age }
     };
     size_t i;
