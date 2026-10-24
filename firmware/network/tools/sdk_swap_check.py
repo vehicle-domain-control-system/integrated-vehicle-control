@@ -29,7 +29,8 @@ Generated config files are found whatever their Functional Group suffix
 exactly once.
 
 --vss <project> (optional) adds the VSS board project (S32K344, CAN only):
-every C source of tools/s32ds_sources.txt plus board/s32k344_vss/net_vss_board.c,
+every C source of tools/s32ds_sources.txt that a board project copies (all
+except the DOMAIN-only ones, tools/source_list.py) plus board/s32k344_vss/net_vss_board.c,
 VSS profile, time base A with the VSS clock (HalTimer_GetTicks /
 VssTime_TickToMs32), node configuration hook VssBoard_NetNodeConfig, the
 project's Debug_FLASH C compiler defines, VSS_CFG_NET_STUB=0 and
@@ -41,8 +42,9 @@ The S32DS projects are only read; every output goes to --out (summary.md,
 logs/, probes/). A project file changing during the run is reported as an
 error. An include path containing sdk_mock is an error.
 
-Exit: 0 every counted compile has 0 errors, 1 errors, 3 a path is missing (skipped;
-a missing --vss project skips only the VSS part).
+Exit: 0 every counted compile has 0 errors, 1 errors, 2 tools/s32ds_sources.txt
+malformed (unknown node tag, header line without a tag ...), 3 a path is missing
+(skipped; a missing --vss project skips only the VSS part).
 Example:
   python tools/sdk_swap_check.py --ds344 <ws>/network_344_can_bringup \\
       --ds144 <ws>/network_144_can_debuger --arm-gcc-bin <S32DS>/build_tools/gcc_v10.2/gcc-10.2-arm32-eabi/bin \\
@@ -51,6 +53,9 @@ Example:
 from __future__ import annotations
 import argparse, datetime, hashlib, os, pathlib, re, subprocess, sys
 import xml.etree.ElementTree as ET
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import source_list  # noqa: E402  (tools/source_list.py, the reader of tools/s32ds_sources.txt)
 
 NETWORK = pathlib.Path(__file__).resolve().parents[1]
 UNITS = ('src/platform/rtd/net_hal_rtd.c', 'src/platform/rtd/net_hal_rtd_can.c',
@@ -208,13 +213,9 @@ def project_defines(project, config='Debug_FLASH'):
 
 
 def product_units():
-    """C sources of tools/s32ds_sources.txt (relative to firmware/network)."""
-    out = []
-    for line in (NETWORK / 'tools' / 's32ds_sources.txt').read_text(encoding='utf8').splitlines():
-        line = line.split('#', 1)[0].strip()
-        if line:
-            out.append(line)
-    return out
+    """C sources of tools/s32ds_sources.txt that a board project copies (relative to
+    firmware/network): every one except the DOMAIN-only ones. Headers are not listed here."""
+    return source_list.board_sources(source_list.read())
 
 
 def rtd_version(project):
@@ -351,6 +352,16 @@ def main():
     p.add_argument('--vss', type=pathlib.Path,
                    help='VSS board project (S32K344, CAN only): compile the board source list for it')
     args = p.parse_args()
+    try:
+        product_units()
+    except OSError as e:
+        print('ERROR: missing tools/s32ds_sources.txt (%s)' % e)
+        return 2
+    except source_list.ListError as e:
+        print('ERROR: tools/s32ds_sources.txt is malformed:')
+        for x in e.problems:
+            print('  ' + x)
+        return 2
 
     gcc = args.arm_gcc_bin / ('arm-none-eabi-gcc.exe' if os.name == 'nt' else 'arm-none-eabi-gcc')
     sdk_root = args.platform_sdk or args.arm_gcc_bin.resolve().parents[3] / 'software'

@@ -129,7 +129,7 @@ VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host�
    python firmware/network/tools/sync_to_s32ds.py --project <VSS 프로젝트> --board vss --apply
    ```
 2. **`.cproject`(Debug_FLASH C 컴파일러):** `tools/sdk_swap_check.py --vss <VSS 프로젝트>` 보고서(`summary.md`)의 "VSS 프로젝트 설정" 절에 있는 include 7개와 define 목록을 그대로 옮긴다. define은 다음과 같다(생성 이름은 보고서가 프로젝트에서 읽은 값).
-   - `NETWORK_UPPER_NODE_PROFILE=6`
+   - `NETWORK_UPPER_NODE_PROFILE=6`(빠뜨리면 `net_upper_profile.h`가 컴파일 오류를 낸다. 기본 프로필은 없다)
    - `VSS_CFG_NET_STUB=0`(`net_stub.c` 대신 Network), `VSS_CFG_TEST_INPUT=0`(입력은 CAN만)
    - 시간원 방식 A: `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`(PIT ISR이 올리는 `volatile` 카운터를 읽기만 하므로 CAN ISR에서 불러도 된다, 1 tick = 1.25 ms), `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`(main 전용, Network는 `Net_MainFunction` 안에서만 부른다)
    - `NET_BOARD_NODE_CONFIG_HOOK=VssBoard_NetNodeConfig`
@@ -169,6 +169,7 @@ int main(void)
 ## 보드 프로젝트에 넣을 소스
 
 - 제품 C 소스 목록의 정본은 `tools/s32ds_sources.txt`다. host 빌드(`NETWORK_BUILD_RTD_MOCK`)도 같은 목록을 읽어 링크까지 확인한다.
+- 목록의 줄에는 노드 태그(`@VSS`, `@CIS`, `@BCM`, `@DOMAIN`)가 붙을 수 있다. 태그 없는 `.c`는 모든 노드 공통, 태그 붙은 `.c`와 헤더는 그 노드 전용이다. host RTD mock 빌드와 노드별 사본(`sync_to_s32ds.py --node`, 예: `DOMAIN_NODE_INTEGRATION.md`)은 공통 `.c`와 자기 노드 `.c`만 쓴다. 아래 `--project` 복사 집합은 태그와 상관없이 같고, DOMAIN 전용 C2 어댑터 `.c`만 빠진다.
 - 보드 프로젝트에는 `tools/sync_to_s32ds.py`로 넣는다(목록의 소스, `include/network/**`, 소스 폴더의 헤더 → `src/network/`). 보드 빌드에 쓰지 않는 헤더(`net_host_mock.h`, `net_virtual.h`, DOMAIN 앱 헤더가 있어야 컴파일되는 `net_domain_c2.h`)는 넣지 않는다. 보드 폴더는 `--board`로 고른다: `bench`(S32K344 벤치 → `src/net_bench/`), `vss`(VSS 프로젝트 → `src/net_board/`), `none`.
 - RTD backend는 세 파일이다. `src/platform/rtd/net_hal_rtd.c`(시간원, ISR 시각 변환, 임계구역, 시작 순서, backend ops 등록, 링 비우기 진입), `src/platform/rtd/net_hal_rtd_can.c`(FlexCAN RX/TX/error ISR → ISR 링, 링 → 어댑터, TX MB, abort), `src/platform/rtd/net_hal_rtd_uart.c`(LPUART: 1바이트 연속 수신 → 링크별 바이트 링, 링 → 어댑터, 링크당 송신 1건, 송신 시간 초과 abort). 서로 비공개 헤더 `net_hal_rtd_internal.h`로만 연결된다.
 - `net_hal_rtd_uart.c`는 프로필에 UART 링크가 있을 때만 내용이 컴파일된다(UART-M: HOST·DOMAIN, UART-C: HOST·CIS). VSS 프로필에서는 빈 파일이므로 목록에 그대로 두어도 LPUART 심볼을 참조하지 않는다.

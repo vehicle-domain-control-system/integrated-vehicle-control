@@ -11,8 +11,10 @@
 #define NET_UPPER_PROFILE_WINDOW 4
 #define NET_UPPER_PROFILE_DOMAIN 5
 #define NET_UPPER_PROFILE_VSS 6
+/* The build selects the node profile: CMake from NETWORK_NODE_PROFILE, a board
+ * project with -DNETWORK_UPPER_NODE_PROFILE=<n>. There is no default. */
 #ifndef NETWORK_UPPER_NODE_PROFILE
-#define NETWORK_UPPER_NODE_PROFILE NET_UPPER_PROFILE_HOST
+#error "NETWORK_UPPER_NODE_PROFILE is not defined (set it in the build: VSS=6, CIS=1, BCM=3, DOMAIN=5, HOST=0)"
 #endif
 
 #if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_HOST

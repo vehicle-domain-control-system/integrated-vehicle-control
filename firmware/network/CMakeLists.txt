@@ -122,6 +122,15 @@ if(BUILD_TESTING AND NETWORK_BUILD_WIRE_CANDIDATE)
     # Board project copy tool: refusal and destination rules on fake projects.
     add_test(NAME tools.sync_to_s32ds_rules
         COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/test_sync_to_s32ds.py)
+    # Per-node bundles (sync_to_s32ds.py --node/--check) and the node tags of
+    # tools/s32ds_sources.txt, on a copy of this tree in a temporary folder.
+    foreach(case IN ITEMS tags domain_contents node_contents record check_integrity check_stale
+            apply_safety idempotent board_set profile_required)
+        add_test(NAME tools.node_bundle_${case}
+            COMMAND ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/test_node_bundle.py ${case}
+                    --cc ${CMAKE_C_COMPILER} --cmake ${CMAKE_COMMAND})
+        set_tests_properties(tools.node_bundle_${case} PROPERTIES TIMEOUT 300)
+    endforeach()
     foreach(suite IN ITEMS can_bcm can_nodes can_coverage i1_can_vectors)
         add_executable(test_wire_${suite} tests/host/test_wire_${suite}.c)
         target_link_libraries(test_wire_${suite} PRIVATE network_wire_candidate)
@@ -591,7 +600,9 @@ endif()
 
 # Host-only node build of the RTD backend against the independently written
 # mock SDK (sdk_mock/rtd). Product sources come from tools/s32ds_sources.txt,
-# the same list a board project copies, so the list itself is link-checked.
+# the list the board project copy and the node bundles use, so the list
+# itself is link-checked: the untagged .c files and the .c files tagged with
+# this build's node profile (tools/s32ds_sources.cmake).
 option(NETWORK_BUILD_RTD_MOCK "Build the RTD backend node against sdk_mock/rtd (Host only)" OFF)
 if(NETWORK_BUILD_RTD_MOCK)
     if(NOT NETWORK_TARGET STREQUAL "host")
@@ -602,27 +613,21 @@ if(NETWORK_BUILD_RTD_MOCK)
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.txt)
-    file(STRINGS tools/s32ds_sources.txt _node_lines)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.cmake)
+    network_read_source_list(${CMAKE_CURRENT_SOURCE_DIR}/tools/s32ds_sources.txt ${CMAKE_CURRENT_SOURCE_DIR}
+        ${NETWORK_NODE_PROFILE} _node_profile_sources _node_untagged_sources)
     set(_node_core_sources)
     set(_node_rtd_sources)
-    foreach(_line IN LISTS _node_lines)
-        string(REGEX REPLACE "#.*$" "" _line "${_line}")
-        string(STRIP "${_line}" _line)
-        if(_line STREQUAL "")
-            continue()
-        endif()
-        if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_line})
-            message(FATAL_ERROR "tools/s32ds_sources.txt lists a missing file: ${_line}")
-        endif()
-        # The node composition root, its profile tables and the public entry
-        # are built for every profile this option allows (VSS, CIS, BCM); the
-        # tables and facades of other profiles compile to nothing.
+    foreach(_src IN LISTS _node_profile_sources)
+        # The node composition root, its profile table and the public entry
+        # are tagged for the profiles this option allows (VSS, CIS, BCM); the
+        # files of the other node profiles are not part of this build.
         # Board-bound sources (RTD backend, public entry) are compiled once per
         # time-base variant, with that variant's net_board_cfg.h hook definitions.
-        if(_line MATCHES "^src/platform/rtd/" OR _line STREQUAL "src/node/net_entry.c")
-            list(APPEND _node_rtd_sources ${_line})
+        if(_src MATCHES "^src/platform/rtd/" OR _src STREQUAL "src/node/net_entry.c")
+            list(APPEND _node_rtd_sources ${_src})
         else()
-            list(APPEND _node_core_sources ${_line})
+            list(APPEND _node_core_sources ${_src})
         endif()
     endforeach()
     # Board project include paths (same seven folders), plus the mock SDK.
@@ -696,18 +701,28 @@ if(NETWORK_BUILD_RTD_MOCK)
         target_compile_definitions(network_node_rtd_mock_idle PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
         network_warnings(network_node_rtd_mock_idle)
 
-        # UART-M is a DOMAIN link: the same sources compiled for the DOMAIN
-        # profile in this tree check the second LPUART link.
-        # No DOMAIN node table exists: the composition root stays out.
+        # UART-M is a DOMAIN link: the untagged sources compiled for the DOMAIN
+        # profile in this tree check the second LPUART link. No DOMAIN node
+        # table exists: the composition root stays out (src/node/), and the
+        # DOMAIN-tagged C2 adapter needs the DOMAIN C2 headers.
         list(FIND _network_profiles DOMAIN _domain_profile_id)
-        set(_node_core_sources_domain ${_node_core_sources})
-        list(FILTER _node_core_sources_domain EXCLUDE REGEX "^src/node/")
+        set(_node_core_sources_domain)
+        set(_node_rtd_sources_domain)
+        foreach(_src IN LISTS _node_untagged_sources)
+            if(_src MATCHES "^src/node/")
+                continue()
+            elseif(_src MATCHES "^src/platform/rtd/")
+                list(APPEND _node_rtd_sources_domain ${_src})
+            else()
+                list(APPEND _node_core_sources_domain ${_src})
+            endif()
+        endforeach()
         add_library(network_node_core_objs_domain OBJECT ${_node_core_sources_domain})
         target_include_directories(network_node_core_objs_domain PRIVATE ${_node_includes})
         target_compile_definitions(network_node_core_objs_domain PRIVATE NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id})
         network_warnings(network_node_core_objs_domain)
         add_library(network_node_rtd_mock_uart_m STATIC
-            $<TARGET_OBJECTS:network_node_core_objs_domain> ${_node_rtd_sources} ${_rtd_mock_sources})
+            $<TARGET_OBJECTS:network_node_core_objs_domain> ${_node_rtd_sources_domain} ${_rtd_mock_sources})
         target_include_directories(network_node_rtd_mock_uart_m PUBLIC ${_node_includes} sdk_mock/rtd/include)
         target_compile_definitions(network_node_rtd_mock_uart_m PUBLIC NETWORK_UPPER_NODE_PROFILE=${_domain_profile_id})
         target_compile_definitions(network_node_rtd_mock_uart_m PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
