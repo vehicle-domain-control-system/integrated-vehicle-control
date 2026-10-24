@@ -9,7 +9,12 @@
  * Fixture source SHA256: 7c87351e8730e753176a32f195f3b2ebee2b6fe1a52ba1721a833ea9558db5cc */
 #define CHECK(x) do { if(!(x)) { printf("FAIL %s:%d %s\n",case_name,__LINE__,#x); return 1; } } while(0)
 static const char *case_name;
-typedef struct { uint64_t now; size_t count; const NetUpperPacket *held[32]; NetTxKey keys[32]; } ProfilePort;
+/* The capacity cases fill the profile's own queues (net_upper.h), whatever their size. */
+#define PROFILE_TX NET_UPPER_TX_CAPACITY
+#define PROFILE_RX NET_UPPER_RX_CAPACITY
+#define PROFILE_PORT_SLOTS 32u
+typedef char profile_port_holds_full_tx_queue[(PROFILE_PORT_SLOTS >= PROFILE_TX + 1u) ? 1 : -1];
+typedef struct { uint64_t now; size_t count; const NetUpperPacket *held[PROFILE_PORT_SLOTS]; NetTxKey keys[PROFILE_PORT_SLOTS]; } ProfilePort;
 typedef struct { unsigned calls; NetUpperCanMessage can; NetUpperRear rear; NetUpperUartDelivery uart; NetUpperDelivery metadata; } ProfileOwner;
 static NetUpper service;
 static unsigned char before[sizeof(NetUpper)];
@@ -18,7 +23,7 @@ static ProfileOwner owner;
 static NetUpperConfig input_config;
 static NetStatus port_now(void *p,uint64_t *out) { *out=((ProfilePort *)p)->now;return NET_OK; }
 static NetStatus port_submit(void *p,const NetUpperPacket *packet,NetTxKey key)
-{ ProfilePort *f=p;if(f->count>=32u)return NET_NO_CAPACITY;f->held[f->count]=packet;f->keys[f->count++]=key;return NET_OK; }
+{ ProfilePort *f=p;if(f->count>=PROFILE_PORT_SLOTS)return NET_NO_CAPACITY;f->held[f->count]=packet;f->keys[f->count++]=key;return NET_OK; }
 static NetStatus port_poll(void *p,NetUpperEvent *out) { (void)p;(void)out;return NET_NO_WORK; }
 static const NetUpperPortOps ops={port_now,port_submit,port_poll};
 static NetStatus can_owner(void *p,const NetUpperCanMessage *m,const NetUpperDelivery *d)
@@ -98,7 +103,8 @@ static int complete(NetTxKey key,bool release_only)
 static int storage(void)
 {
     size_t i,owned=0u,fanout=0u;bool visited[48]={false};CHECK(init()==0);
-    CHECK(net_wire_registry_count()==48u&&NET_UPPER_TX_CAPACITY==16u&&NET_UPPER_RX_CAPACITY==32u);
+    CHECK(net_wire_registry_count()==48u&&PROFILE_TX>=1u&&PROFILE_RX>=1u);
+    CHECK(sizeof(service.tx)/sizeof(service.tx[0])==PROFILE_TX&&sizeof(service.rx)/sizeof(service.rx[0])==PROFILE_RX);
     for(i=0u;i<48u;++i){
         const NetWireRegistryEntry *r=net_wire_registry_at(i);size_t rank=net_upper_admission_index(i);uint32_t bits=r->receivers;
         bool selected=NETWORK_UPPER_NODE_PROFILE==NET_UPPER_PROFILE_HOST||((r->receivers&node())!=0u&&link_enabled(r->link));
@@ -162,31 +168,35 @@ static int can_routes(void)
 }
 static int tx_capacity(void)
 {
-    NetTxKey keys[16],sentinel={99u,88u};NetUpperCanMessage m;NetSourceStamp source={1u,100u,0u};NetAgePolicy p={true,100000u,true};size_t i;NetWireCanEnvelope stable[16];
+    NetTxKey keys[PROFILE_TX],sentinel={99u,88u};NetUpperCanMessage m;NetSourceStamp source={1u,100u,0u};NetAgePolicy p={true,100000u,true};size_t i;NetWireCanEnvelope stable[PROFILE_TX];
     CHECK(init()==0);CHECK(message(outbound(),&m)==0);source.original_age_ms=fixtures[outbound()].age;
     if(node()==NET_WIRE_NODE_WINDOW){CHECK(net_upper_submit_can(&service,&m,&source,&p,&sentinel)==NET_HOLD&&physical.count==0u);CHECK(sentinel.epoch==99u&&sentinel.token==88u);return 0;}
-    for(i=0u;i<16u;++i)CHECK(enqueue(outbound(),&keys[i])==0);
+    for(i=0u;i<PROFILE_TX;++i)CHECK(enqueue(outbound(),&keys[i])==0);
     CHECK(net_upper_submit_can(&service,&m,&source,&p,&sentinel)==NET_NO_CAPACITY&&sentinel.epoch==99u&&sentinel.token==88u);
-    CHECK(net_upper_step(&service,0u)==NET_OK&&physical.count==16u);
-    for(i=0u;i<16u;++i)stable[i]=physical.held[i]->can;
+    CHECK(net_upper_step(&service,0u)==NET_OK&&physical.count==PROFILE_TX);
+    for(i=0u;i<PROFILE_TX;++i)stable[i]=physical.held[i]->can;
     physical.held[0]=NULL;CHECK(complete(keys[0],true)==0);CHECK(net_upper_retire(&service,keys[0])==NET_HOLD);
     CHECK(net_upper_submit_can(&service,&m,&source,&p,&sentinel)==NET_NO_CAPACITY);
-    for(i=1u;i<16u;++i)CHECK(physical.held[i]->can.length==stable[i].length&&memcmp(physical.held[i]->can.bytes,stable[i].bytes,stable[i].length)==0);
-    CHECK(complete(keys[0],false)==0&&net_upper_retire(&service,keys[0])==NET_OK);CHECK(enqueue(outbound(),&sentinel)==0&&sentinel.token>keys[15].token);
-    for(i=1u;i<16u;++i){physical.held[i]=NULL;CHECK(complete(keys[i],false)==0&&net_upper_retire(&service,keys[i])==NET_OK);}
-    CHECK(physical.count==17u);physical.held[16]=NULL;CHECK(complete(sentinel,false)==0&&net_upper_retire(&service,sentinel)==NET_OK);return 0;
+    /* Slot 0 is released; every other held packet is unchanged. Each loop walks
+     * the whole queue and skips slot 0, so a one-slot profile never indexes past it. */
+    for(i=0u;i<PROFILE_TX;++i)if(i!=0u)CHECK(physical.held[i]->can.length==stable[i].length&&memcmp(physical.held[i]->can.bytes,stable[i].bytes,stable[i].length)==0);
+    CHECK(complete(keys[0],false)==0&&net_upper_retire(&service,keys[0])==NET_OK);CHECK(enqueue(outbound(),&sentinel)==0&&sentinel.token>keys[PROFILE_TX-1u].token);
+    /* The freed slot takes the next submission, and the next pass sends it. */
+    CHECK(net_upper_step(&service,0u)==NET_OK&&physical.count==PROFILE_TX+1u);
+    for(i=0u;i<PROFILE_TX;++i)if(i!=0u){physical.held[i]=NULL;CHECK(complete(keys[i],false)==0&&net_upper_retire(&service,keys[i])==NET_OK);}
+    CHECK(physical.count==PROFILE_TX+1u);physical.held[PROFILE_TX]=NULL;CHECK(complete(sentinel,false)==0&&net_upper_retire(&service,sentinel)==NET_OK);return 0;
 }
 static int rx_capacity(void)
 {
-    NetUpperEvent e={0};size_t i,index=node()==NET_WIRE_NODE_DOMAIN?13u:0u;NetUpperEvent retained[32];
+    NetUpperEvent e={0};size_t i,index=node()==NET_WIRE_NODE_DOMAIN?13u:0u;NetUpperEvent retained[PROFILE_RX];
     CHECK(init()==0);e.kind=NET_UPPER_CAN_RX;e.link=NET_WIRE_CAN;e.capture=captured();e.can=envelope(index);
-    for(i=0u;i<32u;++i)CHECK(net_upper_capture(&service,&e)==NET_OK);
-    memcpy(retained,service.rx,sizeof(retained));CHECK(net_upper_capture(&service,&e)==NET_NO_CAPACITY&&service.rx_count==32u);
-    CHECK(memcmp(retained,service.rx,sizeof(retained))==0&&service.observation.rx_dropped==1u);
+    for(i=0u;i<PROFILE_RX;++i)CHECK(net_upper_capture(&service,&e)==NET_OK);
+    CHECK(sizeof(retained)==sizeof(service.rx));memcpy(retained,service.rx,sizeof(service.rx));CHECK(net_upper_capture(&service,&e)==NET_NO_CAPACITY&&service.rx_count==PROFILE_RX);
+    CHECK(memcmp(retained,service.rx,sizeof(service.rx))==0&&service.observation.rx_dropped==1u);
     e.can.bytes[0]^=0xffu;
     CHECK(net_upper_step(&service,1u)==(node()==NET_WIRE_NODE_WINDOW?NET_HOLD:NET_OK));
-    CHECK(service.rx_count==31u&&owner.calls==(node()==NET_WIRE_NODE_WINDOW?0u:1u));
-    for(i=0u;i<31u;++i)CHECK(net_upper_step(&service,1u)==(node()==NET_WIRE_NODE_WINDOW?NET_HOLD:NET_DUPLICATE));
+    CHECK(service.rx_count==PROFILE_RX-1u&&owner.calls==(node()==NET_WIRE_NODE_WINDOW?0u:1u));
+    for(i=0u;i<PROFILE_RX-1u;++i)CHECK(net_upper_step(&service,1u)==(node()==NET_WIRE_NODE_WINDOW?NET_HOLD:NET_DUPLICATE));
     CHECK(service.rx_count==0u);return 0;
 }
 static int inject_uart(const NetUpperUartMessage *m)
@@ -226,9 +236,9 @@ static int uart_boundary(void)
 }
 static int footprint(void)
 {
-    printf("{\"profile\":%d,\"node\":%u,\"NetUpper\":%lu,\"stored_config\":%lu,\"admission_bytes\":%lu,\"admission_count\":%u,\"tx_bytes\":%lu,\"tx_capacity\":16,\"rx_bytes\":%lu,\"rx_capacity\":32,\"uart_parser_count\":%u,\"uart_parser_bytes\":%lu,\"adapter_bytes\":%lu,\"query_if_domain_bytes\":%lu,\"target_ram_fit\":\"NOT_VERIFIED\"}\n",
-        NETWORK_UPPER_NODE_PROFILE,node(),(unsigned long)sizeof(NetUpper),(unsigned long)sizeof(NetUpperStoredConfig),(unsigned long)sizeof(service.admission),NET_UPPER_ADMISSION_CAPACITY,(unsigned long)sizeof(service.tx),(unsigned long)sizeof(service.rx),NET_UPPER_UART_RECEIVER_CAPACITY,(unsigned long)(NET_UPPER_UART_RECEIVER_CAPACITY*sizeof(NetUpperUartReceiver)),(unsigned long)sizeof(NetHalAdapter),(unsigned long)(node()==NET_WIRE_NODE_DOMAIN?sizeof(NetUpperQuery):0u));
-    CHECK(sizeof(service.tx)==16u*sizeof(NetUpperTx)&&sizeof(service.rx)==32u*sizeof(NetUpperEvent));return 0;
+    printf("{\"profile\":%d,\"node\":%u,\"NetUpper\":%lu,\"stored_config\":%lu,\"admission_bytes\":%lu,\"admission_count\":%u,\"tx_bytes\":%lu,\"tx_capacity\":%u,\"rx_bytes\":%lu,\"rx_capacity\":%u,\"uart_parser_count\":%u,\"uart_parser_bytes\":%lu,\"adapter_bytes\":%lu,\"query_if_domain_bytes\":%lu,\"target_ram_fit\":\"NOT_VERIFIED\"}\n",
+        NETWORK_UPPER_NODE_PROFILE,node(),(unsigned long)sizeof(NetUpper),(unsigned long)sizeof(NetUpperStoredConfig),(unsigned long)sizeof(service.admission),NET_UPPER_ADMISSION_CAPACITY,(unsigned long)sizeof(service.tx),(unsigned)PROFILE_TX,(unsigned long)sizeof(service.rx),(unsigned)PROFILE_RX,NET_UPPER_UART_RECEIVER_CAPACITY,(unsigned long)(NET_UPPER_UART_RECEIVER_CAPACITY*sizeof(NetUpperUartReceiver)),(unsigned long)sizeof(NetHalAdapter),(unsigned long)(node()==NET_WIRE_NODE_DOMAIN?sizeof(NetUpperQuery):0u));
+    CHECK(sizeof(service.tx)==PROFILE_TX*sizeof(NetUpperTx)&&sizeof(service.rx)==PROFILE_RX*sizeof(NetUpperEvent));return 0;
 }
 int main(int argc,char **argv)
 {

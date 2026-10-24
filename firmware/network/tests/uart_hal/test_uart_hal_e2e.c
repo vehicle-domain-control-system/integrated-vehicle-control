@@ -20,6 +20,7 @@
 #include "network/net_wire_can.h"
 #include "net_upper_private.h"
 #include "net_hal_rtd_uart.h"
+#include "net_board_cfg.h"
 #include "Lpuart_Uart_Ip_Sa_PBcfg.h"
 #include "mock_rtd.h"
 #include <stdio.h>
@@ -573,7 +574,7 @@ static int u01_rx_frame(void)
     d = rdiag();
     CHECK(d.started && d.uart[DIAG].uart_present && d.uart[DIAG].uart_rx_armed);
     CHECK(!d.uart[1u - DIAG].uart_present);             /* the other link is not compiled */
-    CHECK(d.uart_isr_ring_capacity == 256u);
+    CHECK(d.uart_isr_ring_capacity == NET_BOARD_UART_ISR_RING);
     CHECK(MockRtd_UartInits(LPUART) == 1u && MockRtd_UartRxArmed(LPUART));
     step_ms(2u);
     RUN(rx_once(1u, 100u));
@@ -908,16 +909,18 @@ static int u12_isr_ring_overflow(void)
     CHECK(start() == NET_OK);
     step_ms(2u);
     /* Main loop held up for ten frames (about 25 ms): the ISR keeps storing
-     * bytes, the 256-byte ring keeps the first 256, the rest is lost and
-     * counted. */
+     * bytes, the ISR ring (NET_BOARD_UART_ISR_RING bytes) keeps the first
+     * ring-full, the rest is lost and counted. */
     for (i = 0u; i < 10u; ++i) {
         f = rx_frame((uint16_t)(1u + i), 900u + i);
         CHECK(line_send_stalled(f.bytes, f.length) == f.length);
         total += (uint32_t)f.length;
     }
+    CHECK(total > NET_BOARD_UART_ISR_RING);              /* the stall overflows the ring */
     d = rdiag();
-    CHECK(d.uart[DIAG].uart_isr_ring_max_depth == 256u);
-    CHECK(d.uart[DIAG].uart_isr_ring_overflow == total - 256u);
+    CHECK(d.uart_isr_ring_capacity == NET_BOARD_UART_ISR_RING);
+    CHECK(d.uart[DIAG].uart_isr_ring_max_depth == NET_BOARD_UART_ISR_RING);
+    CHECK(d.uart[DIAG].uart_isr_ring_overflow == total - NET_BOARD_UART_ISR_RING);
     CHECK(d.uart[DIAG].uart_rx_bytes == total);
     /* Passes resume. The pass drain keeps its budget; the Port poll hands the
      * waiting bytes (all captured before the service's clock reading) to M06
@@ -930,7 +933,7 @@ static int u12_isr_ring_overflow(void)
     CHECK(d.uart_poll_drained > 0u);
     o = observation();
     CHECK(o.rx_invalid == 0u && o.errors == 0u && o.rx_held == 0u);
-    CHECK(rx_count == 256u / f.length);
+    CHECK(rx_count == NET_BOARD_UART_ISR_RING / f.length);
     for (i = 0u; i < rx_count; ++i) CHECK(rx_links[i] == (uint16_t)(1u + i));
     CHECK(stream()->byte_losses == 0u);
     /* The next byte brings the loss in stream order; the next frame on the
