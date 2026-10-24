@@ -2,7 +2,9 @@
  * (network/app/net_if_entry.h) wrap the composition root NetNode_Init() /
  * NetNode_Step() (net_node.c) and add nothing to their meaning. They are the
  * public entry of every node profile (VSS, CIS, ...); the VSS firmware is the
- * first caller and fixes the names and arguments.
+ * first caller and fixes the names and arguments. Net_TxFlush(nowMs) wraps the
+ * send half of the pass (NetNode_TxFlush) for a loop that runs the
+ * application after Net_MainFunction; Net_GetBootId() reads the node's BOOT_ID.
  *
  * VSS contract (firmware/vss src/net_if/vss_net_api.h, src/app/vss_main.c,
  * src/infra/vss_time.h):
@@ -110,6 +112,21 @@ void Net_MainFunction(uint32_t nowMs)
     took = NET_BOARD_US_HOOK() - t0; /* free-running counter: modulo 2^32 */
     if (took > entry.main_max_us) entry.main_max_us = took;
 #endif
+}
+
+/* Send-only pass after the application ran: the same nowMs rule as
+ * Net_MainFunction, then the send half of the node pass. No receive delivery
+ * and no application callback inside it. */
+void Net_TxFlush(uint32_t nowMs)
+{
+    if (entry.init_result != (uint8_t)NET_ENTRY_INIT_OK) return;
+    (void)net_hal_rtd_set_now(extend_now(nowMs));
+    NetNode_TxFlush();
+}
+
+uint32_t Net_GetBootId(void)
+{
+    return entry.init_result == (uint8_t)NET_ENTRY_INIT_OK ? NetNode_GetBootId() : 0u;
 }
 
 void net_entry_diag(NetNodeDiag *out)

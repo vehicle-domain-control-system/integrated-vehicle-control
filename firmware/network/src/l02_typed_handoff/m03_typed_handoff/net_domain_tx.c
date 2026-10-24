@@ -85,19 +85,108 @@ r->green=in->color.green;
 r->blue=in->color.blue;
 return nd_send_can(a,&m,&id);
 }
+/* CAN UPDATE_SEQUENCE of DOMAIN_PERMISSION, synthesized by Network in a number
+ * space apart from the DOMAIN success evaluation sequence
+ * (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md, number spaces of
+ * the original success evaluation, the synthesis and the transmission;
+ * 03_COMMUNICATION/10_CAN_FD.md DOMAIN_PERMISSION: the "new evaluation number"
+ * of B13~16 is the Network synthesized UPDATE_SEQUENCE). DOMAIN keeps its
+ * success sequence when an evaluation fails and reports false with a non-OK
+ * quality; under one number a receiver holds that withdrawal as a changed
+ * value of the same observation, so the withdrawal would wait for the 500 ms
+ * original life. Compared tuple: the DOMAIN sequence, the three values (power
+ * after the UNKNOWN projection) and the two qualities.
+ *   +1   : the first frame, a newer DOMAIN sequence (u32 serial order, 1..2^31-1
+ *          ahead), or a value or quality change under the same DOMAIN sequence
+ *          (a withdrawal or a quality drop is sent at once);
+ *   kept : the same tuple, a repetition: same number, AGE only grows (a
+ *          smaller AGE is HOLD);
+ *   HOLD : an older DOMAIN sequence; under the same DOMAIN sequence a change
+ *          that lifts a restriction (power not 1 -> 1, operation 0 -> 1, a
+ *          quality non-OK -> OK). Permission comes back only with a newer
+ *          DOMAIN sequence (07_CROSS_NODE_INTERFACE_RULES.md, permission
+ *          adapter: an old ALLOW is never renewed by a repetition;
+ *          10_DATA_AND_ID_RULES.md: the DOMAIN sequence grows only on a
+ *          successful evaluation).
+ * The state commits only when the service accepts the frame: a refused
+ * submission uses no number. */
+uint32_t nd_permission_next(uint32_t last){return last==UINT32_MAX?1u:last+1u;
+}
+static bool relaxes(const NetDomainC2PermissionSequence *p,const NetWireDomainPermissionRaw *r){
+return (p->power!=1u&&r->vehicle_power_permission==1u)||(p->operation_allowed==0u&&r->operation_allowed==1u)||
+(p->power_quality!=0u&&r->power_permission_quality==0u)||(p->operation_quality!=0u&&r->operation_quality==0u);
+}
+static NetStatus permission_sequence(NetDomainC2 *a,const DomainIf_CisPowerPermission_t *in,const NetWireDomainPermissionRaw *r,uint32_t *out,bool *advance){
+NetDomainC2PermissionSequence *p=&a->permission;
+uint32_t ahead;
+bool values,qualities;
+*advance=true;
+if(!p->sent){*out=nd_permission_next(p->sequence);
+return NET_OK;
+}
+ahead=in->meta.updateSequence-p->domain_sequence;
+if(ahead>=0x80000000u){net_upper_observe_increment(&p->held_older);
+return NET_HOLD;
+}
+if(ahead!=0u){*out=nd_permission_next(p->sequence);
+return NET_OK;
+}
+values=p->power!=r->vehicle_power_permission||p->operation_state!=r->power_operation_state||p->operation_allowed!=r->operation_allowed;
+qualities=p->power_quality!=r->power_permission_quality||p->operation_quality!=r->operation_quality;
+if(!values&&!qualities){if(in->meta.ageMs<p->age_ms){net_upper_observe_increment(&p->held_age);
+return NET_HOLD;
+}
+*advance=false;*out=p->sequence;
+return NET_OK;
+}
+if(relaxes(p,r)){net_upper_observe_increment(&p->held_relax);return NET_HOLD;}
+*out=nd_permission_next(p->sequence);
+return NET_OK;
+}
+static void permission_commit(NetDomainC2 *a,const DomainIf_CisPowerPermission_t *in,const NetWireDomainPermissionRaw *r,bool advance){
+NetDomainC2PermissionSequence *p=&a->permission;
+p->sent=true;
+p->sequence=r->update_sequence;
+p->domain_sequence=in->meta.updateSequence;
+p->age_ms=in->meta.ageMs;
+p->power=r->vehicle_power_permission;
+p->power_quality=r->power_permission_quality;
+p->operation_state=r->power_operation_state;
+p->operation_allowed=r->operation_allowed;
+p->operation_quality=r->operation_quality;
+net_upper_observe_increment(advance?&p->advanced:&p->kept);
+}
 static NetStatus permission(NetDomainC2 *a,const DomainIf_CisPowerPermission_t *in){NetUpperCanMessage m;
+NetWireDomainPermissionRaw *r=&m.data.domain_permission;
 uint8_t quality;
+uint32_t sequence;
+bool advance;
+NetStatus status;
 if(in==NULL)return NET_INVALID_ARGUMENT;
 if(a->config.permission_bundle==NULL)return NET_HOLD;
 memset(&m,0,sizeof(m));
 m.id=0x080u;
-ND_TRY(a->config.permission_bundle(a->config.context,in,&m.data.domain_permission));
+ND_TRY(a->config.permission_bundle(a->config.context,in,r));
 ND_TO(DataQuality_t,in->quality,quality);
-/* Complete Power/Operation bundle comes from owner; never fill ALLOW or state. */
-if(m.data.domain_permission.power_permission_quality!=quality||m.data.domain_permission.vehicle_power_permission!=(in->vehiclePowerAllowed?1u:0u)||m.data.domain_permission.update_sequence!=in->meta.updateSequence||m.data.domain_permission.source_age_ms!=in->meta.ageMs)return NET_HOLD;
-m.data.domain_permission.boot_id=a->config.domain_boot;
-m.data.domain_permission.tx_sequence=a->next_can_sequence;
-return nd_send_can(a,&m,NULL);
+/* Complete Power/Operation bundle comes from owner; never fill ALLOW or state.
+ * Its UPDATE_SEQUENCE is not used: the adapter synthesizes it below. */
+if(r->power_permission_quality!=quality||r->source_age_ms!=in->meta.ageMs)return NET_HOLD;
+/* Power on CAN (10_CAN_FD.md DOMAIN_PERMISSION, semantic projection): a
+ * confirmed ALLOW / DENY with OK quality is 1 / 0; a non-OK quality is the
+ * UNKNOWN power 255 with that quality. DOMAIN makes no true with a non-OK
+ * quality (that and a bundle value 1 there are HOLD). */
+if(in->quality==DATA_QUALITY_OK){if(r->vehicle_power_permission!=(in->vehiclePowerAllowed?1u:0u))return NET_HOLD;
+}
+else{if(in->vehiclePowerAllowed||(r->vehicle_power_permission!=0u&&r->vehicle_power_permission!=255u))return NET_HOLD;
+r->vehicle_power_permission=255u;
+}
+ND_TRY(permission_sequence(a,in,r,&sequence,&advance));
+r->boot_id=a->config.domain_boot;
+r->tx_sequence=a->next_can_sequence;
+r->update_sequence=sequence;
+status=nd_send_can(a,&m,NULL);
+if(status==NET_OK)permission_commit(a,in,r,advance);
+return status;
 }
 static NetStatus vss_event(NetDomainC2 *a,const DomainIf_VssOneShotEvent_t *in){NetUpperCanMessage m;
 NetworkLocalFailure_t id;
@@ -337,27 +426,20 @@ a->last_tx_key=key;
 return NET_OK;
 }
 }
-static NetStatus window_permission(NetDomainC2 *a,const DomainIf_WindowOperationPermission_t *in){NetUpperCanMessage m;
-uint8_t quality;
-if(!a->config.window_transport_enabled||a->config.window_permission_bundle==NULL)return NET_HOLD;
-memset(&m,0,sizeof(m));
-m.id=0x080u;
-ND_TRY(a->config.window_permission_bundle(a->config.context,in,&m.data.domain_permission));
-ND_TO(DataQuality_t,in->quality,quality);
-if(m.data.domain_permission.operation_allowed!=(in->operationAllowed?1u:0u)||m.data.domain_permission.operation_quality!=quality||m.data.domain_permission.source_age_ms!=in->meta.ageMs||m.data.domain_permission.update_sequence!=in->meta.updateSequence)return NET_HOLD;
-m.data.domain_permission.boot_id=a->config.domain_boot;
-m.data.domain_permission.tx_sequence=a->next_can_sequence;
-return nd_send_can(a,&m,NULL);
+/* WINDOW is held (implementation on hold, design kept). DOMAIN_PERMISSION has
+ * one synthesizer, the CIS power permission above: the WINDOW operation and
+ * DOMAIN alive inputs never send a 0x080 of their own, whatever the
+ * window_transport_enabled setting and the bundles bound; a second source
+ * would break the synthesized UPDATE_SEQUENCE of the one message. */
+static NetStatus window_permission(NetDomainC2 *a,const DomainIf_WindowOperationPermission_t *in){
+(void)a;
+(void)in;
+return NET_HOLD;
 }
-static NetStatus window_alive(NetDomainC2 *a,const DomainIf_WindowDomainAlive_t *in){NetUpperCanMessage m;
-if(!a->config.window_transport_enabled||a->config.window_alive_bundle==NULL)return NET_HOLD;
-memset(&m,0,sizeof(m));
-m.id=0x080u;
-ND_TRY(a->config.window_alive_bundle(a->config.context,in,&m.data.domain_permission));
-if(m.data.domain_permission.source_age_ms!=in->meta.ageMs||m.data.domain_permission.update_sequence!=in->meta.updateSequence)return NET_HOLD;
-m.data.domain_permission.boot_id=a->config.domain_boot;
-m.data.domain_permission.tx_sequence=a->next_can_sequence;
-return nd_send_can(a,&m,NULL);
+static NetStatus window_alive(NetDomainC2 *a,const DomainIf_WindowDomainAlive_t *in){
+(void)a;
+(void)in;
+return NET_HOLD;
 }
 #define PORT(name,type,body) static DomainIf_Status_t name(const type *v){NetDomainC2 *a=nd_registered();NetStatus status;if(a==NULL||!nd_ready(a))return DOMAIN_IF_NOT_AVAILABLE;if(v==NULL)return DOMAIN_IF_INVALID_ARGUMENT;if(a->in_call||a->service->in_call)return DOMAIN_IF_NOT_AVAILABLE;status=(body);a->last_status=status;return net_domain_c2_to_status(status);}
 PORT(tx_door,DomainIf_BcmDoorCommand_t,bcm_door(a,v))

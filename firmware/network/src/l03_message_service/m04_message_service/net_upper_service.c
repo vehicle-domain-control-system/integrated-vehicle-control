@@ -817,7 +817,7 @@ static NetStatus dispatch(NetUpper *s,NetUpperTx *r,uint64_t now)
     else r->packet.transmit_deadline_ms=now+remaining;
     r->packet.age_encoded_at_ms=now;
     r->packet.deadline_bound=true;r->packet.expires_at_equality=equal;
-    r->state.queued=false;r->state.submitted=true;
+    r->state.queued=false;r->state.submitted=true;r->state.offered=true;
     status=s->config.port.ops->submit(s->config.port.context,&r->packet,r->state.key);
     if(status!=NET_OK){r->state.submitted=false;goto reject;}
     INC(s->observation.tx_submitted);return NET_OK;
@@ -859,6 +859,26 @@ NetStatus net_upper_step(NetUpper *s,size_t budget)
     (void)drained; /* no receiver to poll: uart_enabled stays false (see process_event) */
 #endif
     /* Token order is enqueue order, independent of reclaimed slot index. */
+    for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
+        size_t j;NetUpperTx *next=NULL;
+        for(j=0u;j<NET_UPPER_TX_CAPACITY;++j)
+            if(s->tx[j].state.queued && (next==NULL || s->tx[j].state.key.token<next->state.key.token))next=&s->tx[j];
+        if(next==NULL)break;
+        status=dispatch(s,next,now);if(result==NET_NO_WORK || result==NET_OK)result=status;
+    }
+done:
+    s->in_call=false;return result;
+}
+/* The dispatch loop of net_upper_step alone (same token order, same dispatch).
+ * A send-only pass of the node (Net_TxFlush) uses it: a UART receiver timer
+ * check inside net_upper_step can complete a frame and call the Owner even
+ * with a receive budget of 0. */
+NetStatus net_upper_dispatch(NetUpper *s)
+{
+    size_t i;uint64_t now;NetStatus result=NET_NO_WORK,status;
+    if(s==NULL || !s->initialized)return NET_INVALID_ARGUMENT;
+    if(s->in_call)return NET_BUSY;
+    s->in_call=true;status=net_upper_read_clock(s,&now);if(status!=NET_OK){result=status;goto done;}
     for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
         size_t j;NetUpperTx *next=NULL;
         for(j=0u;j<NET_UPPER_TX_CAPACITY;++j)

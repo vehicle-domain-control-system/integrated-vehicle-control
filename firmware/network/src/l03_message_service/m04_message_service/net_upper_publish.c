@@ -259,16 +259,22 @@ static void settle(NetUpperPublisher *p, NetUpperPublishSlot *slot)
         if (t.outcome == NET_TX_FAILED || (t.admission_known && !t.accepted)) INC(slot->counters.tx_failed);
         return;
     }
-    /* No device took the frame. Its TX_SEQUENCE is given back only when no
-     * device can have seen it: cancelled before dispatch, or no room (no frame
-     * storage, every buffer still owned by the driver; a non-OK Port submit
-     * promises no borrow). Any other refusal keeps the number used: a number
-     * offered to a device is not reused even when the device clearly refused,
-     * a gap is allowed, a reuse is not (CIS_REAR_TX_DISPATCH.md, NO_CAPACITY
-     * keeps the pending observation, DRIVER_REJECTED keeps the number used).
-     * The UART LINK_SEQUENCE is the service's per-direction counter: it comes
-     * back under the same condition when no later frame took a number. */
-    if (cancelled || transient(t.local_status)) {
+    /* No device took the frame. Its TX_SEQUENCE is given back when no device
+     * can have seen it: cancelled before dispatch, dropped by the service
+     * before the Port (expired, stale receipt, link hold, encode or context
+     * failure; t.offered is false), or no room (no frame storage, every buffer
+     * still owned by the driver; a non-OK Port submit promises no borrow).
+     * A frame the Port clearly refused keeps its number used: a number offered
+     * to a device is not reused, a gap is allowed, a reuse is not.
+     * Basis: docs/network/sw_detail/functions/CIS_REAR_TX_DISPATCH.md (state,
+     * order and lifetime: a frame encode never handed to the driver consumes
+     * no number; a number a device clearly refused stays used; NO_CAPACITY
+     * keeps the pending observation) and docs/network/network_sw_architecture.md
+     * 5.2 (the Message Service picks LINK_SEQUENCE and commits it when the frame
+     * goes to the driver). The UART LINK_SEQUENCE is the service's
+     * per-direction counter: it comes back under the same condition when no
+     * later frame took a number. */
+    if (cancelled || !t.offered || transient(t.local_status)) {
         if (slot->entry.link == NET_WIRE_CAN) {
             slot->next_sequence = slot->in_flight_sequence;
             slot->sequence_held = false;

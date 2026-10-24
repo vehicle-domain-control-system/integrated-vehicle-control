@@ -101,6 +101,12 @@ NetStatus NetNode_Init(const NetNodeConfig *config);
 /* One main pass: ISR ring -> adapter (bounded), RX dispatch -> XxxApp_*,
  * permission supervision, TX supervision, M04 publish service. */
 void NetNode_Step(void);
+/* Send-only part of a pass (Net_TxFlush): the M04 publish service and the
+ * dispatch of what it offered to the Port. No ISR ring drain, no receive
+ * delivery, no XxxApp_* callback. Nothing before READY. */
+void NetNode_TxFlush(void);
+/* BOOT_ID of this power cycle (NetNodeConfig.boot_id) once READY, else 0. */
+uint32_t NetNode_GetBootId(void);
 NetStatus NetNode_GetDiag(NetNodeDiag *out);
 
 /* Composition-internal (net_entry.c): fills the entry_* and main_max_us fields. */

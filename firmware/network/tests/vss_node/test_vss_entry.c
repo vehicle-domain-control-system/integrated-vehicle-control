@@ -830,6 +830,163 @@ static int e10_main_max_us(void)
     return 0;
 }
 
+/* --------------------------------------------- send-only pass (flush) ---- */
+/* Net_TxFlush(nowMs) (network/app/net_if_entry.h): a loop that runs its
+ * application after Net_MainFunction calls it at the end of the pass, so what
+ * the application submitted goes out in the same pass. Main context only; it
+ * delivers nothing, takes nothing from the ISR ring and calls no callback. */
+static void flush_with(uint32_t now_ms)
+{
+    in_main = true;
+    Net_TxFlush(now_ms);
+    in_main = false;
+}
+
+/* Net_MainFunction(now) -> the application submits VSS_STATUS -> Net_TxFlush(now):
+ * the frame is on the bus before the next Net_MainFunction. Without the flush
+ * the submission waits for the next pass. nowMs follows the Net_MainFunction
+ * rule (32-bit value on the 64-bit axis, a value behind is held). */
+static int e11_tx_flush_same_pass(void)
+{
+    NetVssStatus s = status_ready(5u, 7u);
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d0, d;
+    uint32_t now;
+    CHECK(start());
+    run_ticks(4u);
+    ++board_tick;
+    now = app_now();
+    pass_with(now);
+    CHECK(transmit_next(NULL) < 0);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    CHECK(transmit_next(NULL) < 0);     /* submitted, not offered yet */
+    d0 = diag();
+    flush_with(now);
+    d = diag();
+    CHECK(d.steps == d0.steps && d.entry_main_calls == d0.entry_main_calls); /* no node pass */
+    CHECK(pull_status(&f, &raw) >= 0);  /* before the next Net_MainFunction */
+    CHECK(f.id == 0x340u && raw.boot_id == NODE_BOOT && raw.tx_sequence == 1u);
+    CHECK(raw.update_sequence == 5u && raw.source_age_ms == 7u);
+    CHECK(d.status_tx.counters.sent == 1u && d.upper.tx_submitted == d0.upper.tx_submitted + 1u);
+    CHECK(Net_GetBootId() == NODE_BOOT);
+    /* The TX facts of that frame are taken in the next pass. */
+    run_ticks(1u);
+    CHECK(diag().upper.tx_succeeded == 1u);
+    /* No flush: the next submission waits for the next pass. */
+    s = status_ready(6u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    CHECK(transmit_next(NULL) < 0);
+    run_ticks(1u);
+    CHECK(pull_status(&f, &raw) >= 0 && raw.update_sequence == 6u && raw.tx_sequence == 2u);
+    /* nowMs: a later value moves Network time, a value behind is held. */
+    run_ticks(2u);
+    now = app_now();
+    flush_with(now + 3u);
+    d = diag();
+    CHECK(d.entry_now_ms == (uint64_t)now + 3u && d.entry_now_backward == 0u);
+    flush_with(now);
+    d = diag();
+    CHECK(d.entry_now_ms == (uint64_t)now + 3u && d.entry_now_backward == 1u);
+    CHECK(callbacks_in_isr == 0 && callbacks_outside_main == 0);
+    return 0;
+}
+
+/* Frames wait while Net_TxFlush runs: one still in the ISR ring and, after a
+ * drain, the same frames in the adapter queue. No callback inside the flush;
+ * the flush still sends; the next Net_MainFunction delivers them with the
+ * time of their own ISR. */
+static int e12_tx_flush_no_callbacks(void)
+{
+    NetWireCanEnvelope ev, wa;
+    NetVssStatus s = status_ready(9u, 0u);
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d0, d;
+    uint64_t t_ev;
+    uint32_t now;
+    CHECK(start());
+    run_ticks(2u);
+    ++board_tick;
+    now = app_now();
+    pass_with(now);
+    CHECK(encode_event(1u, 7u, &ev));
+    CHECK(encode_warning(1u, &wa));
+    t_ev = board_tick;
+    CHECK(inject(&ev) >= 0);            /* after the pass: in the ISR ring */
+    CHECK(inject(&wa) >= 0);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    d0 = diag();
+    flush_with(now);
+    CHECK(event_count == 0 && warning_count == 0 && callback_depth_max == 0);
+    CHECK(pull_status(&f, &raw) >= 0 && raw.update_sequence == 9u); /* sent all the same */
+    d = diag();
+    CHECK(d.upper.rx_delivered == d0.upper.rx_delivered && d.upper.rx_captured == d0.upper.rx_captured);
+    /* Network has taken the frames from the ISR ring (the drain of a pass:
+     * the two frames and the TX completion of the status frame) but not
+     * delivered them yet: a flush delivers them neither. */
+    CHECK(net_hal_rtd_drain() == 3u);
+    flush_with(now);
+    CHECK(event_count == 0 && warning_count == 0 && callback_depth_max == 0);
+    d = diag();
+    CHECK(d.upper.rx_delivered == d0.upper.rx_delivered);
+    board_tick += 2u;
+    pass();
+    CHECK(event_count == 1 && warning_count == 1);
+    CHECK(last_event.occurrence_id == 7u && last_event_meta.received_at_ms == ms_at(t_ev));
+    CHECK(last_warning_meta.received_at_ms == ms_at(t_ev));
+    CHECK(callbacks_in_isr == 0 && callbacks_outside_main == 0 && callback_depth_max == 1);
+    return 0;
+}
+
+/* Before Net_Init the flush does nothing: no time, no frame, BOOT_ID 0.
+ * After Net_Init the same call sends. */
+static int e13_tx_flush_before_init(void)
+{
+    NetVssStatus s = status_ready(1u, 0u);
+    NetNodeDiag d;
+    board_reset(START_TICK);
+    flush_with(app_now());
+    d = diag();
+    CHECK(d.entry_init_result == NET_ENTRY_INIT_NONE && d.entry_main_calls == 0u);
+    CHECK(d.entry_now_ms == 0u && d.steps == 0u && !d.rtd.started && config_calls == 0u);
+    CHECK(Net_GetBootId() == 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_NOT_READY);
+    flush_with(app_now());
+    CHECK(transmit_next(NULL) < 0 && diag().entry_now_ms == 0u);
+    Net_Init();
+    d = diag();
+    CHECK(d.entry_init_result == NET_ENTRY_INIT_OK && Net_GetBootId() == NODE_BOOT);
+    ++board_tick;
+    pass();
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    flush_with(app_now());
+    CHECK(transmit_next(NULL) >= 0);
+    return 0;
+}
+
+/* A failed Net_Init: the flush stays inert and the BOOT_ID reads 0. */
+static int e14_tx_flush_failed_init(void)
+{
+    NetVssStatus s = status_ready(1u, 0u);
+    config_accept = false;
+    board_reset(START_TICK);
+    Net_Init();
+    CHECK(diag().entry_init_result == NET_ENTRY_INIT_CONFIG_REFUSED);
+    CHECK(Net_GetBootId() == 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_NOT_READY);
+    flush_with(app_now());
+    CHECK(transmit_next(NULL) < 0 && diag().entry_now_ms == 0u && diag().steps == 0u);
+    return 0;
+}
+
+static const struct { const char *name; int (*run)(void); } flush_cases[] = {
+    { "e11_tx_flush_same_pass", e11_tx_flush_same_pass },
+    { "e12_tx_flush_no_callbacks", e12_tx_flush_no_callbacks },
+    { "e13_tx_flush_before_init", e13_tx_flush_before_init },
+    { "e14_tx_flush_failed_init", e14_tx_flush_failed_init }
+};
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -844,6 +1001,12 @@ int main(int argc, char **argv)
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }
+    for (i = 0u; i < sizeof(flush_cases) / sizeof(flush_cases[0]); ++i) {
+        if (strcmp(argv[1], flush_cases[i].name) == 0) {
+            case_name = flush_cases[i].name;
+            return flush_cases[i].run();
+        }
+    }
     for (i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
         if (strcmp(argv[1], cases[i].name) == 0) {
             case_name = cases[i].name;

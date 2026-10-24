@@ -160,6 +160,26 @@ void NetNode_Step(void)
     (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* dispatch what M04 offered */
 }
 
+/* The application submitted after its pass (Net_MainFunction, then the
+ * application, then Net_TxFlush): send it in the same pass. Only the send
+ * half of NetNode_Step runs: the M04 publish service and the dispatch.
+ * Received frames and TX facts stay where they are (ISR ring, adapter queue)
+ * until the next NetNode_Step takes them, so a message whose previous frame
+ * is not settled yet waits for that pass (one unsettled frame per message).
+ * The App Port work that waits for an idle M04 slot (profile service) needs
+ * those TX facts and stays in NetNode_Step. */
+void NetNode_TxFlush(void)
+{
+    if (stage != NET_NODE_STAGE_READY) return;
+    (void)net_upper_publish_service(&publisher);           /* M04: retire, BOOT/TX, due frames */
+    (void)net_upper_dispatch(&service);                    /* hand what M04 offered to the Port */
+}
+
+uint32_t NetNode_GetBootId(void)
+{
+    return stage == NET_NODE_STAGE_READY ? publisher.can_boot_id : 0u;
+}
+
 NetStatus NetNode_GetDiag(NetNodeDiag *out)
 {
     if (out == NULL) return NET_INVALID_ARGUMENT;

@@ -48,6 +48,10 @@ src/l05_transport_port/m07_buffer_outcome/net_buffer.c
 src/l05_transport_port/m08_device_port/net_port.c
 src/l05_transport_port/m09_observation/net_observation.c
 
+# BOOT_ID of the Network run, computed by the board layer at start-up
+# (portable, no state, no SDK, header include/network/net_boot_id.h)
+src/platform/net_boot_id.c
+
 # Upper product service
 src/l03_message_service/m04_message_service/net_upper_service.c
 src/l03_message_service/m04_message_service/net_upper_profile.c

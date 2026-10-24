@@ -55,6 +55,8 @@ add_library(network_common STATIC
     src/l05_transport_port/m07_buffer_outcome/net_buffer.c
     src/l05_transport_port/m08_device_port/net_port.c
     src/l05_transport_port/m09_observation/net_observation.c)
+# Portable BOOT_ID computation of the board layer (no state, no SDK).
+target_sources(network_common PRIVATE src/platform/net_boot_id.c)
 target_include_directories(network_common PUBLIC include PRIVATE
     src/l02_typed_handoff/m03_typed_handoff
     src/l05_transport_port/m07_buffer_outcome
@@ -496,6 +498,17 @@ if(NETWORK_BUILD_DOMAIN_C2)
                 ingress_context_restart env_hold occupant_hold semantic_holds)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2_ingress ${case})
         endforeach()
+        # DOMAIN_PERMISSION transmit: synthesized CAN UPDATE_SEQUENCE, UNKNOWN power 255.
+        add_executable(test_domain_c2_permission tests/product/test_domain_c2_permission.c)
+        target_link_libraries(test_domain_c2_permission PRIVATE network_domain_c2)
+        target_include_directories(test_domain_c2_permission PRIVATE src/l02_typed_handoff/m03_typed_handoff)
+        network_warnings(test_domain_c2_permission)
+        foreach(case IN ITEMS perm_first perm_withdraw_immediate perm_repeat_kept perm_value_change_same_seq
+                perm_quality_restrict_same_seq perm_new_success perm_relax_guard perm_older_domain_seq
+                perm_age_backwards perm_wrap perm_window_hold perm_refused_not_consumed perm_unknown_255
+                perm_bundle_provisional)
+            add_test(NAME domain_c2_${case} COMMAND test_domain_c2_permission ${case})
+        endforeach()
     endif()
 endif()
 
@@ -628,6 +641,26 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
     foreach(case IN ITEMS m14_uart_no_room_keeps_link_sequence m15_uart_taken_or_refused_number_used
             m16_uart_give_back_only_newest m17_uart_give_back_wrap)
         add_test(NAME m04.${case} COMMAND test_m04_link_sequence ${case})
+    endforeach()
+    # A frame the service drops before the Port (expired, stale, link hold,
+    # encode failure) gives its TX_SEQUENCE / LINK_SEQUENCE back.
+    add_executable(test_m04_pre_port tests/product/test_m04_pre_port.c)
+    target_link_libraries(test_m04_pre_port PRIVATE network_product)
+    network_warnings(test_m04_pre_port)
+    foreach(case IN ITEMS m18_can_pre_port_drop_gives_back m19_uart_pre_port_drop_gives_back)
+        add_test(NAME m04.${case} COMMAND test_m04_pre_port ${case})
+    endforeach()
+endif()
+
+# BOOT_ID of the Network run (include/network/net_boot_id.h): warm reset +1,
+# power-on seeded, never 0, never the previous value.
+if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "HOST")
+    add_executable(test_boot_id tests/host/test_boot_id.c)
+    target_link_libraries(test_boot_id PRIVATE network_common)
+    network_warnings(test_boot_id)
+    foreach(case IN ITEMS warm_increment warm_wrap_skips_zero por_seeded por_equal_previous_changes
+            invalid_record_reseeds unknown_cause_uses_record seed_zero_nonzero record_written arguments)
+        add_test(NAME boot_id.${case} COMMAND test_boot_id ${case})
     endforeach()
 endif()
 
@@ -808,6 +841,11 @@ if(NETWORK_BUILD_RTD_MOCK)
                 e4_status_not_repeated e5_drain_budget e6_submit_results e7_callback_context
                 e8_node_config_boot e8_node_config_boot_zero e8_node_config_refused
                 e9_ring_overflow e10_main_max_us)
+            add_test(NAME vss_entry.${case} COMMAND test_vss_entry ${case})
+        endforeach()
+        # Send-only pass Net_TxFlush(nowMs) after the application.
+        foreach(case IN ITEMS e11_tx_flush_same_pass e12_tx_flush_no_callbacks e13_tx_flush_before_init
+                e14_tx_flush_failed_init)
             add_test(NAME vss_entry.${case} COMMAND test_vss_entry ${case})
         endforeach()
     endif()

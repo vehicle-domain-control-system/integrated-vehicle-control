@@ -152,6 +152,7 @@ typedef struct {
 typedef struct {
     bool used, queued, submitted, admission_known, accepted;
     bool reference_released, conflict;
+    bool offered; /* handed to the Port (submit called), whatever the Port answered */
     NetTxKey key;
     NetTxOutcome outcome;
     NetStatus local_status;
@@ -249,6 +250,10 @@ NetStatus net_upper_init(NetUpper *, const NetUpperConfig *);
 NetStatus net_upper_now(NetUpper *, uint64_t *out);
 NetStatus net_upper_capture(NetUpper *, const NetUpperEvent *);
 NetStatus net_upper_step(NetUpper *, size_t receive_budget);
+/* Transmit half of net_upper_step: hands the queued frames to the Port in
+ * enqueue order and nothing else. No Port poll, no receive processing, no
+ * UART receiver timer check, so no Owner callback runs inside it. */
+NetStatus net_upper_dispatch(NetUpper *);
 NetStatus net_upper_submit_can(NetUpper *, const NetUpperCanMessage *,
     const NetSourceStamp *, const NetAgePolicy *, NetTxKey *out);
 NetStatus net_upper_submit_uart(NetUpper *, const NetUpperUartMessage *,

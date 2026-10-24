@@ -111,6 +111,20 @@ typedef struct {
     uint32_t id;   /* generation the barrier is open for */
     uint32_t held; /* frames held before C2 (diagnostic, saturating) */
 } NetDomainC2Barrier;
+/* CAN UPDATE_SEQUENCE of DOMAIN_PERMISSION (0x080), synthesized by Network
+ * in a number space of its own (net_domain_tx.c): the tuple of the last
+ * submission the service accepted. Zero (init) = nothing sent yet. */
+typedef struct {
+    bool sent;
+    uint32_t sequence;        /* CAN UPDATE_SEQUENCE of that frame */
+    uint32_t domain_sequence; /* its DOMAIN meta.updateSequence */
+    uint32_t age_ms;          /* its DOMAIN meta.ageMs */
+    uint8_t power, power_quality, operation_state, operation_allowed, operation_quality; /* wire values */
+    /* Saturating: +1, the same number again, and HOLD for an older DOMAIN
+     * sequence, a lifted restriction under the same DOMAIN sequence and a
+     * smaller AGE of the same tuple. */
+    uint32_t advanced, kept, held_older, held_relax, held_age;
+} NetDomainC2PermissionSequence;
 typedef struct {
     unsigned char init_tag[8];
     NetUpper *service;
@@ -128,6 +142,7 @@ typedef struct {
     NetDomainC2IngressRecord ingress[19];
     NetDomainC2IngressRecord *current_ingress;
     NetDomainC2Barrier barrier[NET_DOMAIN_C2_BARRIERS];
+    NetDomainC2PermissionSequence permission;
 } NetDomainC2;
 typedef struct {
     uint16_t id;
@@ -166,6 +181,14 @@ NetStatus net_domain_c2_from_status(DomainIf_Status_t);
 DomainIf_Status_t net_domain_c2_to_status(NetStatus);
 /* PROVISIONAL explicit policy helpers: integration may select or replace them. */
 NetStatus net_domain_c2_value_quality_provisional(void *, uint8_t, uint8_t, DataQuality_t *);
+/* PROVISIONAL Power/Operation bundle of DOMAIN_PERMISSION. Power: a confirmed
+ * ALLOW / DENY (OK quality) is 1 / 0, any non-OK quality is UNKNOWN 255 with
+ * that quality, true with a non-OK quality (or a non-OK meta.quality) is HOLD.
+ * Operation has no source yet: 255 / 0 / NO_DATA. SOURCE_AGE is meta.ageMs
+ * (above 65535 is HOLD); the adapter writes UPDATE_SEQUENCE. Not selected by
+ * default: the integration (board hook) or a test binds it. */
+NetStatus net_domain_c2_permission_bundle_provisional(void *, const DomainIf_CisPowerPermission_t *,
+    NetWireDomainPermissionRaw *);
 /* Legacy presentation only. Actual C2 rearDistanceMm stays exact. */
 typedef enum { NET_DOMAIN_CM_EXACT_ONLY, NET_DOMAIN_CM_FLOOR, NET_DOMAIN_CM_NEAREST } NetDomainCmPolicy;
 NetStatus net_domain_c2_mm_to_cm(uint16_t mm, NetDomainCmPolicy, uint16_t *cm);

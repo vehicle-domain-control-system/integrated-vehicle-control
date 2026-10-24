@@ -127,6 +127,39 @@ else q=DATA_QUALITY_INVALID;
 *out=q;
 return NET_OK;
 }
+/* PROVISIONAL DOMAIN_PERMISSION bundle
+ * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md DOMAIN_PERMISSION):
+ *   - Power: only a confirmed ALLOW / DENY (OK quality) is 1 / 0; UNKNOWN (a
+ *     non-OK quality) is 255 with that quality. A true with a non-OK quality is
+ *     HOLD, and so is a true whose meta.quality is not OK
+ *     (04_COMMON/10_DATA_AND_ID_RULES.md, DOMAIN_PERMISSION synthesis: a
+ *     quality and meta.quality in conflict make the input unconfirmed, no OK
+ *     is chosen, and no permission is newly made from it).
+ *   - Operation: its source is not decided; an unknown meaning is UNKNOWN with
+ *     a non-normal quality and no permission is made up: POWER_OPERATION_STATE
+ *     255, OPERATION_ALLOWED 0, OPERATION_QUALITY NO_DATA.
+ *   - SOURCE_AGE is meta.ageMs (above 65535 is HOLD). UPDATE_SEQUENCE carries
+ *     meta.updateSequence here; the adapter replaces it with the synthesized
+ *     number. */
+NetStatus net_domain_c2_permission_bundle_provisional(void *context,const DomainIf_CisPowerPermission_t *in,NetWireDomainPermissionRaw *out){
+NetWireDomainPermissionRaw r;
+uint8_t quality;
+(void)context;
+if(in==NULL||out==NULL)return NET_INVALID_ARGUMENT;
+ND_TO(DataQuality_t,in->quality,quality);
+if(in->vehiclePowerAllowed&&(in->quality!=DATA_QUALITY_OK||in->meta.quality!=DATA_QUALITY_OK))return NET_HOLD;
+if(in->meta.ageMs>UINT16_MAX)return NET_HOLD;
+memset(&r,0,sizeof(r));
+r.vehicle_power_permission=in->quality!=DATA_QUALITY_OK?255u:(in->vehiclePowerAllowed?1u:0u);
+r.power_permission_quality=quality;
+r.power_operation_state=255u;
+r.operation_allowed=0u;
+r.operation_quality=3u;
+r.update_sequence=in->meta.updateSequence;
+r.source_age_ms=(uint16_t)in->meta.ageMs;
+*out=r;
+return NET_OK;
+}
 NetStatus nd_value(NetDomainC2 *a,uint8_t valid,uint8_t reason,uint32_t sequence,uint16_t age,uint64_t elapsed,ValueQuality_t *out){
 ValueQuality_t q;
 if(a->config.value_quality==NULL)return NET_HOLD;

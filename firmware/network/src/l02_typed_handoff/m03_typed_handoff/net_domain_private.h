@@ -33,4 +33,7 @@ NetStatus nd_ingress_new_context(NetDomainC2 *,uint64_t,uint64_t);
 void nd_ingress_context_taken(NetDomainC2 *);
 NetStatus nd_barrier(NetDomainC2 *,NetDomainC2BarrierKind,uint32_t);
 NetStatus nd_rx_call(NetDomainC2 *,DomainIf_Status_t);
+/* Synthesized CAN UPDATE_SEQUENCE of DOMAIN_PERMISSION after last (0 = none
+ * sent yet): 1, 2, ... 0xFFFFFFFF, then 1 again; 0 is never used. */
+uint32_t nd_permission_next(uint32_t last);
 #endif
