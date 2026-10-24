@@ -140,6 +140,15 @@ void net_hal_rtd_service(void);
  * keep their own clock: the call is ignored and returns false. */
 bool net_hal_rtd_set_now(uint64_t now_ms);
 
+/* Low 32 bits of Network now. Application clock (time base A): the last nowMs
+ * handed to net_hal_rtd_set_now(). It only reads a stored value, so an ISR may
+ * call it. A board whose application has one main-loop millisecond function
+ * and no ISR-safe tick (the DOMAIN board) names it NET_BOARD_ISR_TICK_HOOK,
+ * with an identity NET_BOARD_TICK_TO_MS_HOOK: a capture then carries the time
+ * of the previous pass, never a later one, so the local wait added to AGE
+ * errs towards older by at most one pass. */
+uint32_t net_hal_rtd_last_now_ms32(void);
+
 /* Main context only (first thing in NetNode_Step()). Takes at most
  * NET_BOARD_ISR_DRAIN_BUDGET entries from the ISR rings in arrival order per
  * ring (CAN frames first, then UART bytes), converts their stamps and hands

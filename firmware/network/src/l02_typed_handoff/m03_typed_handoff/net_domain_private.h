@@ -20,6 +20,14 @@ NetStatus nd_map_can(NetDomainC2 *,const NetUpperCanMessage *,uint64_t,NdCanValu
 NetStatus nd_projection(NetDomainC2 *,uint16_t,const void *,uint64_t,const NetWireMQueryRaw *,NetUpperQueryOutput *);
 NetStatus nd_publish_projection(NetDomainC2 *,uint16_t,const void *);
 NetStatus nd_send_can(NetDomainC2 *,NetUpperCanMessage *,const NetworkLocalFailure_t *);
+/* Current-state CAN message (DOMAIN_PERMISSION, VSS_WARNING_STATE): to the M04
+ * publisher slot when one is bound, otherwise one frame through nd_send_can. */
+NetStatus nd_send_state(NetDomainC2 *,NetUpperCanMessage *);
+/* Counter of the next TX_SEQUENCE of a CAN message the adapter numbers
+ * itself; NULL for any other identifier. */
+uint32_t *nd_can_sequence(NetDomainC2 *,uint16_t id);
+/* Records the sender BOOT_ID of an accepted BCM frame (command target). */
+void nd_bcm_boot(NetDomainC2 *,uint16_t id,uint32_t boot);
 NetStatus nd_send_uart(NetDomainC2 *,NetUpperUartMessage *,const NetworkLocalFailure_t *);
 NetStatus nd_core_message(NetDomainC2 *,uint8_t,const void *,NetUpperUartMessage *);
 NetStatus nd_context(NetDomainC2 *,uint32_t *,uint64_t *);

@@ -8,8 +8,10 @@
  * src/node/net_node.c holds the common part (init order, step, diag); the
  * profile table src/node/net_node_profile_<node>.c holds what differs per
  * node (links, receive policies, facade binding, permission supervision,
- * M04 publish table). Wired profiles: VSS (6), CIS (1), BCM (3). Others fail
- * at compile time.
+ * M04 publish table). Wired profiles: VSS (6), CIS (1), BCM (3). The DOMAIN
+ * profile (5) has a root of its own, src/node/net_node_domain.c: the DOMAIN C2
+ * adapter is its Owner and it sends DOMAIN_PERMISSION instead of supervising
+ * it. Others fail at compile time.
  *
  * Public entry: Net_Init() / Net_MainFunction(nowMs) (network/app/net_if_entry.h,
  * src/node/net_entry.c) wrap NetNode_Init() / NetNode_Step() for every
@@ -32,6 +34,8 @@
 #include "network/net_app_port_cis.h"
 #elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_BCM
 #include "network/net_app_port_bcm.h"
+#elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_DOMAIN
+#include "network/net_domain_c2.h"
 #endif
 
 typedef struct {
@@ -83,6 +87,20 @@ typedef struct {
     NetAppPortBcmDiag app;        /* App Port counters, last permission, discrete stores */
     /* M04 slots: BOOT/TX, waits, repetitions */
     NetUpperPublishView result_tx, event_tx, door_state_tx, climate_state_tx, light_state_tx, status_tx;
+#elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_DOMAIN
+    /* M04 slots: DOMAIN_PERMISSION and VSS_WARNING_STATE (BOOT/TX, 50 ms),
+     * M_DOMAIN_ALIVE (LINK_SEQUENCE, 250 ms) */
+    NetUpperPublishView permission_tx, warning_tx, alive_tx;
+    /* C2 adapter: synthesized DOMAIN_PERMISSION UPDATE_SEQUENCE and its
+     * counters, the CIS transition barriers, the command target */
+    NetDomainC2PermissionSequence permission_sequence;
+    NetDomainC2Barrier barrier[NET_DOMAIN_C2_BARRIERS];
+    uint32_t bcm_target_boot;     /* TARGET_BOOT_ID of the next BCM command, 0 = unknown */
+    uint32_t c2_boundary_calls;   /* C2 calls (saturating) */
+    uint8_t c2_last_status;       /* DomainIf_Status_t of the last C2 call */
+    /* M_DOMAIN_ALIVE: last accepted submission, submissions and refusals */
+    NetDomainC2AliveState alive;
+    uint32_t alive_submitted, alive_refused;
 #endif
     bool permission_valid;
     NetPermissionView permission; /* DOMAIN_PERMISSION supervision view */
@@ -98,6 +116,11 @@ typedef struct {
 /* Once per power cycle. After a call that got past argument checks, later
  * calls return NET_BUSY and leave the node (running or failed) untouched. */
 NetStatus NetNode_Init(const NetNodeConfig *config);
+#if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_DOMAIN
+/* Bench and host tests (main context only): the C2 adapter of the DOMAIN node
+ * once NetNode_Init reached it, else NULL. */
+NetDomainC2 *NetNode_DomainC2(void);
+#endif
 /* One main pass: ISR ring -> adapter (bounded), RX dispatch -> XxxApp_*,
  * permission supervision, TX supervision, M04 publish service. */
 void NetNode_Step(void);

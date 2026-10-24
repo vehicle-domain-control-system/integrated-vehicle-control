@@ -283,6 +283,9 @@ NetStatus status;
 if(a==NULL||m==NULL||d==NULL)return NET_INVALID_ARGUMENT;
 if(!nd_ready(a))return NET_NOT_CONFIGURED;
 if(d->observation_only)return NET_HOLD;
+/* The service admitted this frame of its sender generation: a BCM frame names
+ * the BCM BOOT_ID a command targets (bcm_target_from_rx). */
+nd_bcm_boot(a,m->id,d->source_boot);
 status=nd_map_can(a,m,d->local_elapsed_ms,&value);
 if(status!=NET_OK)return status;
 switch(m->id){

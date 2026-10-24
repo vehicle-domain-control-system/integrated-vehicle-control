@@ -109,12 +109,19 @@ src/platform/rtd/net_hal_rtd.c
 src/platform/rtd/net_hal_rtd_can.c
 src/platform/rtd/net_hal_rtd_uart.c
 
-# Node composition root (common part + node profile tables) + public entry
-# (Net_Init / Net_MainFunction). DOMAIN has no composition root yet.
+# Node composition root (common part + node profile tables for VSS, CIS and
+# BCM, the DOMAIN root of its own with the C2 adapter as Owner) + public
+# entry (Net_Init / Net_MainFunction / Net_TxFlush).
 src/node/net_node.c                                                 @VSS @CIS @BCM
 src/node/net_node_profile_vss.c                                     @VSS
 src/node/net_node_profile_cis.c                                     @CIS
 src/node/net_node_profile_bcm.c                                     @BCM
-src/node/net_entry.c                                                @VSS @CIS @BCM
-include/network/app/net_if_entry.h                                  @VSS @CIS @BCM
-include/network/net_node.h                                          @VSS @CIS @BCM
+src/node/net_node_domain.c                                          @DOMAIN
+src/node/net_entry.c                                                @VSS @CIS @BCM @DOMAIN
+include/network/app/net_if_entry.h                                  @VSS @CIS @BCM @DOMAIN
+include/network/net_node.h                                          @VSS @CIS @BCM @DOMAIN
+
+# DOMAIN board project files (node configuration, C2 binding and time hooks,
+# public DOMAIN C2 header only)
+board/s32k344_domain/net_domain_board.c                             @DOMAIN
+board/s32k344_domain/net_domain_board.h                             @DOMAIN

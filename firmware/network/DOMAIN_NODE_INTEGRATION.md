@@ -26,31 +26,41 @@ DOMAIN 노드(profile 5, CAN + UART-M)용 Network 사본의 안내다. 사본은
 - **공통 코덱·서비스:** `src/l01_node_context`, `src/l02_typed_handoff`, `src/l03_message_service`, `src/l04_frame_codec`, `src/l05_transport_port`의 공통 소스와 `include/network/**`(host 전용 `net_host_mock.h`, `net_virtual.h` 제외). CAN·UART 코덱, 수신 검증과 순번, M04 메시지 서비스(BOOT·TX_SEQUENCE·LINK_SEQUENCE, 반복 송신), 조회(Query), 관측·진단이다.
 - **C2 어댑터:** `src/l02_typed_handoff/m03_typed_handoff/net_domain_c2.c`, `net_domain_rx.c`, `net_domain_tx.c`, `net_domain_uart.c`, `net_domain_query.c`, `net_domain_owner_binding.c`, 공개 헤더 `include/network/net_domain_c2.h`, 비공개 헤더 `net_domain_private.h`, `net_domain_enum_internal.h`. DOMAIN C2 경계(`Domain_Interface_v0.5_C2_target.h`)와 Network 사이를 잇는다. 정해지지 않은 의미 규칙은 `NetDomainC2Config`의 콜백으로 받고, 콜백이 없으면 그 경로만 HOLD한다(추측한 OK를 만들지 않는다).
 - **RTD 백엔드:** `src/platform/rtd/net_hal_rtd.c`(시간원, 시작 순서, ISR 링), `net_hal_rtd_can.c`(FlexCAN), `net_hal_rtd_uart.c`(LPUART, DOMAIN 프로필에서는 UART-M 링크만), 보드 설정 `net_board_cfg.h`.
-- **들어 있지 않은 것:** 다른 노드 전용 파일(VSS·CIS·BCM App facade, 노드 프로필 표, 조립 루트 `src/node/`, `net_node.h`, `net_if_entry.h`), host 전용 파일, mock SDK, 시험, 도구.
+- **조립 루트와 공개 진입:** `src/node/net_node_domain.c`(DOMAIN 조립 루트. C2 어댑터가 Owner이고, M04 주기 송신·Query·RTD 백엔드를 묶는다), `src/node/net_entry.c`와 `include/network/app/net_if_entry.h`(`Net_Init`, `Net_MainFunction`, `Net_TxFlush`, `Net_GetBootId`), `include/network/net_node.h`(`NetNodeDiag`).
+- **보드 파일:** `board/s32k344_domain/net_domain_board.c`, `net_domain_board.h`. `Net_Init`의 노드 설정 hook, C2 hook, 시간 변환 hook이다. DOMAIN C2 공개 헤더만 쓴다.
+- **들어 있지 않은 것:** 다른 노드 전용 파일(VSS·CIS·BCM App facade, 노드 프로필 표, 공통 조립 루트 `src/node/net_node.c`), host 전용 파일, mock SDK, 시험, 도구.
 
-## 아직 빠진 것: DOMAIN 조립 루트
+## DOMAIN 조립 루트 (host 시험까지)
 
-- DOMAIN 조립 루트(노드 프로필 표와 `Net_Init`·`Net_MainFunction` 공개 진입)가 아직 없다. 그래서 이 사본만으로는 `Net_Init`과 `Net_MainFunction`을 쓸 수 없다.
-- 그래서 이 폴더는 아직 DOMAIN S32DS 빌드에 넣지 않는다. 사본은 DOMAIN 폴더 밖(`firmware/network_nodes/`)에 있으므로 공개 진입이 없는 Network 소스가 DOMAIN 빌드에 섞이지 않는다.
-- 조립 루트가 생기면 원본 목록(`firmware/network/tools/s32ds_sources.txt`)의 태그가 바뀌고, 사본을 다시 만들면 그 파일이 들어온다.
+- **순서:** DOMAIN이 `DomainIf_Init`을 먼저 하고 `Net_Init()`을 부른다. `Net_Init`이 C2 TxPort를 등록한다(`DomainIf_SetTxPort`). DomainIf가 초기화되지 않았으면 등록하지 못하고 `NetNodeDiag.stage`가 `NET_NODE_STAGE_APP_PORT`(`NET_NOT_CONFIGURED`)에서 멈춘다. 이때 아무것도 보내지 않는다.
+- **한 바퀴:** `main`이 DOMAIN의 메인 루프 전용 ms 함수(`uint32_t`)를 한 번 읽어 `Net_MainFunction(ms)`에 넘긴다. 그 안에서 수신 프레임이 C2 Rx 함수로 전달된다. DOMAIN 앱이 TxPort로 제출한 뒤 같은 ms로 `Net_TxFlush(ms)`를 부르면 그 바퀴에 나간다(선택). Network와 보드 파일은 DOMAIN 시간 함수를 직접 부르지 않는다.
+- **보드 hook(프로젝트 define):** `NET_BOARD_NODE_CONFIG_HOOK=NetDomainBoard_NodeConfig`, `NET_BOARD_DOMAIN_C2_HOOK=NetDomainBoard_C2Config`, `NET_BOARD_ISR_TICK_HOOK=net_hal_rtd_last_now_ms32`, `NET_BOARD_TICK_TO_MS_HOOK=NetDomainBoard_TickToMs`. ISR은 캡처에 직전 바퀴의 ms를 붙인다. 그래서 대기 AGE는 실제보다 최대 한 바퀴 크게 잡힌다(오래된 쪽).
+- **C2 hook:** `net_domain_c2_pinned_owner_api`(고정 DOMAIN 함수)와 잠정 규칙 두 개(`net_domain_c2_value_quality_provisional`, `net_domain_c2_permission_bundle_provisional`)를 쓴다. 나머지 의미 콜백 7개는 NULL이라 그 경로는 HOLD다. BOOT_ID, TX_SEQUENCE 시작, M04 송신 칸, 명령 대상 BOOT, CIS 전환 장벽은 조립 루트가 정한다.
+- **송신:** DOMAIN_PERMISSION(0x080)과 VSS_WARNING_STATE(0x0C0)는 앱이 새 평가나 의미·품질 변경 때 TxPort로 제출하면 Network가 50 ms마다 반복한다(같은 원 관측, TX_SEQUENCE +1, AGE 증가). 0x080은 원 Power 수명 500 ms에서 반복이 멈춘다. M_DOMAIN_ALIVE(UART-M 0x02)는 250 ms다. 값은 C2 설정의 `alive_state`에서 받고, 없으면 `INIT / NO_DATA / 0 / 0xFFFF`다. 명령의 TARGET_BOOT_ID는 마지막으로 수신한 BCM 프레임의 BOOT(BCM_STATUS 우선)이고, 아직 모르면 명령을 보내지 않는다(`DOMAIN_IF_NOT_AVAILABLE`). CAN TX_SEQUENCE는 메시지별로 1부터다.
+- **수신:** 복합 관측·상태(0x300, 0x230, 0x320, 0x340)는 필드별 AGE로 받는다. 신선도는 DOMAIN이 판단한다. 다른 경로는 전달 AGE 2,000 ms 상한이다. UART-M 조립 기한은 50 ms다.
+- **CIS 환경·Occupant(0x300, 0x310):** 전환 장벽이 닫혀 있어 DOMAIN으로 전달되지 않는다. 전환 함수 연결은 아직 없다.
+- **아직 하지 않은 것:** 실제 RTD 헤더로의 컴파일과 링크, BOOT_ID 출처(지금은 보드 상수, HOLD), UART-M 인스턴스(자리표시값). host mock 시험(`domain_node.*`)까지 확인했다. 그래서 이 폴더는 아직 DOMAIN S32DS 빌드에 넣지 않는다. 사본은 DOMAIN 폴더 밖(`firmware/network_nodes/`)에 있으므로 보드에 적용하지 않은 Network 소스가 DOMAIN 빌드에 섞이지 않는다.
 
 ## 나중에 빌드에 넣을 때 필요한 것
 
-- **include 폴더 7개**(사본 기준, `firmware/network/CMakeLists.txt`의 `_node_includes`와 같다): `include`, `src/l04_frame_codec`, `src/l02_typed_handoff/m03_typed_handoff`, `src/l05_transport_port/m07_buffer_outcome`, `src/l05_transport_port/m09_observation`, `src/l03_message_service/m04_message_service`, `src/platform/rtd`
+- **include 폴더 7개**(사본 기준, `firmware/network/CMakeLists.txt`의 `_node_includes`와 같다): `include`, `src/l04_frame_codec`, `src/l02_typed_handoff/m03_typed_handoff`, `src/l05_transport_port/m07_buffer_outcome`, `src/l05_transport_port/m09_observation`, `src/l03_message_service/m04_message_service`, `src/platform/rtd`. 보드 파일 `board/s32k344_domain/*.c`는 자기 폴더의 헤더를 같이 쓴다.
 - **C2 헤더 폴더:** `firmware/DOMAIN/src/interface`(`Domain_Interface_v0.5_C2_target.h`, `Vehicle_Types_v0.2.h`)
-- **define:** `NETWORK_UPPER_NODE_PROFILE=5`. 빠뜨리면 `include/network/net_upper_profile.h`가 컴파일 오류를 낸다(기본 프로필은 없다).
+- **define:** `NETWORK_UPPER_NODE_PROFILE=5`. 빠뜨리면 `include/network/net_upper_profile.h`가 컴파일 오류를 낸다(기본 프로필은 없다). MCU는 S32DS CPU define(`CPU_S32K344`)이나 `NETWORK_NODE_PLATFORM=344`로 정한다. 없으면 `src/node/net_node_domain.c`가 컴파일 오류를 낸다. 위 보드 hook 4개도 define으로 준다.
 - **RTD 생성 설정 이름**(`src/platform/rtd/net_board_cfg.h`, 프로젝트 설정의 `-D`로 바꾼다):
   - FlexCAN 설정·상태 심볼과 ConfigTools 콜백 이름(`NET_BOARD_CAN_CONFIG`, `NET_BOARD_CAN_STATE`, `NET_BOARD_CAN_CALLBACK`, `NET_BOARD_CAN_ERROR_CALLBACK`), MB 배치
   - UART-M LPUART 인스턴스와 설정 심볼(`NET_BOARD_UART_M_INSTANCE`, `NET_BOARD_UART_M_CONFIG`, `NET_BOARD_UART_CFG_HEADER`), 콜백 연결 방식(`NET_BOARD_UART_CALLBACK`). **UART-M 기본값 LPUART0(`Lpuart_Uart_Ip_xHwConfigPB_0`)은 자리표시값이다.** 실제 인스턴스로 바꿔야 한다.
   - 시간원(방식 A·B·C 중 하나). 설명은 원본 `firmware/network/VSS_NODE_INTEGRATION.md`의 시간원·보드 설정 절과 같다.
-- 사본 안의 모든 `.c`는 위 include 폴더, mock SDK(`firmware/network/sdk_mock/rtd/include`, NET_git 안에서만), C2 헤더 폴더로 `-std=c11 -Wall -Wextra -Wpedantic -Werror` 단독 컴파일이 된다. 실제 RTD 헤더로의 컴파일과 링크는 조립 루트가 생긴 뒤 확인한다.
+- 사본 안의 모든 `.c`는 위 include 폴더, mock SDK(`firmware/network/sdk_mock/rtd/include`, NET_git 안에서만), C2 헤더 폴더로 `-std=c11 -Wall -Wextra -Wpedantic -Werror` 단독 컴파일이 된다. 실제 RTD 헤더로의 컴파일과 링크는 보드 적용 때 확인한다.
 
 ## DOMAIN 팀 확인이 필요한 것
 
 | 항목 | 지금 Network | 근거 |
 |---|---|---|
 | 값 품질 변환 규칙 | wire `VALIDITY`·`REASON`을 `DataQuality_t`로 바꾸는 규칙은 `NetDomainC2Config.value_quality` 콜백으로 받는다. 없으면 해당 수신(0x300, 0x310, 0x0A0 등)을 HOLD한다. `net_domain_c2_value_quality_provisional`(STALE 사유 → STALE, NO_DATA 사유 → NO_DATA, 유효 + 사유 없음 → OK, 나머지 → INVALID)은 잠정 규칙이다 | `docs/network/interface/04_COMMON/30_ENUM_WIRE_MAPPING.md`(`DataQuality_t`, `ValueValidity_t`, `QualityReason_t`: 제안 Codec 계약, "의미로 명시 변환"), `docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md`(`NetValueQuality`) |
-| 시간 함수 | C2 조회 함수는 owner의 현재 ms(`nowMs`, monotonic `uint32_t`)를 받는다. DOMAIN이 주는 ms 함수의 이름과 출처, 메인 루프 전용인지가 정해지지 않았다 | `docs/network/interface/02_NODES/DOMAIN/20_API.md`(`DomainIf_QueryGet*`의 `nowMs` 인자 설명) |
+| 시간 함수 | Network는 DOMAIN의 메인 루프 전용 ms 함수(`uint32_t`) 하나를 전제한다. `main`이 바퀴마다 한 번 읽어 `Net_MainFunction`·`Net_TxFlush`에 넘긴다. 함수 이름과 출처는 DOMAIN이 정한다. C2 조회 함수도 owner의 현재 ms(`nowMs`)를 받는다 | `docs/network/interface/02_NODES/DOMAIN/20_API.md`(`DomainIf_QueryGet*`의 `nowMs` 인자 설명) |
+| DOMAIN_PERMISSION 송신 | DOMAIN develop은 `DomainIf_TxCisPowerPermission`을 아직 부르지 않는다. 시험대에서는 `NET_DOMAIN_BENCH_PERMISSION`을 켠 `NetDomainBench_PermissionPoll`(시험 전용)이 대신 부른다 | `docs/network/interface/03_COMMUNICATION/10_CAN_FD.md`(DOMAIN_PERMISSION) |
+| 의미 콜백 7개 | 상태 품질(`status_quality`), WINDOW 3개, 로컬 실패 사유, Query 계획, 스냅숏 확인은 보드 hook에서 NULL이다. 그 경로는 HOLD다(BCM_STATUS·CIS_STATUS·VSS_STATUS 수신, M_QUERY 응답 등) | `include/network/net_domain_c2.h`(`NetDomainC2Config`) |
+| 명령 한도 | ACCEPT_LIMIT는 200 ms 후보(1 s 충돌 OPEN), VSS_EVENT USE_LIMIT는 500 ms 초안을 보드 hook에 둔다 | `docs/network/interface/03_COMMUNICATION/10_CAN_FD.md`(명령 공통부, VSS_EVENT) |
 | CIS 전환 함수 | CIS BOOT가 바뀌면 이전 BOOT의 환경(0x300)·Occupant(0x310) 전달을 막고, DOMAIN 소유 동기 Private 전환이 끝난 것을 확인한 뒤 새 BOOT 입력을 다시 전달해야 한다. 이 사본에는 전환 함수 호출이 없다. 링크 epoch 수용은 통합 담당이 `net_domain_c2_accept_ingress_epoch`로 알린다 | `docs/network/interface/02_NODES/DOMAIN/20_API.md`("환경 BOOT 변경 시 C2 Rx 사용"), `docs/network/interface/02_NODES/DOMAIN/25_PRIVATE_ROUTING.md`(`delta-environment-routing`), `docs/network/interface/07_CROSS_NODE_INTERFACE_RULES.md`(`environment-delta`) |
-| DOMAIN_STATE | `M_DOMAIN_ALIVE`(UART-M 0x02, 250 ms)의 `DOMAIN_STATE`(0=INIT, 1=READY, 2=DEGRADED, 3=FAULT)는 실제 DOMAIN 상태여야 한다. Network는 READY를 스스로 만들지 않는다. 이 값을 주는 DOMAIN 함수가 정해지지 않았다 | `docs/network/interface/03_COMMUNICATION/20_UART_M.md`(`M_DOMAIN_ALIVE` B10), `docs/network/sw_detail/functions/uart_m/M_DOMAIN_ALIVE.md` |
+| DOMAIN_STATE | `M_DOMAIN_ALIVE`(UART-M 0x02, 250 ms)의 `DOMAIN_STATE`(0=INIT, 1=READY, 2=DEGRADED, 3=FAULT)는 실제 DOMAIN 상태여야 한다. Network는 READY를 스스로 만들지 않는다. 이 값을 주는 DOMAIN 함수가 정해지지 않았다. Network는 C2 설정의 `alive_state`로 받을 자리만 두었고, 보드 hook은 비워 둔다(`INIT / NO_DATA / 0 / 0xFFFF`) | `docs/network/interface/03_COMMUNICATION/20_UART_M.md`(`M_DOMAIN_ALIVE` B10), `docs/network/sw_detail/functions/uart_m/M_DOMAIN_ALIVE.md` |
 | S32K344 LPUART 인스턴스 | UART-M(ESP32 ↔ DOMAIN, 초기 115200 bps)에 쓸 LPUART 번호와 생성 설정 이름. 지금 기본값 LPUART0은 자리표시값이다 | `docs/network/interface/01_NETWORK_OVERVIEW.md`(UART-M v2 · 초기 115200 bps), `docs/network/interface/06_TECHNICAL_CONSTRAINTS.md`("태스크·드라이버·핀·전압을 임의로 확정하지 않는다. 구현 직전에 보드 자료와 대조한다") |

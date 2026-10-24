@@ -205,6 +205,9 @@ typedef char net_board_uart_instances_distinct[(NET_BOARD_UART_M_INSTANCE != NET
  *    that now is clamped to now and counted (NetHalRtdDiag.tick_future_clamped).
  *      VSS:            HalTimer_GetTicks / VssTime_TickToMs32 (1 tick = 1.25 ms)
  *      Bench w/o VSS:  a SysTick 1 kHz ms counter as tick, identity conversion
+ *      DOMAIN:         net_hal_rtd_last_now_ms32 / identity: the application has
+ *                      one main-loop ms function only; a capture carries the
+ *                      nowMs of the previous pass (net_hal_rtd.h)
  * B) NET_BOARD_NOW_MS_HOOK: a board ms clock returning uint64_t, read in the ISR
  *    and in the main context (bench / host). The ISR stores its milliseconds as
  *    the tick; the conversion is the identity.
@@ -272,7 +275,12 @@ extern uint64_t NET_BOARD_NOW_MS_HOOK(void);
  *   (NetNodeDiag.entry_init_result) and Net_MainFunction() stays inert.
  * NET_BOARD_US_HOOK  uint32_t f(void)  (optional)
  *   Free-running microsecond counter. When defined, the longest
- *   Net_MainFunction() pass is kept in NetNodeDiag.main_max_us; otherwise 0. */
+ *   Net_MainFunction() pass is kept in NetNodeDiag.main_max_us; otherwise 0.
+ * NET_BOARD_DOMAIN_C2_HOOK  bool f(NetDomainC2Api *api, NetDomainC2Config *config)
+ *   DOMAIN node only (src/node/net_node_domain.c), required: the C2 boundary
+ *   functions, the semantic callbacks and the settings of the C2 adapter
+ *   (network/net_domain_c2.h). Both arrive zeroed. false or no hook ->
+ *   NetNode_Init stops at NET_NODE_STAGE_APP_PORT (NET_NOT_CONFIGURED). */
 /* #define NET_BOARD_NODE_CONFIG_HOOK  Board_GetNetNodeConfig */
 /* #define NET_BOARD_US_HOOK           Board_GetMicros        */
 #ifdef NET_BOARD_US_HOOK

@@ -38,6 +38,12 @@ ADAPTERS = tuple(M03 + n for n in ('net_domain_c2.c', 'net_domain_rx.c', 'net_do
 DOMAIN_HEADERS = ('include/network/net_domain_c2.h', M03 + 'net_domain_private.h', M03 + 'net_domain_enum_internal.h')
 RTD = ('src/platform/rtd/net_hal_rtd.c', 'src/platform/rtd/net_hal_rtd_can.c', 'src/platform/rtd/net_hal_rtd_uart.c')
 ROOT = ('src/node/net_node.c', 'src/node/net_entry.c', 'include/network/app/net_if_entry.h', 'include/network/net_node.h')
+# The DOMAIN root (src/node/net_node_domain.c, C2 adapter as Owner) shares the
+# public entry and the node header; the folder header of src/node comes along.
+DOMAIN_ROOT = ('src/node/net_node_domain.c', 'src/node/net_entry.c', 'include/network/app/net_if_entry.h',
+               'include/network/net_node.h')
+DOMAIN_NODE_DIR = ('src/node/net_entry.c', 'src/node/net_node_domain.c', 'src/node/net_node_profile.h')
+DOMAIN_BOARD = ('board/s32k344_domain/net_domain_board.c', 'board/s32k344_domain/net_domain_board.h')
 OWN = {
     'VSS': ('src/node/net_node_profile_vss.c', M03 + 'net_app_port_vss.c', 'include/network/app/net_if_vss.h',
             'include/network/net_app_port_vss.h'),
@@ -56,6 +62,8 @@ MCU_WRAPPER = ('network/src/platform/s32k344/net_s32k344_upper_port.c',
 MIN_TAGS = {p: {'DOMAIN'} for p in ADAPTERS + DOMAIN_HEADERS}
 MIN_TAGS.update({p: {n} for n, files in OWN.items() for p in files})
 MIN_TAGS.update({p: {'VSS', 'CIS', 'BCM'} for p in ROOT})
+MIN_TAGS.update({p: {'VSS', 'CIS', 'BCM', 'DOMAIN'} for p in ROOT if p in DOMAIN_ROOT})
+MIN_TAGS.update({p: {'DOMAIN'} for p in ('src/node/net_node_domain.c',) + DOMAIN_BOARD})
 COMMON_PROBE = 'src/l04_frame_codec/net_wire_common.c'
 REGISTRY = 'src/l04_frame_codec/net_wire_registry.c'
 
@@ -357,9 +365,13 @@ def case_domain_contents(c):
     have = bundle_basics(c, net, 'DOMAIN', out)
     for rel in ADAPTERS + DOMAIN_HEADERS:
         c.check(rel in have, 'DOMAIN: %s missing' % rel)
-    for rel in ROOT + sum(OWN.values(), ()) + VSS_BOARD:
+    for rel in DOMAIN_ROOT + DOMAIN_BOARD:
+        c.check(rel in have, 'DOMAIN: %s missing' % rel)
+    for rel in tuple(r for r in ROOT if r not in DOMAIN_ROOT) + sum(OWN.values(), ()) + VSS_BOARD:
         c.check(rel not in have, 'DOMAIN: %s must not be in the bundle' % rel)
-    c.check(not any(r.startswith('src/node/') for r in have), 'DOMAIN: src/node/ files in the bundle (no root yet)')
+    c.check(sorted(r for r in have if r.startswith('src/node/')) == sorted(DOMAIN_NODE_DIR),
+            'DOMAIN: src/node/ files other than the DOMAIN root in the bundle',
+            str(sorted(r for r in have if r.startswith('src/node/'))))
     c.check(len([r for r in have if r.endswith('.c')]) == len([p for p, t in list_lines(net)
                                                                if p.endswith('.c') and (not t or 'DOMAIN' in t)]),
             'DOMAIN: .c count differs from the list')
@@ -384,6 +396,8 @@ def case_node_contents(c):
         for rel in VSS_BOARD:
             c.check((rel in have) == (node == 'VSS'), '%s: board/s32k344_vss file %s %s' % (
                 node, rel, 'missing' if node == 'VSS' else 'present'))
+        for rel in ('src/node/net_node_domain.c',) + DOMAIN_BOARD:
+            c.check(rel not in have, '%s: DOMAIN file %s in the bundle' % (node, rel))
 
 
 def parse_record(path):

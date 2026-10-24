@@ -18,8 +18,21 @@ ND_TO(ResultReason_t,reason,value);
 *out=value;
 return NET_OK;
 }
-static NetStatus command(NetDomainC2 *a,const DomainIf_CommandContext_t *c,NetworkLocalFailure_t *id,uint16_t *age){
-if(c->commandId==0u||a->config.bcm_boot==0u||a->config.command_accept_limit_ms==0u)return NET_HOLD;
+/* TARGET_BOOT_ID of a BCM command: the BOOT_ID of the last BCM frame the
+ * service accepted, BCM_STATUS first (bcm_target_from_rx; DOMAIN Network checks
+ * it on the last normal target state, docs/network/interface/03_COMMUNICATION/
+ * 10_CAN_FD.md common header), otherwise the configured bcm_boot. Unknown: no
+ * command (HOLD, the TxPort reports NOT_AVAILABLE). */
+static NetStatus bcm_target(const NetDomainC2 *a,uint32_t *out){uint32_t boot;
+if(!a->config.bcm_target_from_rx)boot=a->config.bcm_boot;
+else boot=a->bcm_status_boot!=0u?a->bcm_status_boot:a->bcm_frame_boot;
+if(boot==0u)return NET_HOLD;
+*out=boot;
+return NET_OK;
+}
+static NetStatus command(NetDomainC2 *a,const DomainIf_CommandContext_t *c,NetworkLocalFailure_t *id,uint16_t *age,uint32_t *target){
+if(c->commandId==0u||a->config.command_accept_limit_ms==0u)return NET_HOLD;
+ND_TRY(bcm_target(a,target));
 ND_TRY(age16(c->commandAgeMs,age));
 memset(id,0,sizeof(*id));
 id->link=NETWORK_LINK_CAN;
@@ -39,10 +52,7 @@ NetWireBcmDoorCommandRaw *r=&m.data.bcm_door_command;
 if(in==NULL)return NET_INVALID_ARGUMENT;
 memset(&m,0,sizeof(m));
 m.id=0x100u;
-ND_TRY(command(a,&in->context,&id,&r->command_age_ms));
-r->boot_id=a->config.domain_boot;
-r->tx_sequence=a->next_can_sequence;
-r->target_boot_id=a->config.bcm_boot;
+ND_TRY(command(a,&in->context,&id,&r->command_age_ms,&r->target_boot_id));
 r->command_id=in->context.commandId;
 r->accept_limit_ms=a->config.command_accept_limit_ms;
 ND_TO(DoorLockTarget_t,in->target,r->door_lock_target);
@@ -55,10 +65,7 @@ NetWireBcmClimateCommandRaw *r=&m.data.bcm_climate_command;
 if(in==NULL)return NET_INVALID_ARGUMENT;
 memset(&m,0,sizeof(m));
 m.id=0x110u;
-ND_TRY(command(a,&in->context,&id,&r->command_age_ms));
-r->boot_id=a->config.domain_boot;
-r->tx_sequence=a->next_can_sequence;
-r->target_boot_id=a->config.bcm_boot;
+ND_TRY(command(a,&in->context,&id,&r->command_age_ms,&r->target_boot_id));
 r->command_id=in->context.commandId;
 r->accept_limit_ms=a->config.command_accept_limit_ms;
 ND_TO(FanLevel_t,in->fanTarget,r->fan_target_level);
@@ -72,10 +79,7 @@ NetWireBcmLightCommandRaw *r=&m.data.bcm_light_command;
 if(in==NULL)return NET_INVALID_ARGUMENT;
 memset(&m,0,sizeof(m));
 m.id=0x120u;
-ND_TRY(command(a,&in->context,&id,&r->command_age_ms));
-r->boot_id=a->config.domain_boot;
-r->tx_sequence=a->next_can_sequence;
-r->target_boot_id=a->config.bcm_boot;
+ND_TRY(command(a,&in->context,&id,&r->command_age_ms,&r->target_boot_id));
 r->command_id=in->context.commandId;
 r->accept_limit_ms=a->config.command_accept_limit_ms;
 ND_TO(InteriorLightType_t,in->type,r->interior_light_type);
@@ -108,8 +112,9 @@ return nd_send_can(a,&m,&id);
  *          adapter: an old ALLOW is never renewed by a repetition;
  *          10_DATA_AND_ID_RULES.md: the DOMAIN sequence grows only on a
  *          successful evaluation).
- * The state commits only when the service accepts the frame: a refused
- * submission uses no number. */
+ * The state commits only when the submission is accepted (the service took the
+ * frame, or the M04 publisher slot took the content): a refused submission
+ * uses no number. */
 uint32_t nd_permission_next(uint32_t last){return last==UINT32_MAX?1u:last+1u;
 }
 static bool relaxes(const NetDomainC2PermissionSequence *p,const NetWireDomainPermissionRaw *r){
@@ -181,10 +186,8 @@ else{if(in->vehiclePowerAllowed||(r->vehicle_power_permission!=0u&&r->vehicle_po
 r->vehicle_power_permission=255u;
 }
 ND_TRY(permission_sequence(a,in,r,&sequence,&advance));
-r->boot_id=a->config.domain_boot;
-r->tx_sequence=a->next_can_sequence;
 r->update_sequence=sequence;
-status=nd_send_can(a,&m,NULL);
+status=nd_send_state(a,&m);
 if(status==NET_OK)permission_commit(a,in,r,advance);
 return status;
 }
@@ -195,8 +198,6 @@ if(in==NULL)return NET_INVALID_ARGUMENT;
 memset(&m,0,sizeof(m));
 memset(&id,0,sizeof(id));
 m.id=0x160u;
-r->boot_id=a->config.domain_boot;
-r->tx_sequence=a->next_can_sequence;
 ND_TO(VssOneShotEvent_t,in->event,r->event_kind);
 r->occurrence_id=in->occurrenceId;
 ND_TRY(age16(in->meta.ageMs,&r->original_age_ms));
@@ -225,8 +226,6 @@ NetWireVssWarningStateRaw *r=&m.data.vss_warning_state;
 if(in==NULL)return NET_INVALID_ARGUMENT;
 memset(&m,0,sizeof(m));
 m.id=0x0c0u;
-r->boot_id=a->config.domain_boot;
-r->tx_sequence=a->next_can_sequence;
 /* Unsupported WINDOW is the prescribed non-normal A1 tuple, never CLEAR+OK. */
 if(in->antiPinchEvidence.availability==FUNCTION_AVAILABILITY_UNSUPPORTED){r->antipinch_quality=3u;
 r->antipinch_reason=6u;
@@ -247,7 +246,7 @@ ND_TO(DataQuality_t,in->rearActivationMeta.quality,r->rear_activation_quality);
 ND_TO(QualityReason_t,in->rearActivationReason,r->rear_activation_reason);
 r->rear_activation_sequence=in->rearActivationMeta.updateSequence;
 ND_TRY(age16(in->rearActivationMeta.ageMs,&r->rear_activation_age_ms));
-return nd_send_can(a,&m,NULL);
+return nd_send_state(a,&m);
 }
 NetStatus nd_core_message(NetDomainC2 *a,uint8_t type,const void *object,NetUpperUartMessage *out){NetUpperUartMessage m;
 uint32_t device;
@@ -391,14 +390,15 @@ static NetStatus window_command(NetDomainC2 *a,const DomainIf_WindowCommand_t *i
 NetUpperCanMessage m;
 NetworkLocalFailure_t id;
 NetWireWindowCommandRaw *r=&m.data.window_command;
+uint32_t *sequence=nd_can_sequence(a,0x090u);
 if(!a->config.window_transport_enabled||!a->service->config.inspection_transport)return NET_HOLD;
-if(a->next_can_sequence==0u||a->next_can_sequence==UINT32_MAX)return NET_HOLD;
+if(*sequence==0u||*sequence==UINT32_MAX)return NET_HOLD;
 if(a->config.window_boot==0u||in->context.commandId==0u||a->config.command_accept_limit_ms==0u)return NET_HOLD;
 memset(&m,0,sizeof(m));
 memset(&id,0,sizeof(id));
 m.id=0x090u;
 r->boot_id=a->config.domain_boot;
-r->tx_sequence=a->next_can_sequence;
+r->tx_sequence=*sequence;
 r->target_boot_id=a->config.window_boot;
 r->command_id=in->context.commandId;
 ND_TRY(age16(in->context.commandAgeMs,&r->command_age_ms));
@@ -417,12 +417,12 @@ default:return NET_HOLD;
 NetTxKey key;
 uint64_t now;
 ND_TRY(net_upper_now(a->service,&now));
-source.observation_id=a->next_can_sequence;
+source.observation_id=*sequence;
 source.observed_at_ms=now;
 source.original_age_ms=r->command_age_ms;
 ND_TRY(net_upper_submit_inspection_can(a->service,&m,&source,&a->config.transmit_policy,&key));
 a->last_tx_key=key;
-++a->next_can_sequence;
+++*sequence;
 return NET_OK;
 }
 }

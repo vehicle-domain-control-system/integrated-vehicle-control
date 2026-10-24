@@ -103,6 +103,15 @@ bool net_hal_rtd_set_now(uint64_t now_ms)
 #endif
 }
 
+/* Under time base A the main context writes now_ms only with interrupts masked
+ * (net_hal_rtd_set_now) and an ISR never writes it, so an ISR read never sees
+ * half a write. The same state as Network now: no RAM of its own. */
+uint32_t net_hal_rtd_last_now_ms32(void)
+{
+    const volatile uint64_t *now = &rtd.now_ms;
+    return (uint32_t)*now;
+}
+
 NetUpperCapture net_hal_rtd_capture_now(uint64_t port_epoch)
 {
     NetUpperCapture c;

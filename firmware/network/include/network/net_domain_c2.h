@@ -2,6 +2,7 @@
 #define NETWORK_NET_DOMAIN_C2_H
 #include "network/net_upper_query.h"
 #include "network/net_upper_control.h"
+#include "network/net_upper_publish.h"
 /* Actual pinned Owner ABI, supplied by NETWORK_DOMAIN_C2_INCLUDE_DIR. */
 #include "Domain_Interface_v0.5_C2_target.h"
 
@@ -53,8 +54,19 @@ typedef struct {
     DomainIf_Status_t (*RxNetworkLocalFailure)(const NetworkLocalFailure_t *failure);
 } NetDomainC2Api;
 
+/* M_DOMAIN_ALIVE (UART-M 0x02) evaluation of the DOMAIN application
+ * (docs/network/interface/03_COMMUNICATION/20_UART_M.md M_DOMAIN_ALIVE):
+ * the actual DOMAIN state, never one Network makes up. Wire values. */
+typedef struct {
+    uint8_t domain_state;     /* 0 INIT, 1 READY, 2 DEGRADED, 3 FAULT */
+    uint8_t value_quality;    /* VALUE_QUALITY 0 OK, 1 STALE, 2 INVALID, 3 NO_DATA */
+    uint32_t update_sequence; /* DOMAIN alive evaluation number */
+    uint16_t source_age_ms;   /* ms since that evaluation */
+} NetDomainC2AliveState;
+
 typedef struct {
     void *context;
+    /* bcm_boot: command TARGET_BOOT_ID unless bcm_target_from_rx is set. */
     uint32_t domain_boot, bcm_boot, window_boot, first_can_sequence;
     uint16_t command_accept_limit_ms, event_use_limit_ms;
     NetAgePolicy transmit_policy;
@@ -84,6 +96,21 @@ typedef struct {
      * transition; the DOMAIN Owner then refuses them until its transition is
      * applied, which latches the route blocked. */
     bool cis_transition_barriers;
+    /* M04 publisher of the DOMAIN node (net_upper_publish.h) with entries for
+     * DOMAIN_PERMISSION 0x080 and VSS_WARNING_STATE 0x0C0: their TxPort
+     * submissions go to its latest-value slots, which own BOOT_ID /
+     * TX_SEQUENCE, the 50 ms repetition and the replacement of a frame no
+     * device took yet. NULL: one frame per call through the service queue. */
+    NetUpperPublisher *publisher;
+    /* Command TARGET_BOOT_ID from the BOOT_ID of the last BCM frame the
+     * service accepted, BCM_STATUS first (docs/network/interface/
+     * 03_COMMUNICATION/10_CAN_FD.md common header: TARGET_BOOT_ID is checked by
+     * DOMAIN Network on the last normal target state). None received yet: no
+     * command is sent. Off (zero): bcm_boot. */
+    bool bcm_target_from_rx;
+    /* M_DOMAIN_ALIVE source of the DOMAIN node (net_node_domain.c); NULL or a
+     * non-OK return: INIT / NO_DATA / 0 / 0xFFFF. */
+    NetStatus (*alive_state)(void *, NetDomainC2AliveState *out);
 } NetDomainC2Config;
 typedef struct {
     bool used, failure_delivered;
@@ -125,13 +152,22 @@ typedef struct {
      * smaller AGE of the same tuple. */
     uint32_t advanced, kept, held_older, held_relax, held_age;
 } NetDomainC2PermissionSequence;
+/* CAN messages whose TX_SEQUENCE the adapter numbers itself (one counter per
+ * message, docs/network/interface/03_COMMUNICATION/10_CAN_FD.md common header:
+ * per message, first 1): BCM door / climate / light command, DOMAIN_PERMISSION
+ * and VSS_WARNING_STATE without a publisher, VSS_EVENT, WINDOW command. */
+#define NET_DOMAIN_C2_CAN_MESSAGES 7u
 typedef struct {
     unsigned char init_tag[8];
     NetUpper *service;
     NetUpperQuery *query;
     NetDomainC2Api api;
     NetDomainC2Config config;
-    uint32_t next_can_sequence;
+    /* Next TX_SEQUENCE per message (net_domain_c2.c), from first_can_sequence. */
+    uint32_t can_sequence[NET_DOMAIN_C2_CAN_MESSAGES];
+    /* BOOT_ID of the last accepted BCM_STATUS and of the last other accepted
+     * BCM frame; 0 = none yet (bcm_target_from_rx). */
+    uint32_t bcm_status_boot, bcm_frame_boot;
     bool initialized, registered, in_call;
     NetTxKey last_tx_key;
     DomainIf_Status_t last_c2_status;

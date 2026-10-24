@@ -676,8 +676,14 @@ if(NETWORK_BUILD_RTD_MOCK)
     if(NOT NETWORK_TARGET STREQUAL "host")
         message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK is Host only; a board project links the real RTD")
     endif()
-    if(NOT NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS|BCM)$")
-        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: RTD backend build is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS, CIS, BCM)")
+    if(NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
+        # The DOMAIN node root has the C2 adapter as Owner: it needs the DOMAIN
+        # C2 headers (the NETWORK_BUILD_DOMAIN_C2 block checks the folder).
+        if(NOT NETWORK_BUILD_DOMAIN_C2)
+            message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: the DOMAIN node needs -DNETWORK_BUILD_DOMAIN_C2=ON and NETWORK_DOMAIN_C2_INCLUDE_DIR (DOMAIN C2 headers)")
+        endif()
+    elseif(NOT NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS|BCM)$")
+        message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK: RTD backend build is NOT_CONFIGURED for profile ${NETWORK_NODE_PROFILE} (VSS, CIS, BCM; DOMAIN with NETWORK_BUILD_DOMAIN_C2)")
     endif()
     if(NOT NETWORK_NODE_PLATFORM MATCHES "^(144|344)$")
         message(FATAL_ERROR "NETWORK_BUILD_RTD_MOCK requires explicit NETWORK_NODE_PLATFORM=144 or 344; the node role does not select an MCU")
@@ -690,14 +696,20 @@ if(NETWORK_BUILD_RTD_MOCK)
         ${NETWORK_NODE_PROFILE} _node_profile_sources _node_untagged_sources)
     set(_node_core_sources)
     set(_node_rtd_sources)
+    set(_node_board_sources)
     foreach(_src IN LISTS _node_profile_sources)
         # The node composition root, its profile table and the public entry
-        # are tagged for the profiles this option allows (VSS, CIS, BCM); the
-        # files of the other node profiles are not part of this build.
-        # Board-bound sources (RTD backend, public entry) are compiled once per
-        # time-base variant, with that variant's net_board_cfg.h hook definitions.
-        if(_src MATCHES "^src/platform/rtd/" OR _src STREQUAL "src/node/net_entry.c")
+        # are tagged for the profiles this option allows (VSS, CIS, BCM,
+        # DOMAIN); the files of the other node profiles are not part of this build.
+        # Board-bound sources (RTD backend, public entry, the DOMAIN root with
+        # its C2 hook) are compiled once per time-base variant, with that
+        # variant's net_board_cfg.h hook definitions. Board project files
+        # (board/) are compiled on their own below.
+        if(_src MATCHES "^src/platform/rtd/" OR _src STREQUAL "src/node/net_entry.c"
+           OR _src STREQUAL "src/node/net_node_domain.c")
             list(APPEND _node_rtd_sources ${_src})
+        elseif(_src MATCHES "^board/")
+            list(APPEND _node_board_sources ${_src})
         else()
             list(APPEND _node_core_sources ${_src})
         endif()
@@ -711,6 +723,9 @@ if(NETWORK_BUILD_RTD_MOCK)
         src/l05_transport_port/m09_observation
         src/l03_message_service/m04_message_service
         src/platform/rtd)
+    if(NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
+        list(APPEND _node_includes "${NETWORK_DOMAIN_C2_INCLUDE_DIR}") # C2 adapter, DOMAIN root
+    endif()
     file(GLOB _rtd_mock_sources CONFIGURE_DEPENDS sdk_mock/rtd/src/*.c)
 
     # SDK-independent part: compiled once, without the mock SDK include path.
@@ -748,6 +763,43 @@ if(NETWORK_BUILD_RTD_MOCK)
         target_include_directories(network_vss_board_objs PRIVATE ${_node_includes})
         target_compile_definitions(network_vss_board_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
         network_warnings(network_vss_board_objs)
+    endif()
+
+    if(NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
+        # UART-M (LPUART, net_board_cfg.h): the HAL defines the generated-config
+        # callback in every variant.
+        foreach(_variant IN ITEMS rtd_mock rtd_mock_hook rtd_mock_tick)
+            target_compile_definitions(network_node_${_variant} PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
+        endforeach()
+        # DOMAIN board project files (board/s32k344_domain: node configuration,
+        # C2 binding, time hooks): compiled with the project warnings; the
+        # node tests link them for the board C2 hook and the time conversion.
+        add_library(network_domain_board_objs OBJECT ${_node_board_sources})
+        target_include_directories(network_domain_board_objs PRIVATE ${_node_includes})
+        target_compile_definitions(network_domain_board_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
+        network_warnings(network_domain_board_objs)
+        # The test-bench Permission poll (NET_DOMAIN_BENCH_PERMISSION): compiled
+        # only, never linked.
+        add_library(network_domain_board_bench_objs OBJECT ${_node_board_sources})
+        target_include_directories(network_domain_board_bench_objs PRIVATE ${_node_includes})
+        target_compile_definitions(network_domain_board_bench_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define}
+            NET_DOMAIN_BENCH_PERMISSION=1)
+        network_warnings(network_domain_board_bench_objs)
+        # The DOMAIN board time base: one main-loop ms function. The ISR stamps a
+        # capture with the last nowMs (net_hal_rtd_last_now_ms32), converted by
+        # the board identity; the test supplies the node configuration and the
+        # C2 hook.
+        add_library(network_node_rtd_mock_domain STATIC
+            $<TARGET_OBJECTS:network_node_core_objs> ${_node_rtd_sources} ${_rtd_mock_sources})
+        target_include_directories(network_node_rtd_mock_domain PUBLIC ${_node_includes} sdk_mock/rtd/include)
+        target_compile_definitions(network_node_rtd_mock_domain PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
+        target_compile_definitions(network_node_rtd_mock_domain PRIVATE
+            NET_BOARD_ISR_TICK_HOOK=net_hal_rtd_last_now_ms32
+            NET_BOARD_TICK_TO_MS_HOOK=NetDomainBoard_TickToMs
+            NET_BOARD_NODE_CONFIG_HOOK=MockBoard_NodeConfig
+            NET_BOARD_DOMAIN_C2_HOOK=MockBoard_DomainC2
+            NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
+        network_warnings(network_node_rtd_mock_domain)
     endif()
 
     if(NETWORK_NODE_PROFILE STREQUAL "CIS")
@@ -847,6 +899,24 @@ if(NETWORK_BUILD_RTD_MOCK)
         foreach(case IN ITEMS e11_tx_flush_same_pass e12_tx_flush_no_callbacks e13_tx_flush_before_init
                 e14_tx_flush_failed_init)
             add_test(NAME vss_entry.${case} COMMAND test_vss_entry ${case})
+        endforeach()
+    endif()
+
+    # DOMAIN node end-to-end (CAN + UART-M through the DOMAIN root and the C2
+    # adapter, a fake DOMAIN C2 boundary). One case per process: NetNode_Init /
+    # Net_Init act once.
+    if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
+        add_executable(test_domain_node tests/domain_node/test_domain_node.c
+            $<TARGET_OBJECTS:network_domain_board_objs>)
+        target_include_directories(test_domain_node PRIVATE board/s32k344_domain)
+        target_link_libraries(test_domain_node PRIVATE network_node_rtd_mock_domain)
+        network_warnings(test_domain_node)
+        foreach(case IN ITEMS n01_init n02_init_order n03_can_rx_to_c2 n04_uart_m_context
+                n05_permission_50ms n06_permission_withdraw_replaces n06b_withdraw_aged_no_allow
+                n07_warning_50ms n08_bcm_target_boot n09_alive_250ms n09b_alive_change
+                n10_tx_flush_same_pass n11_tx_sequence_per_message n12_entry_clock_axis
+                n13_composite_field_age n14_uart_m_receive_policy n15_board_c2_hook)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
     endif()
 

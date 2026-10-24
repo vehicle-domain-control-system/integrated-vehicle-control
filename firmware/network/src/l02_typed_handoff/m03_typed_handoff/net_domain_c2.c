@@ -191,12 +191,16 @@ if(a==NULL||s==NULL||api==NULL||config==NULL||api->IsInitialized==NULL||api->Set
 if(net_wire_ranges_overlap(a,sizeof(*a),s,sizeof(*s))||net_wire_ranges_overlap(a,sizeof(*a),api,sizeof(*api))||net_wire_ranges_overlap(a,sizeof(*a),config,sizeof(*config)))return NET_INVALID_ARGUMENT;
 if(bound==a||memcmp(a->init_tag,init_tag,sizeof(init_tag))==0)return NET_BUSY;
 if(q!=NULL&&(net_wire_ranges_overlap(a,sizeof(*a),q,sizeof(*q))||net_wire_ranges_overlap(s,sizeof(*s),q,sizeof(*q))))return NET_INVALID_ARGUMENT;
+/* A bound publisher serves this service and is not part of the adapter. */
+if(config->publisher!=NULL&&(net_wire_ranges_overlap(a,sizeof(*a),config->publisher,sizeof(*config->publisher))||config->publisher->service!=s))return NET_INVALID_ARGUMENT;
 memset(a,0,sizeof(*a));
 a->service=s;
 a->query=q;
 a->api=*api;
 a->config=*config;
-a->next_can_sequence=config->first_can_sequence;
+{size_t i;
+for(i=0u;i<NET_DOMAIN_C2_CAN_MESSAGES;++i)a->can_sequence[i]=config->first_can_sequence;
+}
 a->initialized=true;
 memcpy(a->init_tag,init_tag,sizeof(init_tag));
 return NET_OK;
@@ -262,18 +266,56 @@ if(id!=NULL&&(!a->config.failure_sink_ready||a->api.RxNetworkLocalFailure==NULL)
 for(i=0u;i<NET_UPPER_TX_CAPACITY;++i)if(!a->tx[i].used)return NET_OK;
 return NET_NO_CAPACITY;
 }
+/* TX_SEQUENCE is kept per message, first 1, +1 for every frame
+ * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md common header). */
+uint32_t *nd_can_sequence(NetDomainC2 *a,uint16_t id){size_t i;
+switch(id){case 0x100u:i=0u;
+break;
+case 0x110u:i=1u;
+break;
+case 0x120u:i=2u;
+break;
+case 0x080u:i=3u;
+break;
+case 0x0c0u:i=4u;
+break;
+case 0x160u:i=5u;
+break;
+case 0x090u:i=6u;
+break;
+default:return NULL;
+}
+return &a->can_sequence[i];
+}
+/* BCM_STATUS first, then any other BCM frame (bcm_target_from_rx). */
+void nd_bcm_boot(NetDomainC2 *a,uint16_t id,uint32_t boot){const NetWireRegistryEntry *r=net_wire_registry_find(NET_WIRE_CAN,id);
+if(r==NULL||r->sender!=NET_WIRE_NODE_BCM||boot==0u)return;
+if(id==0x230u)a->bcm_status_boot=boot;
+else a->bcm_frame_boot=boot;
+}
 NetStatus nd_send_can(NetDomainC2 *a,NetUpperCanMessage *m,const NetworkLocalFailure_t *id){NetSourceStamp source;
 NetTxKey key;
 uint64_t now;
+uint32_t *sequence;
 ND_TRY(room(a,id));
 ND_TRY(net_upper_now(a->service,&now));
-if(a->next_can_sequence==0u||a->next_can_sequence==UINT32_MAX)return NET_HOLD;
-source.observation_id=a->next_can_sequence;
+sequence=nd_can_sequence(a,m->id);
+if(sequence==NULL)return NET_UNSUPPORTED;
+if(*sequence==0u||*sequence==UINT32_MAX)return NET_HOLD;
+ND_TRY(net_upper_wire_status(net_upper_can_set_identity(m,a->config.domain_boot,*sequence)));
+source.observation_id=*sequence;
 source.observed_at_ms=now;
 source.original_age_ms=net_upper_can_max_age(m);
 ND_TRY(net_upper_submit_can(a->service,m,&source,&a->config.transmit_policy,&key));
-++a->next_can_sequence;
+++*sequence;
 return remember(a,key,now,id);
+}
+/* The M04 slot takes the latest content and assigns BOOT_ID / TX_SEQUENCE per
+ * frame; a newer submission replaces one no device has taken
+ * (net_upper_publish.h). Accepted = copied into the slot. */
+NetStatus nd_send_state(NetDomainC2 *a,NetUpperCanMessage *m){
+if(a->config.publisher==NULL)return nd_send_can(a,m,NULL);
+return net_upper_publish_can(a->config.publisher,m,NULL,NULL);
 }
 NetStatus nd_send_uart(NetDomainC2 *a,NetUpperUartMessage *m,const NetworkLocalFailure_t *id){NetSourceStamp source;
 NetTxKey key;
