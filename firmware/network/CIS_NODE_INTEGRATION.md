@@ -68,6 +68,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 
 - `NetNodeDiag.app`: 수신 콜백 수, 마지막 permission, relay 제출·거절·변화 없음(`relay_unchanged`), 함수별 미수용·콜백 안 제출 수, `occupant_not_current`(Occupant 거절: Pi 판정 전이거나 그 relay가 아님).
 - `NetNodeDiag.rear_tx`, `environment_tx`, `occupant_tx`, `status_tx`, `pi_permission_tx`: M04 슬롯(BOOT/TX 또는 LINK_SEQUENCE, 교체, 대기 Age, 반복). `pi_permission_tx.revision`은 마지막 relay 번호다.
+- 큐 최대 깊이(줄지 않는다): `NetNodeDiag.upper.tx_max_depth`(서비스 송신 칸에 동시에 있던 최대 수), `upper.rx_max_depth`(서비스 수신 큐), `hal.rx_max_depth`(어댑터 수신 큐), `rtd.isr_ring_max_depth`(CAN ISR 링, TX 완료 사실 포함), `rtd.uart[1].uart_isr_ring_max_depth`(UART-C 바이트 링).
 
 ## 보드 설정
 
@@ -82,3 +83,4 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 - `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `cis_node.*`: `tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
 - 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`, `f23_vision_repeat_delivered`(Pi 판정 반복·늦은 반복 50 ms 여유·정확한 중복), `f25_vision_repeat_long_age`(2초 넘는 Pi 반복).
 - P_PERMISSION relay와 Occupant 품질: `cis_node.f21_permission_quality_drop_relayed`, `f22_relay_sequence_cis_owned`, `f24_occupant_restricted_quality`.
+- 문서 통신량 부하: `cis_node.load_doc_traffic`. 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. CIS가 받는 것은 다른 노드 몫 7개)과 Pi UART-C(P_VISION_RESULT 29 B / 100 ms, P_VISION_STATUS 26 B / 1 s, 바이트 간격 87 µs)를 넣는다. 앱 역할은 CIS_REAR·ENVIRONMENT·STATUS를 문서 주기마다, CIS_OCCUPANT를 Pi 판정마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 10 ms 주기이고 10바퀴마다 한 번 7 ms 늦는다(17 ms). 손실 0(링·큐·M04 슬롯, CIS 몫 수신 전부 전달), 자기 프레임 간격 ≤ 주기 + 17 ms, P_PERMISSION 간격 ≤ 500 ms + 17 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD CIS ...` 한 줄로 남긴다.

@@ -205,6 +205,12 @@ typedef struct {
     uint32_t repeat_age_raised; /* of them: AGE raised to the lower bound within the slack */
     uint32_t generation_changes; /* receive keys moved to a new sender BOOT */
     uint32_t old_generation; /* frames of an ended BOOT refused (also counted in stale) */
+    /* Queue high-water marks, raw like the counters above (never reset, at
+     * most the capacity): most transmit records in use at once (tx[],
+     * NET_UPPER_TX_CAPACITY) and most events waiting at once in the receive
+     * queue (rx[], NET_UPPER_RX_CAPACITY). */
+    uint32_t tx_max_depth;
+    uint32_t rx_max_depth;
 } NetUpperObservation;
 typedef struct NetUpper {
     unsigned char init_tag[8]; /* Byte-readable live-instance guard; fresh storage may be poisoned. */

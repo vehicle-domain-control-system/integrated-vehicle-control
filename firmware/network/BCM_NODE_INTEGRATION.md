@@ -46,9 +46,11 @@ BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 �
 
 - `NetNodeDiag.app`: 명령 전달 수, 대상 BOOT 불일치, 마지막 permission과 meta, 함수별 미수용·콜백 안 제출 수, Result·Event 저장소(대기 수, 최대 깊이, 거절 수).
 - `NetNodeDiag.result_tx`, `event_tx`, `door_state_tx`, `climate_state_tx`, `light_state_tx`, `status_tx`: M04 슬롯(BOOT/TX, 교체, 대기 Age).
+- 큐 최대 깊이(줄지 않는다): `NetNodeDiag.upper.tx_max_depth`(서비스 송신 칸에 동시에 있던 최대 수), `upper.rx_max_depth`(서비스 수신 큐), `hal.rx_max_depth`(어댑터 수신 큐), `rtd.isr_ring_max_depth`(CAN ISR 링, TX 완료 사실 포함).
 - DOMAIN 0x080이 150 ms 끊기면 `NetNodeDiag.permission.reason`이 `NET_PERMISSION_RX_TIMEOUT`이 된다.
 
 ## MCU 선택과 시험
 
 - BCM SysRS는 전용 S32K144를 지정하지만 이 저장소에 BCM 실제 보드 프로젝트는 없다. 실제 프로젝트의 `CPU_S32K144HFT0VLLT` 또는 확인한 MCU의 `NETWORK_NODE_PLATFORM=144/344`를 명시한다. 역할(profile 3)만으로 MCU를 정하지 않으며 선택 누락/충돌은 컴파일 오류다.
 - `.build-bcm`(`-DNETWORK_NODE_PROFILE=BCM -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `bcm_node.*`: `tests/bcm_node/test_bcm_node_e2e.c`. DOMAIN 쪽 CAN을 mock SDK로 구동한다. `bcm_node.b14_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
+- 문서 통신량 부하: `bcm_node.load_doc_traffic`. 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. BCM이 받는 것은 다른 노드 몫 7개)을 넣고, 앱 역할로 BCM_DOOR_STATE·CLIMATE_STATE·LIGHT_STATE·STATUS를 문서 주기마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 10 ms 주기다. 손실 0(링·큐·M04 슬롯, DOMAIN_PERMISSION 전부 감시에 전달), 자기 프레임 간격 ≤ 주기 + 10 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD BCM ...` 한 줄로 남긴다.

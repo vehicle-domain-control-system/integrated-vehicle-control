@@ -201,6 +201,7 @@ int main(void)
 | `rtd.time_source` | 0 OsIf, 1 `NET_BOARD_NOW_MS_HOOK`, 2 앱 시계(tick hook) |
 | `rtd.isr_ring_capacity`, `rtd.isr_drain_budget` | 빌드한 링 크기와 바퀴당 상한 |
 | `rtd.isr_ring_overflow`, `rtd.isr_ring_max_depth` | 링이 차서 버린 수신 프레임 수, 링에 동시에 쌓인 최대 항목 수 |
+| `upper.tx_max_depth`, `upper.rx_max_depth`, `hal.rx_max_depth` | 서비스 송신 칸, 서비스 수신 큐, 어댑터 수신 큐에 동시에 있던 최대 항목 수(줄지 않는다) |
 | `rtd.rx_overruns`, `rtd.rx_loss_events` | MB overrun 수, 손실 직후 링에 들어간(그리고 전달된) 프레임 수(손실 경계) |
 | `rtd.uart_poll_drained` | 서비스 Port poll이 시각 검사 전에 UART 링에서 넘긴 항목 수 |
 | `rtd.main_drained_max` | 한 바퀴에 링에서 꺼낸 최대 항목 수 |
@@ -209,6 +210,8 @@ int main(void)
 | `rtd.tx_abort_already_sent` | 그중 abort가 `FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS`(abort 전에 이미 송신됨, TX_COMPLETE 없음)라 성공으로 정산한 수 |
 | `rtd.tx_abort_timeouts`, `rtd.tx_quarantine_released` | 그중 abort가 `FLEXCAN_STATUS_TIMEOUT`이라 실패로 보고하고 그 MB를 격리한 수, 격리한 MB의 플래그가 서서 다시 쓰게 된 수 |
 | `rtd.tx_abort_last_status` | 마지막 abort의 RTD 반환값 |
+
+- 문서 통신량 부하(host): `vss_node.load_doc_traffic`(`_hook`은 보드 시계 hook 빌드). 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. VSS가 받는 것은 다른 노드 몫 10개)을 넣고, 앱 역할로 VSS_STATUS를 250 ms마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 20 ms 주기다. 손실 0(링·큐·M04 슬롯, DOMAIN_PERMISSION·VSS_WARNING_STATE 전부 전달), VSS_STATUS 간격 ≤ 250 ms + 20 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD VSS ...` 한 줄로 남긴다.
 
 ## VSS 통합 하네스 (host, `tests/vss_integ`)
 

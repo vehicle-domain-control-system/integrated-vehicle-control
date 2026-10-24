@@ -46,6 +46,9 @@ typedef struct {
     uint32_t rx_captured, rx_dropped, tx_submitted, tx_rejected;
     uint32_t tx_facts, tx_duplicates, tx_stale, tx_conflicts;
     uint32_t errors, resets, backend_violations, clock_holds;
+    /* High-water mark of the receive queue (rx[], NET_HAL_RX_CAPACITY): most
+     * events waiting at once; never reset, at most the capacity. */
+    uint32_t rx_max_depth;
 } NetHalObservation;
 typedef struct {
     bool initialized, api_busy, clock_seen;

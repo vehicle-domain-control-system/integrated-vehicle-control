@@ -745,6 +745,9 @@ if(NETWORK_BUILD_RTD_MOCK)
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "VSS")
         foreach(_variant IN ITEMS ostimer hook)
             add_executable(test_vss_node_e2e_${_variant} tests/vss_node/test_vss_node_e2e.c)
+            # Documented traffic of the load case (tests/node_load).
+            target_sources(test_vss_node_e2e_${_variant} PRIVATE tests/node_load/net_load_traffic.c)
+            target_include_directories(test_vss_node_e2e_${_variant} PRIVATE tests/node_load)
             if(_variant STREQUAL "hook")
                 target_link_libraries(test_vss_node_e2e_${_variant} PRIVATE network_node_rtd_mock_hook)
                 target_compile_definitions(test_vss_node_e2e_${_variant} PRIVATE VSS_NODE_TEST_TIME_HOOK=1)
@@ -766,6 +769,9 @@ if(NETWORK_BUILD_RTD_MOCK)
             add_test(NAME vss_node.${case} COMMAND test_vss_node_e2e_ostimer ${case})
             add_test(NAME vss_node.${case}_hook COMMAND test_vss_node_e2e_hook ${case})
         endforeach()
+        # Load of the documented traffic, named the same way.
+        add_test(NAME vss_node.load_doc_traffic COMMAND test_vss_node_e2e_ostimer load_doc_traffic)
+        add_test(NAME vss_node.load_doc_traffic_hook COMMAND test_vss_node_e2e_hook load_doc_traffic)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_vss_entry tests/vss_node/test_vss_entry.c)
@@ -816,6 +822,9 @@ if(NETWORK_BUILD_RTD_MOCK)
     # facade). One case per process: NetNode_Init / Net_Init act once.
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "CIS")
         add_executable(test_cis_node_e2e tests/cis_node/test_cis_node_e2e.c)
+        # Documented traffic of the load case (tests/node_load).
+        target_sources(test_cis_node_e2e PRIVATE tests/node_load/net_load_traffic.c)
+        target_include_directories(test_cis_node_e2e PRIVATE tests/node_load)
         target_link_libraries(test_cis_node_e2e PRIVATE network_node_rtd_mock)
         network_warnings(test_cis_node_e2e)
         foreach(case IN ITEMS f01_init f02_permission_rx_relay f03_permission_new_evaluations
@@ -828,9 +837,12 @@ if(NETWORK_BUILD_RTD_MOCK)
                 f23_vision_repeat_delivered f24_occupant_restricted_quality f25_vision_repeat_long_age)
             add_test(NAME cis_node.${case} COMMAND test_cis_node_e2e ${case})
         endforeach()
+        add_test(NAME cis_node.load_doc_traffic COMMAND test_cis_node_e2e load_doc_traffic)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_cis_node_entry tests/cis_node/test_cis_node_e2e.c)
+        target_sources(test_cis_node_entry PRIVATE tests/node_load/net_load_traffic.c)
+        target_include_directories(test_cis_node_entry PRIVATE tests/node_load)
         target_link_libraries(test_cis_node_entry PRIVATE network_node_rtd_mock_tick)
         target_compile_definitions(test_cis_node_entry PRIVATE CIS_NODE_TEST_ENTRY=1)
         network_warnings(test_cis_node_entry)
@@ -848,6 +860,9 @@ if(NETWORK_BUILD_RTD_MOCK)
     # One case per process: NetNode_Init / Net_Init act once.
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "BCM")
         add_executable(test_bcm_node_e2e tests/bcm_node/test_bcm_node_e2e.c)
+        # Documented traffic of the load case (tests/node_load).
+        target_sources(test_bcm_node_e2e PRIVATE tests/node_load/net_load_traffic.c)
+        target_include_directories(test_bcm_node_e2e PRIVATE tests/node_load)
         target_link_libraries(test_bcm_node_e2e PRIVATE network_node_rtd_mock)
         network_warnings(test_bcm_node_e2e)
         foreach(case IN ITEMS b01_init b02_door_command_rx b03_climate_light_command_rx
@@ -857,9 +872,12 @@ if(NETWORK_BUILD_RTD_MOCK)
                 b13_not_ready b13_domain_reboot)
             add_test(NAME bcm_node.${case} COMMAND test_bcm_node_e2e ${case})
         endforeach()
+        add_test(NAME bcm_node.load_doc_traffic COMMAND test_bcm_node_e2e load_doc_traffic)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_bcm_node_entry tests/bcm_node/test_bcm_node_e2e.c)
+        target_sources(test_bcm_node_entry PRIVATE tests/node_load/net_load_traffic.c)
+        target_include_directories(test_bcm_node_entry PRIVATE tests/node_load)
         target_link_libraries(test_bcm_node_entry PRIVATE network_node_rtd_mock_tick)
         target_compile_definitions(test_bcm_node_entry PRIVATE BCM_NODE_TEST_ENTRY=1)
         network_warnings(test_bcm_node_entry)

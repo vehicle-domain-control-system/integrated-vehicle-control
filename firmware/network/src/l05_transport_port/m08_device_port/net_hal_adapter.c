@@ -60,6 +60,7 @@ static void queue_at(NetHalAdapter *a,const NetUpperEvent *e,uint64_t order)
     }
     a->rx[(a->rx_head+n)%NET_HAL_RX_CAPACITY]=*e;
     a->rx_order[(a->rx_head+n)%NET_HAL_RX_CAPACITY]=order; ++a->rx_count;
+    if(a->rx_count>a->observation.rx_max_depth) a->observation.rx_max_depth=(uint32_t)a->rx_count;
 }
 static NetStatus queue(NetHalAdapter *a,const NetUpperEvent *e)
 {

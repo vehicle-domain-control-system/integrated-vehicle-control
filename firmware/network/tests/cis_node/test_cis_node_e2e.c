@@ -17,6 +17,7 @@
 #include "network/net_upper_uart.h"
 #include "mock_rtd.h"
 #include "net_hal_rtd_internal.h" /* Verify the composed adapter, without adding a public API. */
+#include "net_load_traffic.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -1934,6 +1935,329 @@ static int f25_vision_repeat_long_age(void)
     return 0;
 }
 
+/* ------------------------------------------------ documented traffic ---- */
+/* Ten seconds of the documented traffic (net_load_traffic.h):
+ *   CAN    : the periodic frames of DOMAIN, BCM and VSS as their senders put
+ *            them on the bus (10_CAN_FD.md message list, phase 0: seven of
+ *            them start together every second). The RX message buffers
+ *            accept every ID, so all of them enter the CIS receive path; the
+ *            routes of the other nodes end in the registry, not as a loss.
+ *   UART-C : the Pi sends P_VISION_RESULT (29 B) every 100 ms and
+ *            P_VISION_STATUS (26 B) every 1 s, back to back, 87 us a byte
+ *            (30_UART_C.md message list, 115200 bit/s).
+ *   App    : CIS_REAR, CIS_ENVIRONMENT and CIS_STATUS at their 10_CAN_FD.md
+ *            periods, in the pass that reaches the due time, and CIS_OCCUPANT
+ *            for every Pi judgement delivered (100 ms), after NetNode_Step();
+ *            the next pass sends them.
+ *   Main   : a pass every 10 ms, every tenth one 7 ms late (17 ms).
+ * At an instant shared by a pass and bus frames the pass runs first, so those
+ * frames wait a whole pass. Nothing may be lost (ISR rings, adapter and
+ * service queues, M04 slots, every frame for the CIS delivered), an own frame
+ * leaves within its period plus one pass (17 ms), P_PERMISSION within its
+ * 500 ms period plus one pass, and no queue goes past its capacity. The LOAD
+ * line reports the counts and the high-water marks against the capacities of
+ * this build. */
+enum { LOAD_OWN = 4, LOAD_QUEUE = 128 };
+#define LOAD_PASS_US 10000u
+#define LOAD_LATE_US 7000u
+#define LOAD_SLACK_MS 17u
+#define LOAD_FLUSH_US 100000u
+#define LOAD_PI_PERMISSION_PERIOD_MS 500u
+
+static NetLoadTx load_tx[LOAD_OWN];
+static uint64_t load_app_due[LOAD_OWN];
+static uint32_t load_app_sequence[LOAD_OWN];
+static bool load_app_on;
+static unsigned load_occupant_results;   /* Pi judgements already relayed */
+static unsigned load_app_submitted, load_app_refused, load_foreign_tx, load_inject_lost;
+static unsigned load_relays, load_relay_bad, load_relay_link_gaps, load_relay_violations;
+static uint64_t load_relay_last_ms;
+static uint16_t load_relay_last_link;
+static uint8_t load_q_byte[LOAD_QUEUE];
+static uint64_t load_q_at[LOAD_QUEUE];
+static unsigned load_q_head, load_q_tail;
+static uint64_t load_line_free_us;
+
+static void load_init_own(void)
+{
+    size_t k;
+    unsigned j = 0u;
+    for (k = 0u; k < NET_LOAD_MESSAGE_COUNT && j < LOAD_OWN; ++k) {
+        if (net_load_messages[k].sender != NET_LOAD_CIS) continue;
+        net_load_tx_init(&load_tx[j], net_load_messages[k].id, net_load_messages[k].period_ms, LOAD_SLACK_MS);
+        load_app_due[j] = 0u;
+        load_app_sequence[j] = 0u;
+        ++j;
+    }
+}
+
+static NetSubmitResult load_submit(uint16_t id, uint32_t n)
+{
+    switch (id) {
+    case 0x0A0u: { NetCisRear r = rear_sample(n, 5u); return CisNet_PublishRear(&r); }
+    case 0x300u: { NetCisEnvironment v = environment_sample(n, 40u); return CisNet_PublishEnvironment(&v); }
+    case 0x310u: { NetCisOccupant o = relay_of(&last_result, 0u); return CisNet_PublishOccupant(&o); }
+    default: { NetCisStatus s = status_ready(n, 3u); return CisNet_PublishStatus(&s); }
+    }
+}
+
+/* The CIS application in the superloop: what is due is submitted now.
+ * CIS_OCCUPANT is the occupant update of a Pi judgement (02_NODES/CIS/
+ * 20_API.md: linked to the Pi original BOOT / VISION_SEQUENCE / AGE), so it
+ * follows P_VISION_RESULT: one relay per judgement delivered. */
+static void load_app(uint64_t now)
+{
+    unsigned j;
+    if (!load_app_on) return;
+    for (j = 0u; j < LOAD_OWN; ++j) {
+        if (load_tx[j].id == 0x310u) {
+            if (result_count == load_occupant_results) continue;
+            load_occupant_results = result_count;
+        } else {
+            if (now < load_app_due[j]) continue;
+            load_app_due[j] += load_tx[j].period_ms;
+        }
+        ++load_app_submitted;
+        if (load_submit(load_tx[j].id, ++load_app_sequence[j]) != NET_SUBMIT_OK) ++load_app_refused;
+    }
+}
+
+/* The far ends take what the node sent: CAN frames (TX_COMPLETE) and the
+ * P_PERMISSION relay on UART-C (END_TRANSFER). */
+static void load_collect(void)
+{
+    MockCanFrame f;
+    NetWireCanEnvelope e;
+    uint8_t bytes[NET_WIRE_UART_FRAME_MAX];
+    uint32 n;
+    uint64_t now = now_ms();
+    in_isr = true;
+    while (MockRtd_CanTransmitNext(BUS, &f) >= 0) {
+        e = envelope(&f);
+        if (!net_load_tx_seen(load_tx, LOAD_OWN, &e, now)) ++load_foreign_tx;
+    }
+    n = MockRtd_UartTransmitTake(LPUART, bytes, sizeof(bytes));
+    in_isr = false;
+    if (n > 0u) {
+        const NetWireRegistryEntry *r = net_wire_registry_find(NET_WIRE_UART_C, 0x62u);
+        NetWireUartFrame w;
+        NetUpperUartMessage m;
+        memset(&w, 0, sizeof(w));
+        w.length = n;
+        memcpy(w.bytes, bytes, n);
+        if (r == NULL || net_upper_uart_decode(NET_WIRE_CANDIDATE_ONLY, NET_WIRE_UART_C, r->direction, &w, &m) != NET_WIRE_OK ||
+            m.type != 0x62u) {
+            ++load_relay_bad;
+            return;
+        }
+        /* LINK_SEQUENCE of the CIS -> Pi direction: from 1, +1 per frame. */
+        if (m.sequence != (load_relays == 0u ? 1u : (uint16_t)(load_relay_last_link + 1u))) ++load_relay_link_gaps;
+        load_relay_last_link = m.sequence;
+        if (load_relays > 0u && now - load_relay_last_ms > LOAD_PI_PERMISSION_PERIOD_MS + LOAD_SLACK_MS)
+            ++load_relay_violations;
+        load_relay_last_ms = now;
+        ++load_relays;
+    }
+}
+
+/* One superloop pass in the documented order (net_node.h,
+ * VSS_NODE_INTEGRATION.md): the Network pass, then the application. */
+static void load_pass(void)
+{
+#ifdef CIS_NODE_TEST_ENTRY
+    Net_MainFunction((uint32_t)now_ms());
+#else
+    NetNode_Step();
+#endif
+    load_collect();
+    load_app(now_ms());
+}
+
+/* Frame n of message k on the bus (ISR context of the CAN controller). */
+static int load_inject(size_t k, uint32_t n)
+{
+    NetWireCanEnvelope e;
+    MockCanFrame f;
+    CHECK(net_load_frame(k, n, &e));
+    memset(&f, 0, sizeof(f));
+    f.id = e.standard_id; f.fd = e.fdf; f.brs = e.brs; f.dlc = e.dlc; f.length = (uint8)e.length;
+    memcpy(f.data, e.bytes, e.length);
+    in_isr = true;
+    if (MockRtd_CanInject(BUS, &f) < 0) ++load_inject_lost;
+    in_isr = false;
+    return 0;
+}
+
+/* A Pi frame due at due_us goes on the line once the line is free; each byte
+ * arrives 87 us after the previous one. */
+static int load_line_queue(const NetUpperUartMessage *m, uint64_t due_us)
+{
+    NetWireUartFrame f;
+    size_t i;
+    uint64_t start;
+    memset(&f, 0, sizeof(f));
+    CHECK(net_upper_uart_encode(NET_WIRE_CANDIDATE_ONLY, m, &f) == NET_WIRE_OK);
+    start = due_us > load_line_free_us ? due_us : load_line_free_us;
+    for (i = 0u; i < f.length; ++i) {
+        CHECK(load_q_tail - load_q_head < LOAD_QUEUE);
+        load_q_byte[load_q_tail % LOAD_QUEUE] = f.bytes[i];
+        load_q_at[load_q_tail % LOAD_QUEUE] = start + (uint64_t)(i + 1u) * BYTE_US;
+        ++load_q_tail;
+    }
+    load_line_free_us = start + (uint64_t)f.length * BYTE_US;
+    return 0;
+}
+
+static uint32_t load_slot_lost(const NetUpperPublishView *v)
+{
+    return v->counters.queue_full + v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;
+}
+
+static uint32_t load_missing(uint32_t expected, uint32_t delivered)
+{
+    return expected > delivered ? expected - delivered : 0u;
+}
+
+static int load_doc_traffic(void)
+{
+    const uint64_t end_us = (uint64_t)NET_LOAD_DURATION_MS * 1000u;
+    uint32_t sent[NET_LOAD_MESSAGE_COUNT];
+    uint64_t due_us[NET_LOAD_MESSAGE_COUNT];
+    uint64_t pass_at = LOAD_PASS_US, pi_at = 0u, t;
+    uint32_t passes = 0u, results = 0u, statuses = 0u, permissions = 0u, injected = 0u;
+    uint32_t lost, violations, tx_frames;
+    uint16_t link = 0u;
+    size_t k;
+    NetNodeDiag d;
+    NetUpperUartMessage m;
+    CHECK(start_node() == NET_OK);
+    load_init_own();
+    load_app_on = true;
+    for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+        sent[k] = 0u;
+        due_us[k] = net_load_messages[k].sender == NET_LOAD_CIS ? UINT64_MAX : 0u;
+    }
+    for (;;) {
+        t = pass_at;
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) if (due_us[k] < t) t = due_us[k];
+        if (pi_at < t) t = pi_at;
+        if (load_q_head != load_q_tail && load_q_at[load_q_head % LOAD_QUEUE] < t) t = load_q_at[load_q_head % LOAD_QUEUE];
+        if (t >= end_us) break;
+        MockRtd_AdvanceUs(t - MockRtd_NowUs());
+        if (t == pass_at) {
+            load_pass();
+            ++passes;
+            pass_at += (passes % 10u == 9u) ? LOAD_PASS_US + LOAD_LATE_US : LOAD_PASS_US;
+        }
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+            if (due_us[k] != t) continue;
+            RUN(load_inject(k, sent[k]++));
+            ++injected;
+            if (net_load_messages[k].id == 0x080u) ++permissions;
+            due_us[k] += (uint64_t)net_load_messages[k].period_ms * 1000u;
+        }
+        if (t == pi_at) {
+            m = vision_message(++link, ++results, 20u);
+            RUN(load_line_queue(&m, t));
+            if (t % 1000000u == 0u) {
+                m = vision_status_message(++link, ++statuses);
+                RUN(load_line_queue(&m, t));
+            }
+            pi_at += 100000u;
+        }
+        while (load_q_head != load_q_tail && load_q_at[load_q_head % LOAD_QUEUE] <= t) {
+            in_isr = true;
+            if (MockRtd_UartInject(LPUART, &load_q_byte[load_q_head % LOAD_QUEUE], 1u) != 1u) ++load_inject_lost;
+            in_isr = false;
+            ++load_q_head;
+        }
+    }
+    /* No new traffic: the passes take what still waits. */
+    load_app_on = false;
+    while (pass_at <= end_us + LOAD_FLUSH_US) {
+        MockRtd_AdvanceUs(pass_at - MockRtd_NowUs());
+        load_pass();
+        ++passes;
+        pass_at += (passes % 10u == 9u) ? LOAD_PASS_US + LOAD_LATE_US : LOAD_PASS_US;
+    }
+    d = diag();
+    {
+        const NetLoadCount loss[] = {
+            { "upper.rx_dropped", d.upper.rx_dropped },
+            { "hal.rx_dropped", d.hal.rx_dropped },
+            { "rtd.isr_ring_overflow", d.rtd.isr_ring_overflow },
+            { "rtd.rx_overruns", d.rtd.rx_overruns },
+            { "rtd.rx_queue_rejected", d.rtd.rx_queue_rejected },
+            { "rtd.uart[1].uart_isr_ring_overflow", d.rtd.uart[1].uart_isr_ring_overflow },
+            { "rtd.uart[1].uart_rx_overrun", d.rtd.uart[1].uart_rx_overrun },
+            { "rtd.uart[1].uart_rx_queue_rejected", d.rtd.uart[1].uart_rx_queue_rejected },
+            { "line_bytes_not_taken", MockRtd_UartRxLost(LPUART) },
+            { "bus_frames_not_taken", load_inject_lost },
+            { "app_refused", load_app_refused },
+            { "rear_tx", load_slot_lost(&d.rear_tx) },
+            { "environment_tx", load_slot_lost(&d.environment_tx) },
+            { "occupant_tx", load_slot_lost(&d.occupant_tx) },
+            { "status_tx", load_slot_lost(&d.status_tx) },
+            { "pi_permission_tx", load_slot_lost(&d.pi_permission_tx) },
+            { "permission_not_delivered", load_missing(permissions, d.app.permission_delivered) },
+            { "vision_result_not_delivered", load_missing(results, d.app.vision_result_delivered) },
+            { "vision_status_not_delivered", load_missing(statuses, d.app.vision_status_delivered) },
+            { "tx_sequence_gaps", net_load_tx_gaps(load_tx, LOAD_OWN) },
+            { "relay_link_sequence_gaps", load_relay_link_gaps },
+            { "relay_frames_bad", load_relay_bad }
+        };
+        const NetLoadCount late[] = {
+            { "can_periods", net_load_tx_violations(load_tx, LOAD_OWN, NET_LOAD_DURATION_MS) },
+            { "relay_periods", load_relay_violations },
+            { "relay_none", load_relays == 0u ? 1u : 0u },
+            { "relay_end", load_relays > 0u && NET_LOAD_DURATION_MS - load_relay_last_ms >
+                               LOAD_PI_PERMISSION_PERIOD_MS + LOAD_SLACK_MS ? 1u : 0u }
+        };
+        lost = net_load_report("load lost", loss, sizeof(loss) / sizeof(loss[0]));
+        violations = net_load_report("load late", late, sizeof(late) / sizeof(late[0]));
+    }
+    tx_frames = net_load_tx_frames(load_tx, LOAD_OWN);
+    printf("LOAD CIS rx_frames=%lu tx_frames=%lu lost=%lu period_violations=%lu can_ring_max=%lu/%lu "
+           "hal_rx_max=%lu/%lu upper_rx_max=%lu/%lu upper_tx_max=%lu/%lu uart_ring_max=%lu/%lu\n",
+           (unsigned long)d.rtd.rx_frames, (unsigned long)tx_frames, (unsigned long)lost, (unsigned long)violations,
+           (unsigned long)d.rtd.isr_ring_max_depth, (unsigned long)NET_BOARD_CAN_ISR_RING,
+           (unsigned long)d.hal.rx_max_depth, (unsigned long)NET_HAL_RX_CAPACITY,
+           (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
+           (unsigned long)d.upper.tx_max_depth, (unsigned long)NET_UPPER_TX_CAPACITY,
+           (unsigned long)d.rtd.uart[1].uart_isr_ring_max_depth, (unsigned long)NET_BOARD_UART_ISR_RING);
+    printf("load detail: passes=%lu injected=%lu permission=%lu/%lu vision_result=%lu/%lu vision_status=%lu/%lu "
+           "submitted=%u refused=%u relays=%u drained_max=%lu/%lu ring_overflow=%lu hal_dropped=%lu "
+           "upper_dropped=%lu rx_invalid=%lu rx_held=%lu queue_full=%lu,%lu,%lu,%lu,%lu max_gap_ms=%lu,%lu,%lu,%lu\n",
+           (unsigned long)passes, (unsigned long)injected, (unsigned long)d.app.permission_delivered,
+           (unsigned long)permissions, (unsigned long)d.app.vision_result_delivered, (unsigned long)results,
+           (unsigned long)d.app.vision_status_delivered, (unsigned long)statuses, load_app_submitted, load_app_refused,
+           load_relays, (unsigned long)d.rtd.main_drained_max, (unsigned long)d.rtd.isr_drain_budget,
+           (unsigned long)d.rtd.isr_ring_overflow, (unsigned long)d.hal.rx_dropped, (unsigned long)d.upper.rx_dropped,
+           (unsigned long)d.upper.rx_invalid, (unsigned long)d.upper.rx_held,
+           (unsigned long)d.rear_tx.counters.queue_full, (unsigned long)d.environment_tx.counters.queue_full,
+           (unsigned long)d.occupant_tx.counters.queue_full, (unsigned long)d.status_tx.counters.queue_full,
+           (unsigned long)d.pi_permission_tx.counters.queue_full,
+           (unsigned long)load_tx[0].max_gap_ms, (unsigned long)load_tx[1].max_gap_ms,
+           (unsigned long)load_tx[2].max_gap_ms, (unsigned long)load_tx[3].max_gap_ms);
+    fflush(stdout);
+    CHECK(d.rtd.isr_ring_capacity == NET_BOARD_CAN_ISR_RING);
+    CHECK(d.rtd.rx_frames == injected);       /* every bus frame entered the receive path */
+    CHECK(tx_frames == load_app_submitted);   /* one frame per submission */
+    CHECK(d.app.permission_delivered <= permissions && d.app.vision_result_delivered <= results);
+    CHECK(d.app.vision_status_delivered <= statuses);
+    CHECK(load_foreign_tx == 0u && isr_callbacks == 0u);
+    CHECK(lost == 0u);
+    CHECK(violations == 0u);
+    CHECK(d.rtd.isr_ring_max_depth <= NET_BOARD_CAN_ISR_RING && d.hal.rx_max_depth <= NET_HAL_RX_CAPACITY);
+    CHECK(d.upper.rx_max_depth <= NET_UPPER_RX_CAPACITY && d.upper.tx_max_depth <= NET_UPPER_TX_CAPACITY);
+    CHECK(d.rtd.uart[1].uart_isr_ring_max_depth <= NET_BOARD_UART_ISR_RING);
+    /* The high-water marks saw the traffic: seven frames of the bus at once,
+     * the four CAN messages of the CIS submitted in one pass. */
+    CHECK(d.rtd.isr_ring_max_depth >= 7u && d.upper.tx_max_depth >= 4u);
+    CHECK(d.hal.rx_max_depth >= 1u && d.upper.rx_max_depth >= 1u && d.rtd.uart[1].uart_isr_ring_max_depth >= 1u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1963,6 +2287,7 @@ int main(int argc, char **argv)
         { "f22_relay_sequence_cis_owned", f22_relay_sequence_cis_owned },
         { "f23_vision_repeat_delivered", f23_vision_repeat_delivered },
         { "f24_occupant_restricted_quality", f24_occupant_restricted_quality },
+        { "load_doc_traffic", load_doc_traffic },
         { "f25_vision_repeat_long_age", f25_vision_repeat_long_age }
     };
     size_t i;

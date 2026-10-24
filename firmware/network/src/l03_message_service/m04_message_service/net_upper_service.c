@@ -4,6 +4,16 @@
 #include <string.h>
 #define INC(x) net_upper_observe_increment(&(x))
 
+/* Queue high-water marks (NetUpperObservation.tx_max_depth, rx_max_depth). */
+static void observe_rx_depth(NetUpper *s)
+{ if(s->rx_count>s->observation.rx_max_depth)s->observation.rx_max_depth=(uint32_t)s->rx_count; }
+static void observe_tx_depth(NetUpper *s)
+{
+    size_t i,used=0u;
+    for(i=0u;i<NET_UPPER_TX_CAPACITY;++i)if(s->tx[i].state.used)++used;
+    if(used>s->observation.tx_max_depth)s->observation.tx_max_depth=(uint32_t)used;
+}
+
 static size_t route_index(NetWireLink link, uint16_t id)
 {
     size_t i;
@@ -288,7 +298,7 @@ static NetStatus queue_message(NetUpper *s, const NetUpperCanMessage *can,
         local.source_port_epoch=s->config.port_epoch[local.source_link];
     }
     local.failure_notice_enabled=s->config.retain_failure_notices;
-    *slot=local; ++s->next_token; INC(s->observation.tx_queued);
+    *slot=local; ++s->next_token; INC(s->observation.tx_queued); observe_tx_depth(s);
     if(uart!=NULL && uart->link==NET_WIRE_UART_M && uart->type==0x01u) accept_context(s,&uart->data.m_context);
     /* Accepted restrictive Owner updates supersede still-queued older allows.
      * An in-flight immutable borrow cannot be revoked or rewritten. */
@@ -382,7 +392,8 @@ NetStatus net_upper_capture(NetUpper *s,const NetUpperEvent *e)
     if(s->in_call)return NET_BUSY;
     if(!net_upper_profile_link(e->link))return NET_UNSUPPORTED;
     if(s->rx_count==NET_UPPER_RX_CAPACITY){INC(s->observation.rx_dropped);return NET_NO_CAPACITY;}
-    tail=(s->rx_head+s->rx_count)%NET_UPPER_RX_CAPACITY;s->rx[tail]=*e;++s->rx_count;INC(s->observation.rx_captured);return NET_OK;
+    tail=(s->rx_head+s->rx_count)%NET_UPPER_RX_CAPACITY;s->rx[tail]=*e;++s->rx_count;INC(s->observation.rx_captured);
+    observe_rx_depth(s);return NET_OK;
 }
 /* Sender runs (BOOT_ID). docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md
  * (generation): an accepted change of the sending run invalidates that
@@ -802,6 +813,7 @@ NetStatus net_upper_step(NetUpper *s,size_t budget)
             INC(s->observation.rx_invalid);result=NET_INVALID_ARGUMENT;continue;
         }
         tail=(s->rx_head+s->rx_count)%NET_UPPER_RX_CAPACITY;s->rx[tail]=e;++s->rx_count;INC(s->observation.rx_captured);
+        observe_rx_depth(s);
     }
     for(i=0u;i<budget && s->rx_count!=0u;++i) {
         bool pop;status=process_event(s,&s->rx[s->rx_head],now,&pop,&delivery);

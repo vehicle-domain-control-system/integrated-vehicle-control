@@ -13,6 +13,7 @@
 #include "network/net_wire_can_nodes.h"
 #include "mock_rtd.h"
 #include "net_hal_rtd_internal.h" /* Verify the composed adapter, without adding a public API. */
+#include "net_load_traffic.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -1221,6 +1222,182 @@ static int h18_abort_result(void)
     return 0;
 }
 
+/* ------------------------------------------------ documented traffic ---- */
+/* Ten seconds of the documented traffic (net_load_traffic.h):
+ *   CAN  : the periodic frames of DOMAIN, CIS and BCM as their senders put
+ *          them on the bus (10_CAN_FD.md message list, phase 0: ten of them
+ *          start together every second). The RX message buffers accept every
+ *          ID, so all of them enter the VSS receive path; the routes of the
+ *          other nodes end in the registry, not as a loss.
+ *   App  : VSS_STATUS every 250 ms (VSS_NODE_INTEGRATION.md, VSS_STATUS
+ *          transmit rule), in the pass that reaches the due time, after the
+ *          Network pass; the next pass sends it.
+ *   Main : a pass every 20 ms.
+ * At an instant shared by a pass and bus frames the pass runs first, so those
+ * frames wait a whole pass. Nothing may be lost (ISR ring, adapter and
+ * service queues, the M04 slot, every DOMAIN_PERMISSION and
+ * VSS_WARNING_STATE delivered), VSS_STATUS leaves within its period plus one
+ * pass (20 ms), and no queue goes past its capacity. The LOAD line reports
+ * the counts and the high-water marks against the capacities of this build. */
+enum { LOAD_OWN = 1 };
+#define LOAD_PASS_US 20000u
+#define LOAD_SLACK_MS 20u
+#define LOAD_FLUSH_US 100000u
+
+static NetLoadTx load_tx[LOAD_OWN];
+static uint64_t load_app_due;
+static uint32_t load_app_sequence;
+static bool load_app_on;
+static unsigned load_app_submitted, load_app_refused, load_foreign_tx, load_inject_lost;
+
+/* The VSS application in the superloop: VSS_STATUS when it is due. */
+static void load_app(uint64_t now)
+{
+    NetVssStatus s;
+    if (!load_app_on || now < load_app_due) return;
+    load_app_due += load_tx[0].period_ms;
+    s = status_ready(++load_app_sequence, 5u);
+    ++load_app_submitted;
+    if (VssNet_PublishStatus(&s) != NET_SUBMIT_OK) ++load_app_refused;
+}
+
+/* The far end takes what the node sent (TX_COMPLETE). */
+static void load_collect(void)
+{
+    MockCanFrame f;
+    NetWireCanEnvelope e;
+    while (MockRtd_CanTransmitNext(BUS, &f) >= 0) {
+        memset(&e, 0, sizeof(e));
+        e.standard_id = f.id;
+        e.fdf = f.fd;
+        e.brs = f.brs;
+        e.dlc = f.dlc;
+        e.length = f.length;
+        memcpy(e.bytes, f.data, f.length);
+        if (!net_load_tx_seen(load_tx, LOAD_OWN, &e, now_ms())) ++load_foreign_tx;
+    }
+}
+
+/* One superloop pass in the documented order (VSS_NODE_INTEGRATION.md): the
+ * Network pass, then the application. */
+static void load_pass(void)
+{
+    NetNode_Step();
+    load_collect();
+    load_app(now_ms());
+}
+
+/* Frame n of message k on the bus (ISR context of the CAN controller). */
+static int load_inject(size_t k, uint32_t n)
+{
+    NetWireCanEnvelope e;
+    CHECK(net_load_frame(k, n, &e));
+    if (inject(&e) < 0) ++load_inject_lost;
+    return 0;
+}
+
+static int load_doc_traffic(void)
+{
+    const uint64_t end_us = (uint64_t)NET_LOAD_DURATION_MS * 1000u;
+    uint32_t sent[NET_LOAD_MESSAGE_COUNT];
+    uint64_t due_us[NET_LOAD_MESSAGE_COUNT];
+    uint64_t pass_at = LOAD_PASS_US, t;
+    uint32_t passes = 0u, permissions = 0u, warnings = 0u, injected = 0u;
+    uint32_t lost, violations, tx_frames, slot_lost;
+    size_t k;
+    NetNodeDiag d;
+    CHECK(start_node() == NET_OK);
+    for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+        if (net_load_messages[k].sender == NET_LOAD_VSS)
+            net_load_tx_init(&load_tx[0], net_load_messages[k].id, net_load_messages[k].period_ms, LOAD_SLACK_MS);
+        sent[k] = 0u;
+        due_us[k] = net_load_messages[k].sender == NET_LOAD_VSS ? UINT64_MAX : 0u;
+    }
+    CHECK(load_tx[0].id == 0x340u);
+    load_app_due = 0u;
+    load_app_on = true;
+    for (;;) {
+        t = pass_at;
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) if (due_us[k] < t) t = due_us[k];
+        if (t >= end_us) break;
+        MockRtd_AdvanceUs(t - MockRtd_NowUs());
+        if (t == pass_at) {
+            load_pass();
+            ++passes;
+            pass_at += LOAD_PASS_US;
+        }
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+            if (due_us[k] != t) continue;
+            RUN_CHECK(load_inject(k, sent[k]++));
+            ++injected;
+            if (net_load_messages[k].id == 0x080u) ++permissions;
+            if (net_load_messages[k].id == 0x0C0u) ++warnings;
+            due_us[k] += (uint64_t)net_load_messages[k].period_ms * 1000u;
+        }
+    }
+    /* No new traffic: the passes take what still waits. */
+    load_app_on = false;
+    while (pass_at <= end_us + LOAD_FLUSH_US) {
+        MockRtd_AdvanceUs(pass_at - MockRtd_NowUs());
+        load_pass();
+        ++passes;
+        pass_at += LOAD_PASS_US;
+    }
+    d = diag();
+    slot_lost = d.status_tx.counters.queue_full + d.status_tx.counters.not_sent +
+                d.status_tx.counters.tx_failed + d.status_tx.counters.replaced;
+    {
+        const NetLoadCount loss[] = {
+            { "upper.rx_dropped", d.upper.rx_dropped },
+            { "hal.rx_dropped", d.hal.rx_dropped },
+            { "rtd.isr_ring_overflow", d.rtd.isr_ring_overflow },
+            { "rtd.rx_overruns", d.rtd.rx_overruns },
+            { "rtd.rx_queue_rejected", d.rtd.rx_queue_rejected },
+            { "bus_frames_not_taken", load_inject_lost },
+            { "app_refused", load_app_refused },
+            { "status_tx", slot_lost },
+            { "permission_not_delivered", permissions > d.app.permission_received ?
+                                              permissions - d.app.permission_received : 0u },
+            { "warning_not_delivered", warnings > (uint32_t)warning_count ? warnings - (uint32_t)warning_count : 0u },
+            { "tx_sequence_gaps", net_load_tx_gaps(load_tx, LOAD_OWN) }
+        };
+        const NetLoadCount late[] = {
+            { "can_periods", net_load_tx_violations(load_tx, LOAD_OWN, NET_LOAD_DURATION_MS) }
+        };
+        lost = net_load_report("load lost", loss, sizeof(loss) / sizeof(loss[0]));
+        violations = net_load_report("load late", late, sizeof(late) / sizeof(late[0]));
+    }
+    tx_frames = net_load_tx_frames(load_tx, LOAD_OWN);
+    printf("LOAD VSS rx_frames=%lu tx_frames=%lu lost=%lu period_violations=%lu can_ring_max=%lu/%lu "
+           "hal_rx_max=%lu/%lu upper_rx_max=%lu/%lu upper_tx_max=%lu/%lu\n",
+           (unsigned long)d.rtd.rx_frames, (unsigned long)tx_frames, (unsigned long)lost, (unsigned long)violations,
+           (unsigned long)d.rtd.isr_ring_max_depth, (unsigned long)NET_BOARD_CAN_ISR_RING,
+           (unsigned long)d.hal.rx_max_depth, (unsigned long)NET_HAL_RX_CAPACITY,
+           (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
+           (unsigned long)d.upper.tx_max_depth, (unsigned long)NET_UPPER_TX_CAPACITY);
+    printf("load detail: passes=%lu injected=%lu permission=%lu/%lu warning=%lu/%lu submitted=%u refused=%u "
+           "drained_max=%lu/%lu rx_invalid=%lu rx_held=%lu max_gap_ms=%lu\n",
+           (unsigned long)passes, (unsigned long)injected, (unsigned long)d.app.permission_received,
+           (unsigned long)permissions, (unsigned long)warning_count, (unsigned long)warnings,
+           load_app_submitted, load_app_refused, (unsigned long)d.rtd.main_drained_max,
+           (unsigned long)d.rtd.isr_drain_budget, (unsigned long)d.upper.rx_invalid, (unsigned long)d.upper.rx_held,
+           (unsigned long)load_tx[0].max_gap_ms);
+    fflush(stdout);
+    CHECK(d.rtd.isr_ring_capacity == NET_BOARD_CAN_ISR_RING);
+    CHECK(d.rtd.rx_frames == injected);       /* every bus frame entered the receive path */
+    CHECK(tx_frames == load_app_submitted);   /* one frame per submission */
+    CHECK(d.app.permission_received <= permissions && (uint32_t)warning_count <= warnings);
+    CHECK(event_count == 0 && load_foreign_tx == 0u);
+    CHECK(lost == 0u);
+    CHECK(violations == 0u);
+    CHECK(d.rtd.isr_ring_max_depth <= NET_BOARD_CAN_ISR_RING && d.hal.rx_max_depth <= NET_HAL_RX_CAPACITY);
+    CHECK(d.upper.rx_max_depth <= NET_UPPER_RX_CAPACITY && d.upper.tx_max_depth <= NET_UPPER_TX_CAPACITY);
+    /* The high-water marks saw the traffic: ten frames of the bus at once. */
+    CHECK(d.rtd.isr_ring_max_depth >= 10u && d.upper.tx_max_depth >= 1u);
+    CHECK(d.hal.rx_max_depth >= 1u && d.upper.rx_max_depth >= 1u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1234,6 +1411,7 @@ int main(int argc, char **argv)
         { "h14_rx_burst", h14_rx_burst }, { "h15_warning_quality_drop", h15_warning_quality_drop },
         { "h16_warning_repeat_delivered", h16_warning_repeat_delivered },
         { "h17_domain_boot_switch", h17_domain_boot_switch },
+        { "load_doc_traffic", load_doc_traffic },
         { "h18_abort_result", h18_abort_result }
     };
     size_t i;

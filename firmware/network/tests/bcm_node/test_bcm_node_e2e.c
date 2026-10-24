@@ -15,6 +15,7 @@
 #include "network/net_wire_can_bcm.h"
 #include "mock_rtd.h"
 #include "net_hal_rtd_internal.h" /* Verify the composed adapter, without adding a public API. */
+#include "net_load_traffic.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -1096,6 +1097,220 @@ static int b14_entry(void)
 }
 #endif
 
+/* ------------------------------------------------ documented traffic ---- */
+/* Ten seconds of the documented traffic (net_load_traffic.h):
+ *   CAN  : the periodic frames of DOMAIN, CIS and VSS as their senders put
+ *          them on the bus (10_CAN_FD.md message list, phase 0: seven of
+ *          them start together every second). The RX message buffers accept
+ *          every ID, so all of them enter the BCM receive path; the routes of
+ *          the other nodes end in the registry, not as a loss.
+ *   App  : BCM_DOOR_STATE, BCM_CLIMATE_STATE, BCM_LIGHT_STATE and BCM_STATUS
+ *          at their 10_CAN_FD.md periods, in the pass that reaches the due
+ *          time, after NetNode_Step(); the next pass sends them.
+ *   Main : a pass every 10 ms.
+ * At an instant shared by a pass and bus frames the pass runs first, so those
+ * frames wait a whole pass. Nothing may be lost (ISR ring, adapter and
+ * service queues, M04 slots, every DOMAIN_PERMISSION delivered to the
+ * supervision), an own frame leaves within its period plus one pass (10 ms),
+ * and no queue goes past its capacity. The LOAD line reports the counts and
+ * the high-water marks against the capacities of this build. */
+enum { LOAD_OWN = 4 };
+#define LOAD_PASS_US 10000u
+#define LOAD_SLACK_MS 10u
+#define LOAD_FLUSH_US 100000u
+
+static NetLoadTx load_tx[LOAD_OWN];
+static uint64_t load_app_due[LOAD_OWN];
+static uint32_t load_app_sequence[LOAD_OWN];
+static bool load_app_on;
+static unsigned load_app_submitted, load_app_refused, load_foreign_tx, load_inject_lost;
+
+static void load_init_own(void)
+{
+    size_t k;
+    unsigned j = 0u;
+    for (k = 0u; k < NET_LOAD_MESSAGE_COUNT && j < LOAD_OWN; ++k) {
+        if (net_load_messages[k].sender != NET_LOAD_BCM) continue;
+        net_load_tx_init(&load_tx[j], net_load_messages[k].id, net_load_messages[k].period_ms, LOAD_SLACK_MS);
+        load_app_due[j] = 0u;
+        load_app_sequence[j] = 0u;
+        ++j;
+    }
+}
+
+static NetSubmitResult load_submit(uint16_t id, uint32_t n)
+{
+    switch (id) {
+    case 0x200u: { NetBcmDoorState s = door_state_sample(n, 5u); return BcmNet_PublishDoorState(&s); }
+    case 0x210u: { NetBcmClimateState s = climate_state_sample(n, 5u); return BcmNet_PublishClimateState(&s); }
+    case 0x220u: { NetBcmLightState s = light_state_sample(n, 5u); return BcmNet_PublishLightState(&s); }
+    default: { NetBcmStatus s = status_sample(n, 5u); return BcmNet_PublishStatus(&s); }
+    }
+}
+
+/* The BCM application in the superloop: what is due is submitted now. */
+static void load_app(uint64_t now)
+{
+    unsigned j;
+    if (!load_app_on) return;
+    for (j = 0u; j < LOAD_OWN; ++j) {
+        if (now < load_app_due[j]) continue;
+        load_app_due[j] += load_tx[j].period_ms;
+        ++load_app_submitted;
+        if (load_submit(load_tx[j].id, ++load_app_sequence[j]) != NET_SUBMIT_OK) ++load_app_refused;
+    }
+}
+
+/* The far end takes what the node sent (TX_COMPLETE). */
+static void load_collect(void)
+{
+    MockCanFrame f;
+    NetWireCanEnvelope e;
+    uint64_t now = now_ms();
+    in_isr = true;
+    while (MockRtd_CanTransmitNext(BUS, &f) >= 0) {
+        e = envelope(&f);
+        if (!net_load_tx_seen(load_tx, LOAD_OWN, &e, now)) ++load_foreign_tx;
+    }
+    in_isr = false;
+}
+
+/* One superloop pass in the documented order (net_node.h,
+ * VSS_NODE_INTEGRATION.md): the Network pass, then the application. */
+static void load_pass(void)
+{
+#ifdef BCM_NODE_TEST_ENTRY
+    Net_MainFunction((uint32_t)now_ms());
+#else
+    NetNode_Step();
+#endif
+    load_collect();
+    load_app(now_ms());
+}
+
+/* Frame n of message k on the bus (ISR context of the CAN controller). */
+static int load_inject(size_t k, uint32_t n)
+{
+    NetWireCanEnvelope e;
+    MockCanFrame f;
+    CHECK(net_load_frame(k, n, &e));
+    memset(&f, 0, sizeof(f));
+    f.id = e.standard_id; f.fd = e.fdf; f.brs = e.brs; f.dlc = e.dlc; f.length = (uint8)e.length;
+    memcpy(f.data, e.bytes, e.length);
+    in_isr = true;
+    if (MockRtd_CanInject(BUS, &f) < 0) ++load_inject_lost;
+    in_isr = false;
+    return 0;
+}
+
+static uint32_t load_slot_lost(const NetUpperPublishView *v)
+{
+    return v->counters.queue_full + v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;
+}
+
+static int load_doc_traffic(void)
+{
+    const uint64_t end_us = (uint64_t)NET_LOAD_DURATION_MS * 1000u;
+    uint32_t sent[NET_LOAD_MESSAGE_COUNT];
+    uint64_t due_us[NET_LOAD_MESSAGE_COUNT];
+    uint64_t pass_at = LOAD_PASS_US, t;
+    uint32_t passes = 0u, permissions = 0u, injected = 0u;
+    uint32_t lost, violations, tx_frames;
+    size_t k;
+    NetNodeDiag d;
+    CHECK(start_node() == NET_OK);
+    load_init_own();
+    load_app_on = true;
+    for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+        sent[k] = 0u;
+        due_us[k] = net_load_messages[k].sender == NET_LOAD_BCM ? UINT64_MAX : 0u;
+    }
+    for (;;) {
+        t = pass_at;
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) if (due_us[k] < t) t = due_us[k];
+        if (t >= end_us) break;
+        MockRtd_AdvanceUs(t - MockRtd_NowUs());
+        if (t == pass_at) {
+            load_pass();
+            ++passes;
+            pass_at += LOAD_PASS_US;
+        }
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+            if (due_us[k] != t) continue;
+            RUN(load_inject(k, sent[k]++));
+            ++injected;
+            if (net_load_messages[k].id == 0x080u) ++permissions;
+            due_us[k] += (uint64_t)net_load_messages[k].period_ms * 1000u;
+        }
+    }
+    /* No new traffic: the passes take what still waits. */
+    load_app_on = false;
+    while (pass_at <= end_us + LOAD_FLUSH_US) {
+        MockRtd_AdvanceUs(pass_at - MockRtd_NowUs());
+        load_pass();
+        ++passes;
+        pass_at += LOAD_PASS_US;
+    }
+    d = diag();
+    {
+        const NetLoadCount loss[] = {
+            { "upper.rx_dropped", d.upper.rx_dropped },
+            { "hal.rx_dropped", d.hal.rx_dropped },
+            { "rtd.isr_ring_overflow", d.rtd.isr_ring_overflow },
+            { "rtd.rx_overruns", d.rtd.rx_overruns },
+            { "rtd.rx_queue_rejected", d.rtd.rx_queue_rejected },
+            { "bus_frames_not_taken", load_inject_lost },
+            { "app_refused", load_app_refused },
+            { "result_tx", load_slot_lost(&d.result_tx) },
+            { "event_tx", load_slot_lost(&d.event_tx) },
+            { "door_state_tx", load_slot_lost(&d.door_state_tx) },
+            { "climate_state_tx", load_slot_lost(&d.climate_state_tx) },
+            { "light_state_tx", load_slot_lost(&d.light_state_tx) },
+            { "status_tx", load_slot_lost(&d.status_tx) },
+            { "permission_not_delivered", permissions > d.app.permission_received ?
+                                              permissions - d.app.permission_received : 0u },
+            { "tx_sequence_gaps", net_load_tx_gaps(load_tx, LOAD_OWN) }
+        };
+        const NetLoadCount late[] = {
+            { "can_periods", net_load_tx_violations(load_tx, LOAD_OWN, NET_LOAD_DURATION_MS) }
+        };
+        lost = net_load_report("load lost", loss, sizeof(loss) / sizeof(loss[0]));
+        violations = net_load_report("load late", late, sizeof(late) / sizeof(late[0]));
+    }
+    tx_frames = net_load_tx_frames(load_tx, LOAD_OWN);
+    printf("LOAD BCM rx_frames=%lu tx_frames=%lu lost=%lu period_violations=%lu can_ring_max=%lu/%lu "
+           "hal_rx_max=%lu/%lu upper_rx_max=%lu/%lu upper_tx_max=%lu/%lu\n",
+           (unsigned long)d.rtd.rx_frames, (unsigned long)tx_frames, (unsigned long)lost, (unsigned long)violations,
+           (unsigned long)d.rtd.isr_ring_max_depth, (unsigned long)NET_BOARD_CAN_ISR_RING,
+           (unsigned long)d.hal.rx_max_depth, (unsigned long)NET_HAL_RX_CAPACITY,
+           (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
+           (unsigned long)d.upper.tx_max_depth, (unsigned long)NET_UPPER_TX_CAPACITY);
+    printf("load detail: passes=%lu injected=%lu permission=%lu/%lu submitted=%u refused=%u drained_max=%lu/%lu "
+           "rx_invalid=%lu rx_held=%lu max_gap_ms=%lu,%lu,%lu,%lu\n",
+           (unsigned long)passes, (unsigned long)injected, (unsigned long)d.app.permission_received,
+           (unsigned long)permissions, load_app_submitted, load_app_refused,
+           (unsigned long)d.rtd.main_drained_max, (unsigned long)d.rtd.isr_drain_budget,
+           (unsigned long)d.upper.rx_invalid, (unsigned long)d.upper.rx_held,
+           (unsigned long)load_tx[0].max_gap_ms, (unsigned long)load_tx[1].max_gap_ms,
+           (unsigned long)load_tx[2].max_gap_ms, (unsigned long)load_tx[3].max_gap_ms);
+    fflush(stdout);
+    CHECK(d.rtd.isr_ring_capacity == NET_BOARD_CAN_ISR_RING);
+    CHECK(d.rtd.rx_frames == injected);       /* every bus frame entered the receive path */
+    CHECK(tx_frames == load_app_submitted);   /* one frame per submission */
+    CHECK(d.app.permission_received <= permissions);
+    CHECK(door_count == 0u && climate_count == 0u && light_count == 0u);   /* no command on the bus */
+    CHECK(load_foreign_tx == 0u && isr_callbacks == 0u);
+    CHECK(lost == 0u);
+    CHECK(violations == 0u);
+    CHECK(d.rtd.isr_ring_max_depth <= NET_BOARD_CAN_ISR_RING && d.hal.rx_max_depth <= NET_HAL_RX_CAPACITY);
+    CHECK(d.upper.rx_max_depth <= NET_UPPER_RX_CAPACITY && d.upper.tx_max_depth <= NET_UPPER_TX_CAPACITY);
+    /* The high-water marks saw the traffic: seven frames of the bus at once,
+     * the four messages of the BCM submitted in one pass. */
+    CHECK(d.rtd.isr_ring_max_depth >= 7u && d.upper.tx_max_depth >= 4u);
+    CHECK(d.hal.rx_max_depth >= 1u && d.upper.rx_max_depth >= 1u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1113,6 +1328,7 @@ int main(int argc, char **argv)
         { "b12_publish_in_callback", b12_publish_in_callback },
         { "b13_not_ready", b13_not_ready },
         { "b13_domain_reboot", b13_domain_reboot },
+        { "load_doc_traffic", load_doc_traffic },
 #ifdef BCM_NODE_TEST_ENTRY
         { "b14_entry", b14_entry },
 #endif
