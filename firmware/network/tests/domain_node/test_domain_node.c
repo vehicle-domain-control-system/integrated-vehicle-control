@@ -75,6 +75,8 @@ DomainIf_Status_t DomainIf_RxBcmCommandResult(const DomainIf_BcmCommandResult_t 
 DomainIf_Status_t DomainIf_RxCisRear(const CisRearState_t *s) { owner_call(); last_rear = *s; ++rear_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxCisStatus(const DomainIf_CisStatusReport_t *s) { owner_call(); last_cis_status = *s; ++cis_status_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxCisCabinEnvironment(const CisCabinEnvironmentState_t *s) { owner_call(); last_env = *s; ++env_calls; return DOMAIN_IF_OK; }
+static unsigned occupant_calls;
+DomainIf_Status_t DomainIf_RxCisOccupant(const CisOccupantState_t *s) { (void)s; owner_call(); ++occupant_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxNetworkLocalFailure(const NetworkLocalFailure_t *f) { (void)f; owner_call(); ++failure_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxDigitalKeyConnection(DeviceContextId_t device, const DigitalKeyConnectionState_t *c)
 {
@@ -91,6 +93,7 @@ DomainIf_Status_t DomainIf_QueryGetBcmStatus(uint32_t at, DomainIf_BcmStatusRepo
 DomainIf_Status_t DomainIf_QueryGetCisRear(uint32_t at, CisRearState_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
 DomainIf_Status_t DomainIf_QueryGetCisStatus(uint32_t at, DomainIf_CisStatusReport_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
 DomainIf_Status_t DomainIf_QueryGetCisEnvironment(uint32_t at, CisCabinEnvironmentState_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetCisOccupant(uint32_t at, CisOccupantState_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
 DomainIf_Status_t DomainIf_QueryGetRequestResult(DeviceContextId_t device, const RequestContext_t *target, uint32_t at,
     DomainIf_MobileRequestResult_t *o, bool *has)
 { (void)device; (void)target; (void)at; (void)o; (void)has; return DOMAIN_IF_NOT_AVAILABLE; }
@@ -997,6 +1000,85 @@ static int n15_board_c2_hook(void)
     return 0;
 }
 
+/* The CIS transition binding DOMAIN hands to the board file reaches the
+ * adapter through the board C2 hook. The node calls it in the main-loop pass
+ * (adapter step, after the receive delivery), never in Net_TxFlush: the first
+ * CIS_ENVIRONMENT of a CIS BOOT is held, epoch 1 is applied, the next frame
+ * reaches C2. A binding without an Occupant function keeps CIS_OCCUPANT held. */
+static unsigned transition_calls, transitions_in_flush;
+static uint32_t transition_id;
+static uint64_t transition_epoch;
+static NetDomainC2TransitionStatus transition_result = NET_DOMAIN_C2_TRANSITION_NOT_INITIALIZED;
+static NetDomainC2TransitionStatus env_transition(void *context, uint32_t id, uint64_t epoch, NetDomainC2TransitionReceipt *out)
+{
+    (void)context;
+    ++transition_calls;
+    if (in_flush) ++transitions_in_flush;
+    transition_id = id;
+    transition_epoch = epoch;
+    if (transition_result == NET_DOMAIN_C2_TRANSITION_APPLIED) {
+        out->id = id;
+        out->epoch = epoch;
+        out->revision = (uint32_t)epoch;
+    }
+    return transition_result;
+}
+
+static int n16_board_transition_binding(void)
+{
+    NetDomainC2TransitionBinding tb;
+    NetDomainC2Config cfg;
+    NetDomainC2Api api;
+    NetUpperCanMessage m;
+    NetNodeDiag d;
+    memset(&tb, 0, sizeof(tb));
+    tb.environment = env_transition;
+    NetDomainBoard_SetTransitionBinding(&tb);
+    CHECK(NetDomainBoard_C2Config(&api, &cfg) && cfg.transition.environment == env_transition && cfg.transition.occupant == NULL);
+    NetDomainBoard_SetTransitionBinding(NULL);
+    CHECK(NetDomainBoard_C2Config(&api, &cfg) && cfg.transition.environment == NULL);
+    NetDomainBoard_SetTransitionBinding(&tb);
+    use_board_hook = true;
+    CHECK(start());
+    CHECK(NetNode_DomainC2()->config.transition.environment == env_transition && NetNode_DomainC2()->config.cis_transition_barriers);
+    m = environment(1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    d = diag();
+    CHECK(env_calls == 0u && transition_calls == 1u && transition_id == CIS_BOOT && transition_epoch == 1u);
+    CHECK(d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].state == NET_DOMAIN_C2_BARRIER_PENDING);
+    flush();
+    CHECK(transition_calls == 1u && transitions_in_flush == 0u);
+    transition_result = NET_DOMAIN_C2_TRANSITION_APPLIED;
+    ++now_ms;
+    pass();
+    d = diag();
+    CHECK(transition_calls == 2u && transition_epoch == 1u && transitions_in_flush == 0u);
+    CHECK(d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].state == NET_DOMAIN_C2_BARRIER_OPEN);
+    CHECK(d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open && d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].next_epoch == 2u);
+    m = environment(2u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(env_calls == 1u && last_env.cabinTemperature == 2150 && transition_calls == 2u);
+    /* No Occupant function: CIS_OCCUPANT is held and nothing is called. */
+    memset(&m, 0, sizeof(m));
+    m.id = 0x310u;
+    m.data.cis_occupant.boot_id = CIS_BOOT;
+    m.data.cis_occupant.tx_sequence = 1u;
+    m.data.cis_occupant.pi_boot_id = 0x50493031u;
+    m.data.cis_occupant.vision_sequence = 1u;
+    m.data.cis_occupant.presence_validity = 1u;
+    m.data.cis_occupant.count_validity = 1u;
+    CHECK(inject(&m) >= 0);
+    run_to(now_ms + 5u);
+    d = diag();
+    CHECK(occupant_calls == 0u && transition_calls == 2u && d.barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].held == 1u);
+    CHECK(d.barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].state == NET_DOMAIN_C2_BARRIER_CLOSED);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1012,6 +1094,7 @@ int main(int argc, char **argv)
         { "n12_entry_clock_axis", n12_entry_clock_axis },
         { "n13_composite_field_age", n13_composite_field_age },
         { "n14_uart_m_receive_policy", n14_uart_m_receive_policy },
+        { "n16_board_transition_binding", n16_board_transition_binding },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

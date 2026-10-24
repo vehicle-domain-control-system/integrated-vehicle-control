@@ -64,6 +64,47 @@ typedef struct {
     uint16_t source_age_ms;   /* ms since that evaluation */
 } NetDomainC2AliveState;
 
+/* Result of one DOMAIN private CIS BOOT transition call, one to one with the
+ * DOMAIN transition statuses (environment and Occupant private barriers of the
+ * DOMAIN application; EPOCH_ORDER_UNAVAILABLE exists for the environment only
+ * and its sequential contract never returns it). UNAVAILABLE: the binding found
+ * no DOMAIN private context (Occupant disabled, runtime not ready) and called
+ * nothing. NONE is the diagnostic "no call yet"; a binding never returns it. */
+typedef enum {
+    NET_DOMAIN_C2_TRANSITION_NONE = 0,
+    NET_DOMAIN_C2_TRANSITION_APPLIED,
+    NET_DOMAIN_C2_TRANSITION_DUPLICATE_APPLIED,
+    NET_DOMAIN_C2_TRANSITION_ID_CONFLICT,
+    NET_DOMAIN_C2_TRANSITION_EPOCH_ORDER_UNAVAILABLE,
+    NET_DOMAIN_C2_TRANSITION_BUSY,
+    NET_DOMAIN_C2_TRANSITION_INVALID_ARGUMENT,
+    NET_DOMAIN_C2_TRANSITION_NOT_INITIALIZED,
+    NET_DOMAIN_C2_TRANSITION_INVALIDATION_FAILED_BLOCKED,
+    NET_DOMAIN_C2_TRANSITION_STALE,
+    NET_DOMAIN_C2_TRANSITION_ORDER_ERROR,
+    NET_DOMAIN_C2_TRANSITION_UNAVAILABLE
+} NetDomainC2TransitionStatus;
+/* Completion receipt of a transition as DOMAIN returned it. */
+typedef struct {
+    uint32_t id;       /* admitted CIS BOOT_ID (environment) / Pi source generation (Occupant) */
+    uint64_t epoch;    /* transition epoch */
+    uint32_t revision; /* DOMAIN barrier revision, +1 per completed invalidation */
+} NetDomainC2TransitionReceipt;
+/* CIS transition binding (docs/network/interface/02_NODES/DOMAIN/
+ * 25_PRIVATE_ROUTING.md, CIS environment BOOT change; DOMAIN private barrier
+ * of the environment and of the Occupant). Each function hands (id, epoch) to
+ * the synchronous DOMAIN private transition once and returns its result and
+ * receipt. The DOMAIN side implements it (it needs DOMAIN application headers);
+ * the adapter calls it only from net_domain_c2_step, outside every service
+ * callback. NULL: no transition is bound and that route stays held. */
+typedef NetDomainC2TransitionStatus (*NetDomainC2TransitionApply)(void *context, uint32_t id, uint64_t epoch,
+    NetDomainC2TransitionReceipt *out);
+typedef struct {
+    void *context;
+    NetDomainC2TransitionApply environment; /* id = CIS BOOT_ID of 0x300 */
+    NetDomainC2TransitionApply occupant;    /* id = PI_BOOT_ID of 0x310 */
+} NetDomainC2TransitionBinding;
+
 typedef struct {
     void *context;
     /* bcm_boot: command TARGET_BOOT_ID unless bcm_target_from_rx is set. */
@@ -96,6 +137,8 @@ typedef struct {
      * transition; the DOMAIN Owner then refuses them until its transition is
      * applied, which latches the route blocked. */
     bool cis_transition_barriers;
+    /* The transition calls that open the barriers (cis_transition_barriers). */
+    NetDomainC2TransitionBinding transition;
     /* M04 publisher of the DOMAIN node (net_upper_publish.h) with entries for
      * DOMAIN_PERMISSION 0x080 and VSS_WARNING_STATE 0x0C0: their TxPort
      * submissions go to its latest-value slots, which own BOOT_ID /
@@ -131,12 +174,42 @@ typedef enum {
     NET_DOMAIN_C2_OCCUPANT_BARRIER,    /* 0x310, keyed by PI_BOOT_ID */
     NET_DOMAIN_C2_BARRIERS
 } NetDomainC2BarrierKind;
-/* Delivery gate of one CIS transition route (cis_transition_barriers). Only an
- * applied transition for a generation opens it; until then it stays closed. */
+/* Delivery gate of one CIS transition route (cis_transition_barriers),
+ * net_domain_c2.c:
+ *   CLOSED -> PENDING(id) -> OPEN(id) | BLOCKED, and DISABLED.
+ * A frame of another nonzero generation than the open one, not one the barrier
+ * left, makes it PENDING(id); the next adapter step requests the transition
+ * (id, next_epoch). Only a confirmed completion opens it. BLOCKED and DISABLED
+ * hold for the rest of this run. */
+typedef enum {
+    NET_DOMAIN_C2_BARRIER_CLOSED = 0, /* no generation seen yet */
+    NET_DOMAIN_C2_BARRIER_PENDING,    /* transition for id due at the next adapter step */
+    NET_DOMAIN_C2_BARRIER_OPEN,       /* transition for id confirmed: its frames pass */
+    NET_DOMAIN_C2_BARRIER_BLOCKED,    /* latched; never called again in this run */
+    NET_DOMAIN_C2_BARRIER_DISABLED    /* binding UNAVAILABLE; never called again */
+} NetDomainC2BarrierState;
+/* Why a barrier is BLOCKED or DISABLED. */
+typedef enum {
+    NET_DOMAIN_C2_BARRIER_REASON_NONE = 0,
+    NET_DOMAIN_C2_BARRIER_REASON_RESULT,           /* last_result */
+    NET_DOMAIN_C2_BARRIER_REASON_RECEIPT_MISMATCH, /* APPLIED / DUPLICATE_APPLIED, last_receipt not the request */
+    NET_DOMAIN_C2_BARRIER_REASON_EPOCH_EXHAUSTED   /* the next epoch would be UINT64_MAX */
+} NetDomainC2BarrierReason;
+#define NET_DOMAIN_C2_BARRIER_LEFT_IDS 4u
 typedef struct {
-    bool open;
-    uint32_t id;   /* generation the barrier is open for */
+    bool open;     /* state OPEN; the delivery check reads it */
+    uint32_t id;   /* generation the barrier is open (or pending) for */
     uint32_t held; /* frames held before C2 (diagnostic, saturating) */
+    NetDomainC2BarrierState state;
+    NetDomainC2BarrierReason reason;
+    NetDomainC2TransitionStatus last_result;
+    NetDomainC2TransitionReceipt last_receipt;
+    uint64_t next_epoch; /* epoch of the next request: 1 in every run, +1 per confirmed transition */
+    uint32_t revision;   /* DOMAIN barrier revision of the last confirmed transition */
+    /* Generations the barrier left, latest last (0 = empty): their late
+     * frames stay held and never start a transition back. */
+    uint32_t left[NET_DOMAIN_C2_BARRIER_LEFT_IDS];
+    uint32_t calls, applied; /* binding calls, confirmed transitions (saturating) */
 } NetDomainC2Barrier;
 /* CAN UPDATE_SEQUENCE of DOMAIN_PERMISSION (0x080), synthesized by Network
  * in a number space of its own (net_domain_tx.c): the tuple of the last

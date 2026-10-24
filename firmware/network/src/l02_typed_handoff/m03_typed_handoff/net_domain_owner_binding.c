@@ -15,12 +15,14 @@ void net_domain_c2_pinned_owner_api(NetDomainC2Api *out)
     out->RxCisRear=DomainIf_RxCisRear;
     out->RxCisStatus=DomainIf_RxCisStatus;
     out->RxCisCabinEnvironment=DomainIf_RxCisCabinEnvironment;
+    out->RxCisOccupant=DomainIf_RxCisOccupant;
     out->RxNetworkLocalFailure=DomainIf_RxNetworkLocalFailure;
     out->QueryGetBcmDoorState=DomainIf_QueryGetBcmDoorState;
     out->QueryGetBcmStatus=DomainIf_QueryGetBcmStatus;
     out->QueryGetCisRear=DomainIf_QueryGetCisRear;
     out->QueryGetCisStatus=DomainIf_QueryGetCisStatus;
     out->QueryGetCisEnvironment=DomainIf_QueryGetCisEnvironment;
+    out->QueryGetCisOccupant=DomainIf_QueryGetCisOccupant;
     out->QueryGetRequestResult=DomainIf_QueryGetRequestResult;
     out->QueryGetRecentRequestResults=DomainIf_QueryGetRecentRequestResults;
 }

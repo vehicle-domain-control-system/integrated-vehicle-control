@@ -132,8 +132,10 @@ static void upper(NetUpperConfig *c)
  *   - 0x300 / 0x310 only through their CIS transition barriers
  *     (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md: the environment
  *     route is held until the private transition is confirmed; the DOMAIN Owner
- *     refuses both before its transition is applied). No transition is bound
- *     to this node, so both barriers stay closed and both routes are held. */
+ *     refuses both before its transition is applied). The transition binding
+ *     is the hook's (NetDomainC2Config.transition, a DOMAIN-side function); the
+ *     adapter calls it from net_domain_c2_step in this pass. Without it both
+ *     barriers stay closed and both routes are held. */
 static NetStatus c2_bind(const NetNodeConfig *config)
 {
 #ifndef NET_BOARD_DOMAIN_C2_HOOK
@@ -286,7 +288,7 @@ void NetNode_Step(void)
     inc(&steps);
     (void)net_hal_rtd_drain();                             /* ISR ring -> adapter, bounded, main context */
     (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET); /* RX -> C2 Rx functions; TX facts */
-    (void)net_domain_c2_step(&c2);                         /* TX records: local failure notices, retirement */
+    (void)net_domain_c2_step(&c2);                         /* CIS transitions; TX records: failure notices, retirement */
     (void)net_upper_query_step(&query);                    /* M_QUERY getters and responses */
     net_hal_rtd_service();                                 /* stuck-TX abort, error counters */
     alive_service();                                       /* M_DOMAIN_ALIVE -> its M04 slot */

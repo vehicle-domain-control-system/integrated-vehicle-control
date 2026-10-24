@@ -509,6 +509,16 @@ if(NETWORK_BUILD_DOMAIN_C2)
                 perm_bundle_provisional)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2_permission ${case})
         endforeach()
+        # CIS environment / Occupant BOOT transitions: barriers, epochs, results.
+        add_executable(test_domain_c2_transition tests/product/test_domain_c2_transition.c)
+        target_link_libraries(test_domain_c2_transition PRIVATE network_domain_c2)
+        network_warnings(test_domain_c2_transition)
+        foreach(case IN ITEMS barrier_first_epoch barrier_reboot_epoch2 barrier_not_initialized_retry
+                barrier_latched_results barrier_receipt_mismatch barrier_late_old_id barrier_never_in_callback
+                barrier_epoch_max occupant_first_epoch occupant_pi_reboot_epoch2 occupant_gen_zero_hold
+                occupant_cis_reboot_only occupant_latched_results occupant_disabled)
+            add_test(NAME domain_c2_${case} COMMAND test_domain_c2_transition ${case})
+        endforeach()
     endif()
 endif()
 
@@ -918,6 +928,8 @@ if(NETWORK_BUILD_RTD_MOCK)
                 n13_composite_field_age n14_uart_m_receive_policy n15_board_c2_hook)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # The CIS transition binding DOMAIN hands to the board file.
+        add_test(NAME domain_node.n16_board_transition_binding COMMAND test_domain_node n16_board_transition_binding)
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

@@ -25,6 +25,16 @@ uint32_t NetDomainBoard_TickToMs(uint32_t tick)
     return tick;
 }
 
+/* CIS transition binding handed over by the DOMAIN integration
+ * (NetDomainBoard_SetTransitionBinding); empty until then. */
+static NetDomainC2TransitionBinding transition_binding;
+
+void NetDomainBoard_SetTransitionBinding(const NetDomainC2TransitionBinding *binding)
+{
+    if (binding == NULL) memset(&transition_binding, 0, sizeof(transition_binding));
+    else transition_binding = *binding;
+}
+
 /* C2 boundary: the pinned DOMAIN functions (net_domain_c2_pinned_owner_api).
  * Semantic callbacks: the two provisional rules of this board, the value
  * quality of VALIDITY / REASON and the Power / Operation bundle of
@@ -35,7 +45,9 @@ uint32_t NetDomainBoard_TickToMs(uint32_t tick)
  * select_query_plan, confirm_snapshot. Limits (10_CAN_FD.md): ACCEPT_LIMIT is
  * the 200 ms candidate (the 1 s conflict is OPEN), VSS_EVENT USE_LIMIT the
  * 500 ms draft. The node root sets BOOT_ID, TX_SEQUENCE start, the M04 slots,
- * the command target and the CIS transition barriers itself. */
+ * the command target and the CIS transition barriers itself. The transition
+ * binding is the one DOMAIN handed over (none: CIS_ENVIRONMENT and
+ * CIS_OCCUPANT stay held). */
 bool NetDomainBoard_C2Config(NetDomainC2Api *api, NetDomainC2Config *config)
 {
     if (api == NULL || config == NULL) return false;
@@ -53,6 +65,7 @@ bool NetDomainBoard_C2Config(NetDomainC2Api *api, NetDomainC2Config *config)
     /* DomainIf_RxNetworkLocalFailure records into the DOMAIN result owner. */
     config->failure_sink_ready = true;
     config->cis_transition_barriers = true;
+    config->transition = transition_binding;
     return true;
 }
 

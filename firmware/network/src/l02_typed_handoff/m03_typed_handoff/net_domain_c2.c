@@ -64,19 +64,108 @@ for(i=0u;i<19u;++i){NetDomainC2IngressRecord *r=&a->ingress[i];
 if(r->used&&r->link==NET_WIRE_UART_M&&r->id!=0x01u&&!r->blocked)r->sequence=UINT64_MAX;
 }
 }
-/* Transition barrier of 0x300 / 0x310 (cis_transition_barriers): pass only
- * while open for this nonzero generation; otherwise hold before the ingress
- * journal and the C2 call. Nothing opens a barrier yet: the transition call
- * is not bound, so both routes stay held
- * (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md: the environment
- * route is held until the private transition call and receipt check are
- * bound). */
+/* CIS transition barriers of 0x300 (environment, CIS BOOT_ID) and 0x310
+ * (Occupant, PI_BOOT_ID), cis_transition_barriers
+ * (docs/network/interface/02_NODES/DOMAIN/25_PRIVATE_ROUTING.md, CIS
+ * environment BOOT change; 07_CROSS_NODE_INTERFACE_RULES.md, environment BOOT
+ * change; 04_COMMON/10_DATA_AND_ID_RULES.md, environment values and their
+ * invalidation): a new generation is held before the ingress journal and the
+ * C2 call, the DOMAIN private transition is called once from the adapter step,
+ * and only its confirmed completion lets that generation's frames through. A
+ * failed or unclear transition holds that route for the rest of the run (no
+ * retry, no recovery handshake); every other route is unaffected. */
+static NetDomainC2TransitionApply barrier_apply(const NetDomainC2 *a,NetDomainC2BarrierKind kind){
+return kind==NET_DOMAIN_C2_ENVIRONMENT_BARRIER?a->config.transition.environment:a->config.transition.occupant;
+}
+static bool barrier_left(const NetDomainC2Barrier *b,uint32_t id){size_t i;
+for(i=0u;i<NET_DOMAIN_C2_BARRIER_LEFT_IDS;++i)if(b->left[i]==id)return true;
+return false;
+}
+/* Remembers the last four generations the barrier left (open or pending). */
+static void barrier_leave(NetDomainC2Barrier *b,uint32_t id){size_t i;
+if(id==0u||barrier_left(b,id))return;
+for(i=1u;i<NET_DOMAIN_C2_BARRIER_LEFT_IDS;++i)b->left[i-1u]=b->left[i];
+b->left[NET_DOMAIN_C2_BARRIER_LEFT_IDS-1u]=id;
+}
+/* RX callback side, in the service callback: never calls DOMAIN.
+ *   - open for this nonzero generation: pass;
+ *   - otherwise hold (the frame is dropped and counted). A nonzero generation
+ *     that is not the pending one and not one the barrier left makes it
+ *     PENDING(id); the generation it was open or pending for is left. PI_BOOT_ID
+ *     0 never passes and never starts a transition. A late frame of a left
+ *     generation stays held: no transition goes back.
+ *   - BLOCKED / DISABLED: hold only. Without a bound transition nothing opens
+ *     the barrier and the route stays held. */
 NetStatus nd_barrier(NetDomainC2 *a,NetDomainC2BarrierKind kind,uint32_t id){NetDomainC2Barrier *b;
 if(!a->config.cis_transition_barriers)return NET_OK;
 b=&a->barrier[kind];
 if(b->open&&id!=0u&&b->id==id)return NET_OK;
 net_upper_observe_increment(&b->held);
+if(barrier_apply(a,kind)==NULL||id==0u||barrier_left(b,id))return NET_HOLD;
+if(b->state==NET_DOMAIN_C2_BARRIER_BLOCKED||b->state==NET_DOMAIN_C2_BARRIER_DISABLED)return NET_HOLD;
+if(b->state==NET_DOMAIN_C2_BARRIER_PENDING&&b->id==id)return NET_HOLD;
+if(b->state!=NET_DOMAIN_C2_BARRIER_CLOSED)barrier_leave(b,b->id);
+b->open=false;
+b->state=NET_DOMAIN_C2_BARRIER_PENDING;
+b->id=id;
 return NET_HOLD;
+}
+static void barrier_latch(NetDomainC2Barrier *b,NetDomainC2BarrierState state,NetDomainC2BarrierReason reason){
+b->open=false;
+b->state=state;
+b->reason=reason;
+}
+/* The route's journal record takes the new generation as its baseline: the
+ * environment record its CIS BOOT_ID, the Occupant record (keyed by the CIS
+ * BOOT_ID of its CAN frames) a fresh order baseline. A blocked record stays
+ * blocked (net_domain_c2_accept_ingress_epoch only). */
+static void barrier_rebase(NetDomainC2 *a,NetDomainC2BarrierKind kind,uint32_t id){size_t i;
+uint16_t can_id=kind==NET_DOMAIN_C2_ENVIRONMENT_BARRIER?0x300u:0x310u;
+for(i=0u;i<19u;++i){NetDomainC2IngressRecord *r=&a->ingress[i];
+if(r->used&&r->link==NET_WIRE_CAN&&r->id==can_id&&!r->blocked){if(kind==NET_DOMAIN_C2_ENVIRONMENT_BARRIER)r->boot=id;
+r->sequence=UINT64_MAX;
+}
+}
+}
+/* Adapter step side, outside every service callback: one call per pending
+ * barrier. A completion counts only with the receipt of this request (same
+ * generation and epoch, a DOMAIN barrier revision past the last confirmed
+ * one); then the barrier opens and the epoch goes +1. NOT_INITIALIZED keeps the
+ * request and its epoch for the next step. UNAVAILABLE disables the barrier.
+ * Any other result, a receipt of another request and an epoch that would reach
+ * UINT64_MAX (never issued, never wrapped) block it. NET_NO_WORK: no call. */
+static NetStatus barrier_step(NetDomainC2 *a,NetDomainC2BarrierKind kind){NetDomainC2Barrier *b=&a->barrier[kind];
+NetDomainC2TransitionApply apply=barrier_apply(a,kind);
+NetDomainC2TransitionReceipt receipt;
+NetDomainC2TransitionStatus st;
+if(!a->config.cis_transition_barriers||apply==NULL||b->state!=NET_DOMAIN_C2_BARRIER_PENDING)return NET_NO_WORK;
+if(b->next_epoch==0u||b->next_epoch==UINT64_MAX){barrier_latch(b,NET_DOMAIN_C2_BARRIER_BLOCKED,NET_DOMAIN_C2_BARRIER_REASON_EPOCH_EXHAUSTED);
+return NET_HOLD;
+}
+memset(&receipt,0,sizeof(receipt));
+st=apply(a->config.transition.context,b->id,b->next_epoch,&receipt);
+net_upper_observe_increment(&b->calls);
+b->last_result=st;
+b->last_receipt=receipt;
+switch(st){
+case NET_DOMAIN_C2_TRANSITION_APPLIED:case NET_DOMAIN_C2_TRANSITION_DUPLICATE_APPLIED:
+if(receipt.id!=b->id||receipt.epoch!=b->next_epoch||receipt.revision<=b->revision){
+barrier_latch(b,NET_DOMAIN_C2_BARRIER_BLOCKED,NET_DOMAIN_C2_BARRIER_REASON_RECEIPT_MISMATCH);
+return NET_HOLD;
+}
+b->revision=receipt.revision;
+++b->next_epoch;
+net_upper_observe_increment(&b->applied);
+barrier_latch(b,NET_DOMAIN_C2_BARRIER_OPEN,NET_DOMAIN_C2_BARRIER_REASON_NONE);
+b->open=true;
+barrier_rebase(a,kind,b->id);
+return NET_OK;
+case NET_DOMAIN_C2_TRANSITION_NOT_INITIALIZED:return NET_HOLD;
+case NET_DOMAIN_C2_TRANSITION_UNAVAILABLE:barrier_latch(b,NET_DOMAIN_C2_BARRIER_DISABLED,NET_DOMAIN_C2_BARRIER_REASON_RESULT);
+return NET_HOLD;
+default:barrier_latch(b,NET_DOMAIN_C2_BARRIER_BLOCKED,NET_DOMAIN_C2_BARRIER_REASON_RESULT);
+return NET_HOLD;
+}
 }
 NetDomainC2 *nd_registered(void){return bound;
 }
@@ -200,6 +289,8 @@ a->api=*api;
 a->config=*config;
 {size_t i;
 for(i=0u;i<NET_DOMAIN_C2_CAN_MESSAGES;++i)a->can_sequence[i]=config->first_can_sequence;
+/* Transition epochs start at 1 in every run, one count per barrier. */
+for(i=0u;i<NET_DOMAIN_C2_BARRIERS;++i)a->barrier[i].next_epoch=1u;
 }
 a->initialized=true;
 memcpy(a->init_tag,init_tag,sizeof(init_tag));
@@ -330,10 +421,13 @@ return remember(a,key,now,id);
 }
 NetStatus net_domain_c2_step(NetDomainC2 *a)
 {
-    size_t i;uint64_t now;NetStatus result=NET_NO_WORK;
+    size_t i;uint64_t now;NetStatus result=NET_NO_WORK,transition=NET_NO_WORK;
     if(!nd_ready(a))return NET_NOT_CONFIGURED;
     if(a->in_call||a->service->in_call)return NET_BUSY;
     ND_TRY(net_upper_now(a->service,&now));a->in_call=true;
+    /* CIS transitions: here only, never inside a service callback. */
+    for(i=0u;i<NET_DOMAIN_C2_BARRIERS;++i){NetStatus st=barrier_step(a,(NetDomainC2BarrierKind)i);
+        if(st!=NET_NO_WORK&&transition!=NET_HOLD)transition=st;}
     for(i=0u;i<NET_UPPER_TX_CAPACITY;++i){
         NetDomainC2TxRecord *r=&a->tx[i];NetUpperTxSnapshot state;NetStatus st;bool rejected,terminal;
         if(!r->used)continue;
@@ -368,7 +462,7 @@ NetStatus net_domain_c2_step(NetDomainC2 *a)
             if(st==NET_OK){r->used=false;result=NET_OK;}else result=st;
         }
     }
-    a->in_call=false;return result;
+    a->in_call=false;return result==NET_NO_WORK?transition:result;
 }
 NetStatus net_domain_c2_health(NetDomainC2 *a,NetworkLinkId_t link,uint32_t now,NetworkHealthSnapshot_t *out)
 {

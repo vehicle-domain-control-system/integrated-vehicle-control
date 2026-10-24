@@ -23,6 +23,15 @@ bool NetDomainBoard_NodeConfig(NetNodeConfig *out);
 bool NetDomainBoard_C2Config(NetDomainC2Api *api, NetDomainC2Config *config);
 uint32_t NetDomainBoard_TickToMs(uint32_t tick);
 
+/* CIS environment / Occupant transition binding (net_domain_c2.h
+ * NetDomainC2TransitionBinding). Its functions call the DOMAIN private BOOT
+ * transitions and need DOMAIN application headers, so the DOMAIN integration
+ * implements them and hands them over here before Net_Init(); this file keeps a
+ * copy and gives it to the adapter. NULL clears it. Without a binding
+ * CIS_ENVIRONMENT (0x300) and CIS_OCCUPANT (0x310) stay held. A call after
+ * Net_Init() has no effect on the running node. */
+void NetDomainBoard_SetTransitionBinding(const NetDomainC2TransitionBinding *binding);
+
 #ifdef NET_DOMAIN_BENCH_PERMISSION
 /* TEST BENCH ONLY, never in a product build: calls DomainIf_TxCisPowerPermission
  * every 200 ms (ALLOW x10, then one UNKNOWN withdrawal) so that a bench sees
