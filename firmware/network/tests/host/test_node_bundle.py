@@ -576,6 +576,16 @@ def case_apply_safety(c):
     refused('bring-up reference project', c.root / 'network_344_can_bringup' / 'network', '--allow-dirty')
     c.check(not (c.root / 'd' / 'network').exists(), 'dirty: output folder created')
 
+    # A folder next to firmware/network (firmware/network_nodes/DOMAIN/network) is not inside it.
+    sib = net.parent / 'network_nodes' / 'DOMAIN' / 'network'
+    before_net = snapshot(net)
+    rc, o = c.tool(net, '--node', 'DOMAIN', '--out', sib, '--apply', '--allow-dirty')
+    c.check(rc == 0 and 'REFUSED' not in o and (sib / RECORD).is_file(),
+            'sibling folder firmware/network_nodes/DOMAIN/network: --apply exit %d (expected 0)' % rc, o)
+    c.check(snapshot(net) == before_net, 'sibling folder: firmware/network changed')
+    rc, o = c.tool(net, '--node', 'DOMAIN', '--check', sib)
+    c.check(rc == 0 and last_line(o) == 'CHECK DOMAIN OK', 'sibling folder: --check exit %d (expected CHECK DOMAIN OK)' % rc, o)
+
     out = c.root / 'e' / 'network'
     c.make('VSS', net, out)
     src = net / COMMON_PROBE
@@ -649,6 +659,17 @@ def case_apply_safety(c):
         cm.write_bytes(cm.read_bytes() + b'\n# not part of a bundle\n')
         rc, o = c.tool(gnet, '--node', 'DOMAIN', '--out', gout, '--apply')
         c.check(rc == 0, 'git: change outside the bundle, --apply exit %d (expected 0)' % rc, o)
+
+        # The same repository after the merge: the bundle sits next to firmware/network.
+        gsib = gnet.parent / 'network_nodes' / 'DOMAIN' / 'network'
+        rc, o = c.tool(gnet, '--node', 'DOMAIN', '--out', gsib, '--apply')
+        state = parse_record(gsib / RECORD)[2].get('source_state') if (gsib / RECORD).is_file() else None
+        c.check(rc == 0 and state == 'clean',
+                'git: sibling folder in the same repository, --apply exit %d, source_state %s (expected 0, clean)'
+                % (rc, state), o)
+        rc, o = c.tool(gnet, '--node', 'DOMAIN', '--out', gsib, '--apply')
+        c.check(rc == 0 and re.search(r'\bnew 0, changed 0\b', o) is not None,
+                'git: sibling folder, second --apply must change nothing (exit %d)' % rc, o)
 
 
 def case_idempotent(c):

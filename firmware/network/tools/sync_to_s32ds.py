@@ -64,8 +64,8 @@ Example:
   python firmware/network/tools/sync_to_s32ds.py --project C:/Users/me/ws/network_344_net_bench
   python firmware/network/tools/sync_to_s32ds.py --project C:/Users/me/ws/network_344_net_bench --apply
   python firmware/network/tools/sync_to_s32ds.py --project C:/Users/me/ws/S32K344_WB_Audio_Bringup --board vss
-  python firmware/network/tools/sync_to_s32ds.py --node DOMAIN --out ../NET_domain_pr/firmware/DOMAIN/network --apply
-  python firmware/network/tools/sync_to_s32ds.py --node DOMAIN --check ../NET_domain_pr/firmware/DOMAIN/network
+  python firmware/network/tools/sync_to_s32ds.py --node DOMAIN --out ../NET_domain_pr/firmware/network_nodes/DOMAIN/network --apply
+  python firmware/network/tools/sync_to_s32ds.py --node DOMAIN --check ../NET_domain_pr/firmware/network_nodes/DOMAIN/network
 """
 from __future__ import annotations
 import argparse, datetime, hashlib, json, os, pathlib, re, shutil, subprocess, sys, tempfile

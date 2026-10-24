@@ -1,19 +1,20 @@
 # DOMAIN 노드 Network 사본 안내
 
-DOMAIN 노드(profile 5, CAN + UART-M) 저장소의 `firmware/DOMAIN/network/`에 두는 Network 사본의 안내다. 원본은 NET_git `firmware/network/DOMAIN_NODE_INTEGRATION.md`이고, 사본에는 `README.md`로 들어간다. 설계 근거는 `docs/network/interface/02_NODES/DOMAIN/{10_DATA,20_API,25_PRIVATE_ROUTING}.md`, `03_COMMUNICATION/10_CAN_FD.md`, `03_COMMUNICATION/20_UART_M.md`이다.
+DOMAIN 노드(profile 5, CAN + UART-M)용 Network 사본의 안내다. 사본은 `develop`의 `firmware/network_nodes/DOMAIN/network/`에 둔다. Network가 관리하는 폴더이고 DOMAIN 폴더(`firmware/DOMAIN/`)는 건드리지 않는다. 원본은 NET_git `firmware/network/DOMAIN_NODE_INTEGRATION.md`이고, 사본에는 `README.md`로 들어간다. 설계 근거는 `docs/network/interface/02_NODES/DOMAIN/{10_DATA,20_API,25_PRIVATE_ROUTING}.md`, `03_COMMUNICATION/10_CAN_FD.md`, `03_COMMUNICATION/20_UART_M.md`이다.
 
 ## 이 폴더는 생성 사본이다
 
 - **원본:** NET_git의 `firmware/network`. 이 폴더의 파일은 `firmware/network/tools/sync_to_s32ds.py --node DOMAIN`이 원본과 같은 상대 경로로 복사한 것이다(예: `src/l04_frame_codec/net_wire_common.c`, `include/network/net_types.h`).
 - **직접 고치지 않는다.** 고칠 것이 있으면 원본을 고치고 커밋한 뒤 다시 만든다. NET_git 루트에서:
   ```
-  python -B firmware/network/tools/sync_to_s32ds.py --node DOMAIN --out <DOMAIN 저장소>/firmware/DOMAIN/network
-  python -B firmware/network/tools/sync_to_s32ds.py --node DOMAIN --out <DOMAIN 저장소>/firmware/DOMAIN/network --apply
-  python -B firmware/network/tools/sync_to_s32ds.py --node DOMAIN --check <DOMAIN 저장소>/firmware/DOMAIN/network
+  python -B firmware/network/tools/sync_to_s32ds.py --node DOMAIN --out <develop 체크아웃>/firmware/network_nodes/DOMAIN/network
+  python -B firmware/network/tools/sync_to_s32ds.py --node DOMAIN --out <develop 체크아웃>/firmware/network_nodes/DOMAIN/network --apply
+  python -B firmware/network/tools/sync_to_s32ds.py --node DOMAIN --check <develop 체크아웃>/firmware/network_nodes/DOMAIN/network
   ```
   - 첫 줄은 dry run이다. 새로 쓰고, 바꾸고, 지울 파일만 출력하고 아무것도 쓰지 않는다.
   - `--apply`는 다음 경우 아무것도 쓰지 않고 거부한다(종료 코드 1): 원본에 커밋되지 않은 변경이 있다, 폴더 이름이 `network`가 아니다, 이 폴더에 고친 파일이나 기록에 없는 파일이 있다, `NETWORK_BUNDLE.txt`가 없거나 다른 노드의 것이다.
   - 같은 원본으로 다시 실행하면 바뀌는 파일이 없다. 원본에서 빠진 파일은 지워진다.
+- **위치:** `firmware/network_nodes/DOMAIN/network/`는 원본 `firmware/network`와 나란한 폴더라 원본이 `develop`에 합쳐져도 경로가 겹치지 않는다. 합친 뒤 `--check`가 `STALE`이면 같은 명령으로 다시 만든다.
 - **`NETWORK_BUNDLE.txt`:** 생성 기록이다. 노드, 프로필(`NETWORK_UPPER_NODE_PROFILE=5`), 원본 브랜치·커밋(`source_commit`), 원본 상태(`source_state`, 커밋되지 않은 변경이 있었으면 `dirty`), 파일마다 SHA-256이 들어 있다. 해시는 CRLF를 LF로 읽은 내용의 값이라 Windows 체크아웃 설정(`core.autocrlf`)과 상관없이 같다. 시각은 넣지 않는다.
 - **`--check` 결과(마지막 줄):**
   - `CHECK DOMAIN OK`(종료 0): 기록과 같고 지금 원본으로 만들어도 같다.
@@ -30,7 +31,7 @@ DOMAIN 노드(profile 5, CAN + UART-M) 저장소의 `firmware/DOMAIN/network/`�
 ## 아직 빠진 것: DOMAIN 조립 루트
 
 - DOMAIN 조립 루트(노드 프로필 표와 `Net_Init`·`Net_MainFunction` 공개 진입)가 아직 없다. 그래서 이 사본만으로는 `Net_Init`과 `Net_MainFunction`을 쓸 수 없다.
-- 그래서 이 폴더는 DOMAIN S32DS 빌드에 넣지 않는다. DOMAIN 소스 폴더 `firmware/DOMAIN/src` 밖에 두는 이유다. 안에 두면 공개 진입이 없는 Network 소스가 DOMAIN 빌드에 섞인다.
+- 그래서 이 폴더는 아직 DOMAIN S32DS 빌드에 넣지 않는다. 사본은 DOMAIN 폴더 밖(`firmware/network_nodes/`)에 있으므로 공개 진입이 없는 Network 소스가 DOMAIN 빌드에 섞이지 않는다.
 - 조립 루트가 생기면 원본 목록(`firmware/network/tools/s32ds_sources.txt`)의 태그가 바뀌고, 사본을 다시 만들면 그 파일이 들어온다.
 
 ## 나중에 빌드에 넣을 때 필요한 것
