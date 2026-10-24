@@ -166,7 +166,7 @@ DOMAIN Production Private Core는 최초 Epoch 1, 완료된 Epoch 이후 정확�
 | <a id="plan-ncp-t08"></a>Pi STATUS 고장이 일부 기능에만 영향 | only indicated affected function invalidated |
 | <a id="plan-ncp-t09"></a>Pi Permission 원본 AGE 499/500/501 | validity at <500 only if same accepted source |
 | <a id="plan-ncp-t10"></a>CAN 50ms 반복 송신과 200ms 새 평가 구분 | no fake seq/age0 on periodic transmit |
-| <a id="plan-ncp-t11"></a>UART 새 입력 중계와 500ms 주기 송신 구분 | immediate on actual new valid eval, repeated retains revision |
+| <a id="plan-ncp-t11"></a>UART 새 평가·세대 변경·품질 제한 중계와 단순 반복 구분 | 새 원 평가·수용 세대 변경·실제 품질 제한 시 즉시 relay, 단순 반복은 중계하지 않음 |
 | <a id="plan-ncp-t12"></a>DOMAIN/CIS 재시작 시 Permission | old ALLOW cannot be reanimated by stale Frame |
 | <a id="plan-ncp-t13"></a>Power 원본은 유효하지만 Operation 원본은 UNKNOWN | power not fabricated/blanket DENIED; shared AGE conservative |
 | <a id="plan-ncp-t14"></a>온도·습도 원본 AGE 2499/2500/2501 | 2500 and beyond unusable at Domain consumer |

@@ -55,7 +55,7 @@ flowchart LR
 
 1. 생산자가 원 값·품질·기동·순번·AGE·문맥을 정한다. Network는 수신 시각·중계 시각으로 원 평가를 갱신하지 않는다. 거리 raw deci_cm의1단위는1mm이며 정수 /10 변환을 하지 않는다.
 2. 호출 뒤 보유할 송신/비동기 typed 입력은 전체 사본 또는 호출 중 동기 encode와 용량 확보를 요구한다. 성공 전에 원 identity와 저장소 인수를 원자적으로 확정한다. 동기 borrowed Rx/App 인계는 호출 동안 유효한 원 자료를 사용할 수 있다. enum 숫자 cast, view 구조만 복사, 실패 OUT 소비를 하지 않는다.
-3. 전송 선택 시 아직 반영하지 않은 대기를 AGE에 정확히 한 번 누적한다. 원 Clock/wrap 근거가 없으면 대상 전송을 HOLD한다. 후방 활성 Power의 DOMAIN 실제 재평가 약200ms·원 사용기한500ms는 확정 합의다. UART 반복500ms·수신 중단1500ms와 조건부 relay USE_LIMIT는 용도가 다르며, 중계 수신으로 원 판단의 수명을 재시작하지 않는다. O05 합성 근거·원 association이 없으면 해당 사용 경로를 HOLD한다.
+3. 전송 선택 시 아직 반영하지 않은 대기를 AGE에 정확히 한 번 누적한다. 원 Clock/wrap 근거가 없으면 대상 전송을 HOLD한다. 후방 활성 Power의 DOMAIN 실제 재평가 약200ms·원 사용기한500ms는 확정 합의다. UART-C 수신 중단1500ms(P_PERMISSION 반복 없음)와 조건부 relay USE_LIMIT는 용도가 다르며, 중계 수신으로 원 판단의 수명을 재시작하지 않는다. O05 합성 근거·원 association이 없으면 해당 사용 경로를 HOLD한다.
 4. Queue 인수, Driver 접수, 실제 TX terminal, 참조 release, 상대 유효 RX, 상대 App 인수, 차량 실제 완료, MOBILE 표시 완료를 각각 분리한다. 먼저 도착한 release로 결과·예약 record까지 재사용하지 않는다.
 5. 재기동/재연결 뒤 과거 token/epoch/원 Boot를 새 명령에 결합하지 않는다. SourceGeneration0·Boot 정책은 원 미결 그대로이며 Window 비활성이나 BLE 연결만으로 기능 결과를 합성하지 않는다.
 

@@ -124,7 +124,7 @@ VISION_AGE·STATUS_AGE·SOURCE_AGE의 기준은 각각 원 카메라 판정·원
 | UART 전달 여유50ms | 미반영 hop 산정 후보, 실측 상한 아님 |
 | Result100/300ms | 송신 주기 / 수신 중단 후보, 관측의 유효성 보증 아님 |
 | Status1000/3000ms | 상태 송신 주기 / 수신 중단 후보, Result freshness와 독립 |
-| Permission500/1500ms | relay 보고 주기 / 수신 중단 후보 |
+| Permission 반복 없음 / 수신 중단1500ms | 새 원 평가·수용 세대 변경·실제 품질 제한 시 즉시 relay / 수신 중단 감시 |
 | Permission USE_LIMIT1500ms | 기존 Wire 후보. 동일 후방 원 판단 전달을 양끝에서 검증할 때만500ms 후보 변경; 자동 대입 없음. raw0 의미 미정 |
 | 후방 활성 Power 원500ms / 실제 재평가 약200ms | 확정 합의. effective AGE>=500ms 비사용;499ms도 품질·현재 Boot·원 association 필요. Operation/Alive·후방 거리 TTL과 별개 |
 

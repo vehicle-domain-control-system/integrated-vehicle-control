@@ -252,7 +252,7 @@ default:
 }
 ```
 
-**실패·복구.** 후방 활성 Power의 실제 원 판단은 DOMAIN이 약200ms마다 재평가하며 원 사용기한은 합의된500ms다. 같은 값이라도 실제 새 평가가 완료됐을 때만 원 평가순번·시각을 갱신하고 가능한 즉시 전달한다. 단순 UART-C 반복500ms나 재수신은 새 평가가 아니다. 원 AGE499ms는 다른 출처·Boot·품질·association 조건이 모두 유효할 때 시간 필요조건만 통과하며,500ms 도달부터 사용하지 않는다. CAN 송신50ms/수신 중단150ms, UART-C 반복500ms/수신 중단1500ms와 후방 거리150ms 후보는 별개다. relay USE_LIMIT1500ms 후보는 원500ms를 연장하지 않으며, 조건부 USE_LIMIT500ms도 같은 후방 Power 원이라는 양단 근거 없이 송신값으로 채택하지 않는다. O05의 power/operation/alive 합성, 원 association·clock/미반영 경과가 불명확하면 해당 경로를 HOLD한다. Quality 비유효 보고의 raw 보관과 허용 사용은 분리한다.
+**실패·복구.** 후방 활성 Power의 실제 원 판단은 DOMAIN이 약200ms마다 재평가하며 원 사용기한은 합의된500ms다. 같은 값이라도 실제 새 평가가 완료됐을 때만 원 평가순번·시각을 갱신하고 가능한 즉시 전달한다. 단순 CAN 반복이나 UART-C 재수신은 새 평가가 아니며 P_PERMISSION은 반복하지 않는다. 원 AGE499ms는 다른 출처·Boot·품질·association 조건이 모두 유효할 때 시간 필요조건만 통과하며,500ms 도달부터 사용하지 않는다. CAN 송신50ms/수신 중단150ms, UART-C 수신 중단1500ms(P_PERMISSION 반복 없음)와 후방 거리150ms 후보는 별개다. relay USE_LIMIT1500ms 후보는 원500ms를 연장하지 않으며, 조건부 USE_LIMIT500ms도 같은 후방 Power 원이라는 양단 근거 없이 송신값으로 채택하지 않는다. O05의 power/operation/alive 합성, 원 association·clock/미반영 경과가 불명확하면 해당 경로를 HOLD한다. Quality 비유효 보고의 raw 보관과 허용 사용은 분리한다.
 
 CAN bus-off 또는 원 DOMAIN 재기동으로 과거 허용을 Pi의 현재 근거로 복원하지 않는다. CIS 또는 Pi만 재기동해도 이전 cache·half-frame과 새 epoch를 섞지 않는다. 실제 새 유효 DOMAIN 판단·현재 수용 세대와 원 무효화 연결을 확인한 뒤 기능 Owner가 사용을 재평가한다. Pi 프로세스 종료·물리 전원 차단 정책을 새로 만들지 않는다. IF-O05/G02/IF-O09/G07 및 실제 supervision/Driver 바인딩은 OPEN이다.
 
