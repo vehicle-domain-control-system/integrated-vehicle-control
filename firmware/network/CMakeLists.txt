@@ -498,6 +498,10 @@ if(NETWORK_BUILD_DOMAIN_C2)
                 ingress_context_restart env_hold occupant_hold semantic_holds)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2_ingress ${case})
         endforeach()
+        # DOMAIN phase-1 link: a rejected BCM result / event frame, provisional status quality.
+        foreach(case IN ITEMS ingress_bcm_rejected_frame status_quality_provisional)
+            add_test(NAME domain_c2_${case} COMMAND test_domain_c2_ingress ${case})
+        endforeach()
         # DOMAIN_PERMISSION transmit: synthesized CAN UPDATE_SEQUENCE, UNKNOWN power 255.
         add_executable(test_domain_c2_permission tests/product/test_domain_c2_permission.c)
         target_link_libraries(test_domain_c2_permission PRIVATE network_domain_c2)
@@ -968,6 +972,10 @@ if(NETWORK_BUILD_RTD_MOCK)
         endforeach()
         # The CIS transition binding DOMAIN hands to the board file.
         add_test(NAME domain_node.n16_board_transition_binding COMMAND test_domain_node n16_board_transition_binding)
+        # DOMAIN phase-1 link: BCM states with per-field AGE, a rejected BCM result frame.
+        foreach(case IN ITEMS n17_bcm_state_field_age n18_bcm_result_rejected)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
+        endforeach()
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

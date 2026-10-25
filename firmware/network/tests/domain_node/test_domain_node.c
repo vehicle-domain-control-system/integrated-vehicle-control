@@ -72,6 +72,17 @@ DomainIf_Status_t DomainIf_SetTxPort(const DomainIf_TxPort_t *p)
 DomainIf_Status_t DomainIf_RxBcmDoorState(const DoorState_t *s) { (void)s; owner_call(); ++door_state_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxBcmStatus(const DomainIf_BcmStatusReport_t *s) { (void)s; owner_call(); ++bcm_status_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxBcmCommandResult(const DomainIf_BcmCommandResult_t *r) { (void)r; owner_call(); ++result_calls; return DOMAIN_IF_OK; }
+/* BCM result with a return value the case chooses (n18), bound by the test
+ * hook below in place of the pinned function. */
+static DomainIf_Status_t result_return = DOMAIN_IF_OK;
+static DomainIf_Status_t result_rx(const DomainIf_BcmCommandResult_t *r) { (void)r; owner_call(); ++result_calls; return result_return; }
+/* Not implemented by DOMAIN develop (no pinned function): bound by the test
+ * hook below so that the per-field AGE of 0x210 / 0x220 is seen at C2. */
+static unsigned climate_calls, light_calls;
+static ClimateState_t last_climate;
+static InteriorLightState_t last_light;
+static DomainIf_Status_t climate_rx(const ClimateState_t *s) { owner_call(); last_climate = *s; ++climate_calls; return DOMAIN_IF_OK; }
+static DomainIf_Status_t light_rx(const InteriorLightState_t *s) { owner_call(); last_light = *s; ++light_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxCisRear(const CisRearState_t *s) { owner_call(); last_rear = *s; ++rear_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxCisStatus(const DomainIf_CisStatusReport_t *s) { owner_call(); last_cis_status = *s; ++cis_status_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxCisCabinEnvironment(const CisCabinEnvironmentState_t *s) { owner_call(); last_env = *s; ++env_calls; return DOMAIN_IF_OK; }
@@ -139,6 +150,9 @@ bool MockBoard_DomainC2(NetDomainC2Api *api, NetDomainC2Config *config)
     net_domain_c2_pinned_owner_api(api);
     api->RxDigitalKeyConnection = DomainIf_RxDigitalKeyConnection;
     api->RxProximity = DomainIf_RxProximity;
+    api->RxBcmCommandResult = result_rx;
+    api->RxBcmClimateState = climate_rx;
+    api->RxBcmInteriorLightState = light_rx;
     config->value_quality = net_domain_c2_value_quality_provisional;
     config->permission_bundle = net_domain_c2_permission_bundle_provisional;
     config->status_quality = status_quality;
@@ -286,6 +300,47 @@ static NetUpperCanMessage door_state(uint32_t boot, uint32_t tx)
     m.data.bcm_door_state.boot_id = boot;
     m.data.bcm_door_state.tx_sequence = tx;
     m.data.bcm_door_state.update_sequence = tx;
+    return m;
+}
+
+#define BCM_BOOT 0x42434D31u
+static NetUpperCanMessage climate_state(uint32_t tx, uint16_t age)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x210u;
+    m.data.bcm_climate_state.boot_id = BCM_BOOT;
+    m.data.bcm_climate_state.tx_sequence = tx;
+    m.data.bcm_climate_state.update_sequence = 7u;
+    m.data.bcm_climate_state.source_age_ms = age;
+    return m;
+}
+
+static NetUpperCanMessage light_state(uint32_t tx, uint16_t age)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x220u;
+    m.data.bcm_light_state.boot_id = BCM_BOOT;
+    m.data.bcm_light_state.tx_sequence = tx;
+    m.data.bcm_light_state.update_sequence = 8u;
+    m.data.bcm_light_state.source_age_ms = age;
+    return m;
+}
+
+/* BCM_COMMAND_RESULT of a DOMAIN command (this node's BOOT_ID). */
+static NetUpperCanMessage bcm_result(uint32_t tx, uint32_t command)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x140u;
+    m.data.bcm_result.boot_id = BCM_BOOT;
+    m.data.bcm_result.tx_sequence = tx;
+    m.data.bcm_result.command_domain_boot = NODE_BOOT;
+    m.data.bcm_result.command_id = command;
+    m.data.bcm_result.command_kind = 1u;
+    m.data.bcm_result.result = 2u;
+    m.data.bcm_result.result_reason = 9u;
     return m;
 }
 
@@ -952,11 +1007,11 @@ static int n14_uart_m_receive_policy(void)
     return 0;
 }
 
-/* The DOMAIN board hook: the pinned DOMAIN functions, the two provisional
- * rules (value quality, DOMAIN_PERMISSION bundle), the other seven semantic
- * callbacks NULL, the CIS transition barriers on. In the node: CIS_REAR
- * reaches C2, CIS_STATUS is held (no status quality rule), and an ALLOW goes
- * out as 1 / OK with the Operation fields UNKNOWN (255 / 0 / NO_DATA). */
+/* The DOMAIN board hook: the pinned DOMAIN functions, the three provisional
+ * rules (value quality, DOMAIN_PERMISSION bundle, status report quality), the
+ * other six semantic callbacks NULL, the CIS transition barriers on. In the
+ * node: CIS_REAR and CIS_STATUS reach C2, and an ALLOW goes out as 1 / OK with
+ * the Operation fields UNKNOWN (255 / 0 / NO_DATA). */
 static int n15_board_c2_hook(void)
 {
     NetDomainC2Api api, pinned;
@@ -971,7 +1026,8 @@ static int n15_board_c2_hook(void)
     CHECK(memcmp(&api, &pinned, sizeof(api)) == 0);
     CHECK(cfg.value_quality == net_domain_c2_value_quality_provisional);
     CHECK(cfg.permission_bundle == net_domain_c2_permission_bundle_provisional);
-    CHECK(cfg.status_quality == NULL && cfg.window_permission_bundle == NULL && cfg.window_alive_bundle == NULL);
+    CHECK(cfg.status_quality == net_domain_c2_status_quality_provisional);
+    CHECK(cfg.window_permission_bundle == NULL && cfg.window_alive_bundle == NULL);
     CHECK(cfg.window_event_projection == NULL && cfg.local_failure_reason == NULL);
     CHECK(cfg.select_query_plan == NULL && cfg.confirm_snapshot == NULL);
     CHECK(cfg.cis_transition_barriers && !cfg.window_transport_enabled && cfg.alive_state == NULL && cfg.publisher == NULL);
@@ -990,13 +1046,66 @@ static int n15_board_c2_hook(void)
     m = cis_status(1u, 100u);
     CHECK(inject(&m) >= 0);
     run_to(START_MS + 5u);
-    CHECK(rear_calls == 1u && cis_status_calls == 0u);
+    CHECK(rear_calls == 1u && cis_status_calls == 1u && last_cis_status.meta.quality == DATA_QUALITY_OK);
     CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
     run_to(START_MS + 10u);
     s = nth_id(0x080u, 0u, 0u);
     CHECK(s != NULL && s->m.data.domain_permission.vehicle_power_permission == 1u);
     CHECK(s->m.data.domain_permission.power_permission_quality == 0u && s->m.data.domain_permission.power_operation_state == 255u);
     CHECK(s->m.data.domain_permission.operation_allowed == 0u && s->m.data.domain_permission.operation_quality == 3u);
+    return 0;
+}
+
+/* BCM door, climate and light states repeat an unchanged evaluation with its
+ * original sequence and accumulated AGE (02_NODES/BCM/20_API.md: a repeat
+ * keeps the original sequence and AGE). The DOMAIN node takes them with
+ * per-field AGE: a frame whose AGE is past the common 2000 ms bound still
+ * reaches C2 with meta.ageMs = wire AGE + local wait, and DOMAIN judges
+ * freshness. */
+static int n17_bcm_state_field_age(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = door_state(BCM_BOOT, 1u);
+    m.data.bcm_door_state.source_age_ms = 2500u;
+    CHECK(inject(&m) >= 0);
+    m = climate_state(1u, 3000u);
+    CHECK(inject(&m) >= 0);
+    m = light_state(1u, 60000u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(door_state_calls == 1u && climate_calls == 1u && light_calls == 1u);
+    CHECK(last_climate.meta.ageMs == 3001u && last_climate.meta.updateSequence == 7u);
+    CHECK(last_light.meta.ageMs == 60001u && last_light.meta.updateSequence == 8u);
+    m = cis_status(1u, 2600u); /* the earlier per-field routes are unchanged */
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(cis_status_calls == 1u && last_cis_status.meta.ageMs == 2601u);
+    return 0;
+}
+
+/* DOMAIN returns DOMAIN_IF_REJECTED for the late result of a command it has
+ * no record of (ResultManager NOT_FOUND). The node drops that frame, counts it
+ * in the adapter (rejected_frames), and the next BCM result still reaches
+ * C2. */
+static int n18_bcm_result_rejected(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    result_return = DOMAIN_IF_REJECTED;
+    m = bcm_result(1u, 901u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(result_calls == 1u && NetNode_DomainC2()->rejected_frames == 1u);
+    result_return = DOMAIN_IF_OK;
+    m = bcm_result(2u, 902u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(result_calls == 2u && NetNode_DomainC2()->rejected_frames == 1u);
     return 0;
 }
 
@@ -1095,6 +1204,8 @@ int main(int argc, char **argv)
         { "n13_composite_field_age", n13_composite_field_age },
         { "n14_uart_m_receive_policy", n14_uart_m_receive_policy },
         { "n16_board_transition_binding", n16_board_transition_binding },
+        { "n17_bcm_state_field_age", n17_bcm_state_field_age },
+        { "n18_bcm_result_rejected", n18_bcm_result_rejected },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

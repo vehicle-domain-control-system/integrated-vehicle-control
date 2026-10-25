@@ -246,6 +246,10 @@ typedef struct {
     DomainIf_Status_t last_c2_status;
     NetStatus last_status;
     uint32_t boundary_calls, rejected_mappings;
+    /* BCM result / event frames (0x140, 0x141) the Owner returned
+     * DOMAIN_IF_REJECTED for: dropped one by one, route kept (nd_rx_call,
+     * saturating). */
+    uint32_t rejected_frames;
     NetDomainC2TxRecord tx[NET_UPPER_TX_CAPACITY];
     /* Once-invoked boundary journal; Observer failure cannot replay Core. */
     NetDomainC2IngressRecord ingress[19];
@@ -290,6 +294,11 @@ NetStatus net_domain_c2_from_status(DomainIf_Status_t);
 DomainIf_Status_t net_domain_c2_to_status(NetStatus);
 /* PROVISIONAL explicit policy helpers: integration may select or replace them. */
 NetStatus net_domain_c2_value_quality_provisional(void *, uint8_t, uint8_t, DataQuality_t *);
+/* PROVISIONAL status report quality: OK for an admitted, decoded BCM_STATUS
+ * (0x230), CIS_STATUS (0x320) or VSS_STATUS (0x340), whose wire has no
+ * quality field; DOMAIN judges freshness on meta.ageMs. Any other id is HOLD.
+ * Not selected by default: the integration (board hook) or a test binds it. */
+NetStatus net_domain_c2_status_quality_provisional(void *, uint16_t, const NetUpperCanMessage *, DataQuality_t *);
 /* PROVISIONAL Power/Operation bundle of DOMAIN_PERMISSION. Power: a confirmed
  * ALLOW / DENY (OK quality) is 1 / 0, any non-OK quality is UNKNOWN 255 with
  * that quality, true with a non-OK quality (or a non-OK meta.quality) is HOLD.

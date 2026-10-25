@@ -66,12 +66,16 @@ NET_NODE_PUBLISH_TABLE_FITS(publish_table);
  * rx_per_field_age: the owner's explicit choice for composite observations and
  * history). CIS_ENVIRONMENT carries three sensors of their own AGE, and the
  * DOMAIN environment TTL is longer than the common 2000 ms bound; BCM_STATUS,
- * CIS_STATUS and VSS_STATUS keep the AGE of their last change. The bound then
- * covers the local wait only, every field AGE and quality reach DOMAIN, and
- * DOMAIN judges freshness; Network makes no STALE. CIS_REAR and
+ * CIS_STATUS and VSS_STATUS keep the AGE of their last change. BCM door,
+ * climate and light states (0x200, 0x210, 0x220) repeat an unchanged
+ * evaluation with its original sequence and accumulated AGE
+ * (docs/network/interface/02_NODES/BCM/20_API.md, repeat keeps the original
+ * sequence and AGE), so their AGE passes 2000 ms while the frames keep coming.
+ * The bound then covers the local wait only, every field AGE and quality reach
+ * DOMAIN, and DOMAIN judges freshness; Network makes no STALE. CIS_REAR and
  * DOMAIN_PERMISSION keep their whole-message bound (the service refuses
  * per-field AGE there). */
-static const uint16_t per_field_age[] = { 0x300u, 0x230u, 0x320u, 0x340u };
+static const uint16_t per_field_age[] = { 0x300u, 0x230u, 0x320u, 0x340u, 0x200u, 0x210u, 0x220u };
 
 static NetUpper service;
 static NetHalAdapter hal;

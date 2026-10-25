@@ -394,6 +394,67 @@ static int semantic_holds(void)
     m=route_message(0x200u,401u,seq,seq);d=can_meta(401u,seq);CHECK(owner.can(owner.context,&m,&d)==NET_OK&&calls[C_DOOR]==1u);
     return 0;
 }
+/* BCM_COMMAND_RESULT (0x140) and BCM_PROTECTION_EVENT (0x141) report one
+ * command or one event per frame. DOMAIN returns DOMAIN_IF_REJECTED for the
+ * result of a command it has no record of (DOMAIN ResultManager NOT_FOUND):
+ * that frame alone is dropped and counted (rejected_frames), the same frame is
+ * not offered to C2 again, and the next frame of the route reaches C2. Any
+ * other non-OK status on these routes, and REJECTED on a state route, still
+ * blocks the route for the rest of the run. */
+static int ingress_bcm_rejected_frame(void)
+{
+    static const struct { uint16_t id; unsigned slot; } lanes[2]={{0x140u,C_RESULT},{0x141u,C_EVENT}};
+    NetUpperCanMessage m;const NetDomainC2IngressRecord *r;unsigned i;
+    for(i=0u;i<2u;++i){unsigned s=lanes[i].slot;uint16_t id=lanes[i].id;
+        ret[s]=DOMAIN_IF_REJECTED;
+        m=route_message(id,201u,1u,901u);CHECK(feed_can(&m,4u)==0);CHECK(calls[s]==1u);
+        r=record(NET_WIRE_CAN,id);CHECK(r!=NULL&&!r->blocked&&r->sequence==1u);
+        CHECK(adapter.rejected_frames==i*2u+1u&&adapter.last_c2_status==DOMAIN_IF_REJECTED);
+        CHECK(feed_can(&m,4u)==0);CHECK(calls[s]==1u&&adapter.rejected_frames==i*2u+1u); /* same frame: no second call */
+        m=route_message(id,201u,2u,902u);CHECK(feed_can(&m,4u)==0);
+        CHECK(calls[s]==2u&&!r->blocked&&r->sequence==2u&&adapter.rejected_frames==i*2u+2u);
+        ret[s]=DOMAIN_IF_OK;
+        m=route_message(id,201u,3u,903u);CHECK(feed_can(&m,4u)==0);
+        CHECK(calls[s]==3u&&!r->blocked&&r->sequence==3u&&adapter.rejected_frames==i*2u+2u);
+        ret[s]=DOMAIN_IF_QUEUE_FULL; /* another failure still blocks the route */
+        m=route_message(id,201u,4u,904u);CHECK(feed_can(&m,4u)==0);CHECK(calls[s]==4u&&r->blocked);
+        ret[s]=DOMAIN_IF_OK;
+        m=route_message(id,201u,5u,905u);CHECK(feed_can(&m,4u)==0);
+        CHECK(calls[s]==4u&&r->blocked&&adapter.rejected_frames==i*2u+2u);
+    }
+    ret[C_BCM]=DOMAIN_IF_REJECTED; /* REJECTED on a state route blocks it as before */
+    m=route_message(0x230u,201u,1u,1u);CHECK(feed_can(&m,4u)==0);CHECK(calls[C_BCM]==1u);
+    r=record(NET_WIRE_CAN,0x230u);CHECK(r!=NULL&&r->blocked&&adapter.rejected_frames==4u);
+    ret[C_BCM]=DOMAIN_IF_OK;
+    m=route_message(0x230u,201u,2u,2u);CHECK(feed_can(&m,4u)==0);CHECK(calls[C_BCM]==1u);
+    return 0;
+}
+/* Provisional status report quality (selected by the DOMAIN board hook): OK
+ * for BCM_STATUS, CIS_STATUS and VSS_STATUS, whose wire has no quality field;
+ * HOLD for any other id; INVALID_ARGUMENT for a NULL or an id that is not the
+ * message's. Bound in the adapter, the three status routes reach C2 with
+ * meta.quality OK and their AGE, and WINDOW_FAULT stays held. */
+static int status_quality_provisional(void)
+{
+    static const uint16_t ok_ids[3]={0x230u,0x320u,0x340u};
+    static const uint16_t hold_ids[5]={0x330u,0x200u,0x0a0u,0x140u,0x300u};
+    NetUpperOwner owner=net_domain_c2_owner(&adapter);NetUpperCanMessage m;NetUpperDelivery d;DataQuality_t q;unsigned i;
+    for(i=0u;i<3u;++i){m=route_message(ok_ids[i],401u,1u,1u);q=DATA_QUALITY_INVALID;
+        CHECK(net_domain_c2_status_quality_provisional(NULL,ok_ids[i],&m,&q)==NET_OK&&q==DATA_QUALITY_OK);}
+    for(i=0u;i<5u;++i){m=route_message(hold_ids[i],401u,1u,1u);q=DATA_QUALITY_INVALID;
+        CHECK(net_domain_c2_status_quality_provisional(NULL,hold_ids[i],&m,&q)==NET_HOLD&&q==DATA_QUALITY_INVALID);}
+    m=route_message(0x230u,401u,1u,1u);
+    CHECK(net_domain_c2_status_quality_provisional(NULL,0x230u,NULL,&q)==NET_INVALID_ARGUMENT);
+    CHECK(net_domain_c2_status_quality_provisional(NULL,0x230u,&m,NULL)==NET_INVALID_ARGUMENT);
+    CHECK(net_domain_c2_status_quality_provisional(NULL,0x320u,&m,&q)==NET_INVALID_ARGUMENT);
+    adapter.config.status_quality=net_domain_c2_status_quality_provisional;
+    for(i=0u;i<3u;++i){m=route_message(ok_ids[i],401u,1u,1u);CHECK(feed_can(&m,4u)==0);}
+    CHECK(calls[C_BCM]==1u&&calls[C_CIS]==1u&&calls[C_VSS]==1u&&adapter.last_c2_status==DOMAIN_IF_OK);
+    adapter.config.window_transport_enabled=true;
+    m=route_message(0x330u,401u,1u,1u);d=can_meta(401u,1u);
+    CHECK(owner.can(owner.context,&m,&d)==NET_HOLD&&calls[C_WFAULT]==0u&&record(NET_WIRE_CAN,0x330u)==NULL);
+    return 0;
+}
 int main(int argc,char **argv)
 {
     int r;
@@ -405,6 +466,8 @@ int main(int argc,char **argv)
     else if(strcmp(argv[1],"env_hold")==0)r=env_hold();
     else if(strcmp(argv[1],"occupant_hold")==0)r=occupant_hold();
     else if(strcmp(argv[1],"semantic_holds")==0)r=semantic_holds();
+    else if(strcmp(argv[1],"ingress_bcm_rejected_frame")==0)r=ingress_bcm_rejected_frame();
+    else if(strcmp(argv[1],"status_quality_provisional")==0)r=status_quality_provisional();
     else return 2;
     if(r==0)printf("C2 %s PASS\n",argv[1]);
     return r;

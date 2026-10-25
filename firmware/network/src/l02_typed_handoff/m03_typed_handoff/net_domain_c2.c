@@ -216,6 +216,21 @@ else q=DATA_QUALITY_INVALID;
 *out=q;
 return NET_OK;
 }
+/* PROVISIONAL status report quality. BCM_STATUS (0x230), CIS_STATUS (0x320)
+ * and VSS_STATUS (0x340) carry no quality field on the wire
+ * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md). The adapter calls
+ * this only for a frame the service admitted and the mapping decoded, so the
+ * report itself is OK; its freshness is judged by DOMAIN on meta.ageMs (the
+ * wire SOURCE_AGE plus the local wait) and its TTL. Any other id (WINDOW_FAULT
+ * 0x330 included) is HOLD. Not selected by default: the integration (board
+ * hook) or a test binds it. */
+NetStatus net_domain_c2_status_quality_provisional(void *context,uint16_t id,const NetUpperCanMessage *m,DataQuality_t *out){
+(void)context;
+if(m==NULL||out==NULL||m->id!=id)return NET_INVALID_ARGUMENT;
+if(id!=0x230u&&id!=0x320u&&id!=0x340u)return NET_HOLD;
+*out=DATA_QUALITY_OK;
+return NET_OK;
+}
 /* PROVISIONAL DOMAIN_PERMISSION bundle
  * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md DOMAIN_PERMISSION):
  *   - Power: only a confirmed ALLOW / DENY (OK quality) is 1 / 0; UNKNOWN (a
@@ -479,8 +494,19 @@ NetStatus net_domain_c2_health(NetDomainC2 *a,NetworkLinkId_t link,uint32_t now,
     if(value.link!=link||value.transportState<NETWORK_TRANSPORT_UNKNOWN||value.transportState>NETWORK_TRANSPORT_RECOVERING)return NET_REJECTED;
     *out=value;return nd_call(a,status);
 }
+/* A non-OK Owner return blocks the route (the ingress record) for the rest of
+ * the run, except DOMAIN_IF_REJECTED on BCM_COMMAND_RESULT (0x140) and
+ * BCM_PROTECTION_EVENT (0x141): each of those frames reports one command or
+ * one event, not a state stream, and DOMAIN rejects a result whose command it
+ * has no record of (ResultManager NOT_FOUND, for example the late result of a
+ * command sent before a DOMAIN reset). That frame alone is dropped and counted
+ * in rejected_frames; the record keeps its sequence, so the same frame is not
+ * offered again, and the next result or event of the route is delivered. */
 NetStatus nd_rx_call(NetDomainC2 *a,DomainIf_Status_t status){
-if(a->current_ingress!=NULL){if(status!=DOMAIN_IF_OK)a->current_ingress->blocked=true;a->current_ingress=NULL;}
+NetDomainC2IngressRecord *r=a->current_ingress;
+if(r!=NULL){a->current_ingress=NULL;
+if(status==DOMAIN_IF_REJECTED&&r->link==NET_WIRE_CAN&&(r->id==0x140u||r->id==0x141u))net_upper_observe_increment(&a->rejected_frames);
+else if(status!=DOMAIN_IF_OK)r->blocked=true;}
 return nd_call(a,status);}
 
 NetStatus net_domain_c2_accept_ingress_epoch(NetDomainC2 *a,NetWireLink link,uint16_t id,uint64_t epoch,uint32_t boot,bool confirmed)

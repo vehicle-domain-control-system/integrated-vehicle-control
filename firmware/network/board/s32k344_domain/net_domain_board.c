@@ -36,11 +36,13 @@ void NetDomainBoard_SetTransitionBinding(const NetDomainC2TransitionBinding *bin
 }
 
 /* C2 boundary: the pinned DOMAIN functions (net_domain_c2_pinned_owner_api).
- * Semantic callbacks: the two provisional rules of this board, the value
- * quality of VALIDITY / REASON and the Power / Operation bundle of
- * DOMAIN_PERMISSION; without them CIS_REAR reception and DOMAIN_PERMISSION
- * transmission are held. The other seven stay NULL, and their routes are held
- * until the DOMAIN team decides them: status_quality, window_permission_bundle,
+ * Semantic callbacks: the three provisional rules of this board, the value
+ * quality of VALIDITY / REASON, the Power / Operation bundle of
+ * DOMAIN_PERMISSION and the status report quality (OK for an admitted
+ * BCM_STATUS / CIS_STATUS / VSS_STATUS, DOMAIN judges freshness on the AGE);
+ * without them CIS_REAR reception, DOMAIN_PERMISSION transmission and the
+ * three status reports are held. The other six stay NULL, and their routes are
+ * held until the DOMAIN team decides them: window_permission_bundle,
  * window_alive_bundle, window_event_projection, local_failure_reason,
  * select_query_plan, confirm_snapshot. Limits (10_CAN_FD.md): ACCEPT_LIMIT is
  * the 200 ms candidate (the 1 s conflict is OPEN), VSS_EVENT USE_LIMIT the
@@ -55,6 +57,7 @@ bool NetDomainBoard_C2Config(NetDomainC2Api *api, NetDomainC2Config *config)
     memset(config, 0, sizeof(*config));
     config->value_quality = net_domain_c2_value_quality_provisional;
     config->permission_bundle = net_domain_c2_permission_bundle_provisional;
+    config->status_quality = net_domain_c2_status_quality_provisional;
     config->command_accept_limit_ms = 200u;
     config->event_use_limit_ms = 500u;
     /* Commands, events and UART-M results: the receiver judges the AGE; the
