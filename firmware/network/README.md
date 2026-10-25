@@ -2,7 +2,7 @@
 
 지금 제품 진입점은 `include/network/net_upper.h`의 `NetUpper`다. CAN FD·UART-M·UART-C 형식 코덱 48개를 상한이 있는 제품 큐, 지연 수신 처리, 형식별 ECU 어댑터, 조회 제어기와 주입된 Port를 거쳐 실행한다. 남겨 둔 `network_common` / `NetRuntime` 골격은 따로 있는 과거 시험 대상이고 제품 서비스가 아니다.
 
-소유 구조는 5개 Layer와 9개 Module 그대로다. 설계 책임은 25개이지만, 이것이 wrapper 함수 25개를 만들라는 뜻은 아니다. 지금 소스는 `SOURCE_MAPPING.md`와 `IMPLEMENTATION_MATRIX.csv`가 설명한다. 실제로 돌린 시험 결과, 소스 SHA, 상세 설계 선언과 HOLD 상태는 결과 패키지에 둔다. 이 파일은 빌드가 됐다는 이유로 PASS를 추정하지 않는다.
+소유 구조는 5개 Layer와 9개 Module 그대로다. 설계 책임은 25개이지만, 이것이 wrapper 함수 25개를 만들라는 뜻은 아니다. 지금 소스는 `SOURCE_MAPPING.md`가 설명한다(`IMPLEMENTATION_MATRIX.csv`는 예전 파일 단위 표다). 실제로 돌린 시험 결과, 소스 SHA, 상세 설계 선언과 HOLD 상태는 결과 패키지에 둔다. 이 파일은 빌드가 됐다는 이유로 PASS를 추정하지 않는다.
 
 ## Host에서 이식형 제품 빌드
 
@@ -40,7 +40,7 @@ cmake -S firmware/network -B build-network-cis -DNETWORK_TARGET=host -DBUILD_TES
 - `NetDomainC2`: 선택 기능. 실제 고정 C2 헤더 연결, TxPort 등록, 형식 변환, Owner RX와 getter, 로컬 실패, commit 대조 검사. `NETWORK_BUILD_DOMAIN_C2=ON`을 켜고 `NETWORK_DOMAIN_C2_INCLUDE_DIR`을 준다. 실제 Owner 본체나 의미 규칙 hook이 없으면 그 매핑만 HOLD한다. DOMAIN 공개 API를 대신하는 선언은 만들지 않는다.
 - `NetVirtualBackend`: Host에서 실행되는 드라이버 대체물. Port 어댑터와 함께 `NETWORK_BUILD_VIRTUAL_ECU=ON`을 켜면 고른 ECU worker를 돌린다. `tests/virtual_ecu/network_virtual_demo.py`는 준비한 프로필 worker들을 실제 CAN envelope와 UART 바이트로 잇는다. Owner 가짜는 제품 서비스 밖에 있고, 제품 큐·코덱·라우터·어댑터가 실행된다. `NETWORK_BUILD_VIRTUAL_NODE=ON`은 대신 HAL 없는 노드 worker를 빌드한다. 이 백엔드 위에서 VSS / CIS / BCM의 노드 프로필 표(`src/node/net_node_profile_<node>.c`)와 App Port facade, 그리고 HOST 상대 노드(CAN의 DOMAIN, UART-C의 Pi)를 돌린다. `tools/virtual_nodes_run.py --build-dir <dir>`는 넷을 모두 빌드하고, include 경로가 mock SDK, `src/platform/rtd`, NXP SDK에 닿지 않는지 확인한 뒤 facade 왕복을 돌린다(`RESULT passed=N failed=M`). `--domain-owner-src <DOMAIN src 폴더>`와 `--domain-c2-include <C2 헤더 폴더>`를 함께 주면 DOMAIN 노드 worker도 빌드한다. 이 worker는 DOMAIN 조립 루트(`src/node/net_node_domain.c`), DOMAIN 보드 파일, 읽기 전용 DOMAIN 소스의 실제 런타임으로 이뤄진다. 그다음 CAN의 DOMAIN 쪽을 HOST 상대 대신 이 worker로 바꿔 한 번 더 돈다. 두 옵션을 주지 않으면 이 실행은 빠진다.
 - 노드 진입 함수: `include/network/app/net_if_entry.h`의 `Net_Init`, `Net_MainFunction`, `Net_TxFlush`, `Net_GetBootId`. 구현은 모든 노드 프로필이 함께 쓰는 `src/node/net_entry.c`다. `Net_TxFlush`는 선택 함수다. 같은 superloop 바퀴에서 `Net_MainFunction` → 앱 → `Net_TxFlush` 순으로 부르면, 앱이 그 바퀴에 낸 송신을 다음 바퀴를 기다리지 않고 내보낸다. 수신 프레임 전달과 앱 콜백은 하지 않는다. VSS / CIS / BCM은 노드 프로필 표(`src/node/net_node_profile_<node>.c`)를 쓰고, DOMAIN은 조립 루트 `src/node/net_node_domain.c`와 보드 파일 `board/s32k344_domain/`을 쓴다.
-- SDK 교체 검사: `tools/sdk_swap_check.py`는 `src/platform/rtd`(와 `net_node.c` / `net_entry.c`)를 ARM GCC로, S32K344와 S32K144 S32DS 프로젝트의 실제 RTD 헤더에 대고 컴파일한다. 보드 이름은 생성 설정에서 읽는다(다른 이름만 `net_board_cfg.h`의 -D 덮어쓰기가 된다). 프로젝트는 읽기만 하고, 보고서는 `--out/summary.md`에 쓴다.
+- SDK 교체 검사: `tools/sdk_swap_check.py`는 `src/platform/rtd`(와 `net_node.c` / `net_entry.c`)를 S32K344와 S32K144 S32DS 프로젝트의 실제 RTD 헤더에 대고 ARM GCC `-fsyntax-only`로 검사한다(오브젝트·링크 없음, VSS·CIS 프로필). 보드 이름은 생성 설정에서 읽는다(다른 이름만 `net_board_cfg.h`의 -D 덮어쓰기가 된다). 프로젝트는 읽기만 하고, 보고서는 `--out/summary.md`에 쓴다.
 - 시험대 도구: `NETWORK_BUILD_BENCH_TOOL=ON`은 Host `vss_bench` CLI를 빌드한다(`tools/vss_bench/README.md`). wire 코덱으로 CAN / UART-C 프레임을 만들고, 그것을 보내는 S32K144 디버그 콘솔 명령을 출력하며, 그 콘솔에서 복사한 프레임을 해독한다.
 
 일반 WINDOW 경로는 HOLD 그대로다. `inspection_transport`를 명시하고 별도 inspection 제출 API를 쓰면, 보류된 wire 데이터를 `held_can` / `held_uart` 관찰 콜백까지만 넘길 수 있다. 이것은 일반 Owner 전달, C2 차량 상태 commit, WINDOW 생존 판단, 구동기 실행을 허락하지 않는다.
@@ -58,5 +58,7 @@ wire 전송 식별과 원 관측 식별은 따로다. 전송 식별이 같은데
 `WIRE_CANDIDATE_STATUS.md`, `WIRE_WAVE2A_STATUS.md`, `WIRE_WAVE2B_STATUS.md`, `BOARD_BINDING_STATUS.md`는 각 이름의 wave에 대한 과거 기록이다. 거기 적힌 코덱 7개 / 27개 / 48개 수, 골격뿐이라는 문장, 예전 시험 총수를 지금 구현 목록으로 읽지 않는다.
 
 G01~G08, WINDOW 실행, 외부 Owner 정책·ABI 채택, BOOT_ID의 보드 출처, CAN TX_SEQUENCE 순환, 실제 드라이버·RTD 시각과 해제 의미, 대상 ECU 전체 RAM·스택·힙, ARM 빌드, Flash, 실제 버스 시험은 해당하는 대로 HOLD/UNKNOWN/NOT_RUN으로 명시해 둔다. HAL과 무관한 코드는 Host 백엔드로 돈다. Host에서의 성공을 실제 보드나 ECU 전체가 맞는다는 주장으로 올리지 않는다.
+
+보드에 올려 실제로 확인한 것(S32K344 VSS 노드, S32K144 BCM 시험대)과 확인하지 못한 것은 `BOARD_TEST_RESULTS.md`에 있다.
 
 BOOT_ID 계산 함수 `net_boot_id_next`(`include/network/net_boot_id.h`, `src/platform/net_boot_id.c`)는 있고 Host 시험도 돈다. HOLD인 것은 보드 쪽이다. warm reset에도 남는 noinit 기록 위치, 리셋 원인 읽기, seed 출처가 아직 없어서, 보드 파일은 지금 고정 시험값을 쓴다. 그래서 보드 시험 중에는 한 노드만 리셋하면 상대가 그 노드의 프레임을 옛 것으로 거부한다. 양쪽을 함께 리셋한다.
