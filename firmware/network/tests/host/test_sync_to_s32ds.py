@@ -4,6 +4,7 @@ Three fake projects in a temporary folder (never a real S32DS workspace):
   bench-like   .cproject + src/
   VSS-like     .cproject + src/app/vss_main.c (+ a leftover src/net_bench file)
   bring-up     a folder named network_344_can_bringup
+The bench144 cases add S32K144 projects (.cproject with the CPU_S32K144HFT0VLLT define).
 The script's manifests go to the same temporary folder (TMP/TEMP/TMPDIR).
 """
 import os
@@ -40,6 +41,13 @@ class SyncRules(unittest.TestCase):
         for f in files:
             (p / f).parent.mkdir(parents=True, exist_ok=True)
             (p / f).write_text('/* fake */\n', encoding='utf-8')
+        return p
+
+    def make144(self, name):
+        p = self.make(name)
+        (p / '.cproject').write_text('<cproject><option valueType="definedSymbols">'
+                                     '<listOptionValue value="CPU_S32K144HFT0VLLT"/></option></cproject>\n',
+                                     encoding='utf-8')
         return p
 
     def run_sync(self, project, *extra):
@@ -104,6 +112,50 @@ class SyncRules(unittest.TestCase):
         files = tree(self.bench)
         self.assertIn('src/net_bench/net_board_time.c', files)
         self.assertFalse(any(f.startswith('src/net_board/') for f in files))
+
+    def test_bench144_apply_destinations(self):
+        bench144 = self.make144('fake_bench144')
+        before = tree(bench144)
+        rc, out = self.run_sync(bench144, '--board', 'bench144')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('DRY RUN (--board bench144)', out)
+        self.assertEqual(tree(bench144), before)
+        rc, out = self.run_sync(bench144, '--board', 'bench144', '--apply')
+        self.assertEqual(rc, 0, out)
+        files = tree(bench144)
+        self.assertEqual(sorted(f for f in files if f.startswith('src/net_bench/')),
+                         ['src/net_bench/bcm_bench_app.c', 'src/net_bench/bcm_bench_app.h',
+                          'src/net_bench/net_board_time144.c', 'src/net_bench/net_board_time144.h'])
+        self.assertIn('src/network/src/node/net_entry.c', files)
+        self.assertIn('src/network/include/network/app/net_if_bcm.h', files)
+        self.assertFalse(any(f.startswith('src/net_board/') for f in files))
+        self.assertFalse(any('sdk_mock' in f or f.endswith(('FlexCAN_Ip.h', 'OsIf.h', 'Std_Types.h'))
+                             for f in files), files)
+
+    def test_bench144_on_vss_project_refused(self):
+        before = tree(self.vss)
+        rc, out = self.run_sync(self.vss, '--board', 'bench144', '--apply')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('REFUSED', out)
+        self.assertIn('VSS project', out)
+        self.assertEqual(tree(self.vss), before)
+
+    def test_bench144_on_non_s32k144_project_refused(self):
+        before = tree(self.bench)
+        for extra in ((), ('--apply',)):
+            rc, out = self.run_sync(self.bench, '--board', 'bench144', *extra)
+            self.assertEqual(rc, 1, out)
+            self.assertIn('REFUSED', out)
+            self.assertIn('CPU_S32K144', out)
+        self.assertEqual(tree(self.bench), before)
+
+    def test_bench144_on_144_bringup_refused(self):
+        bringup144 = self.make144('network_144_can_debuger')
+        before = tree(bringup144)
+        rc, out = self.run_sync(bringup144, '--board', 'bench144', '--apply')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('bring-up reference project', out)
+        self.assertEqual(tree(bringup144), before)
 
 
 if __name__ == '__main__':

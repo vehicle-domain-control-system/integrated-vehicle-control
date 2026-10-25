@@ -6,9 +6,10 @@ Board project mode (--project):
       files of the listed source folders (node tags of headers are ignored)
       -> <project>/src/network/<same path relative to firmware/network>
   (2) the board folder chosen with --board (default bench):
-        bench  bench/s32k344/*.c|*.h        -> <project>/src/net_bench/  (S32K344 bench clone)
-        vss    board/s32k344_vss/*.c|*.h    -> <project>/src/net_board/  (VSS board project)
-        none   nothing (Network sources only)
+        bench     bench/s32k344/*.c|*.h      -> <project>/src/net_bench/  (S32K344 bench clone)
+        bench144  bench/s32k144_bcm/*.c|*.h  -> <project>/src/net_bench/  (S32K144 BCM bench clone)
+        vss       board/s32k344_vss/*.c|*.h  -> <project>/src/net_board/  (VSS board project)
+        none      nothing (Network sources only)
   Default is a dry run: it prints what would be copied (new / changed /
   unchanged) and writes nothing into the project. --apply copies.
   Refused:
@@ -18,8 +19,12 @@ Board project mode (--project):
       CMake file, and any RTD-named stand-in header (FlexCAN_Ip.h, *_Sa_PBcfg.h ...)
       -- these must never enter an S32DS workspace
     - a destination outside <project>/src/network or the board folder
-    - --board bench on a VSS project (src/app/vss_main.c present): the bench
-      files define VssApp_On*, SysTick_Handler and Board_* that VSS already has
+    - --board bench or bench144 on a VSS project (src/app/vss_main.c present):
+      the bench files define SysTick_Handler and Board_* (bench: also VssApp_On*)
+      that VSS already has
+    - --board bench144 on a project whose .cproject has no CPU_S32K144 define:
+      bench and bench144 share src/net_bench/, so a wrong board would mix the
+      S32K344 and S32K144 bench files
     - --board vss on a project without src/app/vss_main.c
   Files already in the destination folders that are not in the bundles are
   reported, never deleted (also a board folder of the other kind).
@@ -63,6 +68,7 @@ malformed tools/s32ds_sources.txt, 3 (--check) STALE.
 Example:
   python firmware/network/tools/sync_to_s32ds.py --project C:/Users/me/ws/network_344_net_bench
   python firmware/network/tools/sync_to_s32ds.py --project C:/Users/me/ws/network_344_net_bench --apply
+  python firmware/network/tools/sync_to_s32ds.py --project C:/Users/me/ws/network_144_net_bench --board bench144
   python firmware/network/tools/sync_to_s32ds.py --project C:/Users/me/ws/S32K344_WB_Audio_Bringup --board vss
   python firmware/network/tools/sync_to_s32ds.py --node DOMAIN --out ../NET_domain_pr/firmware/network_nodes/DOMAIN/network --apply
   python firmware/network/tools/sync_to_s32ds.py --node DOMAIN --check ../NET_domain_pr/firmware/network_nodes/DOMAIN/network
@@ -77,9 +83,12 @@ NETWORK = source_list.NETWORK
 SOURCES_LIST = source_list.LIST_PATH
 # --board: source folder, destination folder under <project>/src.
 BOARDS = {'bench': (NETWORK / 'bench' / 's32k344', 'net_bench'),
+          'bench144': (NETWORK / 'bench' / 's32k144_bcm', 'net_bench'),
           'vss': (NETWORK / 'board' / 's32k344_vss', 'net_board')}
 BOARD_DESTS = ('net_bench', 'net_board')
 VSS_MARKER = 'src/app/vss_main.c'
+# --board bench144 needs this S32DS CPU define in the project's .cproject.
+S32K144_MARKER = 'CPU_S32K144'
 REFERENCE_PROJECTS = ('network_344_can_bringup', 'network_144_can_debuger')
 # Host-only headers: never in a board project copy or a node bundle.
 HOST_HEADERS = ('include/network/net_host_mock.h', 'include/network/net_virtual.h')
@@ -221,6 +230,15 @@ def project_main(args):
     if board == 'bench' and is_vss:
         print('REFUSED: %s is a VSS project (%s): the bench files duplicate VssApp_On*, SysTick_Handler '
               'and Board_*; use --board vss' % (fwd(project), VSS_MARKER))
+        return 1
+    if board == 'bench144' and is_vss:
+        print('REFUSED: %s is a VSS project (%s): the bench144 files duplicate SysTick_Handler '
+              'and Board_*; use --board vss' % (fwd(project), VSS_MARKER))
+        return 1
+    if board == 'bench144' and S32K144_MARKER not in (project / '.cproject').read_text(encoding='utf-8',
+                                                                                         errors='replace'):
+        print('REFUSED: %s: .cproject has no %s define: --board bench144 is for an S32K144 project '
+              '(src/net_bench/ would mix S32K344 and S32K144 bench files)' % (fwd(project), S32K144_MARKER))
         return 1
     if board == 'vss' and not is_vss:
         print('REFUSED: %s has no %s: --board vss is for the VSS board project' % (fwd(project), VSS_MARKER))
@@ -595,7 +613,7 @@ def node_check(node, folder, entries):
 def main():
     p = argparse.ArgumentParser(description=__doc__.split('\n', 1)[0])
     p.add_argument('--project', type=pathlib.Path, help='S32DS board project folder (board project mode)')
-    p.add_argument('--board', choices=('bench', 'vss', 'none'),
+    p.add_argument('--board', choices=('bench', 'bench144', 'vss', 'none'),
                    help='--project: board folder to copy with the Network sources (default: bench)')
     p.add_argument('--node', choices=source_list.NODES, help='node bundle mode')
     p.add_argument('--out', type=pathlib.Path, help='--node: bundle folder to generate (named network)')
