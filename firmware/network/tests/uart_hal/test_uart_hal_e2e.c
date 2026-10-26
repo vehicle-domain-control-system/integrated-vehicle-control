@@ -1081,6 +1081,65 @@ static int u15_idle_event_rearm(void)
 }
 #endif
 
+/* A pass drain while the adapter queue still holds bytes. A step whose poll
+ * budget ends right after the Port poll took bytes on demand leaves them in
+ * the adapter queue; when the next drain comes before another step (the next
+ * pass, or a long pass), it takes only what the queue has room for and the
+ * rest waits in the ISR ring. Before that bound the drain overflowed the
+ * queue, the adapter latched a port error and the link stayed held: no frame
+ * delivered, no P_PERMISSION relayed (S32K144 CIS board, 115200 bit/s line
+ * with a P_VISION_RESULT and a P_VISION_STATUS back to back). */
+static int u16_drain_adapter_room(void)
+{
+    enum { FRAMES = 3 };
+    NetWireUartFrame f;
+    NetHalObservation h;
+    NetHalRtdDiag d;
+    NetUpperObservation o;
+    uint32_t i, total = 0u;
+    CHECK(start() == NET_OK);
+    step_ms(2u);
+    /* Frames back to back while the main loop is held up. */
+    for (i = 0u; i < FRAMES; ++i) {
+        f = rx_frame((uint16_t)(1u + i), 1600u + i);
+        CHECK(line_send_stalled(f.bytes, f.length) == f.length);
+        total += (uint32_t)f.length;
+    }
+    CHECK(total > NET_BOARD_ISR_DRAIN_BUDGET + NET_UPPER_POLL_BUDGET + NET_HAL_RX_CAPACITY);
+    /* First half of a pass: the drain, then one step. On NO_WORK its Port poll
+     * hands over more bytes than its poll budget has left: the adapter keeps some. */
+    (void)net_hal_rtd_set_now(line_ms());
+    (void)net_hal_rtd_drain();
+    (void)net_upper_step(&service, NET_UPPER_POLL_BUDGET);
+    CHECK(hal.rx_count != 0u && hal.rx_count < NET_HAL_RX_CAPACITY);
+    CHECK(net_hal_adapter_rx_room(&hal) == NET_HAL_RX_CAPACITY - hal.rx_count);
+    /* The next drain before any other step: no more than the free slots. */
+    CHECK(net_hal_rtd_drain() <= NET_HAL_RX_CAPACITY);
+    (void)net_hal_adapter_observation(&hal, &h);
+    CHECK(h.rx_dropped == 0u && h.errors == 0u);         /* no overflow, no port error */
+    CHECK(hal.rx_count == NET_HAL_RX_CAPACITY && net_hal_adapter_rx_room(&hal) == 0u);
+    CHECK(net_hal_rtd_drain() == 0u);                    /* a full queue takes nothing */
+    (void)net_hal_adapter_observation(&hal, &h);
+    CHECK(h.rx_dropped == 0u && h.errors == 0u);
+    d = rdiag();
+    CHECK(d.uart[DIAG].uart_rx_queue_rejected == 0u && d.uart[DIAG].uart_isr_ring_overflow == 0u);
+    RUN(link_healthy());
+    /* Passes resume: every frame arrives whole and in order, the link is up. */
+    CHECK(run_until_rx(FRAMES, 30u));
+    for (i = 0u; i < FRAMES; ++i) CHECK(rx_links[i] == (uint16_t)(1u + i));
+    CHECK(delivered_is((uint16_t)FRAMES, 1600u + FRAMES - 1u));
+    o = observation();
+    CHECK(o.rx_dropped == 0u && o.rx_held == 0u && o.rx_invalid == 0u);
+    CHECK(stream()->byte_losses == 0u && stream()->discarded_bytes == 0u);
+    f = rx_frame((uint16_t)(FRAMES + 1u), 1700u);
+    CHECK(line_send(f.bytes, f.length) == f.length);
+    CHECK(run_until_rx(FRAMES + 1u, 30u));
+    CHECK(delivered_is((uint16_t)(FRAMES + 1u), 1700u));
+    CHECK(isr_callbacks == 0u);
+    RUN(link_healthy());
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1096,6 +1155,7 @@ int main(int argc, char **argv)
 #if defined(UART_HAL_TEST_IDLE)
         , { "u15_idle_event_rearm", u15_idle_event_rearm }
 #endif
+        , { "u16_drain_adapter_room", u16_drain_adapter_room }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

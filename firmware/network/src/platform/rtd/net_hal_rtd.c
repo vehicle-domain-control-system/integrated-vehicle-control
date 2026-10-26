@@ -25,8 +25,12 @@
 NetHalRtdCore net_hal_rtd_core;
 #define rtd net_hal_rtd_core
 
-/* Drain budget: one main pass never offers the adapter more frames than its
- * RX queue holds (NetNode_Step() empties that queue on every pass). */
+/* Drain budget: one drain never offers the adapter more entries than its RX
+ * queue holds. The queue is not always empty when a pass starts: a step whose
+ * poll budget ends right after the Port poll took bytes on demand
+ * (net_hal_rtd_port) leaves them there, so net_hal_rtd_drain() also takes no
+ * more than the queue's free slots (net_hal_adapter_rx_room). The rest waits
+ * in the ISR rings; an adapter overflow would hold the link (port error). */
 typedef char net_board_drain_budget_in_range[(NET_BOARD_ISR_DRAIN_BUDGET >= 1u &&
                                               NET_BOARD_ISR_DRAIN_BUDGET <= NET_HAL_RX_CAPACITY) ? 1 : -1];
 
@@ -222,18 +226,22 @@ NetStatus net_hal_rtd_start(void)
 
 uint32_t net_hal_rtd_drain(void)
 {
-    uint32_t n;
+    uint32_t n, budget = NET_BOARD_ISR_DRAIN_BUDGET;
+    size_t room;
     if (!rtd.started) return 0u;
+    /* Never more than the adapter queue has room for (see the budget check above). */
+    room = net_hal_adapter_rx_room(rtd.adapter);
+    if (room < budget) budget = (uint32_t)room;
 #if UART_LINKS
     /* Shared budget (the adapter RX queue holds one event per UART byte),
      * CAN first: a UART byte that does not fit here is taken on demand by the
      * Port poll before the M06 timer check (net_hal_rtd_port), so it never
      * waits behind CAN frames; CAN frames, which keep their own capture time,
      * are not starved by a busy UART line. */
-    n = net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET);
-    n += net_hal_rtd_uart_drain(NET_BOARD_ISR_DRAIN_BUDGET - n);
+    n = net_hal_rtd_can_drain(budget);
+    n += net_hal_rtd_uart_drain(budget - n);
 #else
-    n = net_hal_rtd_can_drain(NET_BOARD_ISR_DRAIN_BUDGET);
+    n = net_hal_rtd_can_drain(budget);
 #endif
     if (n > rtd.diag.main_drained_max) rtd.diag.main_drained_max = n;
     return n;

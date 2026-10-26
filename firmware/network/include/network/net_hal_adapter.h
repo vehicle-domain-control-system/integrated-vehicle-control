@@ -77,4 +77,9 @@ NetStatus net_hal_capture_uart(NetHalAdapter *, NetWireLink, uint8_t, const NetU
 NetStatus net_hal_capture_tx(NetHalAdapter *, NetWireLink, const NetTxEvent *, const NetUpperCapture *);
 NetStatus net_hal_capture_link(NetHalAdapter *, NetUpperEventKind, NetWireLink, const NetUpperCapture *);
 NetStatus net_hal_adapter_observation(NetHalAdapter *, NetHalObservation *);
+/* Free receive slots: NET_HAL_RX_CAPACITY minus the queued events (0 when not
+ * initialized). A backend drain hands over no more than this: a full queue
+ * refuses the event, latches a port error and holds the link (no receive, no
+ * submit) until a LINK_RESET. Main context, like the capture calls. */
+size_t net_hal_adapter_rx_room(NetHalAdapter *);
 #endif

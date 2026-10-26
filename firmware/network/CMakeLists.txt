@@ -1009,6 +1009,8 @@ if(NETWORK_BUILD_RTD_MOCK)
                 endif()
             endforeach()
         endforeach()
+        # Pass drain bounded by the adapter queue's free slots (CIS UART-C).
+        add_test(NAME uart_hal.u16_drain_adapter_room COMMAND test_uart_hal_e2e_ostimer u16_drain_adapter_room)
     endif()
 
     # CIS node end-to-end (CAN + UART-C through the node root and the CIS

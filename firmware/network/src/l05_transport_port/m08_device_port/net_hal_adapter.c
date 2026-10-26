@@ -293,6 +293,12 @@ NetStatus net_hal_capture_link(NetHalAdapter *a,NetUpperEventKind kind,NetWireLi
     if(status==NET_OK && kind==NET_UPPER_LINK_LOSS) { a->faulted[link]=true; a->last_fault_order[link]=a->next_order-1u; }
     unlock(a,k); return status;
 }
+size_t net_hal_adapter_rx_room(NetHalAdapter *a)
+{
+    uintptr_t k; size_t room;
+    if(!ready(a)) return 0u;
+    k=lock(a); room=NET_HAL_RX_CAPACITY-a->rx_count; unlock(a,k); return room;
+}
 NetStatus net_hal_adapter_observation(NetHalAdapter *a,NetHalObservation *out)
 {
     uintptr_t k;

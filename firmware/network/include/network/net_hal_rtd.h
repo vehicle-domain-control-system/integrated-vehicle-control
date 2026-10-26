@@ -18,7 +18,8 @@
  *          reported as a loss mark before the next byte, reception re-armed.
  *          The ISR never calls net_hal_capture_*().
  *   Main : NetNode_Step() -> net_hal_rtd_drain() takes at most
- *          NET_BOARD_ISR_DRAIN_BUDGET ring entries (CAN frames first, then
+ *          NET_BOARD_ISR_DRAIN_BUDGET ring entries, and no more than the
+ *          adapter queue has room for (CAN frames first, then
  *          UART bytes), converts each stamp to Network ms and calls
  *          net_hal_capture_*(); net_upper_step() then polls the adapter queue
  *          through net_hal_rtd_port(), which takes waiting UART bytes on
@@ -151,7 +152,8 @@ uint32_t net_hal_rtd_last_now_ms32(void);
 
 /* Main context only (first thing in NetNode_Step()). Takes at most
  * NET_BOARD_ISR_DRAIN_BUDGET entries from the ISR rings in arrival order per
- * ring (CAN frames first, then UART bytes), converts their stamps and hands
+ * ring (CAN frames first, then UART bytes), and no more than the adapter queue
+ * has free slots (net_hal_adapter_rx_room), converts their stamps and hands
  * them to the adapter (net_hal_capture_*). Returns the number of entries taken. */
 uint32_t net_hal_rtd_drain(void);
 
