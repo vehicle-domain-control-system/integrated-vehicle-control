@@ -5,6 +5,7 @@ Three fake projects in a temporary folder (never a real S32DS workspace):
   VSS-like     .cproject + src/app/vss_main.c (+ a leftover src/net_bench file)
   bring-up     a folder named network_344_can_bringup
 The bench144 cases add S32K144 projects (.cproject with the CPU_S32K144HFT0VLLT define).
+The cis144 cases use the same S32K144 projects for the CIS bench folder.
 The script's manifests go to the same temporary folder (TMP/TEMP/TMPDIR).
 """
 import os
@@ -156,6 +157,38 @@ class SyncRules(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn('bring-up reference project', out)
         self.assertEqual(tree(bringup144), before)
+
+    def test_cis144_apply_destinations(self):
+        cis144 = self.make144('fake_cis144')
+        before = tree(cis144)
+        rc, out = self.run_sync(cis144, '--board', 'cis144')
+        self.assertEqual(rc, 0, out)
+        self.assertIn('DRY RUN (--board cis144)', out)
+        self.assertEqual(tree(cis144), before)
+        rc, out = self.run_sync(cis144, '--board', 'cis144', '--apply')
+        self.assertEqual(rc, 0, out)
+        files = tree(cis144)
+        self.assertEqual(sorted(f for f in files if f.startswith('src/net_bench/')),
+                         ['src/net_bench/cis_bench_app.c', 'src/net_bench/cis_bench_app.h',
+                          'src/net_bench/net_board_time144.c', 'src/net_bench/net_board_time144.h'])
+        self.assertIn('src/network/src/node/net_entry.c', files)
+        self.assertIn('src/network/include/network/app/net_if_cis.h', files)
+        self.assertIn('src/network/src/platform/rtd/net_hal_rtd_uart.c', files)
+        self.assertFalse(any(f.startswith('src/net_board/') for f in files))
+        self.assertFalse(any('sdk_mock' in f or 'pi_bench' in f or f.endswith(('FlexCAN_Ip.h', 'OsIf.h', 'Std_Types.h',
+                                                                                  'Lpuart_Uart_Ip.h'))
+                             for f in files), files)
+
+    def test_cis144_refused_like_bench144(self):
+        bringup144 = self.make144('network_144_can_debuger')
+        for project, reason in ((self.vss, 'VSS project'), (self.bench, 'CPU_S32K144'),
+                                (bringup144, 'bring-up reference project')):
+            before = tree(project)
+            rc, out = self.run_sync(project, '--board', 'cis144', '--apply')
+            self.assertEqual(rc, 1, out)
+            self.assertIn('REFUSED', out)
+            self.assertIn(reason, out)
+            self.assertEqual(tree(project), before)
 
 
 if __name__ == '__main__':

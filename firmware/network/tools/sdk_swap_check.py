@@ -88,6 +88,10 @@ VSS_SWITCHES = ('VSS_CFG_NET_STUB=0', 'VSS_CFG_TEST_INPUT=0')
 VSS_BOARD_UNIT = 'board/s32k344_vss/net_vss_board.c'
 VSS_EXTRA_FLAGS = ('-funsigned-char', '-fno-short-enums')
 
+# UART-C instance per project: DS344 LPUART11 (the 344 bench wiring to the S32K144); DS144 LPUART1
+# (PTC6/PTC7), the UART-C of the CIS board (feat/cis-rtd-network firmware/CIS/board/README.md) and of the
+# S32K144 CIS bench (bench/s32k144_cis). The debug node project uses LPUART1 as its console and shares
+# the callback with LPUART0.
 TARGETS = {
     'DS344': dict(cpu=('-mcpu=cortex-m7', '-mthumb', '-mfloat-abi=hard', '-mfpu=fpv5-sp-d16'),
                   defines=('-DCPU_S32K344', '-DCPU_CORTEX_M7', '-DGCC'),
@@ -96,7 +100,7 @@ TARGETS = {
     'DS144': dict(cpu=('-mcpu=cortex-m4', '-mthumb', '-mfloat-abi=hard', '-mfpu=fpv4-sp-d16'),
                   defines=('-DCPU_S32K144HFT0VLLT', '-DCPU_CORTEX_M4F', '-DGCC'),
                   sdk='PlatformSDK_S32K1_S32M24/RTD', base='BaseNXP_TS_T40D2M30I0R0',
-                  platform='Platform_TS_T40D2M30I0R0', uart_c_instance=0, rtd='S32K1 RTD 3.0.x'),
+                  platform='Platform_TS_T40D2M30I0R0', uart_c_instance=1, rtd='S32K1 RTD 3.0.x'),
 }
 
 

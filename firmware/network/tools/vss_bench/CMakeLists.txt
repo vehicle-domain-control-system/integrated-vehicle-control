@@ -26,4 +26,15 @@ if(BUILD_TESTING)
         PASS_REGULAR_EXPRESSION "can tx begin VSS_EVENT[\r\n]+can tx data 43 4E 45 42 01 00 00 00 .*can tx commit")
     add_test(NAME bench_tool.cli_usage_error COMMAND vss_bench uart vision-status --boot 0 --seq 1)
     set_tests_properties(bench_tool.cli_usage_error PROPERTIES WILL_FAIL TRUE)
+    # The Pi stand-in of the CIS board test (tools/pi_bench/pi_bench.py, Python):
+    # its UART-C bytes against this codec through vss_bench, both ways, its
+    # damaged frames, receive stream, offline commands and a serial session on a
+    # stand-in port (no hardware, no pyserial).
+    foreach(case IN ITEMS pi_crc pi_payload_vs_codec pi_codec_decodes_tool pi_tool_decodes_codec
+            pi_damaged_frames pi_stream pi_offline_cli pi_session)
+        add_test(NAME bench_tool.${case}
+            COMMAND ${Python3_EXECUTABLE} -B ${PROJECT_SOURCE_DIR}/tests/host/test_pi_bench.py ${case}
+                    --vss-bench $<TARGET_FILE:vss_bench>)
+        set_tests_properties(bench_tool.${case} PROPERTIES TIMEOUT 120)
+    endforeach()
 endif()
