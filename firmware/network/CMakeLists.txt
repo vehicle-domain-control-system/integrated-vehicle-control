@@ -442,6 +442,10 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
             stream_capacity receiver_output_alias)
         add_test(NAME memory.uart_${case} COMMAND test_uart_memory ${case})
     endforeach()
+    # Receiver history ring and word-wise copies (UART-C on the CIS board).
+    foreach(case IN ITEMS receiver_history_ring wire_copy_words)
+        add_test(NAME memory.uart_${case} COMMAND test_uart_memory ${case})
+    endforeach()
 endif()
 if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NOT NETWORK_NODE_PROFILE STREQUAL "HOST")
     add_executable(test_node_profile tests/product/test_node_profile.c)

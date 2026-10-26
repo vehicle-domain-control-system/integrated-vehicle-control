@@ -233,6 +233,51 @@ static int receiver_output_alias(void)
     CHECK(net_upper_uart_receiver_feed(&receiver,0xa5u,100u,100u,true,1u,&consumed,alias)==NET_WIRE_INVALID_ARGUMENT);
     CHECK(!consumed && memcmp(&receiver,&receiver_before,sizeof(receiver))==0); return 0;
 }
+/* History ring: more bytes than FRAME_MAX, with a noise byte before every
+ * frame. Every delivery keeps its own per-byte times; the suffix check still
+ * finds a changed newest entry after the ring has wrapped. */
+static int receiver_history_ring(void)
+{
+    NetWireUartFrame f=frame(); bool consumed=false; size_t i,k,newest; uint64_t t=100u,first;
+    CHECK(init_receiver(&receiver)==0);
+    for(k=0u;k<10u;++k) {
+        CHECK(net_upper_uart_receiver_feed(&receiver,0x00u,t,t,true,1u,&consumed,&delivery)==NET_WIRE_NEED_MORE && consumed);
+        ++t; first=t;
+        for(i=0u;i<f.length;++i,++t) {
+            NetWireStatus expected=i+1u==f.length?NET_WIRE_OK:NET_WIRE_NEED_MORE;
+            CHECK(net_upper_uart_receiver_feed(&receiver,f.bytes[i],t,t,true,1u,&consumed,&delivery)==expected && consumed);
+        }
+        CHECK(delivery.frame.length==f.length && memcmp(delivery.frame.bytes,f.bytes,f.length)==0);
+        for(i=0u;i<f.length;++i) CHECK(delivery.byte_at_ms[i]==first+i);
+    }
+    CHECK(receiver.delivered_frames==10u && receiver.stream.discarded_bytes==10u);
+    CHECK(receiver.history_count==NET_WIRE_UART_FRAME_MAX && receiver.history_head<NET_WIRE_UART_FRAME_MAX && receiver.history_head!=0u);
+    CHECK(net_upper_uart_receiver_feed(&receiver,0xa5u,t,t,true,1u,&consumed,&delivery)==NET_WIRE_NEED_MORE && consumed);
+    ++t; newest=(receiver.history_head+receiver.history_count-1u)%NET_WIRE_UART_FRAME_MAX;
+    CHECK(receiver.history_bytes[newest]==0xa5u && receiver.history_at_ms[newest]==t-1u);
+    receiver.history_bytes[newest]=0u; receiver_before=receiver; consumed=false;
+    memset(&delivery,0xa6,sizeof(delivery)); out_before=delivery;
+    CHECK(net_upper_uart_receiver_feed(&receiver,0x5au,t,t,true,1u,&consumed,&delivery)==NET_WIRE_TIME_HOLD);
+    CHECK(!consumed && memcmp(&receiver,&receiver_before,sizeof(receiver))==0 && memcmp(&delivery,&out_before,sizeof(delivery))==0); return 0;
+}
+/* net_wire_copy / net_wire_zero: same bytes as memcpy / memset for aligned
+ * and unaligned ranges, nothing written outside the range. */
+static int wire_copy_words(void)
+{
+    union { uint64_t align; uint8_t b[96]; } src,dst,ref;
+    size_t off,len,i;
+    for(i=0u;i<sizeof(src.b);++i) src.b[i]=(uint8_t)(i*7u+3u);
+    for(off=0u;off<4u;++off) for(len=0u;len<=64u;++len) {
+        memset(dst.b,0xeeu,sizeof(dst.b)); memset(ref.b,0xeeu,sizeof(ref.b));
+        net_wire_copy(dst.b+off,src.b+off,len); memcpy(ref.b+off,src.b+off,len);
+        CHECK(memcmp(dst.b,ref.b,sizeof(dst.b))==0);
+        net_wire_copy(dst.b+off,src.b+((off+1u)&3u),len); memcpy(ref.b+off,src.b+((off+1u)&3u),len);
+        CHECK(memcmp(dst.b,ref.b,sizeof(dst.b))==0);
+        net_wire_zero(dst.b+off,len); memset(ref.b+off,0,len);
+        CHECK(memcmp(dst.b,ref.b,sizeof(dst.b))==0);
+    }
+    return 0;
+}
 int main(int argc,char **argv)
 {
     int result=1;
@@ -256,6 +301,8 @@ int main(int argc,char **argv)
     else if(strcmp(name,"control_resume_atomic")==0) result=control_resume_atomic();
     else if(strcmp(name,"stream_capacity")==0) result=stream_capacity();
     else if(strcmp(name,"receiver_output_alias")==0) result=receiver_output_alias();
+    else if(strcmp(name,"receiver_history_ring")==0) result=receiver_history_ring();
+    else if(strcmp(name,"wire_copy_words")==0) result=wire_copy_words();
     else return 2;
     if(result==0) printf("{\"case\":\"%s\",\"result\":\"PASS\"}\n",name);
     return result;

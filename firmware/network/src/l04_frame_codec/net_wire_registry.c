@@ -79,8 +79,9 @@ const NetWireRegistryEntry *net_wire_registry_at(size_t index)
 const NetWireRegistryEntry *net_wire_registry_find(NetWireLink link, uint16_t id_type)
 {
     size_t index;
-    for (index = 0U; index < net_wire_registry_count(); ++index) {
-        if (entries[index].link == link && entries[index].id_type == id_type) {
+    /* Constant bound: the M06 header check looks up once per received byte. */
+    for (index = 0U; index < sizeof(entries) / sizeof(entries[0]); ++index) {
+        if (entries[index].id_type == id_type && entries[index].link == link) {
             return &entries[index];
         }
     }

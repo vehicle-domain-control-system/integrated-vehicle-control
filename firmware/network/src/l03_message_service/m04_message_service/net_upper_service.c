@@ -833,13 +833,17 @@ NetStatus net_upper_step(NetUpper *s,size_t budget)
     if(s->in_call)return NET_BUSY;
     s->in_call=true;status=net_upper_read_clock(s,&now);if(status!=NET_OK){result=status;goto done;}
     for(i=0u;i<NET_UPPER_POLL_BUDGET && s->rx_count<NET_UPPER_RX_CAPACITY;++i) {
-        NetUpperEvent e;size_t tail;status=s->config.port.ops->poll(s->config.port.context,&e);
+        /* The Port writes the event straight into the free slot after the
+         * queue tail (no event copy per received byte); the slot joins the
+         * queue only when the event is valid. */
+        NetUpperEvent *e=&s->rx[(s->rx_head+s->rx_count)%NET_UPPER_RX_CAPACITY];
+        status=s->config.port.ops->poll(s->config.port.context,e);
         if(status==NET_NO_WORK){drained=true;break;}
         if(status!=NET_OK){INC(s->observation.errors);result=status;break;}
-        if(e.kind<NET_UPPER_CAN_RX || e.kind>NET_UPPER_PORT_ERROR || e.link<NET_WIRE_CAN || e.link>NET_WIRE_UART_C || !net_upper_profile_link(e.link)) {
+        if(e->kind<NET_UPPER_CAN_RX || e->kind>NET_UPPER_PORT_ERROR || e->link<NET_WIRE_CAN || e->link>NET_WIRE_UART_C || !net_upper_profile_link(e->link)) {
             INC(s->observation.rx_invalid);result=NET_INVALID_ARGUMENT;continue;
         }
-        tail=(s->rx_head+s->rx_count)%NET_UPPER_RX_CAPACITY;s->rx[tail]=e;++s->rx_count;INC(s->observation.rx_captured);
+        ++s->rx_count;INC(s->observation.rx_captured);
         observe_rx_depth(s);
     }
     for(i=0u;i<budget && s->rx_count!=0u;++i) {

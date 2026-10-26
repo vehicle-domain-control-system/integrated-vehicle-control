@@ -15,4 +15,8 @@ void nw_write_u64(uint8_t *p, uint64_t v);
 void nw_sat_inc(uint32_t *counter);
 NetWireStatus nw_uart_header(NetWireLink link, NetWireDirection direction,
     const uint8_t *bytes, const NetWireRegistryEntry **entry);
+/* net_wire_uart_stream_next for a caller whose arguments are all its own,
+ * disjoint storage (M04 receiver): same result, without the range checks. */
+NetWireStatus nw_uart_stream_next_owned(NetWireUartStream *stream,
+    const NetWireStreamInput *input, size_t *consumed, NetWireUartFrame *out);
 #endif

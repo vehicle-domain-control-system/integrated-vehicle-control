@@ -77,7 +77,9 @@ typedef struct {
 typedef struct {
     NetWireUartStream stream;
     uint64_t port_epoch;
-    size_t history_count;
+    /* The last history_count captured bytes with their times, oldest at
+     * history_head: a ring, so a byte is added without moving the others. */
+    size_t history_count, history_head;
     uint8_t history_bytes[NET_WIRE_UART_FRAME_MAX];
     uint64_t history_at_ms[NET_WIRE_UART_FRAME_MAX];
     uint32_t typed_rejected, delivered_frames;

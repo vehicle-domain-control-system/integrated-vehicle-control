@@ -1,6 +1,11 @@
 #include "network/net_hal_adapter.h"
 #include <string.h>
 
+/* Event, attempt and packet copies and clears inside the lock (and once per
+ * received byte) use net_wire_copy / net_wire_zero, not structure assignment
+ * or memset: a board C library may do those byte by byte, and the lock masks
+ * interrupts on the RTD backend (net_hal_rtd.c ops_enter). */
+
 static void inc(uint32_t *v) { if(*v!=UINT32_MAX) ++*v; }
 static bool link_valid(NetWireLink link) { return link>=NET_WIRE_CAN && link<=NET_WIRE_UART_C; }
 static bool ready(const NetHalAdapter *a) { return a!=NULL && a->initialized; }
@@ -54,11 +59,11 @@ static void queue_at(NetHalAdapter *a,const NetUpperEvent *e,uint64_t order)
 {
     size_t n=a->rx_count;
     while(n>0u && a->rx_order[(a->rx_head+n-1u)%NET_HAL_RX_CAPACITY]>order) {
-        a->rx[(a->rx_head+n)%NET_HAL_RX_CAPACITY]=a->rx[(a->rx_head+n-1u)%NET_HAL_RX_CAPACITY];
+        net_wire_copy(&a->rx[(a->rx_head+n)%NET_HAL_RX_CAPACITY],&a->rx[(a->rx_head+n-1u)%NET_HAL_RX_CAPACITY],sizeof(a->rx[0]));
         a->rx_order[(a->rx_head+n)%NET_HAL_RX_CAPACITY]=a->rx_order[(a->rx_head+n-1u)%NET_HAL_RX_CAPACITY];
         --n;
     }
-    a->rx[(a->rx_head+n)%NET_HAL_RX_CAPACITY]=*e;
+    net_wire_copy(&a->rx[(a->rx_head+n)%NET_HAL_RX_CAPACITY],e,sizeof(*e));
     a->rx_order[(a->rx_head+n)%NET_HAL_RX_CAPACITY]=order; ++a->rx_count;
     if(a->rx_count>a->observation.rx_max_depth) a->observation.rx_max_depth=(uint32_t)a->rx_count;
 }
@@ -112,9 +117,10 @@ static NetStatus port_submit(void *context,const NetUpperPacket *packet,NetTxKey
     if(find(a,key)!=NULL) { unlock(a,k); return NET_DUPLICATE; }
     for(i=0u;i<NET_HAL_TX_CAPACITY;++i) if(!a->tx[i].active) { r=&a->tx[i]; break; }
     if(r==NULL) { unlock(a,k); return NET_NO_CAPACITY; }
-    memset(r,0,sizeof(*r)); r->active=true;
+    net_wire_zero(r,sizeof(*r)); r->active=true;
     r->transfer.platform=a->platform; r->transfer.key=key;
-    r->transfer.port_epoch=a->config.port_epoch[packet->link]; r->transfer.packet=*packet;
+    r->transfer.port_epoch=a->config.port_epoch[packet->link];
+    net_wire_copy(&r->transfer.packet,packet,sizeof(*packet));
     r->capture.port_epoch=r->transfer.port_epoch;
     a->api_busy=true; unlock(a,k);
     status=a->config.ops->submit(a->config.context,&r->transfer);
@@ -125,7 +131,7 @@ static NetStatus port_submit(void *context,const NetUpperPacket *packet,NetTxKey
              * retained, and OK reports its borrow, never a successful TX. */
             r->held=true; fault(a,packet->link,&r->capture,false);
             inc(&a->observation.backend_violations); status=NET_OK;
-        } else { memset(r,0,sizeof(*r)); inc(&a->observation.tx_rejected); }
+        } else { net_wire_zero(r,sizeof(*r)); inc(&a->observation.tx_rejected); }
     }
     if(status==NET_OK) inc(&a->observation.tx_submitted);
     a->api_busy=false; unlock(a,k); return status;
@@ -149,20 +155,22 @@ static uint64_t first_tx(const NetHalAttempt *r,unsigned *part)
 }
 static void emit_tx(NetHalAttempt *r,unsigned part,NetUpperEvent *e)
 {
-    memset(e,0,sizeof(*e)); e->kind=NET_UPPER_TX_EVENT;
+    net_wire_zero(e,sizeof(*e)); e->kind=NET_UPPER_TX_EVENT;
     e->link=r->transfer.packet.link; e->tx.key=r->transfer.key;
-    if(part==3u) { e->capture=r->conflict_capture; e->tx=r->conflict; r->conflict_pending=false; }
-    else {
-        e->capture=r->fact_capture[part];
+    if(part==3u) {
+        net_wire_copy(&e->capture,&r->conflict_capture,sizeof(e->capture));
+        net_wire_copy(&e->tx,&r->conflict,sizeof(e->tx)); r->conflict_pending=false;
+    } else {
+        net_wire_copy(&e->capture,&r->fact_capture[part],sizeof(e->capture));
         if(part==0u) { e->tx.admission_observed=true; e->tx.accepted=r->accepted; r->sent_admission=true; }
         if(part==1u) { e->tx.outcome=r->outcome; r->sent_outcome=r->outcome; }
         if(part==2u) { e->tx.release_observed=true; r->sent_release=true; }
     }
-    if(terminal(r) && !pending(r) && !r->held) memset(r,0,sizeof(*r));
+    if(terminal(r) && !pending(r) && !r->held) net_wire_zero(r,sizeof(*r));
 }
 static NetStatus port_poll(void *context,NetUpperEvent *out)
 {
-    NetHalAdapter *a=context; NetUpperEvent e; uintptr_t k; size_t i,index=0u;
+    NetHalAdapter *a=context; uintptr_t k; size_t i,index=0u;
     uint64_t order=UINT64_MAX; unsigned kind=0u,part=0u;
     if(!ready(a) || overlap(a,out,sizeof(*out))) return NET_INVALID_ARGUMENT;
     k=lock(a); if(a->api_busy) { unlock(a,k); return NET_BUSY; }
@@ -177,15 +185,18 @@ static NetStatus port_poll(void *context,NetUpperEvent *out)
     if(kind==0u) { unlock(a,k); return NET_NO_WORK; }
     if(kind==2u) {
         i=index;
-        memset(&e,0,sizeof(e)); e.kind=NET_UPPER_PORT_ERROR; e.link=(NetWireLink)i;
-        e.capture=a->error_capture[i]; a->error_pending[i]=false; a->faulted[i]=true;
-        *out=e; unlock(a,k); return NET_OK;
+        net_wire_zero(out,sizeof(*out)); out->kind=NET_UPPER_PORT_ERROR; out->link=(NetWireLink)i;
+        net_wire_copy(&out->capture,&a->error_capture[i],sizeof(out->capture));
+        a->error_pending[i]=false; a->faulted[i]=true;
+        unlock(a,k); return NET_OK;
     }
-    if(kind==3u) { emit_tx(&a->tx[index],part,&e); *out=e; unlock(a,k); return NET_OK; }
-    e=a->rx[a->rx_head]; a->rx_head=(a->rx_head+1u)%NET_HAL_RX_CAPACITY; --a->rx_count;
-    if(e.kind==NET_UPPER_LINK_RESET && e.capture.port_epoch==a->config.port_epoch[e.link] && a->last_fault_order[e.link]<order)
-        a->faulted[e.link]=false;
-    *out=e; unlock(a,k); return NET_OK;
+    /* OUT is written only on these OK paths, straight from the adapter. */
+    if(kind==3u) { emit_tx(&a->tx[index],part,out); unlock(a,k); return NET_OK; }
+    net_wire_copy(out,&a->rx[a->rx_head],sizeof(*out));
+    a->rx_head=(a->rx_head+1u)%NET_HAL_RX_CAPACITY; --a->rx_count;
+    if(out->kind==NET_UPPER_LINK_RESET && out->capture.port_epoch==a->config.port_epoch[out->link] && a->last_fault_order[out->link]<order)
+        a->faulted[out->link]=false;
+    unlock(a,k); return NET_OK;
 }
 NetUpperPort net_hal_adapter_port(NetHalAdapter *a)
 {
@@ -204,7 +215,8 @@ NetStatus net_hal_capture_can(NetHalAdapter *a,const NetWireCanEnvelope *frame,c
     NetUpperEvent e; NetStatus status; uintptr_t k;
     if(!ready(a) || overlap(a,frame,sizeof(*frame)) || overlap(a,capture,sizeof(*capture))) return NET_INVALID_ARGUMENT;
     if(!can_bounded(frame)) return NET_REJECTED;
-    memset(&e,0,sizeof(e)); e.kind=NET_UPPER_CAN_RX; e.link=NET_WIRE_CAN; e.can=*frame; e.capture=*capture;
+    net_wire_zero(&e,sizeof(e)); e.kind=NET_UPPER_CAN_RX; e.link=NET_WIRE_CAN;
+    net_wire_copy(&e.can,frame,sizeof(*frame)); net_wire_copy(&e.capture,capture,sizeof(*capture));
     k=lock(a); status=capture_check(a,e.link,capture);
     if(status==NET_OK) status=queue(a,&e);
     unlock(a,k); return status;
@@ -213,7 +225,8 @@ NetStatus net_hal_capture_uart(NetHalAdapter *a,NetWireLink link,uint8_t byte,co
 {
     NetUpperEvent e; NetStatus status; uintptr_t k;
     if(!ready(a) || !link_valid(link) || link==NET_WIRE_CAN || overlap(a,capture,sizeof(*capture))) return NET_INVALID_ARGUMENT;
-    memset(&e,0,sizeof(e)); e.kind=NET_UPPER_UART_BYTE; e.link=link; e.byte=byte; e.capture=*capture;
+    net_wire_zero(&e,sizeof(e)); e.kind=NET_UPPER_UART_BYTE; e.link=link; e.byte=byte;
+    net_wire_copy(&e.capture,capture,sizeof(*capture));
     k=lock(a); status=capture_check(a,link,capture);
     if(status==NET_OK) status=queue(a,&e);
     unlock(a,k); return status;
@@ -276,13 +289,13 @@ NetStatus net_hal_capture_link(NetHalAdapter *a,NetUpperEventKind kind,NetWireLi
             }
             /* Preserve old-epoch faults on their original side of the reset.
              * A later fault receives a separate latch/order after this barrier. */
-            memset(&e,0,sizeof(e)); e.kind=NET_UPPER_PORT_ERROR; e.link=link;
-            e.capture=a->error_capture[link]; queue_at(a,&e,a->error_order[link]);
+            net_wire_zero(&e,sizeof(e)); e.kind=NET_UPPER_PORT_ERROR; e.link=link;
+            net_wire_copy(&e.capture,&a->error_capture[link],sizeof(e.capture)); queue_at(a,&e,a->error_order[link]);
             a->error_pending[link]=false;
         }
     } else if(capture->port_epoch!=a->config.port_epoch[link]) { unlock(a,k); return NET_STALE; }
     if(kind==NET_UPPER_PORT_ERROR) { fault(a,link,capture,false); unlock(a,k); return NET_OK; }
-    memset(&e,0,sizeof(e)); e.kind=kind; e.link=link; e.capture=*capture;
+    net_wire_zero(&e,sizeof(e)); e.kind=kind; e.link=link; net_wire_copy(&e.capture,capture,sizeof(*capture));
     status=queue(a,&e);
     if(status==NET_OK && kind==NET_UPPER_LINK_RESET) {
         a->config.port_epoch[link]=capture->port_epoch; a->faulted[link]=true;

@@ -7,6 +7,19 @@ static bool valid_link_direction(NetWireLink link, NetWireDirection direction)
     return (link == NET_WIRE_UART_M || link == NET_WIRE_UART_C) &&
            (direction == NET_WIRE_UPLINK || direction == NET_WIRE_DOWNLINK);
 }
+/* Immutable registry bounds prove a full buffer is processed before append
+ * (every frame of the link is 10..FRAME_MAX bytes). The registry is a constant
+ * table, so this is checked when a stream is configured, not per byte. */
+static bool registry_bounds_ok(NetWireLink link)
+{
+    size_t i;
+    for(i=0u;i<net_wire_registry_count();++i) {
+        const NetWireRegistryEntry *entry=net_wire_registry_at(i);
+        if(entry->link==link && (entry->frame_length<10u ||
+           entry->frame_length>NET_WIRE_UART_FRAME_MAX)) return false;
+    }
+    return true;
+}
 NetWireStatus nw_uart_stream_config_check(NetWireProfile profile,
     NetWireLink link, NetWireDirection direction, const NetWireStreamPolicy *policy)
 {
@@ -15,6 +28,7 @@ NetWireStatus nw_uart_stream_config_check(NetWireProfile profile,
     status=net_wire_profile_check(profile); if(status!=NET_WIRE_OK) return status;
     if(!policy->candidate_time_policy_selected) return NET_WIRE_CONTRACT_HOLD;
     if(policy->assembly_limit_ms==0u) return NET_WIRE_INVALID_ARGUMENT;
+    if(!registry_bounds_ok(link)) return NET_WIRE_NO_CAPACITY;
     return NET_WIRE_OK;
 }
 NetWireStatus net_wire_uart_stream_init(NetWireUartStream *stream,
@@ -47,17 +61,20 @@ static bool overlap(const void *a, size_t an, const void *b, size_t bn)
 {
     return net_wire_ranges_overlap(a, an, b, bn);
 }
+static NetWireStatus stream_next(NetWireUartStream *stream,
+    const NetWireStreamInput *input, size_t *consumed, NetWireUartFrame *out);
+static bool arguments_ok(const NetWireUartStream *stream,
+    const NetWireStreamInput *input, const size_t *consumed, const NetWireUartFrame *out)
+{
+    return stream != NULL && input != NULL && consumed != NULL && out != NULL &&
+        input->length <= NET_WIRE_STREAM_INPUT_MAX &&
+        (input->length == 0u || (input->bytes != NULL && input->captured_at_ms != NULL));
+}
 NetWireStatus net_wire_uart_stream_next(NetWireUartStream *stream,
     const NetWireStreamInput *input, size_t *consumed, NetWireUartFrame *out)
 {
-    size_t used = 0u, i, time_bytes;
-    uint64_t previous;
-    bool has_previous;
-    if (stream == NULL || input == NULL || consumed == NULL || out == NULL)
-        return NET_WIRE_INVALID_ARGUMENT;
-    if (input->length > NET_WIRE_STREAM_INPUT_MAX ||
-        (input->length != 0u && (input->bytes == NULL || input->captured_at_ms == NULL)))
-        return NET_WIRE_INVALID_ARGUMENT;
+    size_t time_bytes;
+    if (!arguments_ok(stream, input, consumed, out)) return NET_WIRE_INVALID_ARGUMENT;
     time_bytes = input->length * sizeof(*input->captured_at_ms);
     if (overlap(stream, sizeof(*stream), input, sizeof(*input)) ||
         overlap(stream, sizeof(*stream), out, sizeof(*out)) ||
@@ -72,6 +89,25 @@ NetWireStatus net_wire_uart_stream_next(NetWireUartStream *stream,
         overlap(consumed, sizeof(*consumed), input->bytes, input->length) ||
         overlap(consumed, sizeof(*consumed), input->captured_at_ms, time_bytes))
         return NET_WIRE_INVALID_ARGUMENT;
+    return stream_next(stream, input, consumed, out);
+}
+/* The M04 receiver's call: every argument is the receiver's own storage
+ * (the stream inside it; input, its byte and time, consumed and the frame
+ * on its stack), so no range can overlap another and the twelve range
+ * checks above are left out of the per-byte path. */
+NetWireStatus nw_uart_stream_next_owned(NetWireUartStream *stream,
+    const NetWireStreamInput *input, size_t *consumed, NetWireUartFrame *out)
+{
+    if (!arguments_ok(stream, input, consumed, out)) return NET_WIRE_INVALID_ARGUMENT;
+    return stream_next(stream, input, consumed, out);
+}
+static NetWireStatus stream_next(NetWireUartStream *stream,
+    const NetWireStreamInput *input, size_t *consumed, NetWireUartFrame *out)
+{
+    size_t used = 0u, i;
+    uint64_t previous;
+    bool has_previous;
+    const NetWireRegistryEntry *checked = NULL;
     if (!stream->configured) return NET_WIRE_NOT_BOUND_STATUS;
     if (net_wire_profile_check(stream->profile) != NET_WIRE_OK ||
         !valid_link_direction(stream->link, stream->direction) ||
@@ -85,13 +121,8 @@ NetWireStatus net_wire_uart_stream_next(NetWireUartStream *stream,
         if(stream->captured_at_ms[i]<stream->captured_at_ms[i-1u]) return NET_WIRE_TIME_HOLD;
     if(stream->count!=0u && (!stream->has_last_capture ||
        stream->captured_at_ms[stream->count-1u]>stream->last_capture_ms)) return NET_WIRE_TIME_HOLD;
-    /* Immutable registry bounds prove a full buffer is processed before append.
-     * If a future registry violates that premise, reject before any mutation. */
-    for(i=0u;i<net_wire_registry_count();++i) {
-        const NetWireRegistryEntry *entry=net_wire_registry_at(i);
-        if(entry->link==stream->link && (entry->frame_length<10u ||
-           entry->frame_length>NET_WIRE_UART_FRAME_MAX)) return NET_WIRE_NO_CAPACITY;
-    }
+    /* Registry bounds: checked when the stream was configured
+     * (nw_uart_stream_config_check); the table cannot change afterwards. */
     previous = stream->last_capture_ms; has_previous = stream->has_last_capture;
     if (stream->has_last_check && (!has_previous || stream->last_check_ms > previous)) {
         previous = stream->last_check_ms; has_previous = true;
@@ -110,14 +141,16 @@ NetWireStatus net_wire_uart_stream_next(NetWireUartStream *stream,
         bool complete;
         if ((stream->count >= 1u && stream->bytes[0] != 0xa5u) ||
             (stream->count >= 2u && stream->bytes[1] != 0x5au)) {
-            discard(stream, 1u, true); continue;
+            checked = NULL; discard(stream, 1u, true); continue;
         }
         if (stream->count >= 6u) {
-            const NetWireRegistryEntry *entry;
-            if (nw_uart_header(stream->link, stream->direction, stream->bytes, &entry) != NET_WIRE_OK) {
-                nw_sat_inc(&stream->bad_headers); discard(stream, 1u, true); continue;
+            /* The header result depends on bytes 0..5 only: an append keeps
+             * it, every discard below clears it. */
+            if (checked == NULL &&
+                nw_uart_header(stream->link, stream->direction, stream->bytes, &checked) != NET_WIRE_OK) {
+                checked = NULL; nw_sat_inc(&stream->bad_headers); discard(stream, 1u, true); continue;
             }
-            wanted = entry->frame_length;
+            wanted = checked->frame_length;
         }
         complete = wanted != 0u && stream->count >= wanted;
         if (stream->count != 0u) {
@@ -128,7 +161,7 @@ NetWireStatus net_wire_uart_stream_next(NetWireUartStream *stream,
             elapsed = at - stream->captured_at_ms[0];
             if (elapsed > stream->policy.assembly_limit_ms ||
                 (stream->policy.expires_at_equality && elapsed == stream->policy.assembly_limit_ms)) {
-                nw_sat_inc(&stream->assembly_timeouts); discard(stream, 1u, true); continue;
+                checked = NULL; nw_sat_inc(&stream->assembly_timeouts); discard(stream, 1u, true); continue;
             }
         }
         if (complete) {
@@ -139,7 +172,7 @@ NetWireStatus net_wire_uart_stream_next(NetWireUartStream *stream,
             memcpy(frame.bytes, stream->bytes, wanted);
             if (net_wire_uart_decode(stream->profile, stream->link, stream->direction,
                                      &frame, &payload) != NET_WIRE_OK) {
-                nw_sat_inc(&stream->bad_crc); discard(stream, 1u, true); continue;
+                checked = NULL; nw_sat_inc(&stream->bad_crc); discard(stream, 1u, true); continue;
             }
             discard(stream, wanted, false);
             if (input->timer_check_permitted && used == input->length) {

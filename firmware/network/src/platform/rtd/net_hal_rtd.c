@@ -119,8 +119,9 @@ uint32_t net_hal_rtd_last_now_ms32(void)
 NetUpperCapture net_hal_rtd_capture_now(uint64_t port_epoch)
 {
     NetUpperCapture c;
-    uint32_t key = net_board_irq_save();
-    memset(&c, 0, sizeof(c));
+    uint32_t key;
+    net_wire_zero(&c, sizeof(c));   /* before masking interrupts */
+    key = net_board_irq_save();
     c.port_epoch = port_epoch;
     c.captured_at_ms = net_hal_rtd_now_locked();
     c.timestamp_known = true;
@@ -318,7 +319,7 @@ NetStatus net_hal_rtd_diag(NetHalRtdDiag *out)
     uint32_t key;
     if (out == NULL) return NET_INVALID_ARGUMENT;
     key = net_board_irq_save();
-    *out = rtd.diag;
+    net_wire_copy(out, &rtd.diag, sizeof(*out));   /* interrupts masked: no byte-wise C library copy */
     net_board_irq_restore(key);
     return NET_OK;
 }

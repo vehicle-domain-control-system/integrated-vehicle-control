@@ -219,7 +219,7 @@ static void rx_complete(uint32_t mb)
     key = net_board_irq_save();
     e = ring_reserve(RING_RX);
     if (e != NULL) {
-        e->frame = f;
+        net_wire_copy(&e->frame, &f, sizeof(f));   /* interrupts masked */
         /* Loss boundary: frames were lost right before this stored one. */
         if (can.ring.lost != 0u || overrun != 0u) inc(&rtd.diag.rx_loss_events);
         can.ring.lost = 0u;
@@ -330,7 +330,7 @@ uint32_t net_hal_rtd_can_drain(uint32_t budget)
     while (n < budget) {
         key = net_board_irq_save();
         if (r->count == 0u) { net_board_irq_restore(key); break; }
-        e = r->e[r->head];
+        net_wire_copy(&e, &r->e[r->head], sizeof(e));   /* interrupts masked */
         r->head = (r->head + 1u) % RING_SIZE;
         --r->count;
         if (e.kind == RING_RX) --r->rx_count;

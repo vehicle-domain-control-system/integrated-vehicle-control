@@ -512,18 +512,24 @@ NetWireStatus net_upper_uart_receiver_init(NetUpperUartReceiver *receiver,
     receiver->port_epoch = port_epoch; receiver->initialized = true;
     return NET_WIRE_OK;
 }
+/* Ring position of the i-th oldest history entry (head, i < FRAME_MAX). */
+static size_t history_at(const NetUpperUartReceiver *receiver, size_t i)
+{
+    size_t p = receiver->history_head + i;
+    return p >= NET_WIRE_UART_FRAME_MAX ? p - NET_WIRE_UART_FRAME_MAX : p;
+}
+/* Constant work per byte: a full ring overwrites its oldest entry. */
 static void append_history(NetUpperUartReceiver *receiver, uint8_t byte, uint64_t at)
 {
-    size_t i;
+    size_t p;
     if (receiver->history_count == NET_WIRE_UART_FRAME_MAX) {
-        for (i = 1u; i < receiver->history_count; ++i) {
-            receiver->history_bytes[i - 1u] = receiver->history_bytes[i];
-            receiver->history_at_ms[i - 1u] = receiver->history_at_ms[i];
-        }
-        --receiver->history_count;
+        p = receiver->history_head;
+        receiver->history_head = history_at(receiver, 1u);
+    } else {
+        p = history_at(receiver, receiver->history_count++);
     }
-    receiver->history_bytes[receiver->history_count] = byte;
-    receiver->history_at_ms[receiver->history_count++] = at;
+    receiver->history_bytes[p] = byte;
+    receiver->history_at_ms[p] = at;
 }
 static NetWireStatus deliver(NetUpperUartReceiver *receiver,
     const NetWireUartFrame *frame, NetUpperUartDelivery *out)
@@ -545,29 +551,38 @@ static NetWireStatus deliver(NetUpperUartReceiver *receiver,
         receiver->stream.count > receiver->history_count - frame->length)
         return NET_WIRE_TIME_HOLD;
     start = receiver->history_count - receiver->stream.count - frame->length;
-    if (receiver->history_at_ms[start + frame->length - 1u] != frame->captured_at_ms ||
-        memcmp(receiver->history_bytes + start, frame->bytes, frame->length) != 0)
+    if (receiver->history_at_ms[history_at(receiver, start + frame->length - 1u)] != frame->captured_at_ms)
         return NET_WIRE_TIME_HOLD;
-    /* Small typed staging only; OUT begins changing after all failures. */
-    memset(out,0,sizeof(*out)); out->message=message;
     for (i = 0u; i < frame->length; ++i)
-        out->byte_at_ms[i] = receiver->history_at_ms[start + i];
-    out->frame = *frame; out->port_epoch = receiver->port_epoch;
+        if (receiver->history_bytes[history_at(receiver, start + i)] != frame->bytes[i])
+            return NET_WIRE_TIME_HOLD;
+    /* Small typed staging only; OUT begins changing after all failures. */
+    net_wire_zero(out, sizeof(*out));
+    net_wire_copy(&out->message, &message, sizeof(message));
+    for (i = 0u; i < frame->length; ++i)
+        out->byte_at_ms[i] = receiver->history_at_ms[history_at(receiver, start + i)];
+    net_wire_copy(&out->frame, frame, sizeof(*frame)); out->port_epoch = receiver->port_epoch;
     increment(&receiver->delivered_frames);
     return NET_WIRE_OK;
 }
+/* The stream's buffered bytes must be the newest history entries, byte and
+ * time (positional provenance for deliver). Older entries were checked the
+ * same way while they were still buffered and are never changed afterwards,
+ * so only that suffix is compared: the work per byte stays bounded by the
+ * frame being assembled, not by the history length. */
 static NetWireStatus history_check(const NetUpperUartReceiver *r)
 {
-    size_t i,start;
-    if(r->history_count>NET_WIRE_UART_FRAME_MAX || r->stream.count>NET_WIRE_UART_FRAME_MAX)
+    size_t i,p;
+    if(r->history_count>NET_WIRE_UART_FRAME_MAX || r->history_head>=NET_WIRE_UART_FRAME_MAX ||
+       r->stream.count>NET_WIRE_UART_FRAME_MAX)
         return NET_WIRE_INVALID_ARGUMENT;
     if(r->stream.count>r->history_count) return NET_WIRE_TIME_HOLD;
-    for(i=1u;i<r->history_count;++i)
-        if(r->history_at_ms[i]<r->history_at_ms[i-1u]) return NET_WIRE_TIME_HOLD;
-    start=r->history_count-r->stream.count;
-    for(i=0u;i<r->stream.count;++i)
-        if(r->stream.bytes[i]!=r->history_bytes[start+i] ||
-           r->stream.captured_at_ms[i]!=r->history_at_ms[start+i]) return NET_WIRE_TIME_HOLD;
+    p=history_at(r,r->history_count-r->stream.count);
+    for(i=0u;i<r->stream.count;++i) {
+        if(r->stream.bytes[i]!=r->history_bytes[p] ||
+           r->stream.captured_at_ms[i]!=r->history_at_ms[p]) return NET_WIRE_TIME_HOLD;
+        if(++p==NET_WIRE_UART_FRAME_MAX) p=0u;
+    }
     return NET_WIRE_OK;
 }
 static NetWireStatus receive(NetUpperUartReceiver *receiver,
@@ -575,7 +590,7 @@ static NetWireStatus receive(NetUpperUartReceiver *receiver,
     bool timestamp_known, uint64_t port_epoch, bool *consumed,
     NetUpperUartDelivery *out)
 {
-    NetWireStreamInput input = {0};
+    NetWireStreamInput input;
     NetWireUartFrame frame;
     NetWireStatus status;
     size_t used = 0u;
@@ -588,11 +603,12 @@ static NetWireStatus receive(NetUpperUartReceiver *receiver,
     if (port_epoch == 0u || port_epoch != receiver->port_epoch) return NET_WIRE_CONTRACT_HOLD;
     if (!timestamp_known || (at != NULL && now_ms < *at)) return NET_WIRE_TIME_HOLD;
     status=history_check(receiver); if(status!=NET_WIRE_OK) return status;
+    /* Every member is set: no structure clear per received byte. */
     input.bytes = byte; input.captured_at_ms = at;
     input.length = byte != NULL ? 1u : 0u;
     input.now_ms = now_ms; input.timestamps_unambiguous = true;
     input.timer_check_permitted = byte == NULL;
-    status = net_wire_uart_stream_next(&receiver->stream, &input, &used, &frame);
+    status = nw_uart_stream_next_owned(&receiver->stream, &input, &used, &frame);
     if (status != NET_WIRE_OK && status != NET_WIRE_NEED_MORE) return status;
     if (used != 0u) append_history(receiver, *byte, *at);
     if (status == NET_WIRE_OK) status = deliver(receiver, &frame, out);
@@ -641,6 +657,6 @@ NetWireStatus net_upper_uart_receiver_signal(NetUpperUartReceiver *receiver,
         if(!receiver->stream.configured) return NET_WIRE_NOT_BOUND_STATUS;
     }
     (void)net_wire_uart_stream_reset(&receiver->stream, byte_loss);
-    receiver->history_count = 0u;
+    receiver->history_count = 0u; receiver->history_head = 0u;
     return NET_WIRE_OK;
 }

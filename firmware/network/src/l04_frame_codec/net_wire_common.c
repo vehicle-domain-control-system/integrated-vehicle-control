@@ -1,4 +1,5 @@
 #include "net_wire_internal.h"
+#include <string.h>
 NetWireStatus net_wire_profile_check(NetWireProfile profile)
 {
     if (profile == NET_WIRE_CANDIDATE_ONLY) return NET_WIRE_OK;
@@ -13,6 +14,47 @@ bool net_wire_ranges_overlap(const void *a, size_t an, const void *b, size_t bn)
     /* Subtract instead of adding an untrusted length to an address. */
     return x <= y ? y - x < an : x - y < bn;
 }
+#if defined(__GNUC__)
+/* GCC / clang (the S32DS board builds): word accesses through a may_alias
+ * type. volatile keeps each loop a loop: a compiler may otherwise turn it
+ * back into a C library memcpy / memset call, the byte loop this replaces. */
+typedef uint32_t nw_word __attribute__((may_alias));
+void net_wire_copy(void *dst, const void *src, size_t size)
+{
+    if ((((uintptr_t)dst | (uintptr_t)src | (uintptr_t)size) & 3u) != 0u) {
+        volatile uint8_t *d = (volatile uint8_t *)dst;
+        const uint8_t *s = (const uint8_t *)src;
+        while (size-- != 0u) *d++ = *s++;
+    } else {
+        volatile nw_word *d = (volatile nw_word *)dst;
+        const nw_word *s = (const nw_word *)src;
+        size /= 4u;
+        for (; size >= 4u; size -= 4u, d += 4, s += 4) {
+            d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
+        }
+        while (size-- != 0u) *d++ = *s++;
+    }
+}
+void net_wire_zero(void *dst, size_t size)
+{
+    if ((((uintptr_t)dst | (uintptr_t)size) & 3u) != 0u) {
+        volatile uint8_t *d = (volatile uint8_t *)dst;
+        while (size-- != 0u) *d++ = 0u;
+    } else {
+        volatile nw_word *d = (volatile nw_word *)dst;
+        size /= 4u;
+        for (; size >= 4u; size -= 4u, d += 4) {
+            d[0] = 0u; d[1] = 0u; d[2] = 0u; d[3] = 0u;
+        }
+        while (size-- != 0u) *d++ = 0u;
+    }
+}
+#else
+/* Other compilers: no portable way to copy other objects word by word
+ * without breaking the aliasing rule, so the C library does it. */
+void net_wire_copy(void *dst, const void *src, size_t size) { if (size != 0u) memcpy(dst, src, size); }
+void net_wire_zero(void *dst, size_t size) { if (size != 0u) memset(dst, 0, size); }
+#endif
 uint16_t nw_read_u16(const uint8_t *p)
 {
     return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8u));
