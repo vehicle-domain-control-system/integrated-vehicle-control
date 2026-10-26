@@ -17,8 +17,10 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 
@@ -30,6 +32,13 @@ SOURCES = (
 NETWORK = Path(__file__).resolve().parents[2]
 WORK = None
 FIXTURE_SHA256 = "4c979747887b76a0aed9a295309cb050650ea83da145b9d321569d8f475bd07e"
+# Removing the work folder at the end: on Windows a file of it can still be
+# held for a moment after the verifier subprocesses ended (WinError 32,
+# another process uses the file). The removal is retried; a folder still held
+# after that is reported and left in place (.build* is ignored by Git), and
+# the test result stays the result of the eight cases.
+CLEANUP_ATTEMPTS = 6
+CLEANUP_DELAY_S = 0.25
 
 
 def sha(data):
@@ -144,6 +153,33 @@ class ReadOnlyVerifierTests(unittest.TestCase):
         self.assertFalse(destination.exists())
 
 
+def remove_work(temporary):
+    """Remove the work folder of this run, retrying while a file is held.
+
+    The first attempt is the normal TemporaryDirectory cleanup; the retries
+    remove the same folder (the target checked in main()) with shutil.rmtree,
+    which also works where cleanup() does not run twice (Python 3.8, 3.9).
+    Returns True when the folder is gone. Never raises OSError: the folder is
+    not a test input, so a held file only gives a warning on stderr."""
+    path = temporary.name
+    error = None
+    for attempt in range(CLEANUP_ATTEMPTS):
+        if attempt:
+            time.sleep(CLEANUP_DELAY_S * attempt)
+        try:
+            if attempt == 0:
+                temporary.cleanup()
+            elif os.path.exists(path):
+                shutil.rmtree(path)
+        except OSError as exc:
+            error = exc
+        if not os.path.exists(path):
+            return True
+    print("WARNING: work folder not removed after %d attempts (%s); the test result is "
+          "unchanged; delete it by hand: %s" % (CLEANUP_ATTEMPTS, error, path), file=sys.stderr)
+    return False
+
+
 def main():
     global NETWORK, WORK
     parser = argparse.ArgumentParser(description=__doc__)
@@ -161,7 +197,7 @@ def main():
         result = unittest.TextTestRunner(verbosity=2).run(suite)
         return 0 if result.wasSuccessful() else 1
     finally:
-        temporary.cleanup()
+        remove_work(temporary)
 
 
 if __name__ == "__main__":
