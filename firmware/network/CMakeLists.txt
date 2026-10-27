@@ -698,6 +698,8 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
             m16_uart_give_back_only_newest m17_uart_give_back_wrap)
         add_test(NAME m04.${case} COMMAND test_m04_link_sequence ${case})
     endforeach()
+    # Frames of one direction keep their order while the device has no room.
+    add_test(NAME m04.m20_uart_no_room_keeps_order COMMAND test_m04_link_sequence m20_uart_no_room_keeps_order)
     # A frame the service drops before the Port (expired, stale, link hold,
     # encode failure) gives its TX_SEQUENCE / LINK_SEQUENCE back.
     add_executable(test_m04_pre_port tests/product/test_m04_pre_port.c)
@@ -706,6 +708,12 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
     foreach(case IN ITEMS m18_can_pre_port_drop_gives_back m19_uart_pre_port_drop_gives_back)
         add_test(NAME m04.${case} COMMAND test_m04_pre_port ${case})
     endforeach()
+    # Frames of one CAN ID keep their TX_SEQUENCE order when the device has no
+    # room for one of them (the service holds the later ones back).
+    add_executable(test_m04_can_order tests/product/test_m04_can_order.c)
+    target_link_libraries(test_m04_can_order PRIVATE network_product)
+    network_warnings(test_m04_can_order)
+    add_test(NAME m04.m21_can_no_room_keeps_id_order COMMAND test_m04_can_order m21_can_no_room_keeps_id_order)
 endif()
 
 # BOOT_ID of the Network run (include/network/net_boot_id.h): warm reset +1,
@@ -969,7 +977,10 @@ if(NETWORK_BUILD_RTD_MOCK)
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
         add_executable(test_domain_node tests/domain_node/test_domain_node.c
             $<TARGET_OBJECTS:network_domain_board_objs>)
+        # Documented traffic of the load case (tests/node_load).
+        target_sources(test_domain_node PRIVATE tests/node_load/net_load_traffic.c)
         target_include_directories(test_domain_node PRIVATE board/s32k344_domain)
+        target_include_directories(test_domain_node PRIVATE tests/node_load)
         target_link_libraries(test_domain_node PRIVATE network_node_rtd_mock_domain)
         network_warnings(test_domain_node)
         foreach(case IN ITEMS n01_init n02_init_order n03_can_rx_to_c2 n04_uart_m_context
@@ -987,6 +998,12 @@ if(NETWORK_BUILD_RTD_MOCK)
         endforeach()
         # CAN bus-off: the link closes, then opens again under a new port epoch.
         add_test(NAME domain_node.n19_busoff_recovery COMMAND test_domain_node n19_busoff_recovery)
+        # UART-M groups larger than the device room; the documented traffic.
+        add_test(NAME domain_node.n20_uart_m_burst COMMAND test_domain_node n20_uart_m_burst)
+        add_test(NAME domain_node.load_doc_traffic COMMAND test_domain_node load_doc_traffic)
+        # Two frames of one CAN ID leave in TX_SEQUENCE order (one per ID in the device).
+        add_test(NAME domain_node.n21_same_id_order COMMAND test_domain_node n21_same_id_order)
+        add_test(NAME domain_node.n22_same_id_order_deferred COMMAND test_domain_node n22_same_id_order_deferred)
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the
@@ -1047,6 +1064,12 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_test(NAME cis_node.load_second_boundary COMMAND test_cis_node_e2e load_second_boundary)
         # CAN bus-off: the link closes, then opens again under a new port epoch.
         add_test(NAME cis_node.f12b_busoff_recovery COMMAND test_cis_node_e2e f12b_busoff_recovery)
+        # A CIS_OCCUPANT relay that waits for device room: not sent after a newer Pi judgement,
+        # sent after a repetition of its own.
+        add_test(NAME cis_node.f26_occupant_relay_after_newer_judgement
+                 COMMAND test_cis_node_e2e f26_occupant_relay_after_newer_judgement)
+        add_test(NAME cis_node.f27_occupant_relay_after_repetition
+                 COMMAND test_cis_node_e2e f27_occupant_relay_after_repetition)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_cis_node_entry tests/cis_node/test_cis_node_e2e.c)

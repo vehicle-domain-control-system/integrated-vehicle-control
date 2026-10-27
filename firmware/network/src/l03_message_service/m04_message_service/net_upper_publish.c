@@ -262,8 +262,9 @@ static void settle(NetUpperPublisher *p, NetUpperPublishSlot *slot)
     /* No device took the frame. Its TX_SEQUENCE is given back when no device
      * can have seen it: cancelled before dispatch, dropped by the service
      * before the Port (expired, stale receipt, link hold, encode or context
-     * failure; t.offered is false), or no room (no frame storage, every buffer
-     * still owned by the driver; a non-OK Port submit promises no borrow).
+     * failure; t.offered is false). A frame the device has no room for does
+     * not end here: it stays queued in the service with its number
+     * (net_upper_service.c dispatch) until the device takes it.
      * A frame the Port clearly refused keeps its number used: a number offered
      * to a device is not reused, a gap is allowed, a reuse is not.
      * Basis: docs/network/sw_detail/functions/CIS_REAR_TX_DISPATCH.md (state,

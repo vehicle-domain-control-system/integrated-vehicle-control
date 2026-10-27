@@ -115,6 +115,15 @@ static NetStatus port_submit(void *context,const NetUpperPacket *packet,NetTxKey
     if(!enabled(a,packet->link)) { unlock(a,k); return NET_NOT_CONFIGURED; }
     if(a->faulted[packet->link] || a->next_order>=UINT64_MAX-4u) { unlock(a,k); return NET_HOLD; }
     if(find(a,key)!=NULL) { unlock(a,k); return NET_DUPLICATE; }
+    if(packet->link!=NET_WIRE_CAN && enabled(a,NET_WIRE_CAN)) {
+        /* UART transfers wait for their line one at a time; together they
+         * may hold at most half of the attempts (rounded down; with a single
+         * attempt the links share it), so a UART backlog leaves the CAN link
+         * the other half (periodic CAN frames keep their period). */
+        size_t uart=0u;
+        for(i=0u;i<NET_HAL_TX_CAPACITY;++i) if(a->tx[i].active && a->tx[i].transfer.packet.link!=NET_WIRE_CAN) ++uart;
+        if(uart>=(NET_HAL_TX_CAPACITY>=2u?NET_HAL_TX_CAPACITY/2u:1u)) { unlock(a,k); return NET_NO_CAPACITY; }
+    }
     for(i=0u;i<NET_HAL_TX_CAPACITY;++i) if(!a->tx[i].active) { r=&a->tx[i]; break; }
     if(r==NULL) { unlock(a,k); return NET_NO_CAPACITY; }
     net_wire_zero(r,sizeof(*r)); r->active=true;

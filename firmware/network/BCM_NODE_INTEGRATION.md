@@ -77,7 +77,7 @@ BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 �
 | `NetNodeDiag.main_max_us` | `Net_MainFunction` 1회 최대 시간(`NET_BOARD_US_HOOK`이 있을 때, 없으면 0). 수 ms(15 ms 미만)인지 보고, main 주기 + 이 값이 CAN 링 한 바퀴 약 45 ms보다 짧은지 본다 |
 | `rtd.isr_ring_max_depth` | 75 % 이하: `NET_BOARD_CAN_ISR_RING` 16의 12 이하. TX 완료 사실까지 센 링 전체 깊이라 보수적이다. `rtd.isr_ring_overflow` 0 |
 | `upper.rx_max_depth`, `hal.rx_max_depth`, `upper.tx_max_depth` | 기록만 한다. host 부하 시험(`bcm_node.load_doc_traffic`)에서 8/8, 7/8, 4/6이었다. step당 poll·바퀴당 비우기만큼 한 번에 채우는 설계 값이라 75 % 판정 대상이 아니다. 대신 `upper.rx_dropped`, `hal.rx_dropped`가 0인지 본다 |
-| 슬롯 `counters.queue_full`(`result_tx` … `status_tx`) | 기록한다. 장치 칸이 없어 한 바퀴 미룬 수다(번호는 다음 바퀴에 그대로 쓰므로 손실 아님) |
+| `upper.tx_deferred` | 기록한다. 장치 칸이 없어(같은 CAN ID 프레임이 아직 컨트롤러에 있을 때 포함) 프레임을 서비스 큐에 두고 다음 바퀴로 미룬 수다(번호는 그대로 쓰므로 손실 아님). 슬롯 `counters.queue_full`(`result_tx` … `status_tx`)은 서비스 큐가 찼을 때만 센다 |
 | `upper.rx_invalid` | 기록만 한다. RX MB가 모든 표준 ID를 받으므로 이 노드가 받지 않는 다른 노드 몫 프레임만큼 정상 운전에서도 늘어난다(host 부하 시험 10 s에 BCM 630). 버스 이상 판단에 쓰지 않는다 |
 | `rtd.rx_overruns` | 0. 1초 경계에 11개가 함께 시작할 때 RX MB 2개(`NET_BOARD_CAN_RX_MB_COUNT`)에서 덮어쓰기가 없어야 한다. 0이 아니면 `-DNET_BOARD_CAN_RX_MB_COUNT=3u -DNET_BOARD_CAN_TX_MB_FIRST=3u`(TX MB 3..6, `NET_BOARD_CAN_MAX_MB` 7 안)로 다시 본다 |
 | 링커 스택 크기(`.ld`) | Network 경로 상한 2,048 B(main → `Net_MainFunction`, `Net_Init` 각각) + 앱 콜백 + ISR 이상. host ARM 측정은 약 1.9 KB이고 함수 포인터 호출(앱 콜백)과 ISR은 빼고 잰 값이다 |

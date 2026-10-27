@@ -198,9 +198,9 @@ static NetUpperPublishCounters counters(uint16_t type)
     return v.counters;
 }
 
-/* The device has no room for a while: the submission waits in its slot and,
- * once the device takes it, carries the first number of the direction; the
- * next frame carries the one after it. */
+/* The device has no room for a while: the frame waits in the service queue
+ * with its number and, once the device takes it, carries the first number of
+ * the direction; the next frame carries the one after it. */
 static int m14_uart_no_room_keeps_link_sequence(void)
 {
     uint8_t type;
@@ -210,7 +210,7 @@ static int m14_uart_no_room_keeps_link_sequence(void)
     CHECK(publish_result(1u) == NET_OK);
     passes(31u); /* the first pass offers, every later one finds the refusal */
     CHECK(port.count == 0u);
-    CHECK(counters(0x60u).queue_full >= 30u && counters(0x60u).not_sent == 0u);
+    CHECK(counters(0x60u).not_sent == 0u && svc.observation.tx_deferred >= 30u);
     port.room = SIZE_MAX;
     pass();
     CHECK(port.count == 1u && line(0u, &type, &seq) && type == 0x60u && seq == 1u);
@@ -250,15 +250,27 @@ static int m15_uart_taken_or_refused_number_used(void)
     return 0;
 }
 
+/* P_VISION_RESULT and the vision_sequence it carries, k-th frame taken. */
+static bool result_at(size_t k, uint16_t *sequence, uint32_t *vision_sequence)
+{
+    NetUpperUartMessage m;
+    if (k >= port.count || !decode(&port.taken[k].packet, &m) || m.type != 0x60u) return false;
+    *sequence = m.sequence;
+    *vision_sequence = m.data.p_vision_result.vision_sequence;
+    return true;
+}
+
 /* Two messages of one direction offered in the same pass take two numbers.
- * The device has no room for the later one: it gets its number back and the
- * line shows no gap. The device has no room for the earlier one while it
- * takes the later one: the earlier number is not given back (it would go out
- * behind the later number), the frame waits a pass and takes a new number. */
-static int m16_uart_give_back_only_newest(void)
+ * The device has no room for the later one: it waits with its number and goes
+ * out in the next pass, the line shows no gap. The device has no room for the
+ * earlier one: the later one is not offered either (it would go out ahead of
+ * the earlier number, and tx_deferred does not count it); both go out once
+ * the device has room, in order, no gap. */
+static int m20_uart_no_room_keeps_order(void)
 {
     uint8_t type;
     uint16_t seq;
+    uint32_t single, held;
     CHECK(start(2u) == NET_OK);
     port.no_room_for = 0x61u;
     CHECK(publish_result(1u) == NET_OK);
@@ -268,18 +280,26 @@ static int m16_uart_give_back_only_newest(void)
     port.no_room_for = 0u;
     pass();
     CHECK(port.count == 2u && line(1u, &type, &seq) && type == 0x61u && seq == 2u);
-    CHECK(counters(0x61u).queue_full == 1u);
 
     port.no_room_for = 0x60u;
     CHECK(publish_result(2u) == NET_OK);
+    passes(2u);
+    single = svc.observation.tx_deferred;
+    pass();                                   /* refusals of one waiting frame per pass */
+    single = svc.observation.tx_deferred - single;
     CHECK(publish_status(2u) == NET_OK);
     pass();
-    CHECK(port.count == 3u && line(2u, &type, &seq) && type == 0x61u && seq == 4u);
+    held = svc.observation.tx_deferred;
+    pass();                                   /* the status waits behind it, not offered */
+    held = svc.observation.tx_deferred - held;
+    CHECK(single >= 1u && held == single);    /* the held frame is not counted */
+    CHECK(port.count == 2u);
     port.no_room_for = 0u;
     pass();
-    CHECK(port.count == 4u && line(3u, &type, &seq) && type == 0x60u && seq == 5u);
-    CHECK(counters(0x60u).queue_full == 1u);
+    CHECK(port.count == 4u && line(2u, &type, &seq) && type == 0x60u && seq == 3u);
+    CHECK(line(3u, &type, &seq) && type == 0x61u && seq == 4u);
     CHECK(counters(0x60u).not_sent == 0u && counters(0x61u).not_sent == 0u);
+    CHECK(counters(0x60u).queue_full == 0u && counters(0x61u).queue_full == 0u);
     {
         /* On the line the direction only moves forward, no number twice. */
         uint16_t last = 0u;
@@ -293,11 +313,12 @@ static int m16_uart_give_back_only_newest(void)
     return 0;
 }
 
-/* 65535 given back stays 65535: the next frame after it carries 0. */
+/* 65535 given back stays 65535: the replacement carries 65535, the next
+ * frame after it carries 0. */
 static int m17_uart_give_back_wrap(void)
 {
-    uint8_t type;
     uint16_t seq;
+    uint32_t vision;
     CHECK(start(1u) == NET_OK);
     /* Boundary set-up: 65534 frames are not produced in a test, so the
      * service-owned counter is placed at the last number. */
@@ -306,12 +327,52 @@ static int m17_uart_give_back_wrap(void)
     CHECK(publish_result(1u) == NET_OK);
     passes(5u);
     CHECK(port.count == 0u);
+    CHECK(publish_result(2u) == NET_OK);
+    pass();                                   /* 65535 replaced and given back */
+    CHECK(counters(0x60u).replaced == 1u);
     port.room = SIZE_MAX;
     pass();
-    CHECK(port.count == 1u && line(0u, &type, &seq) && seq == 65535u);
-    CHECK(publish_result(2u) == NET_OK);
+    CHECK(port.count == 1u && result_at(0u, &seq, &vision) && seq == 65535u && vision == 2u);
+    CHECK(publish_result(3u) == NET_OK);
     pass();
-    CHECK(port.count == 2u && line(1u, &type, &seq) && seq == 0u);
+    CHECK(port.count == 2u && result_at(1u, &seq, &vision) && seq == 0u && vision == 3u);
+    return 0;
+}
+
+/* A frame waiting for device room is replaced by a newer submission of its
+ * message (cancelled, never taken). Its number comes back only when no later
+ * frame of the direction took one: the newest number is reused by the
+ * replacement, an older one stays a gap (never a reuse). */
+static int m16_uart_give_back_only_newest(void)
+{
+    uint8_t type;
+    uint16_t seq;
+    uint32_t vision;
+    CHECK(start(2u) == NET_OK);
+    port.room = 0u;
+    CHECK(publish_result(1u) == NET_OK);
+    pass();                                   /* number 1, no room: waits */
+    CHECK(port.count == 0u);
+    CHECK(publish_result(2u) == NET_OK);
+    pass();                                   /* 1 replaced: no later number, given back */
+    CHECK(counters(0x60u).replaced == 1u);
+    port.room = SIZE_MAX;
+    pass();
+    CHECK(port.count == 1u && result_at(0u, &seq, &vision) && seq == 1u && vision == 2u);
+
+    port.no_room_for = 0x60u;
+    CHECK(publish_result(3u) == NET_OK);
+    CHECK(publish_status(1u) == NET_OK);
+    pass();                                   /* result 2, status 3: both wait */
+    CHECK(port.count == 1u);
+    CHECK(publish_result(4u) == NET_OK);
+    pass();                                   /* 2 replaced: 3 is later, 2 stays used */
+    CHECK(counters(0x60u).replaced == 2u);
+    CHECK(port.count == 2u && line(1u, &type, &seq) && type == 0x61u && seq == 3u);
+    port.no_room_for = 0u;
+    pass();
+    CHECK(port.count == 3u && result_at(2u, &seq, &vision) && seq == 4u && vision == 4u);
+    CHECK(counters(0x60u).not_sent == 0u && counters(0x61u).not_sent == 0u);
     return 0;
 }
 
@@ -321,6 +382,7 @@ int main(int argc, char **argv)
         { "m14_uart_no_room_keeps_link_sequence", m14_uart_no_room_keeps_link_sequence },
         { "m15_uart_taken_or_refused_number_used", m15_uart_taken_or_refused_number_used },
         { "m16_uart_give_back_only_newest", m16_uart_give_back_only_newest },
+        { "m20_uart_no_room_keeps_order", m20_uart_no_room_keeps_order },
         { "m17_uart_give_back_wrap", m17_uart_give_back_wrap }
     };
     size_t i;

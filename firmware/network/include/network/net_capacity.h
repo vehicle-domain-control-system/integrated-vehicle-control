@@ -30,12 +30,12 @@
  *   NET_BOARD_UART_ISR_RING     received bytes the ISR ring of one UART link
  *                               holds between two main passes.
  *
- * The CIS, BCM and VSS values follow the traffic of the node
- * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md and 30_UART_C.md,
- * message lists): the periodic bus traffic is about 107 frames/s (WINDOW
- * excluded) and up to 11 periodic frames start at the same instant.
- * HOST, DOMAIN, CIS_CAN_ONLY and WINDOW keep the common values (HOST is the
- * reference of the product tests; DOMAIN and WINDOW have no node table yet).
+ * The CIS, BCM, VSS and DOMAIN values follow the traffic of the node
+ * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md, 20_UART_M.md and
+ * 30_UART_C.md, message lists): the periodic bus traffic is about 107
+ * frames/s (WINDOW excluded) and up to 11 periodic frames start at the same
+ * instant. HOST, CIS_CAN_ONLY and WINDOW keep the common values (HOST is the
+ * reference of the product tests; WINDOW has no node table).
  *
  * Link conditions, each a compile error when a value breaks it:
  *   NET_UPPER_POLL_BUDGET <= NET_UPPER_RX_CAPACITY             (below)
@@ -92,8 +92,30 @@
 #define NET_CAPACITY_HAL_TX     2u
 #define NET_CAPACITY_CAN_RING   24u
 #define NET_CAPACITY_UART_RING  256u
+#elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_DOMAIN
+/* DOMAIN: publish table of 3 (DOMAIN_PERMISSION, VSS_WARNING_STATE,
+ * M_DOMAIN_ALIVE). It receives 15 CAN routes (67 periodic frames/s, WINDOW
+ * excluded, up to 9 starting at the same instant) and UART-M from the ESP32
+ * (M_CONTEXT 48 B every 100 ms; M_REQUEST, M_QUERY, M_WARNING_ACK on
+ * occurrence): two steps of 24 events take a whole UART-M frame per pass, as
+ * in CIS. The C2 adapter sends the commands, the UART-M state relays (200 ms
+ * and 1 s groups, up to 13 at one instant) and the query answers: the
+ * transmit queue of 16 holds such a group, and a frame the device has no room
+ * for waits there (HAL TX 4: CAN MBs and the UART-M transfer queue). The CAN
+ * ring of 24 holds the 9 frames of one instant and about 200 ms of the
+ * periodic traffic; 256 B of UART ring are about 22 ms of a fully loaded
+ * 115200 bit/s line. RAM budget of Network + RTD backend on the DOMAIN board:
+ * 44 KB. */
+#define NET_CAPACITY_TX         16u
+#define NET_CAPACITY_PUBLISH    3u
+#define NET_CAPACITY_RX         24u
+#define NET_CAPACITY_POLL       24u
+#define NET_CAPACITY_HAL_RX     16u
+#define NET_CAPACITY_DRAIN      16u
+#define NET_CAPACITY_HAL_TX     4u
+#define NET_CAPACITY_CAN_RING   24u
+#define NET_CAPACITY_UART_RING  256u
 #elif NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_HOST || \
-      NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_DOMAIN || \
       NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS_CAN_ONLY || \
       NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_WINDOW
 /* Common values: bounded implementation capacities, not approved ECU sizing. */

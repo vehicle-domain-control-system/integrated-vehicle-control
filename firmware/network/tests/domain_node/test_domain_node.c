@@ -32,6 +32,7 @@
 #include "net_upper_private.h"
 #include "net_domain_board.h"
 #include "mock_rtd.h"
+#include "net_load_traffic.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -178,6 +179,11 @@ typedef struct { uint32_t at; NetUpperUartMessage m; } UartSeen;
 static CanSeen can_seen[CAN_LOG];
 static UartSeen uart_seen[UART_LOG];
 static unsigned can_count, can_bad, uart_count, uart_bad;
+/* UART-M downlink: frames per MESSAGE_TYPE and LINK_SEQUENCE steps that are
+ * not +1 (the direction's counter, every type). */
+static unsigned uart_type_count[256], uart_seq_gaps;
+static bool uart_seq_seen;
+static uint16_t uart_seq_last;
 static uint32_t now_ms; /* the DOMAIN main-loop ms function */
 
 /* The bus takes every frame the node offered (TX_COMPLETE from the IRQ); the
@@ -214,6 +220,10 @@ static void collect(void)
         }
         if (uart_count < UART_LOG) { uart_seen[uart_count].at = now_ms; uart_seen[uart_count].m = u; }
         ++uart_count;
+        ++uart_type_count[u.type];
+        if (uart_seq_seen && (uint16_t)(uart_seq_last + 1u) != u.sequence) ++uart_seq_gaps;
+        uart_seq_seen = true;
+        uart_seq_last = u.sequence;
     }
 }
 
@@ -1222,6 +1232,333 @@ static int n19_busoff_recovery(void)
     return 0;
 }
 
+/* C2 TxPort input of M_USER_SETTINGS (0x25, a core UART-M message that needs
+ * only a current M_CONTEXT), value n. */
+static DomainIf_Status_t tx_settings(uint32_t n)
+{
+    DomainIf_UserSettingsState_t v;
+    memset(&v, 0, sizeof(v));
+    v.hasTargetTemperature = true;
+    v.targetTemperatureCentiC = 2200;
+    v.hasClimateAutoSetting = true;
+    v.climateAutoEnabled = true;
+    v.hasUserFanLevel = true;
+    v.userFanLevel = FAN_LEVEL_LOW;
+    v.hasInteriorLightEnableSetting = true;
+    v.interiorLightEnabled = true;
+    v.hasNormalLightLevel = true;
+    v.normalLightLevelPercent = 40u;
+    v.hasNormalLightColor = true;
+    v.normalLightColor.red = 10u;
+    v.normalLightColor.green = 20u;
+    v.normalLightColor.blue = 30u;
+    v.meta.quality = DATA_QUALITY_OK;
+    v.meta.updateSequence = n;
+    v.meta.ageMs = 5u;
+    return port.txMobileUserSettings(&v);
+}
+
+/* C2 TxPort input of M_RESULT (0x20, carries a failure identity). */
+static DomainIf_Status_t tx_result(uint32_t request)
+{
+    DomainIf_MobileRequestResult_t v;
+    memset(&v, 0, sizeof(v));
+    v.deviceContextId = 7u;
+    v.resultInfo.context.sessionId = 11u;
+    v.resultInfo.context.requestId = request;
+    v.resultInfo.reason = RESULT_REASON_NONE;
+    v.resultInfo.confirmation = RESULT_CONFIRMATION_UNCONFIRMED;
+    v.hasVehicleResult = false;
+    v.target = MOBILE_RESULT_TARGET_DOMAIN_SETTING;
+    v.commandId = 0u;
+    v.origin = COMMAND_ORIGIN_MOBILE_REQUEST;
+    v.resultAgeMs = 3u;
+    return port.txMobileRequestResult(&v);
+}
+
+static unsigned c2_records_used(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    unsigned i, n = 0u;
+    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i) if (a->tx[i].used) ++n;
+    return n;
+}
+
+/* A burst of UART-M messages through the C2 TxPort in one pass (an
+ * application that submits its 200 ms and 1 s state groups together, 13
+ * frames): the device (HAL TX 4) has no room for all of them, so the rest
+ * wait in the service queue (upper.tx_deferred) and go out in the next
+ * passes, in submission order, LINK_SEQUENCE without a gap, none lost. The
+ * same with M_RESULT, which carries a failure identity: no failure is
+ * reported and no C2 record is left. */
+static int n20_uart_m_burst(void)
+{
+    NetWireUartFrame fr;
+    unsigned k, settings0, results0;
+    NetNodeDiag d;
+    CHECK(start());
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    settings0 = uart_type_count[0x25u];
+    for (k = 0u; k < 13u; ++k) CHECK(tx_settings(k + 1u) == DOMAIN_IF_OK);
+    flush();
+    CHECK(uart_type_count[0x25u] - settings0 <= NET_HAL_TX_CAPACITY);
+    d = diag();
+    CHECK(d.upper.tx_deferred >= 1u);
+    run_to(now_ms + 30u);
+    CHECK(uart_type_count[0x25u] - settings0 == 13u);
+    for (k = 0u; k < uart_count && k < UART_LOG; ++k) {
+        if (uart_seen[k].m.type != 0x25u) continue;
+        CHECK(uart_seen[k].m.data.m_user_settings.update_sequence == ++settings0 - uart_type_count[0x25u] + 13u);
+    }
+    CHECK(uart_seq_gaps == 0u && uart_bad == 0u);
+    results0 = uart_type_count[0x20u];
+    for (k = 0u; k < 13u; ++k) CHECK(tx_result(100u + k) == DOMAIN_IF_OK);
+    flush();
+    run_to(now_ms + 30u);
+    CHECK(uart_type_count[0x20u] - results0 == 13u);
+    CHECK(uart_seq_gaps == 0u && failure_calls == 0u);
+    run_to(now_ms + 3u);
+    CHECK(c2_records_used() == 0u);
+    d = diag();
+    CHECK(d.upper.tx_failed == 0u && d.upper.tx_max_depth <= NET_UPPER_TX_CAPACITY);
+    return 0;
+}
+
+/* Documented traffic for 10 s (net_load_traffic.h; 10_CAN_FD.md and
+ * 20_UART_M.md message lists, WINDOW excluded):
+ *   bus:  the periodic frames of CIS, BCM and VSS (67 frames/s, 9 of them
+ *         start together every second), all received by DOMAIN;
+ *   ESP32: M_CONTEXT 48 B every 100 ms;
+ *   application (after each Network pass): a new DOMAIN_PERMISSION
+ *         evaluation every 200 ms (sent every 50 ms by M04), and the UART-M
+ *         state relays of 20_UART_M.md as their frame count: 6 frames every
+ *         200 ms and 7 more every 1 s, all at the same instant. The relays
+ *         need received CAN sources and the DOMAIN snapshot confirmation
+ *         (held on this board), so the load is carried by M_USER_SETTINGS
+ *         frames of the same count and similar length (46 B).
+ * The main loop runs every 10 ms; the ESP32 end takes one UART-M frame per
+ * pass (slower than the 115200 bit/s line). Nothing may be lost (rings,
+ * queues, C2 deliveries of CIS_REAR / BCM_DOOR_STATE / BCM_STATUS /
+ * CIS_STATUS, UART-M frames), DOMAIN_PERMISSION leaves within 50 ms plus one
+ * pass, LINK_SEQUENCE has no gap, and no queue goes past its capacity. */
+#define LOAD_PASS_MS 10u
+static int load_doc_traffic(void)
+{
+    uint32_t sent[NET_LOAD_MESSAGE_COUNT], due[NET_LOAD_MESSAGE_COUNT];
+    uint32_t t, end = START_MS + NET_LOAD_DURATION_MS, next_pass = START_MS + LOAD_PASS_MS;
+    uint32_t next_ctx = START_MS, next_eval = START_MS, next_200 = START_MS + 20u, next_1s = START_MS + 20u;
+    uint32_t injected = 0u, ctx_sent = 0u, evaluations = 0u, relays = 0u, refused = 0u, lost_inject = 0u;
+    uint32_t rear_in = 0u, door_in = 0u, bcm_status_in = 0u, cis_status_in = 0u;
+    uint32_t perm_last = 0u, perm_gap_max = 0u, perm_frames = 0u, lost, i, settings0;
+    unsigned can0;
+    size_t k;
+    uint16_t ctx_seq = 1u;
+    NetNodeDiag d;
+    NetWireUartFrame fr;
+    CHECK(start());
+    can0 = can_count;
+    settings0 = uart_type_count[0x25u];
+    for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) { sent[k] = 0u; due[k] = START_MS + 1u; }
+    for (;;) {
+        t = next_pass;
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k)
+            if (net_load_messages[k].sender != NET_LOAD_DOMAIN && due[k] < t) t = due[k];
+        if (next_ctx < t) t = next_ctx;
+        if (t >= end) break;
+        now_ms = t;
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+            NetWireCanEnvelope e;
+            MockCanFrame f;
+            if (net_load_messages[k].sender == NET_LOAD_DOMAIN || due[k] != t) continue;
+            CHECK(net_load_frame(k, sent[k]++, &e));
+            memset(&f, 0, sizeof(f));
+            f.id = e.standard_id; f.fd = e.fdf; f.brs = e.brs; f.dlc = e.dlc; f.length = (uint8)e.length;
+            memcpy(f.data, e.bytes, e.length);
+            if (MockRtd_CanInject(BUS, &f) < 0) ++lost_inject;
+            ++injected;
+            if (e.standard_id == 0x0A0u) ++rear_in;
+            if (e.standard_id == 0x200u) ++door_in;
+            if (e.standard_id == 0x230u) ++bcm_status_in;
+            if (e.standard_id == 0x320u) ++cis_status_in;
+            due[k] += net_load_messages[k].period_ms;
+        }
+        if (next_ctx == t) {
+            CHECK(context_frame(ctx_seq++, 11u, &fr));
+            if (line_in(fr.bytes, fr.length) != fr.length) ++lost_inject;
+            ++ctx_sent;
+            next_ctx += 100u;
+        }
+        if (next_pass == t) {
+            pass();
+            if (now_ms >= next_eval) {
+                if (tx_power(true, DATA_QUALITY_OK, ++evaluations, 0u) != DOMAIN_IF_OK) ++refused;
+                next_eval += 200u;
+            }
+            if (connection_calls != 0u && now_ms >= next_200) {
+                unsigned n = 6u;
+                if (now_ms >= next_1s) { n += 7u; next_1s += 1000u; }
+                for (i = 0u; i < n; ++i) {
+                    ++relays;
+                    if (tx_settings(relays) != DOMAIN_IF_OK) ++refused;
+                }
+                next_200 += 200u;
+            }
+            flush();
+            next_pass += LOAD_PASS_MS;
+        }
+    }
+    for (i = 0u; i < 30u; ++i) { now_ms += LOAD_PASS_MS; pass(); }
+    for (i = can0; i < can_count && i < CAN_LOG; ++i) {
+        if (can_seen[i].m.id != 0x080u) continue;
+        if (perm_frames != 0u && can_seen[i].at - perm_last > perm_gap_max) perm_gap_max = can_seen[i].at - perm_last;
+        perm_last = can_seen[i].at;
+        ++perm_frames;
+    }
+    d = diag();
+    {
+        const NetLoadCount loss[] = {
+            { "upper.rx_dropped", d.upper.rx_dropped },
+            { "hal.rx_dropped", d.hal.rx_dropped },
+            { "rtd.isr_ring_overflow", d.rtd.isr_ring_overflow },
+            { "rtd.rx_queue_rejected", d.rtd.rx_queue_rejected },
+            { "rtd.uart_isr_ring_overflow", d.rtd.uart[0].uart_isr_ring_overflow },
+            { "rtd.uart_rx_queue_rejected", d.rtd.uart[0].uart_rx_queue_rejected },
+            { "line_not_taken", lost_inject },
+            { "app_refused", refused },
+            { "relays_not_sent", relays - (uart_type_count[0x25u] - settings0) },
+            { "upper.tx_failed", d.upper.tx_failed },
+            { "uart_link_sequence_gaps", uart_seq_gaps },
+            { "uart_bad", uart_bad },
+            { "rear_not_delivered", rear_in - rear_calls },
+            { "door_state_not_delivered", door_in - door_state_calls },
+            { "bcm_status_not_delivered", bcm_status_in - bcm_status_calls },
+            { "cis_status_not_delivered", cis_status_in - cis_status_calls },
+            { "permission_tx_not_sent", d.permission_tx.counters.not_sent }
+        };
+        lost = net_load_report("load lost", loss, sizeof(loss) / sizeof(loss[0]));
+    }
+    printf("LOAD DOMAIN rx_frames=%lu uart_m_out=%u relays=%lu lost=%lu permission_gap_max_ms=%lu can_ring_max=%lu/%lu "
+           "hal_rx_max=%lu/%lu upper_rx_max=%lu/%lu upper_tx_max=%lu/%lu uart_ring_max=%lu/%lu tx_deferred=%lu\n",
+           (unsigned long)d.rtd.rx_frames, uart_count, (unsigned long)relays, (unsigned long)lost,
+           (unsigned long)perm_gap_max, (unsigned long)d.rtd.isr_ring_max_depth, (unsigned long)NET_BOARD_CAN_ISR_RING,
+           (unsigned long)d.hal.rx_max_depth, (unsigned long)NET_HAL_RX_CAPACITY,
+           (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
+           (unsigned long)d.upper.tx_max_depth, (unsigned long)NET_UPPER_TX_CAPACITY,
+           (unsigned long)d.rtd.uart[0].uart_isr_ring_max_depth, (unsigned long)NET_BOARD_UART_ISR_RING,
+           (unsigned long)d.upper.tx_deferred);
+    printf("load detail: injected=%lu context=%lu evaluations=%lu permission_frames=%lu rear=%u/%lu door=%u/%lu "
+           "bcm_status=%u/%lu cis_status=%u/%lu drained_max=%lu/%lu alive=%u\n",
+           (unsigned long)injected, (unsigned long)ctx_sent, (unsigned long)evaluations, (unsigned long)perm_frames,
+           rear_calls, (unsigned long)rear_in, door_state_calls, (unsigned long)door_in, bcm_status_calls,
+           (unsigned long)bcm_status_in, cis_status_calls, (unsigned long)cis_status_in,
+           (unsigned long)d.rtd.main_drained_max, (unsigned long)d.rtd.isr_drain_budget, uart_type_count[0x02u]);
+    fflush(stdout);
+    CHECK(d.rtd.rx_frames == injected);
+    CHECK(lost == 0u);
+    CHECK(perm_frames >= 190u && perm_gap_max <= 50u + LOAD_PASS_MS);
+    CHECK(d.rtd.isr_ring_max_depth <= NET_BOARD_CAN_ISR_RING && d.hal.rx_max_depth <= NET_HAL_RX_CAPACITY);
+    CHECK(d.upper.rx_max_depth <= NET_UPPER_RX_CAPACITY && d.upper.tx_max_depth <= NET_UPPER_TX_CAPACITY);
+    CHECK(d.rtd.uart[0].uart_isr_ring_max_depth <= NET_BOARD_UART_ISR_RING);
+    /* The high-water marks saw the traffic: nine bus frames at once, a
+     * 13-frame UART-M group waiting for the device. */
+    CHECK(d.rtd.isr_ring_max_depth >= 9u && d.upper.tx_max_depth >= 13u && d.upper.tx_deferred >= 1u);
+    return 0;
+}
+
+/* The bus is busy (no ACK): nothing the node offered completes. bus_takes:
+ * the bus takes the one frame that wins arbitration now, which has CAN ID id. */
+static void bus_busy(bool busy) { MockRtd_CanSetAckMissing(BUS, busy); }
+static int bus_takes(uint16_t id)
+{
+    MockCanFrame f;
+    int mb;
+    bus_busy(false);
+    mb = MockRtd_CanTransmitNext(BUS, &f);
+    bus_busy(true);
+    return mb >= 0 && f.id == id;
+}
+
+/* Two C2 commands of one CAN ID while the bus is busy. FlexCAN (and the mock)
+ * send equal identifiers in MB order, so the device holds one frame per CAN
+ * ID: the second door command waits in the service queue until the first is
+ * reported, then goes out. TX_SEQUENCE 1 reaches the bus before 2. */
+static int n21_same_id_order(void)
+{
+    NetUpperCanMessage m;
+    const CanSeen *a, *b;
+    uint32_t deferred0;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    bus_busy(true);                        /* nothing completes */
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    CHECK(tx_warning() == DOMAIN_IF_OK);
+    ++now_ms; pass();                      /* 0x080 -> MB 0, 0x0C0 -> MB 1 */
+    CHECK(tx_door(77u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 1 -> MB 2 */
+    flush();
+    CHECK(bus_takes(0x080u));                    /* MB 0 completes */
+    ++now_ms; pass();                      /* TX facts reported: MB 0 free */
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(tx_door(78u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 2: 0x100 is in the device */
+    flush();
+    CHECK(diag().upper.tx_deferred > deferred0);
+    bus_busy(false);
+    run_to(now_ms + 5u);
+    a = nth_id(0x100u, 0u, 0u);
+    b = nth_id(0x100u, 0u, 1u);
+    CHECK(a != NULL && b != NULL && count_id(0x100u, 0u) == 2u);
+    CHECK(a->m.data.bcm_door_command.command_id == 77u && tx_of(a) == 1u);
+    CHECK(b->m.data.bcm_door_command.command_id == 78u && tx_of(b) == 2u);
+    return 0;
+}
+
+/* Every TX MB busy: both door commands are deferred and offered in
+ * TX_SEQUENCE order; the first takes the highest MB, and the second still
+ * waits for it instead of taking a lower MB that frees first. */
+static int n22_same_id_order_deferred(void)
+{
+    NetUpperCanMessage m;
+    const CanSeen *a, *b;
+    uint32_t deferred0;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    bus_busy(true);
+    CHECK(tx_warning() == DOMAIN_IF_OK);
+    ++now_ms; pass();                      /* 0x0C0 -> MB 0 */
+    CHECK(tx_event(5u) == DOMAIN_IF_OK);   /* 0x160 -> MB 1 */
+    CHECK(tx_climate(70u) == DOMAIN_IF_OK);/* 0x110 -> MB 2 */
+    flush();
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    ++now_ms; pass();                      /* 0x080 -> MB 3 */
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(tx_door(77u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 1: no MB, deferred */
+    flush();
+    CHECK(diag().upper.tx_deferred > deferred0);
+    CHECK(bus_takes(0x080u));                    /* MB 3 completes */
+    ++now_ms; pass();                      /* door 77 -> MB 3 */
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(tx_door(78u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 2: deferred */
+    flush();
+    CHECK(diag().upper.tx_deferred > deferred0);
+    CHECK(bus_takes(0x0C0u));                    /* MB 0 completes */
+    ++now_ms; pass();                      /* door 78 still waits: 0x100 is in MB 3 */
+    bus_busy(false);
+    run_to(now_ms + 5u);
+    a = nth_id(0x100u, 0u, 0u);
+    b = nth_id(0x100u, 0u, 1u);
+    CHECK(a != NULL && b != NULL && count_id(0x100u, 0u) == 2u);
+    CHECK(a->m.data.bcm_door_command.command_id == 77u && tx_of(a) == 1u);
+    CHECK(b->m.data.bcm_door_command.command_id == 78u && tx_of(b) == 2u);
+    CHECK(c2_records_used() == 0u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1241,6 +1578,9 @@ int main(int argc, char **argv)
         { "n17_bcm_state_field_age", n17_bcm_state_field_age },
         { "n18_bcm_result_rejected", n18_bcm_result_rejected },
         { "n19_busoff_recovery", n19_busoff_recovery },
+        { "n20_uart_m_burst", n20_uart_m_burst }, { "load_doc_traffic", load_doc_traffic },
+        { "n21_same_id_order", n21_same_id_order },
+        { "n22_same_id_order_deferred", n22_same_id_order_deferred },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

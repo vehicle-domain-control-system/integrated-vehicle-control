@@ -351,13 +351,15 @@ static int m07_tx_failure_keeps_schedule(void)
     CHECK(port.count == 5u);
     run_ms(STEP_MS);
     CHECK(view().counters.tx_failed == 5u);
-    /* The device refuses one due repetition: no frame carried that number. */
+    /* The device has no room for one due repetition: the frame waits in the
+     * service queue (no number used, nothing caught up) and goes out as soon
+     * as the device has room, with the next number. */
     port.outcome = NET_TX_SUCCEEDED;
     port.refuse = true;
     run_ms(PERIOD - STEP_MS);
-    CHECK(port.count == 5u);
+    CHECK(port.count == 5u && view().in_flight && svc.observation.tx_deferred >= 1u);
     port.refuse = false;
-    run_ms(PERIOD);
+    run_ms(STEP_MS);
     CHECK(port.count == 6u);
     run_ms(PERIOD);
     CHECK(port.count == 7u);
@@ -373,7 +375,7 @@ static int m07_tx_failure_keeps_schedule(void)
     port.reject = false;
     run_ms(PERIOD);
     CHECK(port.count == 8u && frame(7u, &r) && r.tx_sequence == 9u);
-    CHECK(view().counters.not_sent == 2u);
+    CHECK(view().counters.not_sent == 1u);   /* the clear refusal only */
     return 0;
 }
 
@@ -603,15 +605,14 @@ static int m12_queue_full_keeps_submission(void)
     run_ms(30u);
     CHECK(port.count == 0u);
     v = view();
-    CHECK(v.fresh || v.in_flight);          /* kept, not dropped */
-    CHECK(v.next_sequence == 1u || v.in_flight);
-    CHECK(v.counters.queue_full >= 30u && v.counters.not_sent == 0u);
+    CHECK(v.in_flight);                     /* kept in the service queue, not dropped */
+    CHECK(v.counters.not_sent == 0u && svc.observation.tx_deferred >= 30u);
     port.refuse = false;
     run_ms(STEP_MS);
     CHECK(port.count == 1u && frame(0u, &r));
     CHECK(r.tx_sequence == 1u);             /* refused offers used no number */
-    CHECK(r.source_age_ms == 4u + (port.taken[0].at - t0));
-    CHECK(view().counters.sent == 1u && view().counters.pending_age_added_ms_max == port.taken[0].at - t0);
+    CHECK(r.source_age_ms == 4u + (port.taken[0].at - t0)); /* the wait in the service queue is in AGE */
+    CHECK(view().counters.sent == 1u && view().counters.pending_age_added_ms_max == 0u);
     return 0;
 }
 

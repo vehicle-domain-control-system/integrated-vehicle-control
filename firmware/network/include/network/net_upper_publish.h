@@ -70,12 +70,15 @@ typedef struct {
     uint32_t periodic_skipped_pending; /* due periods skipped: previous frame still unsettled */
     uint32_t sequence_hold;            /* publish/offer refused: CAN TX_SEQUENCE exhausted
                                           (a UART LINK_SEQUENCE wraps modulo 65536) */
-    uint32_t queue_full;               /* offers deferred: service queue or device had no room */
+    uint32_t queue_full;               /* offers deferred: the service queue had no room (a frame the
+                                          device had no room for waits queued in the service) */
     uint32_t not_sent;                 /* offers refused, or frames that ended before a device took them */
     uint32_t tx_failed;                /* frames a device took and reported not sent */
     /* Largest wait from the submission (or the relayed original receipt) to
      * the offer, i.e. what the service adds to AGE when it dispatches the
-     * frame in the same step. */
+     * frame in the same step. A frame the device has no room for waits in the
+     * service queue after the offer; that wait is added to its AGE as well
+     * but not counted here. */
     uint32_t pending_age_added_ms_max;
 } NetUpperPublishCounters;
 

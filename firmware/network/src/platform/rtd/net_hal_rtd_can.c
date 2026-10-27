@@ -91,11 +91,15 @@ typedef struct {
      * quarantined: the abort timed out; the transfer is reported, but the MB
      * stays busy until its flag shows the controller finished with it.
      * done_stamp: ISR stamp of TX_COMPLETE (a bus-off reports a done MB
-     * before its ring entry is drained). */
+     * before its ring entry is drained).
+     * submitted_ms: low 32 bits of the submit time; the TX timeout compares
+     * the modular difference (far shorter than the 49-day wrap).
+     * id: CAN ID of the frame in the MB (one frame per ID at a time). */
     volatile bool busy, aborting, done, quarantined;
     volatile uint32_t done_stamp;
     NetTxKey key;
-    uint64_t submitted_at_ms;
+    uint32_t submitted_ms;
+    uint16_t id;
     union { uint32_t align; uint8_t bytes[64]; } data; /* RTD reads payload words */
 } TxSlot;
 
@@ -173,6 +177,19 @@ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t)
     if (can.link != LINK_OPEN) return NET_HOLD;   /* closed after a bus-off: no new frame, no borrow */
 
     key = net_board_irq_save();
+    /* One frame per CAN ID in the controller: FlexCAN sends equal IDs in MB
+     * order, not submission order, so a second frame of an ID waits until
+     * the first is reported (its TX_SEQUENCE never goes out behind a later
+     * one). A quarantined MB does not count: its frame is already reported
+     * FAILED and the MB may stay stuck; if that frame still leaves later, it
+     * carries the older number and the receiver drops it as stale. */
+    for (i = 0u; i < TX_COUNT; ++i) {
+        if (can.tx[i].busy && !can.tx[i].quarantined && can.tx[i].id == f->standard_id) {
+            net_board_irq_restore(key);
+            inc(&rtd.diag.tx_busy);
+            return NET_NO_CAPACITY;
+        }
+    }
     for (i = 0u; i < TX_COUNT; ++i) {
         if (!can.tx[i].busy) {
             slot = &can.tx[i];
@@ -181,8 +198,9 @@ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t)
             slot->aborting = false;
             slot->done = false;
             slot->quarantined = false;
+            slot->id = (uint16_t)f->standard_id;
             slot->key = t->key;
-            slot->submitted_at_ms = net_hal_rtd_now_locked();
+            slot->submitted_ms = (uint32_t)net_hal_rtd_now_locked();
             break;
         }
     }
@@ -579,7 +597,7 @@ void net_hal_rtd_can_service(uint64_t now)
         release_quarantined(i);
         key = net_board_irq_save();
         expired = slot->busy && !slot->aborting && !slot->done &&
-                  now - slot->submitted_at_ms >= NET_BOARD_CAN_TX_TIMEOUT_MS;
+                  (uint32_t)now - slot->submitted_ms >= NET_BOARD_CAN_TX_TIMEOUT_MS;
         if (expired) slot->aborting = true;
         net_board_irq_restore(key);
         if (expired) abort_expired(i, false);

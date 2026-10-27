@@ -152,7 +152,8 @@ typedef struct {
 typedef struct {
     bool used, queued, submitted, admission_known, accepted;
     bool reference_released, conflict;
-    bool offered; /* handed to the Port (submit called), whatever the Port answered */
+    bool offered; /* handed to the Port and the Port answered other than "no room"
+                     (NO_CAPACITY / BUSY leave it queued, not offered) */
     NetTxKey key;
     NetTxOutcome outcome;
     NetStatus local_status;
@@ -199,6 +200,10 @@ typedef struct {
     uint32_t rx_captured, rx_dropped, rx_invalid, rx_held, rx_delivered;
     uint32_t duplicates, stale, consumer_rejected, errors, resets, rx_conflicts;
     uint32_t tx_queued, tx_submitted, tx_admitted, tx_succeeded, tx_failed;
+    /* Offers the device had no room for (Port NO_CAPACITY / BUSY): the frame
+     * stayed queued for a later pass. Records held behind one are not
+     * offered and not counted. */
+    uint32_t tx_deferred;
     uint32_t tx_released, tx_conflicts, tx_stale, tx_duplicates, time_holds;
     /* Repetitions passed to the Owner (rx_repeat_delivery): not new
      * observations, not in rx_delivered and not in duplicates. */

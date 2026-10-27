@@ -2007,15 +2007,15 @@ static int f25_vision_repeat_long_age(void)
  * service queues, M04 slots, every frame for the CIS delivered), an own frame
  * leaves within its period plus one pass (17 ms), P_PERMISSION within its
  * 500 ms period plus one pass, and no queue goes past its capacity. A frame
- * that found no device room waits one pass in its M04 slot (queue_full) and
- * keeps its number: a delay, not a loss. The LOAD line reports the counts and
+ * that found no device room waits one pass in the service queue
+ * (upper.tx_deferred) and keeps its number: a delay, not a loss. The LOAD line reports the counts and
  * the high-water marks against the capacities of this build.
  * Second boundary (load_second_boundary): the same traffic with the
  * application before the Network pass and the Pi judgements 12 ms before a
  * whole second, so the CIS_OCCUPANT of a judgement, the other CIS CAN
  * messages due at that second and the P_PERMISSION relay of a new DOMAIN
  * evaluation want more device room in one pass than NET_HAL_TX_CAPACITY: one
- * frame waits a pass (queue_full >= 1), and still nothing is lost, no
+ * frame waits a pass (upper.tx_deferred >= 1), and still nothing is lost, no
  * TX_SEQUENCE or LINK_SEQUENCE is skipped and every period holds. Its line
  * starts with LOAD-BOUNDARY. */
 enum { LOAD_OWN = 4, LOAD_QUEUE = 128 };
@@ -2174,8 +2174,9 @@ static int load_line_queue(const NetUpperUartMessage *m, uint64_t due_us)
     return 0;
 }
 
-/* A frame that found no device room waits one pass in its slot (queue_full)
- * and keeps its number: a delay, counted apart. Lost is what never left. */
+/* A frame that found no device room waits one pass in the service queue
+ * (upper.tx_deferred) and keeps its number: a delay, counted apart. Lost is
+ * what never left. */
 static uint32_t load_slot_lost(const NetUpperPublishView *v)
 {
     return v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;
@@ -2311,6 +2312,8 @@ static int load_run(bool app_first)
            (unsigned long)d.pi_permission_tx.counters.queue_full,
            (unsigned long)load_tx[0].max_gap_ms, (unsigned long)load_tx[1].max_gap_ms,
            (unsigned long)load_tx[2].max_gap_ms, (unsigned long)load_tx[3].max_gap_ms);
+    /* Frames that waited in the service queue for device room (the boundary case needs one). */
+    printf("load deferral: tx_deferred=%lu\n", (unsigned long)d.upper.tx_deferred);
     fflush(stdout);
     CHECK(d.rtd.isr_ring_capacity == NET_BOARD_CAN_ISR_RING);
     CHECK(d.rtd.rx_frames == injected);       /* every bus frame entered the receive path */
@@ -2330,9 +2333,9 @@ static int load_run(bool app_first)
     if (app_first) {
         /* The overlap happened: in some pass the four CAN messages and the
          * P_PERMISSION relay wanted more device room than NET_HAL_TX_CAPACITY,
-         * one frame waited a pass (no loss, no number gap, periods kept). */
-        CHECK(d.rear_tx.counters.queue_full + d.environment_tx.counters.queue_full + d.occupant_tx.counters.queue_full +
-              d.status_tx.counters.queue_full + d.pi_permission_tx.counters.queue_full >= 1u);
+         * one frame waited a pass in the service queue (no loss, no number
+         * gap, periods kept). */
+        CHECK(d.upper.tx_deferred >= 1u);
     }
     return 0;
 }
@@ -2347,6 +2350,105 @@ static int load_doc_traffic(void)
 static int load_second_boundary(void)
 {
     return load_run(true);
+}
+
+/* A CIS_OCCUPANT relay of Pi judgement 600 finds no device room (three CAN
+ * frames and the P_PERMISSION relay own the four HAL TX attempts) and waits
+ * in the service queue. Judgement 601 is accepted before room comes back and
+ * the application has not relayed it yet: the waiting relay of 600 is not
+ * sent (STALE, not_sent), as at its first offer. */
+static int f26_occupant_relay_after_newer_judgement(void)
+{
+    NetCisRear rear = rear_sample(11u, 7u);
+    NetCisEnvironment env = environment_sample(21u, 30u);
+    NetCisStatus st = status_ready(31u, 2u);
+    NetCisOccupant occ;
+    NetUpperUartMessage m;
+    NetNodeDiag d;
+    uint64_t last;
+    uint32_t deferred0;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    m = vision_message(1u, 600u, 25u);
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(result_count == 1u);
+    occ = relay_of(&last_result, 0u);
+    MockRtd_CanSetAckMissing(BUS, true);      /* bus and line busy: nothing completes */
+    MockRtd_UartSetTxStall(LPUART, true);
+    CHECK(CisNet_PublishRear(&rear) == NET_SUBMIT_OK);
+    CHECK(CisNet_PublishEnvironment(&env) == NET_SUBMIT_OK);
+    CHECK(CisNet_PublishStatus(&st) == NET_SUBMIT_OK);
+    RUN(permission_in(1u, 41u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK)); /* relay: 4th attempt */
+    step_ms(1u);
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_OK);
+    step_ms(1u);
+    d = diag();
+    CHECK(d.upper.tx_deferred > deferred0 && d.occupant_tx.counters.not_sent == 0u);
+    m = vision_message(2u, 601u, 12u);        /* newer judgement accepted */
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(result_count == 2u);
+    MockRtd_CanSetAckMissing(BUS, false);
+    MockRtd_UartSetTxStall(LPUART, false);
+    step_ms(5u);
+    d = diag();
+    CHECK(can_count(0x310u, 0u) == 0u);
+    CHECK(d.occupant_tx.counters.not_sent == 1u && d.occupant_tx.counters.sent == 1u); /* offered once, never on the bus */
+    CHECK(can_count(0x0A0u, 0u) == 1u && can_count(0x300u, 0u) == 1u && can_count(0x320u, 0u) == 1u);
+    return 0;
+}
+
+/* As f26, but the Pi repeats judgement 600 while the relay waits: the relay
+ * still carries the judgement accepted last and goes out once room is back. */
+static int f27_occupant_relay_after_repetition(void)
+{
+    NetCisRear rear = rear_sample(11u, 7u);
+    NetCisEnvironment env = environment_sample(21u, 30u);
+    NetCisStatus st = status_ready(31u, 2u);
+    NetCisOccupant occ;
+    NetUpperUartMessage m;
+    NetWireCanEnvelope e;
+    NetWireCisOccupantRaw orr;
+    NetNodeDiag d;
+    uint64_t last;
+    uint32_t deferred0;
+    int k;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    m = vision_message(1u, 600u, 25u);
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(result_count == 1u);
+    occ = relay_of(&last_result, 0u);
+    MockRtd_CanSetAckMissing(BUS, true);      /* bus and line busy: nothing completes */
+    MockRtd_UartSetTxStall(LPUART, true);
+    CHECK(CisNet_PublishRear(&rear) == NET_SUBMIT_OK);
+    CHECK(CisNet_PublishEnvironment(&env) == NET_SUBMIT_OK);
+    CHECK(CisNet_PublishStatus(&st) == NET_SUBMIT_OK);
+    RUN(permission_in(1u, 41u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK)); /* relay: 4th attempt */
+    step_ms(1u);
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(CisNet_PublishOccupant(&occ) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(diag().upper.tx_deferred > deferred0);
+    m = vision_message(2u, 600u, 30u);        /* repetition of judgement 600 */
+    RUN(line_send(&m, &last));
+    step_ms(1u);
+    CHECK(result_count == 2u && diag().upper.repeat_delivered >= 1u);
+    MockRtd_CanSetAckMissing(BUS, false);
+    MockRtd_UartSetTxStall(LPUART, false);
+    step_ms(5u);
+    d = diag();
+    CHECK(can_count(0x310u, 0u) == 1u);
+    CHECK(d.occupant_tx.counters.not_sent == 0u && d.occupant_tx.counters.sent == 1u);
+    k = can_find(0x310u, 0u, 0u);
+    CHECK(k >= 0);
+    e = envelope(&can_out[k].f);
+    CHECK(net_wire_can_decode_cis_occupant(NET_WIRE_CANDIDATE_ONLY, &e, &orr) == NET_WIRE_OK);
+    CHECK(orr.vision_sequence == 600u && orr.vision_age_ms >= 30u);
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -2381,6 +2483,8 @@ int main(int argc, char **argv)
         { "f24_occupant_restricted_quality", f24_occupant_restricted_quality },
         { "load_doc_traffic", load_doc_traffic },
         { "load_second_boundary", load_second_boundary },
+        { "f26_occupant_relay_after_newer_judgement", f26_occupant_relay_after_newer_judgement },
+        { "f27_occupant_relay_after_repetition", f27_occupant_relay_after_repetition },
         { "f25_vision_repeat_long_age", f25_vision_repeat_long_age }
     };
     size_t i;

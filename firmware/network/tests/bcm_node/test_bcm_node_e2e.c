@@ -1204,8 +1204,9 @@ static int load_inject(size_t k, uint32_t n)
     return 0;
 }
 
-/* A frame that found no device room waits one pass in its slot (queue_full)
- * and keeps its number: a delay, counted apart. Lost is what never left. */
+/* A frame that found no device room waits one pass in the service queue
+ * (upper.tx_deferred) and keeps its number: a delay, counted apart. Lost is
+ * what never left. */
 static uint32_t load_slot_lost(const NetUpperPublishView *v)
 {
     return v->counters.not_sent + v->counters.tx_failed + v->counters.replaced;

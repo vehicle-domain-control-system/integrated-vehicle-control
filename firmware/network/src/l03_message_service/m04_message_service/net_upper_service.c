@@ -175,6 +175,26 @@ static NetStatus vision_origin(const NetUpper *s,const NetUpperCanMessage *m,
        !occupant_field_restricted(v->count_validity,v->count_reason,c->count_validity,c->count_reason))return NET_HOLD;
     return NET_OK;
 }
+/* A CIS_OCCUPANT relay waiting for device room: it still relays the
+ * judgement accepted last (same receipt, Pi BOOT and VISION_SEQUENCE). A
+ * repetition of that judgement replaces the capture time and AGE but keeps
+ * the receipt, so it does not stop the relay; its AGE stays on the enqueue
+ * basis (the older capture, never smaller). */
+static NetStatus vision_current(const NetUpper *s,const NetUpperCanMessage *m,
+    const NetSourceStamp *source)
+{
+    const NetUpperAdmission *a=net_upper_admission_at(s,route_index(NET_WIRE_UART_C,0x60u));
+    const NetWirePVisionResult *v;
+    if(a==NULL)return NET_HOLD;
+    v=&a->uart.data.p_vision_result;
+    if(!a->seen || !a->delivery.capture.timestamp_known ||
+       s->link_failed[NET_WIRE_UART_C] || s->quiescing[NET_WIRE_UART_C] ||
+       a->delivery.capture.port_epoch!=s->config.port_epoch[NET_WIRE_UART_C] ||
+       source->observation_id!=a->delivery.receipt_id ||
+       m->data.cis_occupant.pi_boot_id!=v->pi_boot_id ||
+       m->data.cis_occupant.vision_sequence!=v->vision_sequence)return NET_HOLD;
+    return NET_OK;
+}
 static void config_commit(NetUpper *s,const NetUpperConfig *c)
 {
 #if NETWORK_UPPER_NODE_PROFILE == 0
@@ -786,6 +806,9 @@ static NetStatus dispatch(NetUpper *s,NetUpperTx *r,uint64_t now)
        (r->source_port_epoch!=s->config.port_epoch[r->source_link] ||
         s->link_failed[r->source_link] || s->quiescing[r->source_link])){status=NET_HOLD;goto reject;}
     elapsed=now-r->source.observed_at_ms;
+    /* A CIS_OCCUPANT relay goes out only while its Pi judgement is the one
+     * accepted last (also when it waited for device room). */
+    if(r->link==NET_WIRE_CAN && r->can.id==0x310u && vision_current(s,&r->can,&r->source)!=NET_OK){status=NET_STALE;goto reject;}
     if(r->link==NET_WIRE_CAN) {
         NetUpperCanMessage m=r->can;
         if(m.id==0x080u && age>=500u){status=NET_EXPIRED;goto reject;}
@@ -819,10 +842,52 @@ static NetStatus dispatch(NetUpper *s,NetUpperTx *r,uint64_t now)
     r->packet.deadline_bound=true;r->packet.expires_at_equality=equal;
     r->state.queued=false;r->state.submitted=true;r->state.offered=true;
     status=s->config.port.ops->submit(s->config.port.context,&r->packet,r->state.key);
+    if(status==NET_NO_CAPACITY || status==NET_BUSY) {
+        /* The device had no room in this pass. A non-OK submit promises no
+         * borrow (NetUpperPortOps), so the frame stays queued, not offered,
+         * and is offered again in a later pass; AGE, deadline and link are
+         * checked again then. */
+        r->state.queued=true;r->state.submitted=false;r->state.offered=false;
+        INC(s->observation.tx_deferred);return status;
+    }
     if(status!=NET_OK){r->state.submitted=false;goto reject;}
     INC(s->observation.tx_submitted);return NET_OK;
 reject:
     net_upper_reject_queued(r,status);return status;
+}
+/* Queued records in enqueue (token) order, each offered at most once per
+ * call. Once the device has no room for a record, the later records that
+ * share its number space wait as well (they are not offered in this call):
+ * on a UART link every later record (one LINK_SEQUENCE per direction), on
+ * CAN the later records of the same CAN ID (TX_SEQUENCE per message). So a
+ * number never reaches the device behind a later one of its space; the
+ * CAN backend keeps that order on the bus (net_hal_rtd_can.c: one frame per
+ * CAN ID in the controller). Other records are still offered. */
+static NetStatus dispatch_queued(NetUpper *s,uint64_t now,NetStatus result)
+{
+    size_t i,j,can_held=0u;uint64_t after=0u;bool any=false,held[3]={false,false,false};NetStatus status;
+    uint16_t held_id[NET_UPPER_TX_CAPACITY];
+    for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
+        NetUpperTx *next=NULL;
+        for(j=0u;j<NET_UPPER_TX_CAPACITY;++j) {
+            const NetUpperTxSnapshot *t=&s->tx[j].state;
+            if(t->queued && (!any || t->key.token>after) && (next==NULL || t->key.token<next->state.key.token))
+                next=&s->tx[j];
+        }
+        if(next==NULL)break;
+        after=next->state.key.token;any=true;
+        if(next->link==NET_WIRE_CAN) {
+            bool same=false;
+            for(j=0u;j<can_held;++j)if(held_id[j]==next->can.id)same=true;
+            if(same)continue;
+        } else if(next->link>=NET_WIRE_UART_M && next->link<=NET_WIRE_UART_C && held[next->link]) continue;
+        status=dispatch(s,next,now);if(result==NET_NO_WORK || result==NET_OK)result=status;
+        if((status==NET_NO_CAPACITY || status==NET_BUSY) && next->state.queued) {
+            if(next->link==NET_WIRE_CAN) { if(can_held<NET_UPPER_TX_CAPACITY)held_id[can_held++]=next->can.id; }
+            else if(next->link>=NET_WIRE_UART_M && next->link<=NET_WIRE_UART_C)held[next->link]=true;
+        }
+    }
+    return result;
 }
 NetStatus net_upper_step(NetUpper *s,size_t budget)
 {
@@ -863,13 +928,7 @@ NetStatus net_upper_step(NetUpper *s,size_t budget)
     (void)drained; /* no receiver to poll: uart_enabled stays false (see process_event) */
 #endif
     /* Token order is enqueue order, independent of reclaimed slot index. */
-    for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
-        size_t j;NetUpperTx *next=NULL;
-        for(j=0u;j<NET_UPPER_TX_CAPACITY;++j)
-            if(s->tx[j].state.queued && (next==NULL || s->tx[j].state.key.token<next->state.key.token))next=&s->tx[j];
-        if(next==NULL)break;
-        status=dispatch(s,next,now);if(result==NET_NO_WORK || result==NET_OK)result=status;
-    }
+    result=dispatch_queued(s,now,result);
 done:
     s->in_call=false;return result;
 }
@@ -879,17 +938,11 @@ done:
  * with a receive budget of 0. */
 NetStatus net_upper_dispatch(NetUpper *s)
 {
-    size_t i;uint64_t now;NetStatus result=NET_NO_WORK,status;
+    uint64_t now;NetStatus result=NET_NO_WORK,status;
     if(s==NULL || !s->initialized)return NET_INVALID_ARGUMENT;
     if(s->in_call)return NET_BUSY;
     s->in_call=true;status=net_upper_read_clock(s,&now);if(status!=NET_OK){result=status;goto done;}
-    for(i=0u;i<NET_UPPER_TX_CAPACITY;++i) {
-        size_t j;NetUpperTx *next=NULL;
-        for(j=0u;j<NET_UPPER_TX_CAPACITY;++j)
-            if(s->tx[j].state.queued && (next==NULL || s->tx[j].state.key.token<next->state.key.token))next=&s->tx[j];
-        if(next==NULL)break;
-        status=dispatch(s,next,now);if(result==NET_NO_WORK || result==NET_OK)result=status;
-    }
+    result=dispatch_queued(s,now,result);
 done:
     s->in_call=false;return result;
 }
