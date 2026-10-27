@@ -156,7 +156,14 @@ typedef struct {
     NetStatus (*alive_state)(void *, NetDomainC2AliveState *out);
 } NetDomainC2Config;
 typedef struct {
-    bool used, failure_delivered;
+    /* held: the device took the frame and it failed afterwards (bus-off or TX
+     * timeout abort). That is an in-flight failure, none of the three local
+     * failure reasons (docs/network/interface/04_COMMON/20_API_USAGE_AND_FAILURE.md,
+     * closed list of failures after admission): RxNetworkLocalFailure is not
+     * called, the record keeps the identity and stays held (this path) for the
+     * run, and its M04 TX slot is retired, so these failures do not use up the
+     * slots the periodic frames share. A held record still takes a C2 TX record. */
+    bool used, failure_delivered, held;
     NetTxKey key;
     NetworkLocalFailure_t identity;
     uint64_t admitted_at;
@@ -250,6 +257,8 @@ typedef struct {
      * DOMAIN_IF_REJECTED for: dropped one by one, route kept (nd_rx_call,
      * saturating). */
     uint32_t rejected_frames;
+    /* C2 TX records that became held (NetDomainC2TxRecord.held), saturating. */
+    uint32_t tx_held;
     NetDomainC2TxRecord tx[NET_UPPER_TX_CAPACITY];
     /* Once-invoked boundary journal; Observer failure cannot replay Core. */
     NetDomainC2IngressRecord ingress[19];

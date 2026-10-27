@@ -1559,6 +1559,49 @@ static int n22_same_id_order_deferred(void)
     return 0;
 }
 
+/* A door command the controller took, then a bus-off: the abort reports it
+ * not sent. That is a failure after the device took the frame (an in-flight
+ * failure, no local failure reason): RxNetworkLocalFailure is not called, the
+ * C2 record keeps the command identity and stays held, and its M04 TX slot is
+ * retired. Sixteen such bus-offs fill the 16 C2 TX records: the next command
+ * is refused (QUEUE_FULL), and the periodic DOMAIN_PERMISSION, which takes M04
+ * slots, still goes out. */
+static int n23_busoff_command_held(void)
+{
+    NetUpperCanMessage m;
+    const NetDomainC2 *a;
+    unsigned i, held, before;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    a = NetNode_DomainC2();
+    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i) {
+        bus_busy(true);                        /* the bus does not take the frame */
+        CHECK(tx_door(100u + i) == DOMAIN_IF_OK);
+        ++now_ms; pass();                      /* in a TX MB */
+        CHECK(c2_records_used() == i + 1u);
+        MockRtd_CanRaiseBusOff(BUS);
+        bus_busy(false);
+        run_to(now_ms + 1100u);                /* closed, aborted, reopened */
+        CHECK(diag().rtd.busoff_recoveries == i + 1u && diag().rtd.can_link_state == 0u);
+        CHECK(c2_records_used() == i + 1u && a->tx_held == i + 1u);
+    }
+    for (i = 0u, held = 0u; i < NET_UPPER_TX_CAPACITY; ++i) {
+        const NetDomainC2TxRecord *r = &a->tx[i];
+        if (r->used && r->held && r->identity.itemKind == NETWORK_LOCAL_ITEM_COMMAND && r->identity.hasCommandId &&
+            r->identity.commandId >= 100u && r->identity.commandId < 100u + NET_UPPER_TX_CAPACITY) ++held;
+    }
+    CHECK(held == NET_UPPER_TX_CAPACITY);
+    CHECK(failure_calls == 0u && count_id(0x100u, 0u) == 0u);
+    before = can_count;
+    CHECK(tx_door(200u) == DOMAIN_IF_QUEUE_FULL);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    run_to(now_ms + 60u);
+    CHECK(count_id(0x100u, before) == 0u && count_id(0x080u, before) >= 2u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1581,6 +1624,7 @@ int main(int argc, char **argv)
         { "n20_uart_m_burst", n20_uart_m_burst }, { "load_doc_traffic", load_doc_traffic },
         { "n21_same_id_order", n21_same_id_order },
         { "n22_same_id_order_deferred", n22_same_id_order_deferred },
+        { "n23_busoff_command_held", n23_busoff_command_held },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

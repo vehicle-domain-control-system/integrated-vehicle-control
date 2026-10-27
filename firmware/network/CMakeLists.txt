@@ -1004,6 +1004,8 @@ if(NETWORK_BUILD_RTD_MOCK)
         # Two frames of one CAN ID leave in TX_SEQUENCE order (one per ID in the device).
         add_test(NAME domain_node.n21_same_id_order COMMAND test_domain_node n21_same_id_order)
         add_test(NAME domain_node.n22_same_id_order_deferred COMMAND test_domain_node n22_same_id_order_deferred)
+        # A C2 command aborted at a bus-off: the record stays held with its identity, its M04 slot is retired.
+        add_test(NAME domain_node.n23_busoff_command_held COMMAND test_domain_node n23_busoff_command_held)
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

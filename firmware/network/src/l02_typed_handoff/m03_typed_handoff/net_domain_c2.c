@@ -446,12 +446,32 @@ NetStatus net_domain_c2_step(NetDomainC2 *a)
     for(i=0u;i<NET_UPPER_TX_CAPACITY;++i){
         NetDomainC2TxRecord *r=&a->tx[i];NetUpperTxSnapshot state;NetStatus st;bool rejected,terminal;
         if(!r->used)continue;
+        if(r->held){result=NET_HOLD;continue;}
         st=net_upper_tx_snapshot(a->service,r->key,&state);
         if(st!=NET_OK){result=st;continue;}
         rejected=state.admission_known&&!state.accepted;
         terminal=rejected||state.outcome!=NET_TX_UNKNOWN;
         if(!r->failure_delivered&&(rejected||state.outcome==NET_TX_FAILED)){
-            if(state.conflict||(state.submitted&&(!rejected||!state.reference_released))){result=NET_HOLD;continue;}
+            if(state.conflict||(state.submitted&&!state.reference_released)){result=NET_HOLD;continue;}
+            if(state.submitted&&!rejected){
+                /* The device took the frame and it failed afterwards: an
+                 * in-flight failure, no local failure reason applies. The record
+                 * keeps its identity and stays held; only its M04 slot is
+                 * retired (NetDomainC2TxRecord.held). */
+                if(now>=r->admitted_at&&now-r->admitted_at<=UINT32_MAX)
+                    r->identity.elapsedSinceAdmissionMs=(uint32_t)(now-r->admitted_at);
+                if(a->service->config.retain_failure_notices){NetUpperTxDetail detail;
+                    st=net_upper_tx_detail(a->service,r->key,&detail);
+                    if(st==NET_OK&&detail.failure_version!=detail.failure_ack_version)
+                        st=net_upper_failure_ack(a->service,r->key,detail.failure_version);
+                    if(st!=NET_OK){result=st;continue;}
+                }
+                st=net_upper_retire(a->service,r->key);
+                if(st!=NET_OK){result=st;continue;}
+                r->held=true;
+                if(a->tx_held<UINT32_MAX)++a->tx_held;
+                result=NET_HOLD;continue;
+            }
             if(now<r->admitted_at||now-r->admitted_at>UINT32_MAX){result=NET_HOLD;continue;}
             if(state.local_status==NET_EXPIRED)r->identity.reason=NETWORK_LOCAL_FAILURE_EXPIRED_BEFORE_SEND;
             else if(a->config.local_failure_reason!=NULL){
