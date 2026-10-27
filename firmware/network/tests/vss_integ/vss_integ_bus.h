@@ -116,6 +116,7 @@ typedef struct {
     uint32_t rx_loss_events;      /* CAN frames stored right after a ring / MB loss */
     uint32_t tick_future_clamped;
     uint32_t busoff_events, tx_complete;
+    uint32_t busoff_recoveries;   /* CAN link opened again after a bus-off hold */
     uint32_t main_max_us;
 } IntegNetDiag;
 

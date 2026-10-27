@@ -115,6 +115,22 @@
 #ifndef NET_BOARD_CAN_TX_TIMEOUT_MS
 #define NET_BOARD_CAN_TX_TIMEOUT_MS     100U
 #endif
+/* Bus-off recovery (net_hal_rtd_can.c): after a bus-off the CAN link stays
+ * closed for the hold time, then opens again under a new port epoch. The
+ * first NET_BOARD_CAN_BUSOFF_FAST_TRIES bus-offs with no frame sent in
+ * between are held NET_BOARD_CAN_BUSOFF_HOLD_MS, later ones
+ * NET_BOARD_CAN_BUSOFF_SLOW_HOLD_MS; a frame that goes out (also one that
+ * completes as its MB is settled at a bus-off) starts the count again.
+ * Draft values, not bench-measured. */
+#ifndef NET_BOARD_CAN_BUSOFF_HOLD_MS
+#define NET_BOARD_CAN_BUSOFF_HOLD_MS        100U
+#endif
+#ifndef NET_BOARD_CAN_BUSOFF_SLOW_HOLD_MS
+#define NET_BOARD_CAN_BUSOFF_SLOW_HOLD_MS   1000U
+#endif
+#ifndef NET_BOARD_CAN_BUSOFF_FAST_TRIES
+#define NET_BOARD_CAN_BUSOFF_FAST_TRIES     5U
+#endif
 
 /* ---- LPUART links (net_hal_rtd_uart.c) ----
  * The node profile decides which UART links exist (net_upper_profile.h):
@@ -202,7 +218,10 @@ typedef char net_board_uart_instances_distinct[(NET_BOARD_UART_M_INSTANCE != NET
  *    converted with NET_BOARD_TICK_TO_MS_HOOK() in the main context. Network
  *    "now" is the nowMs of the last Net_MainFunction() (32-bit wrap extended
  *    to 64 bits); no millisecond counter of its own. A converted time ahead of
- *    that now is clamped to now and counted (NetHalRtdDiag.tick_future_clamped).
+ *    that now (a capture after the application read nowMs, within the pass)
+ *    is placed at now and counted (NetHalRtdDiag.tick_future_clamped, largest
+ *    lead tick_ahead_max_ms); a time before the start of the axis is placed
+ *    at now and counted apart (tick_unplaceable).
  *      VSS:            HalTimer_GetTicks / VssTime_TickToMs32 (1 tick = 1.25 ms)
  *      Bench w/o VSS:  a SysTick 1 kHz ms counter as tick, identity conversion
  *      DOMAIN:         net_hal_rtd_last_now_ms32 / identity: the application has

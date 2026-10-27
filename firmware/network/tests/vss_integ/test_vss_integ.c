@@ -1002,14 +1002,16 @@ static int vi8_status_period(void)
     return Invariants();
 }
 
-/* VI9 link locked (C10): after bus-off VssNet_PublishStatus answers
- * NOT_READY; VSS keeps the report and offers it again with the same number in
- * every flow pass (a newer evaluation may take its place), drops nothing, and
- * nothing more goes on the bus. */
+/* VI9 link locked (C10): while the CAN link is closed after a bus-off
+ * (1500 ms hold in this build) VssNet_PublishStatus answers NOT_READY; VSS
+ * keeps the report and offers it again with the same number in every flow
+ * pass (a newer evaluation may take its place), drops nothing, and nothing
+ * more goes on the bus. When the link opens again the report that waits goes
+ * out with its number and the next TX_SEQUENCE; nothing old is sent again. */
 static int vi9_link_locked_resubmit(void)
 {
     IntegNetDiag d;
-    uint32_t frames, firstPub, seq, i, refused;
+    uint32_t frames, firstPub, seq, i, refused, accepted;
     uint64_t end;
 
     CHECK(Boot());
@@ -1063,7 +1065,33 @@ static int vi9_link_locked_resubmit(void)
     d = Net();
     CHECK(d.status_not_accepted >= refused);
     CHECK(d.last_status_result == (uint8_t)NET_SUBMIT_NOT_READY);
+    CHECK(d.busoff_recoveries == 0u);
     CHECK(!s_main.outputFailed);
+
+    /* The hold ends: the waiting report is accepted and goes out. */
+    end = NowMs() + 1500u;
+    while ((NowMs() < end) && (s_frameCount == frames))
+    {
+        Step();
+    }
+    CHECK(s_frameCount > frames && frames >= 1u);
+    d = Net();
+    CHECK(d.busoff_recoveries == 1u && d.busoff_events == 1u);
+    accepted = s_pubCount;
+    for (i = firstPub; i < s_pubCount; ++i)
+    {
+        if (s_pub[i].result == NET_SUBMIT_OK)
+        {
+            accepted = i;
+            break;
+        }
+    }
+    CHECK(accepted < s_pubCount);
+    CHECK(s_frames[frames].f.decoded);
+    CHECK(s_frames[frames].f.update_sequence == s_pub[accepted].update);
+    CHECK(s_frames[frames].f.tx_sequence == s_frames[frames - 1u].f.tx_sequence + 1u);
+    View();
+    CHECK(!s_flow.statusWaiting && s_flow.statusDropped == 0u);
     return Invariants();
 }
 

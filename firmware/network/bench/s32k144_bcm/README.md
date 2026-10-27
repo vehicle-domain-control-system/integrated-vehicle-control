@@ -100,8 +100,7 @@ NET_BOARD_CAN_ERROR_CALLBACK=DebugCan_ErrorCallback
   - 콜백 `DebugCan_EventCallback` / `DebugCan_ErrorCallback`: 기본값(`Can0_Bringup*`)과 달라 위 define 두 줄로 맞춘다. 이름은 ConfigTools에 적힌 것이고 생성 파일이 extern으로 참조한다.
   - `max_num_mb` 7, FD payload 64 B: 144 기본 배치(RX MB 0..1, TX MB 2..5, MB 6 안 씀)와 같아 MB 매크로를 넣지 않는다.
 - 생성 설정 `ctrlOptions`에 `FLEXCAN_IP_BUSOFF_RECOVERY_U32`(하드웨어 bus-off 자동 복구)가 켜져 있다. VSS 프로젝트(`S32K344_WB_Audio_Bringup`)의 생성 설정도 같다.
-  - Network는 bus-off를 링크 실패로 보고 리셋 전까지 CAN 링크를 잠근다(`VSS_NODE_INTEGRATION.md` "제한").
-  - 그래서 bus-off가 나면 하드웨어만 다시 버스에 붙고 Network는 송수신하지 않는다. 보드를 리셋해야 한다. 설정은 바꾸지 않는다.
+  - Network는 bus-off가 나면 CAN 링크를 닫고, 남은 송신을 정산한 뒤 100 ms(다섯 번 넘게 이어지면 1 s) 지나 다시 연다(`VSS_NODE_INTEGRATION.md` "제한"). 설정은 바꾸지 않는다.
 
 ## 동기화
 

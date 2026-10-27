@@ -612,7 +612,8 @@ static int h11_busoff(void)
     step_ms(1u);
     d = diag();
     CHECK(d.upper.errors == d0.upper.errors + 1u); /* link error reported to M04 */
-    /* CAN link held until reset: RX not delivered, TX not accepted. */
+    /* CAN link closed during the bus-off hold: RX not delivered, TX not
+     * accepted (recovery after the hold: h11b). */
     CHECK(encode_event(&r, &e));
     CHECK(inject(&e) >= 0);
     step_ms(2u);
@@ -625,6 +626,228 @@ static int h11_busoff(void)
     CHECK(d.upper.rx_delivered == d0.upper.rx_delivered);
     CHECK(d.rtd.tx_sent == 0u);
     CHECK(d.permission_valid && !d.permission.power_usable);
+    return 0;
+}
+
+/* Bus-off recovery (net_hal_rtd_can.c): in the pass that takes the bus-off
+ * the frame in the TX MB is aborted and reported FAILED + released (no
+ * record of unknown fate is left) and the link closes: for the hold time
+ * submissions are NOT_READY, received frames are dropped, nothing goes on the
+ * bus. Then it opens under port epoch 2: the next submission goes out with
+ * the next TX_SEQUENCE (the aborted frame is not sent again), the M04 slot is
+ * free and reception works again. */
+static int h11b_busoff_recovery(void)
+{
+    NetWireVssEventRaw r = event_raw(1u, 7u);
+    NetWireCanEnvelope e;
+    NetVssStatus s = status_ready(1u, 0u);
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d;
+    uint32_t t0;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    MockRtd_CanSetAckMissing(BUS, true);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(diag().rtd.tx_sent == 1u);
+    MockRtd_CanRaiseBusOff(BUS);
+    t0 = now_ms();
+    step_ms(1u);
+    d = diag();
+    CHECK(MockRtd_CanAborts(BUS) == 1u && d.rtd.busoff_tx_aborts == 1u && d.rtd.tx_timeout_aborts == 0u);
+    CHECK(d.rtd.can_link_state == 1u && d.rtd.busoff_streak == 1u);
+    CHECK(d.upper.tx_failed == 1u && d.upper.tx_released == 1u && d.upper.errors == 1u);
+    CHECK(!d.status_tx.in_flight);
+    step_ms(1u);
+    s = status_ready(2u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_NOT_READY);
+    CHECK(encode_event(&r, &e));
+    CHECK(inject(&e) >= 0);
+    step_ms(2u);
+    CHECK(event_count == 0 && diag().rtd.busoff_rx_dropped == 1u);
+    MockRtd_CanSetAckMissing(BUS, false);
+    while (now_ms() < t0 + 100u) step_ms(1u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 1u && d.rtd.busoff_recoveries == 0u);
+    CHECK(MockRtd_CanTransmitNext(BUS, NULL) < 0);
+    step_ms(2u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 0u && d.rtd.busoff_recoveries == 1u && d.upper.resets == 1u);
+    CHECK(MockRtd_CanTransmitNext(BUS, NULL) < 0); /* nothing old went out */
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(pull_status(&f, &raw) >= 0);
+    CHECK(raw.update_sequence == 2u && raw.tx_sequence == 2u && raw.boot_id == NODE_BOOT);
+    step_ms(2u);
+    d = diag();
+    CHECK(d.upper.tx_succeeded == 1u && d.rtd.busoff_streak == 0u && !d.status_tx.in_flight);
+    r = event_raw(2u, 8u);
+    CHECK(encode_event(&r, &e));
+    CHECK(inject(&e) >= 0);
+    step_ms(2u);
+    CHECK(event_count == 1);
+    return 0;
+}
+
+/* A frame that completed before the bus-off reached the main context is
+ * reported SUCCEEDED (its ring entry comes first), not aborted; the link
+ * failure follows it. */
+static int h11c_busoff_after_complete(void)
+{
+    NetVssStatus s = status_ready(1u, 0u);
+    MockCanFrame f;
+    NetNodeDiag d;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(MockRtd_CanTransmitNext(BUS, &f) >= 0);  /* TX_COMPLETE in the ring */
+    MockRtd_CanRaiseBusOff(BUS);                    /* behind it in the ring */
+    step_ms(1u);
+    d = diag();
+    CHECK(MockRtd_CanAborts(BUS) == 0u && d.rtd.tx_complete == 1u);
+    CHECK(d.rtd.can_link_state == 1u);
+    step_ms(1u);
+    d = diag();
+    CHECK(d.upper.tx_succeeded == 1u && d.upper.tx_failed == 0u && d.upper.errors == 1u);
+    CHECK(!d.status_tx.in_flight);
+    return 0;
+}
+
+/* An abort that does not finish at the bus-off: the frame is reported
+ * FAILED + released, its MB stays out of use until its flag shows it idle,
+ * and the link recovery does not wait for it. */
+static int h11d_busoff_abort_timeout(void)
+{
+    NetVssStatus s = status_ready(1u, 0u);
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d;
+    uint32_t t0;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    MockRtd_CanSetAckMissing(BUS, true);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    MockRtd_CanSetAbortResult(BUS, FLEXCAN_STATUS_TIMEOUT);
+    MockRtd_CanRaiseBusOff(BUS);
+    t0 = now_ms();
+    step_ms(2u);
+    d = diag();
+    CHECK(d.rtd.tx_abort_timeouts == 1u && d.rtd.tx_quarantine_released == 0u && d.rtd.busoff_tx_aborts == 1u);
+    CHECK(d.rtd.can_link_state == 1u);
+    CHECK(d.upper.tx_failed == 1u && d.upper.tx_released == 1u && !d.status_tx.in_flight);
+    MockRtd_CanSetAckMissing(BUS, false);
+    while (now_ms() < t0 + 102u) step_ms(1u);
+    CHECK(diag().rtd.can_link_state == 0u && diag().rtd.busoff_recoveries == 1u);
+    s = status_ready(2u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(pull_status(&f, &raw) >= 0);             /* through the other TX MB */
+    CHECK(raw.update_sequence == 2u && raw.tx_sequence == 2u);
+    CHECK(MockRtd_CanSendsOnAbortingMb(BUS) == 0u);  /* not on the quarantined one */
+    MockRtd_CanFinishAbort(BUS);
+    step_ms(2u);
+    CHECK(diag().rtd.tx_quarantine_released == 1u);
+    return 0;
+}
+
+/* The controller rejoined and sent the pending frame after the bus-off, before
+ * the main context took the bus-off: the frame is reported SUCCEEDED when the
+ * link closes (not aborted, its later ring entry is skipped), and that sent
+ * frame starts the bus-off count again. */
+static int h11f_busoff_then_complete(void)
+{
+    NetVssStatus s = status_ready(1u, 0u);
+    MockCanFrame f;
+    NetNodeDiag d;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    MockRtd_CanRaiseBusOff(BUS);                    /* first in the ring */
+    CHECK(MockRtd_CanTransmitNext(BUS, &f) >= 0);  /* TX_COMPLETE behind it */
+    step_ms(1u);
+    d = diag();
+    CHECK(MockRtd_CanAborts(BUS) == 0u && d.rtd.busoff_tx_aborts == 0u && d.rtd.tx_complete == 1u);
+    CHECK(d.rtd.can_link_state == 1u && d.rtd.busoff_streak == 1u);
+    CHECK(d.upper.tx_succeeded == 1u && d.upper.tx_failed == 0u && d.upper.errors == 1u);
+    CHECK(!d.status_tx.in_flight && d.rtd.unexpected_events == 0u);
+    step_ms(2u);
+    CHECK(diag().upper.tx_succeeded == 1u);
+    return 0;
+}
+
+/* Frames on the bus while the link is closed are not delivered: those the
+ * drain takes during the hold, and those still in the ISR ring when the link
+ * opens again (stored before the reopen). The first frame after it is. */
+static int h11g_busoff_rx_while_closed(void)
+{
+    NetWireVssEventRaw r;
+    NetWireCanEnvelope e;
+    uint32_t t0, k;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    MockRtd_CanRaiseBusOff(BUS);
+    t0 = now_ms();
+    step_ms(1u);
+    CHECK(diag().rtd.can_link_state == 1u);
+    r = event_raw(1u, 7u);
+    CHECK(encode_event(&r, &e));
+    CHECK(inject(&e) >= 0);
+    while (now_ms() < t0 + 100u) step_ms(1u);
+    CHECK(diag().rtd.can_link_state == 1u);
+    for (k = 0u; k < 20u; ++k) {                    /* more than one drain budget (16) */
+        r = event_raw(2u + k, 8u + k);
+        CHECK(encode_event(&r, &e));
+        CHECK(inject(&e) >= 0);
+    }
+    step_ms(1u);                                    /* drains 16, then opens again */
+    CHECK(diag().rtd.can_link_state == 0u && diag().rtd.busoff_recoveries == 1u);
+    step_ms(1u);                                    /* the 4 stored before the reopen */
+    CHECK(event_count == 0 && diag().rtd.busoff_rx_dropped == 21u);
+    r = event_raw(30u, 40u);
+    CHECK(encode_event(&r, &e));
+    CHECK(inject(&e) >= 0);
+    step_ms(1u);
+    CHECK(event_count == 1);
+    return 0;
+}
+
+/* Hold time: NET_BOARD_CAN_BUSOFF_FAST_TRIES bus-offs with no frame sent in
+ * between are held 100 ms, the next ones 1000 ms; a sent frame starts the
+ * count again. */
+static int h11e_busoff_hold_levels(void)
+{
+    NetVssStatus s;
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    uint32_t t0, k, held;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    for (k = 0u; k < 6u; ++k) {
+        MockRtd_CanRaiseBusOff(BUS);
+        t0 = now_ms();
+        step_ms(1u);
+        CHECK(diag().rtd.can_link_state == 1u && diag().rtd.busoff_streak == k + 1u);
+        while (diag().rtd.can_link_state != 0u && now_ms() < t0 + 2000u) step_ms(1u);
+        held = now_ms() - t0;
+        if (k < 5u) CHECK(held >= 100u && held <= 102u);
+        else CHECK(held >= 1000u && held <= 1002u);
+    }
+    CHECK(diag().rtd.busoff_recoveries == 6u);
+    s = status_ready(1u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    CHECK(pull_status(&f, &raw) >= 0);
+    step_ms(1u);
+    CHECK(diag().rtd.busoff_streak == 0u);
+    MockRtd_CanRaiseBusOff(BUS);
+    t0 = now_ms();
+    step_ms(1u);
+    while (diag().rtd.can_link_state != 0u && now_ms() < t0 + 2000u) step_ms(1u);
+    CHECK(now_ms() - t0 <= 102u && diag().rtd.busoff_streak == 1u);
     return 0;
 }
 
@@ -1406,6 +1629,12 @@ int main(int argc, char **argv)
         { "h05_permission_rx", h05_permission_rx }, { "h06_malformed_rx", h06_malformed_rx },
         { "h07_publish", h07_publish }, { "h08_publish_invalid", h08_publish_invalid },
         { "h09_publish_in_callback", h09_publish_in_callback }, { "h10_ack_missing", h10_ack_missing },
+        { "h11b_busoff_recovery", h11b_busoff_recovery },
+        { "h11c_busoff_after_complete", h11c_busoff_after_complete },
+        { "h11d_busoff_abort_timeout", h11d_busoff_abort_timeout },
+        { "h11e_busoff_hold_levels", h11e_busoff_hold_levels },
+        { "h11f_busoff_then_complete", h11f_busoff_then_complete },
+        { "h11g_busoff_rx_while_closed", h11g_busoff_rx_while_closed },
         { "h11_busoff", h11_busoff }, { "h12_time_source", h12_time_source },
         { "h13_status_not_repeated", h13_status_not_repeated }, { "h13_pending_age", h13_pending_age },
         { "h14_rx_burst", h14_rx_burst }, { "h15_warning_quality_drop", h15_warning_quality_drop },

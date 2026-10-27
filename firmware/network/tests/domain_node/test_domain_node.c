@@ -1188,6 +1188,40 @@ static int n16_board_transition_binding(void)
     return 0;
 }
 
+/* CAN bus-off on the DOMAIN node (net_hal_rtd_can.c bus-off recovery):
+ * DOMAIN_PERMISSION stops while the link is closed and resumes after the hold
+ * under the new port epoch with the same evaluation and the next TX_SEQUENCE
+ * (the skipped repetitions took no number); received frames reach C2 again. */
+static int n19_busoff_recovery(void)
+{
+    const CanSeen *s;
+    NetUpperCanMessage m;
+    unsigned before;
+    NetNodeDiag d;
+    CHECK(start());
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 120u);
+    CHECK(count_id(0x080u, 0u) == 3u);
+    MockRtd_CanRaiseBusOff(BUS);
+    before = can_count;
+    run_to(START_MS + 200u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 1u && d.rtd.busoff_events == 1u && can_count == before);
+    run_to(START_MS + 260u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 0u && d.rtd.busoff_recoveries == 1u);
+    CHECK(count_id(0x080u, before) == 1u);
+    s = nth_id(0x080u, before, 0u);
+    CHECK(s != NULL && s->m.data.domain_permission.tx_sequence == 4u);
+    CHECK(s->m.data.domain_permission.update_sequence == 1u && s->m.data.domain_permission.boot_id == NODE_BOOT);
+    m = rear(1u, 17u, 23u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(rear_calls == 1u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1206,6 +1240,7 @@ int main(int argc, char **argv)
         { "n16_board_transition_binding", n16_board_transition_binding },
         { "n17_bcm_state_field_age", n17_bcm_state_field_age },
         { "n18_bcm_result_rejected", n18_bcm_result_rejected },
+        { "n19_busoff_recovery", n19_busoff_recovery },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

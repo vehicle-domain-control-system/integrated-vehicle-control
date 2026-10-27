@@ -84,11 +84,19 @@ uint64_t net_hal_rtd_place_stamp(uint32_t stamp)
     ms = stamp;                         /* the ISR stored milliseconds */
 #endif
     /* Place the 32-bit time on the 64-bit axis relative to now. A time ahead
-     * of now (the tick arrived after the application read nowMs) or further
-     * back than the axis start cannot be a capture time: use now and count. */
+     * of now (the tick arrived after the application read nowMs, in the same
+     * pass) is placed at now: never later than now, at most one pass early.
+     * A time further back than the axis start cannot be a capture time: now,
+     * counted apart. */
     back = (uint32_t)now - ms;
-    if (back > 0x7FFFFFFFu || (uint64_t)back > now) {
+    if (back > 0x7FFFFFFFu) {
+        uint32_t ahead = ms - (uint32_t)now;
         inc(&rtd.diag.tick_future_clamped);
+        if (ahead > rtd.diag.tick_ahead_max_ms) rtd.diag.tick_ahead_max_ms = ahead;
+        return now;
+    }
+    if ((uint64_t)back > now) {
+        inc(&rtd.diag.tick_unplaceable);
         return now;
     }
     return now - back;

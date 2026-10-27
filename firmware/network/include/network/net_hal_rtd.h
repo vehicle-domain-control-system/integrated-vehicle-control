@@ -11,7 +11,9 @@
  * CAN RX ISR -> static CAN RX queue -> Network superloop):
  *   ISR  : RTD FlexCAN callback -> copy frame + raw time stamp into the backend
  *          ISR ring -> re-arm MB. TX_COMPLETE and bus-off: fact + stamp into
- *          the same ring; a CAN frame lost (ring full, MB overrun) is counted
+ *          the same ring (bus-off: the CAN link closes, its TX MBs are
+ *          finished, after a hold it opens under a new port epoch,
+ *          net_hal_rtd_can.c); a CAN frame lost (ring full, MB overrun) is counted
  *          and the next stored frame is delivered as received. LPUART RX_FULL
  *          -> byte + raw stamp into the link's byte ring -> re-arm the
  *          one-byte reception; END_TRANSFER: TX fact + stamp; ERROR: counted,
@@ -100,6 +102,13 @@ typedef struct {
     uint32_t tx_timeout_aborts, tx_abort_already_sent, tx_abort_timeouts, tx_quarantine_released;
     uint32_t tx_abort_last_status;
     uint32_t err_events, busoff_events, last_error_status, unexpected_events;
+    /* Bus-off recovery (net_hal_rtd_can.c): links opened again under a new
+     * port epoch; bus-offs since the last sent frame (picks the hold time);
+     * frames still in a TX MB that a bus-off aborted (apart from the TX
+     * timeout aborts below); received frames dropped while the link was
+     * closed; link state 0 open, 1 closed. */
+    uint32_t busoff_recoveries, busoff_streak, busoff_tx_aborts, busoff_rx_dropped;
+    uint8_t can_link_state;
     uint8_t tx_error_counter, rx_error_counter;
     /* ISR ring (ISR -> main hand-off) */
     uint32_t isr_ring_capacity;   /* received frames held between two main passes */
@@ -107,8 +116,12 @@ typedef struct {
     uint32_t isr_ring_overflow;   /* received frames dropped: ring full */
     uint32_t isr_ring_max_depth;  /* most entries ever waiting in the ring */
     uint32_t main_drained_max;    /* most entries taken in one main pass */
-    uint32_t tick_future_clamped; /* stamps ahead of Network now (or not placeable on
-                                     its 64-bit axis): delivered at now */
+    /* Time base A: a stamp ahead of Network now is a capture made after the
+     * application read nowMs, in the same pass (the Port poll takes such UART
+     * bytes on demand): placed at now and counted, normal. Largest lead in ms.
+     * A stamp before the start of the 64-bit axis is placed at now and
+     * counted apart (should stay 0). */
+    uint32_t tick_future_clamped, tick_ahead_max_ms, tick_unplaceable;
     /* LPUART links (net_hal_rtd_uart.c) */
     uint32_t uart_isr_ring_capacity;  /* received bytes held per link between two main passes */
     uint32_t uart_unexpected_instance;/* events of an instance that is no Network UART link */
@@ -133,7 +146,7 @@ NetStatus net_hal_rtd_start(void);
 /* Foreground supervision: abort TX MBs older than NET_BOARD_CAN_TX_TIMEOUT_MS
  * (no ACK on the bench) and UART transfers older than the link timeout, report
  * them FAILED + released, start a waiting UART transfer, re-arm a UART
- * reception that stopped. Read error counters. */
+ * reception that stopped, run the CAN bus-off recovery. Read error counters. */
 void net_hal_rtd_service(void);
 
 /* Main context only. Application clock (time base A): now_ms becomes the

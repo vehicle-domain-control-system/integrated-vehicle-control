@@ -36,7 +36,9 @@ NetUpperCapture net_hal_rtd_capture_now(uint64_t port_epoch); /* main context; t
 uint32_t net_hal_rtd_isr_stamp_locked(void);
 /* Main context: a stored stamp as Network ms on the 64-bit axis. Time base A
  * converts with NET_BOARD_TICK_TO_MS_HOOK(), B/C use the stamp as ms. A time
- * ahead of now (or not placeable) gives now and counts tick_future_clamped. */
+ * ahead of now gives now and counts tick_future_clamped (largest lead
+ * tick_ahead_max_ms); one before the axis start gives now and counts
+ * tick_unplaceable. */
 uint64_t net_hal_rtd_place_stamp(uint32_t stamp);
 
 /* CAN part, called by the common part. */

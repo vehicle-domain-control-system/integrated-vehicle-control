@@ -64,7 +64,10 @@ list(TRANSFORM _integ_net_includes PREPEND "${_net_root}/")
 add_library(network_node_vss_integ STATIC ${_integ_net_sources} ${_rtd_mock_sources})
 target_include_directories(network_node_vss_integ PUBLIC ${_integ_net_includes} "${_net_root}/sdk_mock/rtd/include")
 target_compile_definitions(network_node_vss_integ PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
+# NET_BOARD_CAN_BUSOFF_HOLD_MS: a bus-off hold longer than the VSS status
+# period, so that vi9 sees VSS replace the report that waits (contract C10).
 target_compile_definitions(network_node_vss_integ PRIVATE
+    NET_BOARD_CAN_BUSOFF_HOLD_MS=1500U
     NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks
     NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32
     NET_BOARD_NODE_CONFIG_HOOK=VssInteg_NodeConfig

@@ -413,6 +413,9 @@ static int e2_future_tick_clamped(void)
     CHECK(event_count == 1);
     CHECK(last_event_meta.received_at_ms == stale);
     CHECK(diag().rtd.tick_future_clamped == 1u);
+    /* Its lead over now is recorded; it is not counted as unplaceable. */
+    CHECK(diag().rtd.tick_ahead_max_ms == (uint32_t)(ms_at(board_tick) - stale));
+    CHECK(diag().rtd.tick_ahead_max_ms >= 1u && diag().rtd.tick_unplaceable == 0u);
     /* Next frame, regular order again: its own tick, nothing clamped. */
     run_ticks(4u);
     CHECK(encode_event(2u, 8u, &e));
@@ -420,7 +423,7 @@ static int e2_future_tick_clamped(void)
     CHECK(inject(&e) >= 0);
     run_ticks(1u);
     CHECK(event_count == 2 && last_event_meta.received_at_ms == ms_at(t_rx));
-    CHECK(diag().rtd.tick_future_clamped == 1u);
+    CHECK(diag().rtd.tick_future_clamped == 1u && diag().rtd.tick_unplaceable == 0u);
     return 0;
 }
 

@@ -21,7 +21,7 @@ BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 �
 | `BcmNetPriv_OnDomainPermission` | Network | CAN 0x080 수신 | Network 내부 감시 기록. 공개 `BcmApp` permission 콜백은 없다 |
 
 - BOOT_ID와 CAN TX_SEQUENCE는 Network(M04 `net_upper_publish.c`)가 프레임마다 쓴다. 앱은 채우지 않는다. AGE에는 Network 안에서 기다린 시간만 한 번 더한다.
-- 반환값: `Net_Init` 전·CAN bus-off → `NET_SUBMIT_NOT_READY`, NULL·예약 코드·조합 오류 → `NET_SUBMIT_INVALID_ARGUMENT`, 개별 기록 저장소가 가득 참 → `NET_SUBMIT_NO_CAPACITY`.
+- 반환값: `Net_Init` 전·bus-off 뒤 CAN 링크가 닫힌 동안(100 ms, 다섯 번 넘게 이어지면 1 s, `VSS_NODE_INTEGRATION.md` "제한") → `NET_SUBMIT_NOT_READY`, NULL·예약 코드·조합 오류 → `NET_SUBMIT_INVALID_ARGUMENT`, 개별 기록 저장소가 가득 참 → `NET_SUBMIT_NO_CAPACITY`.
 
 ## 명령 수신
 

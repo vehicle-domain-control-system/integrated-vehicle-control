@@ -20,9 +20,26 @@
  *   TX_DONE   : TX MB completed. The slot stays busy until the main context
  *               has reported SUCCEEDED + release, so each MB has at most one
  *               pending fact; their room is reserved and never dropped.
- *   BUSOFF    : one pending bus-off fact at most (the link stays failed until
- *               reset anyway); its room is reserved as well.
+ *   BUSOFF    : one pending bus-off fact at most (a bus-off while the link
+ *               is already closed changes nothing); its room is reserved as
+ *               well.
  * The main context takes entries in arrival order (net_hal_rtd_can_drain).
+ *
+ * Bus-off recovery (main context): the generated FlexCAN configs set
+ * FLEXCAN_IP_BUSOFF_RECOVERY_U32, so the controller rejoins the bus by
+ * itself. When the drain takes the bus-off entry (busoff_close) the backend
+ * closes the link in the same call: new frames are refused (no borrow), every
+ * frame still in a TX MB gets its actual result (aborted, or completed), and
+ * only then the link failure goes to the adapter, so M04 sees the link down
+ * in the same pass and keeps no transfer of unknown fate. While the link is
+ * closed, received frames are dropped here (busoff_rx_dropped), also those
+ * still in the ring when it opens again. After the hold time (net_board_cfg.h
+ * NET_BOARD_CAN_BUSOFF_*) the link opens again under port epoch + 1, which the
+ * backend then uses for every capture (busoff_reopen). Nothing sent before the
+ * bus-off is sent again; delivery resumes from the current state
+ * (docs/network/network_sw_architecture.md: bus-off is recovered inside the
+ * CAN transport, an old command is not run again; 07_CROSS_NODE_INTERFACE_
+ * RULES.md SC17).
  *
  * RTD symbols used (verified against both bring-up projects' headers):
  *   FlexCAN_Ip_Init, FlexCAN_Ip_SetRxMaskType, FlexCAN_Ip_SetRxIndividualMask,
@@ -72,8 +89,11 @@ typedef struct {
     /* busy: MB owned by a transfer until its outcome is reported.
      * done: TX_COMPLETE seen in the ISR, SUCCEEDED + release not yet reported.
      * quarantined: the abort timed out; the transfer is reported, but the MB
-     * stays busy until its flag shows the controller finished with it. */
+     * stays busy until its flag shows the controller finished with it.
+     * done_stamp: ISR stamp of TX_COMPLETE (a bus-off reports a done MB
+     * before its ring entry is drained). */
     volatile bool busy, aborting, done, quarantined;
+    volatile uint32_t done_stamp;
     NetTxKey key;
     uint64_t submitted_at_ms;
     union { uint32_t align; uint8_t bytes[64]; } data; /* RTD reads payload words */
@@ -97,10 +117,17 @@ typedef struct {
     bool busoff_queued;
 } IsrRing;
 
+/* Link state of the bus-off recovery (main context only), also in
+ * NetHalRtdDiag.can_link_state. */
+enum { LINK_OPEN = 0, LINK_CLOSED = 1 };
+
 typedef struct {
     Flexcan_Ip_MsgBuffType rx[RX_COUNT];
     TxSlot tx[TX_COUNT];
     IsrRing ring;
+    uint8_t link;           /* LINK_*: CLOSED refuses new frames, drops received ones */
+    uint32_t ring_stale;    /* ring entries stored while the link was closed, still to drain */
+    uint64_t hold_until_ms; /* CLOSED: the link opens again at this time */
 } RtdCan;
 
 static RtdCan can;
@@ -143,6 +170,7 @@ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t)
     uint32_t key, i;
     f = &t->packet.can;
     if (f->extended || f->rtr || f->length > 64u) return NET_REJECTED;
+    if (can.link != LINK_OPEN) return NET_HOLD;   /* closed after a bus-off: no new frame, no borrow */
 
     key = net_board_irq_save();
     for (i = 0u; i < TX_COUNT; ++i) {
@@ -249,6 +277,7 @@ static void tx_complete(uint32_t mb)
     if (e != NULL) {
         e->tx_slot = (uint8_t)idx;
         slot->done = true;      /* the MB stays busy until the main context reports it */
+        slot->done_stamp = e->stamp;
         inc(&rtd.diag.tx_complete);
     } else {
         /* Not reachable (one reserved entry per MB). The MB stays busy and the
@@ -281,9 +310,8 @@ void NET_BOARD_CAN_ERROR_CALLBACK(uint8 instance, Flexcan_Ip_EventType eventType
     inc(&rtd.diag.err_events);
     rtd.diag.last_error_status = u32ErrStatus;
     if (eventType == FLEXCAN_EVENT_BUSOFF && rtd.started) {
-        /* Reported to M04 (link failed, TX held) from the main context. Link
-         * recovery (quiesce -> new epoch -> resume) is a deliberate integration
-         * step, not automatic. A bus-off already waiting covers this one. */
+        /* Handled in the main context (bus-off recovery, top of this file).
+         * A bus-off already waiting covers this one. */
         uint32_t key = net_board_irq_save();
         inc(&rtd.diag.busoff_events);
         if (!can.ring.busoff_queued && ring_reserve(RING_BUSOFF) != NULL) can.ring.busoff_queued = true;
@@ -302,15 +330,20 @@ static NetUpperCapture capture_at(uint32_t stamp)
     return c;
 }
 
-static void report_tx_done(uint32_t idx, uint32_t stamp)
+/* A completed MB: SUCCEEDED + release at its TX_COMPLETE stamp. An MB that
+ * is no longer done was reported already (busoff_close), its ring entry is
+ * skipped. */
+static void report_tx_done(uint32_t idx)
 {
     TxSlot *slot = &can.tx[idx];
     NetTxEvent ev;
     NetUpperCapture c;
-    uint32_t key;
+    uint32_t key, stamp;
     memset(&ev, 0, sizeof(ev));
     key = net_board_irq_save();
+    if (!slot->done) { net_board_irq_restore(key); return; }
     ev.key = slot->key;
+    stamp = slot->done_stamp;
     slot->busy = false;
     slot->done = false;
     net_board_irq_restore(key);
@@ -319,6 +352,40 @@ static void report_tx_done(uint32_t idx, uint32_t stamp)
     ev.release_observed = true;
     c = capture_at(stamp);
     (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
+    rtd.diag.busoff_streak = 0u;   /* the bus carried a frame */
+}
+
+static void abort_expired(uint32_t i, bool busoff);
+
+/* Bus-off taken from the ring (link open): close the link and settle every
+ * TX MB now, in this drain call, then report the link failure. Order of the
+ * adapter facts: the MB results first, the port error after them. */
+static void busoff_close(uint32_t stamp)
+{
+    uint32_t i, key;
+    bool abort;
+    uint64_t now;
+    NetUpperCapture c;
+    can.link = LINK_CLOSED;          /* submit refuses from here on */
+    rtd.diag.can_link_state = LINK_CLOSED;
+    for (i = 0u; i < TX_COUNT; ++i) {
+        TxSlot *slot = &can.tx[i];
+        key = net_board_irq_save();
+        abort = slot->busy && !slot->aborting && !slot->done && !slot->quarantined;
+        if (abort) slot->aborting = true;
+        net_board_irq_restore(key);
+        if (abort) abort_expired(i, true);
+    }
+    /* Completed before or during the aborts: reported now, not by the ring. */
+    for (i = 0u; i < TX_COUNT; ++i) report_tx_done(i);
+    inc(&rtd.diag.busoff_streak);
+    c = capture_at(stamp);
+    (void)net_hal_capture_link(rtd.adapter, NET_UPPER_PORT_ERROR, NET_WIRE_CAN, &c);
+    key = net_board_irq_save();
+    now = net_hal_rtd_now_locked();
+    net_board_irq_restore(key);
+    can.hold_until_ms = now + (rtd.diag.busoff_streak <= NET_BOARD_CAN_BUSOFF_FAST_TRIES ?
+                               NET_BOARD_CAN_BUSOFF_HOLD_MS : NET_BOARD_CAN_BUSOFF_SLOW_HOLD_MS);
 }
 
 uint32_t net_hal_rtd_can_drain(uint32_t budget)
@@ -327,6 +394,7 @@ uint32_t net_hal_rtd_can_drain(uint32_t budget)
     RingEntry e;
     NetUpperCapture c;
     uint32_t n = 0u, key;
+    bool stale;
     while (n < budget) {
         key = net_board_irq_save();
         if (r->count == 0u) { net_board_irq_restore(key); break; }
@@ -337,17 +405,21 @@ uint32_t net_hal_rtd_can_drain(uint32_t budget)
         if (e.kind == RING_BUSOFF) r->busoff_queued = false;
         net_board_irq_restore(key);
         ++n;
+        /* Stored while the link was closed (before busoff_reopen). */
+        stale = can.ring_stale != 0u;
+        if (stale) --can.ring_stale;
         switch (e.kind) {
         case RING_RX:
+            if (stale || can.link != LINK_OPEN) { inc(&rtd.diag.busoff_rx_dropped); break; }
             c = capture_at(e.stamp);   /* a complete frame: no loss flag */
             if (net_hal_capture_can(rtd.adapter, &e.frame, &c) != NET_OK) inc(&rtd.diag.rx_queue_rejected);
             break;
         case RING_TX_DONE:
-            report_tx_done(e.tx_slot, e.stamp);
+            report_tx_done(e.tx_slot);
             break;
         case RING_BUSOFF:
-            c = capture_at(e.stamp);
-            (void)net_hal_capture_link(rtd.adapter, NET_UPPER_PORT_ERROR, NET_WIRE_CAN, &c);
+            /* One while the link is closed changes nothing. */
+            if (!stale && can.link == LINK_OPEN) busoff_close(e.stamp);
             break;
         default:
             inc(&rtd.diag.unexpected_events);
@@ -439,7 +511,7 @@ static void release_quarantined(uint32_t i)
  *     until its flag shows it idle (tx_abort_timeouts, release_quarantined);
  *   SUCCESS / other: aborted, FAILED + release.
  * A TX_COMPLETE that raced the abort is reported by the ring instead. */
-static void abort_expired(uint32_t i)
+static void abort_expired(uint32_t i, bool busoff)
 {
     TxSlot *slot = &can.tx[i];
     Flexcan_Ip_StatusType st;
@@ -456,11 +528,12 @@ static void abort_expired(uint32_t i)
     }
     memset(&ev, 0, sizeof(ev));
     ev.key = slot->key; ev.admission_observed = true; ev.accepted = true; ev.release_observed = true;
-    inc(&rtd.diag.tx_timeout_aborts);
+    inc(busoff ? &rtd.diag.busoff_tx_aborts : &rtd.diag.tx_timeout_aborts);
     if (st == FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS) {
         ev.outcome = NET_TX_SUCCEEDED;
         slot->busy = false;
         slot->aborting = false;
+        rtd.diag.busoff_streak = 0u;    /* the frame went out */
         inc(&rtd.diag.tx_abort_already_sent);
     } else if (st == FLEXCAN_STATUS_TIMEOUT) {
         ev.outcome = NET_TX_FAILED;
@@ -477,6 +550,26 @@ static void abort_expired(uint32_t i)
     (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
 }
 
+/* The hold after a bus-off is over: LINK_RESET under port epoch + 1, then
+ * the backend uses that epoch. Entries still in the ring were stored while
+ * the link was closed: the drain drops their frames and ignores a bus-off
+ * among them. A refused adapter call is tried again in the next pass. */
+static void busoff_reopen(uint64_t now)
+{
+    uint32_t key;
+    NetUpperCapture c;
+    if (can.link != LINK_CLOSED || now < can.hold_until_ms) return;
+    c = net_hal_rtd_capture_now(rtd.can_epoch + 1u);
+    if (net_hal_capture_link(rtd.adapter, NET_UPPER_LINK_RESET, NET_WIRE_CAN, &c) != NET_OK) return;
+    key = net_board_irq_save();
+    can.ring_stale = can.ring.count;
+    net_board_irq_restore(key);
+    rtd.can_epoch += 1u;
+    can.link = LINK_OPEN;
+    inc(&rtd.diag.busoff_recoveries);
+    rtd.diag.can_link_state = LINK_OPEN;
+}
+
 void net_hal_rtd_can_service(uint64_t now)
 {
     uint32_t i, key;
@@ -489,8 +582,9 @@ void net_hal_rtd_can_service(uint64_t now)
                   now - slot->submitted_at_ms >= NET_BOARD_CAN_TX_TIMEOUT_MS;
         if (expired) slot->aborting = true;
         net_board_irq_restore(key);
-        if (expired) abort_expired(i);
+        if (expired) abort_expired(i, false);
     }
+    busoff_reopen(now);
     rtd.diag.tx_error_counter = FlexCAN_Ip_GetControllerTxErrorCounter(NET_BOARD_CAN_INSTANCE);
     rtd.diag.rx_error_counter = FlexCAN_Ip_GetControllerRxErrorCounter(NET_BOARD_CAN_INSTANCE);
 }

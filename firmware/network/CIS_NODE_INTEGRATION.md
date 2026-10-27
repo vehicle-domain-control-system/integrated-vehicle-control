@@ -21,7 +21,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 
 - BOOT_ID와 CAN TX_SEQUENCE, UART LINK_SEQUENCE는 Network(M04 `net_upper_publish.c`)가 프레임마다 쓴다. 앱은 채우지 않는다.
 - 콜백 안에서 `CisNet_Publish*`를 불러도 된다. 메시지마다 1건만 보관하고(최신 우선), 같은 `Net_MainFunction()` 안에서 보낸다.
-- 반환값: 링크·문맥 미준비(`Net_Init` 전, CAN bus-off, Occupant의 Pi 판정 미수신) → `NET_SUBMIT_NOT_READY`, 인자 오류(NULL, 예약 코드, 다시 보내도 성립하지 않는 Occupant 조합) → `NET_SUBMIT_INVALID_ARGUMENT`. 보관 슬롯은 교체 방식이라 `NET_SUBMIT_NO_CAPACITY`는 나오지 않는다.
+- 반환값: 링크·문맥 미준비(`Net_Init` 전, bus-off 뒤 CAN 링크가 닫힌 동안(100 ms, 다섯 번 넘게 이어지면 1 s, `VSS_NODE_INTEGRATION.md` "제한"), Occupant의 Pi 판정 미수신) → `NET_SUBMIT_NOT_READY`, 인자 오류(NULL, 예약 코드, 다시 보내도 성립하지 않는 Occupant 조합) → `NET_SUBMIT_INVALID_ARGUMENT`. 보관 슬롯은 교체 방식이라 `NET_SUBMIT_NO_CAPACITY`는 나오지 않는다.
 
 ## Occupant relay
 

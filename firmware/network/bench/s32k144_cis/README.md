@@ -103,7 +103,7 @@ NET_BOARD_UART_CALLBACK=DebugConsole_UartCallback
 - MCU는 프로젝트의 `CPU_S32K144HFT0VLLT`가 144를 고른다. `NETWORK_NODE_PLATFORM`은 넣지 않는다.
 - 콜백 이름 세 개와 LPUART 설정 이름은 `network_144_can_debuger`(S32K1 RTD 3.0.0) 생성 설정에서 읽은 이름이다. 복제본에서 다시 확인하고, 다르면 define 값을 생성 설정에 맞춘다. Network 소스는 고치지 않는다.
 - CAN 설정 `FlexCAN_Config0`, 상태 `FlexCAN_State0`, 인스턴스 0, `max_num_mb` 7, FD payload 64 B는 `net_board_cfg.h` 144 기본값(RX MB 0..1, TX MB 2..5, MB 6 안 씀)과 같아 define을 넣지 않는다.
-- 생성 설정 `ctrlOptions`에 `FLEXCAN_IP_BUSOFF_RECOVERY_U32`(하드웨어 bus-off 자동 복구)가 켜져 있다. Network는 bus-off를 링크 실패로 보고 리셋 전까지 CAN 링크를 잠근다. 설정은 바꾸지 않는다.
+- 생성 설정 `ctrlOptions`에 `FLEXCAN_IP_BUSOFF_RECOVERY_U32`(하드웨어 bus-off 자동 복구)가 켜져 있다. Network는 bus-off가 나면 CAN 링크를 닫고, 남은 송신을 정산한 뒤 100 ms(다섯 번 넘게 이어지면 1 s) 지나 다시 연다(`VSS_NODE_INTEGRATION.md` "제한"). UART-C 링크는 닫히지 않는다. 다만 CAN 수신에서 나온 P_PERMISSION relay는 CAN이 닫힌 동안 나가지 않는다. 설정은 바꾸지 않는다.
 - 실제 RTD 헤더로는 `tools/sdk_swap_check.py`가 디버그 노드 원본(DS144)의 생성 설정으로 CIS 프로필과 LPUART1 콜백의 HAL 정의 모드(생성 설정 .c와 HAL을 한 단위로 묶은 probe)를 컴파일해 본다. 복제본의 생성 설정은 원본과 같다.
 
 ## 동기화

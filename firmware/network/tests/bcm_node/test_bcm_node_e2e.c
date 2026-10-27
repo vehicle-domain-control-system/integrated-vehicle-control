@@ -975,7 +975,8 @@ static int b13_not_ready(void)
     CHECK(BcmNet_PublishDoorState(&door) == NET_SUBMIT_OK);
     step_ms(2u);
     CHECK(can_count(0x200u, 0u) == 1u);
-    /* Bus-off: the CAN link is held until reset; nothing is taken. */
+    /* Bus-off: the CAN link is closed for the hold time (100 ms, longer than
+     * this case); nothing is taken. */
     MockRtd_CanRaiseBusOff(BUS);
     step_ms(2u);
     CHECK(BcmNet_SendResult(&result) == NET_SUBMIT_NOT_READY);

@@ -1030,7 +1030,8 @@ static int f12_not_ready(void)
     CHECK(CisNet_PublishRear(&rear) == NET_SUBMIT_OK);
     step_ms(2u);
     CHECK(can_count(0x0A0u, 0u) == 1u);
-    /* Bus-off: the CAN link is held until reset; CAN publishes are not ready. */
+    /* Bus-off: the CAN link is closed for the hold time (100 ms, longer than
+     * this case); CAN publishes are not ready. */
     MockRtd_CanRaiseBusOff(BUS);
     step_ms(2u);
     rear = rear_sample(2u, 0u);
@@ -1050,6 +1051,57 @@ static int f12_not_ready(void)
         step_ms(1u);
         CHECK(result_count == 1u);
     }
+    return 0;
+}
+
+/* CAN bus-off and recovery (net_hal_rtd_can.c): during the hold the
+ * DOMAIN_PERMISSION supervision reports the link unavailable, a frame on the
+ * bus is not delivered and CAN publishes are not ready; UART-C keeps working.
+ * After the hold the link opens under a new port epoch: a newer
+ * DOMAIN_PERMISSION is delivered and relayed to the Pi again, and CIS_REAR
+ * goes out. */
+static int f12b_busoff_recovery(void)
+{
+    NetCisRear rear = rear_sample(1u, 0u);
+    NetNodeDiag d;
+    uint64_t t0;
+    unsigned rear_before;
+    CHECK(start_node() == NET_OK);
+    step_ms(5u);
+    RUN(permission_in(1u, 41u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 1u && uart_n == 1u);
+    CHECK(diag().permission.reason == NET_PERMISSION_CURRENT);
+    MockRtd_CanRaiseBusOff(BUS);
+    t0 = now_ms();
+    step_ms(2u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 1u && d.permission.reason == NET_PERMISSION_LINK_UNAVAILABLE);
+    CHECK(!d.permission.power_usable);
+    CHECK(CisNet_PublishRear(&rear) == NET_SUBMIT_NOT_READY);
+    RUN(permission_in(2u, 42u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(2u);
+    CHECK(perm_count == 1u);
+    {
+        NetUpperUartMessage m = vision_message(1u, 1000u, 10u);
+        uint64_t last;
+        RUN(line_send(&m, &last));
+        step_ms(1u);
+        CHECK(result_count == 1u);
+    }
+    while (now_ms() < t0 + 102u) step_ms(1u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 0u && d.rtd.busoff_recoveries == 1u && d.upper.resets == 1u);
+    RUN(permission_in(3u, 43u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    CHECK(perm_count == 2u && last_perm.update_sequence == 43u);
+    d = diag();
+    CHECK(d.permission.reason == NET_PERMISSION_CURRENT && d.permission.power_usable);
+    CHECK(uart_n == 2u && uart_bad == 0u);
+    rear_before = can_count(0x0A0u, 0u);
+    CHECK(CisNet_PublishRear(&rear) == NET_SUBMIT_OK);
+    step_ms(2u);
+    CHECK(can_count(0x0A0u, 0u) == rear_before + 1u);
     return 0;
 }
 
@@ -2312,6 +2364,7 @@ int main(int argc, char **argv)
         { "f10_publish_occupant_relay", f10_publish_occupant_relay },
         { "f11_publish_in_callback", f11_publish_in_callback },
         { "f12_not_ready", f12_not_ready },
+        { "f12b_busoff_recovery", f12b_busoff_recovery },
 #ifdef CIS_NODE_TEST_ENTRY
         { "f13_entry", f13_entry },
 #endif

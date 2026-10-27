@@ -350,6 +350,7 @@ bool IntegBus_ReadDiag(IntegNetDiag *out)
     out->main_drained_max = d.rtd.main_drained_max;
     out->tick_future_clamped = d.rtd.tick_future_clamped;
     out->busoff_events = d.rtd.busoff_events;
+    out->busoff_recoveries = d.rtd.busoff_recoveries;
     out->tx_complete = d.rtd.tx_complete;
     out->main_max_us = d.main_max_us;
     return true;

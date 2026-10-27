@@ -929,6 +929,11 @@ if(NETWORK_BUILD_RTD_MOCK)
                     h13_status_not_repeated h13_pending_age h14_rx_burst h15_warning_quality_drop)
                 add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
             endforeach()
+            # CAN bus-off: the link closes and opens again (recovery, hold levels, settled MBs).
+            foreach(case IN ITEMS h11b_busoff_recovery h11c_busoff_after_complete h11d_busoff_abort_timeout
+                    h11e_busoff_hold_levels h11f_busoff_then_complete h11g_busoff_rx_while_closed)
+                add_test(NAME vss_node.${case}_${_variant} COMMAND test_vss_node_e2e_${_variant} ${case})
+            endforeach()
         endforeach()
         # Repetition delivery, DOMAIN restart and the TX abort result: the OsIf
         # counter build under the plain case name, the board hook build with
@@ -980,6 +985,8 @@ if(NETWORK_BUILD_RTD_MOCK)
         foreach(case IN ITEMS n17_bcm_state_field_age n18_bcm_result_rejected)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # CAN bus-off: the link closes, then opens again under a new port epoch.
+        add_test(NAME domain_node.n19_busoff_recovery COMMAND test_domain_node n19_busoff_recovery)
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the
@@ -1038,6 +1045,8 @@ if(NETWORK_BUILD_RTD_MOCK)
         endforeach()
         add_test(NAME cis_node.load_doc_traffic COMMAND test_cis_node_e2e load_doc_traffic)
         add_test(NAME cis_node.load_second_boundary COMMAND test_cis_node_e2e load_second_boundary)
+        # CAN bus-off: the link closes, then opens again under a new port epoch.
+        add_test(NAME cis_node.f12b_busoff_recovery COMMAND test_cis_node_e2e f12b_busoff_recovery)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_cis_node_entry tests/cis_node/test_cis_node_e2e.c)

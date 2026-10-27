@@ -19,7 +19,7 @@ VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만
 
 - `Net_Init`/`Net_MainFunction`은 조립 루트 `NetNode_Init`/`NetNode_Step`을 감싸는 얇은 층이다(`src/node/net_entry.c`). `NetNode_*`는 내부와 벤치용으로 남는다.
 - BOOT_ID와 TX_SEQUENCE는 Network(M04 `net_upper_publish.c`)가 프레임마다 쓴다. 앱은 채우지 않는다.
-- 반환값: 링크·문맥이 준비되지 않음(`Net_Init` 전, bus-off로 링크 잠김) → `NET_SUBMIT_NOT_READY`, 보관 공간 없음 → `NET_SUBMIT_NO_CAPACITY`, 인자 오류 → `NET_SUBMIT_INVALID_ARGUMENT`. VSS는 앞의 둘만 재제출한다.
+- 반환값: 링크·문맥이 준비되지 않음(`Net_Init` 전, bus-off 뒤 CAN 링크가 닫힌 동안) → `NET_SUBMIT_NOT_READY`, 보관 공간 없음 → `NET_SUBMIT_NO_CAPACITY`, 인자 오류 → `NET_SUBMIT_INVALID_ARGUMENT`. VSS는 앞의 둘만 재제출한다.
 
 ## VSS 계약 (C1~C12)
 
@@ -108,7 +108,7 @@ VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host�
 | C. OsIf(기본) | 없음. OsIf "Use System Timer" ON 필요 | OsIf 기반 ms | 항등 | OsIf 기반 ms |
 
 - 원형: `uint32_t NET_BOARD_ISR_TICK_HOOK(void)`(ISR에서 불림, 값만 읽어야 함), `uint32_t NET_BOARD_TICK_TO_MS_HOOK(uint32_t tick)`(main 전용), `uint64_t NET_BOARD_NOW_MS_HOOK(void)`(ISR과 main 양쪽).
-- 방식 A에서 변환한 32비트 ms는 현재 `nowMs`를 기준으로 64비트 축에 놓는다. 현재보다 미래면(앱이 `nowMs`를 읽은 뒤 같은 바퀴 안에서 들어온 프레임) 현재 시각으로 두고 `tick_future_clamped`를 올린다. 수 건씩 오르는 것은 정상이다.
+- 방식 A에서 변환한 32비트 ms는 현재 `nowMs`를 기준으로 64비트 축에 놓는다. 현재보다 미래면(앱이 `nowMs`를 읽은 뒤 같은 바퀴 안에서 들어온 프레임) 현재 시각으로 두고 `tick_future_clamped`를 올린다. 오르는 것은 정상이다(UART 수신이 있으면 바이트마다 오를 수 있다). 캡처 시각은 실제보다 최대 한 바퀴 이르게 잡히고 늦게 잡히지는 않는다. 그래서 대기 AGE와 수신 감시는 오래된 쪽으로만 틀린다. 가장 많이 앞선 값은 `tick_ahead_max_ms`다. 64비트 축의 시작보다 앞선 값은 따로 `tick_unplaceable`에 센다(0이어야 한다).
 - tick hook을 하나만 정의하거나, tick hook과 `NET_BOARD_NOW_MS_HOOK`을 함께 정의하면 컴파일 오류다. B·C에서는 `Net_MainFunction`의 `nowMs`를 현재 시각으로 쓰지 않는다(각자 시계를 쓴다).
 - 방식 A에서는 `Net_Init`부터 첫 `Net_MainFunction` 전까지 Network 시각이 0이다. 그 사이에 받은 프레임은 첫 `Net_MainFunction`에서 제 시각으로 놓인다. 그 사이에 `VssNet_PublishStatus`를 부르면 대기 Age가 첫 `nowMs`만큼 크게 잡힌다(VSS는 루프 안에서만 제출하므로 해당 없음).
 - 선택 hook `NET_BOARD_US_HOOK`(`uint32_t f(void)`, µs 자유 증가 카운터)을 정의하면 `Net_MainFunction` 1회 최대 실행 시간을 `NetNodeDiag.main_max_us`에 남긴다. 없으면 0이다.
@@ -238,10 +238,14 @@ int main(void)
 | `rtd.rx_overruns`, `rtd.rx_loss_events` | MB overrun 수, 손실 직후 링에 들어간(그리고 전달된) 프레임 수(손실 경계) |
 | `rtd.uart_poll_drained` | 서비스 Port poll이 시각 검사 전에 UART 링에서 넘긴 항목 수 |
 | `rtd.main_drained_max` | 한 바퀴에 링에서 꺼낸 최대 항목 수 |
-| `rtd.tick_future_clamped` | 현재 시각보다 미래라 현재 시각으로 둔 캡처 수 |
+| `rtd.tick_future_clamped`, `rtd.tick_ahead_max_ms` | 현재 시각보다 미래라 현재 시각으로 둔 캡처 수(정상), 그중 가장 많이 앞선 ms |
+| `rtd.tick_unplaceable` | 64비트 시각 축의 시작보다 앞서 현재 시각으로 둔 캡처 수(0이어야 한다) |
+| `rtd.busoff_events`, `rtd.busoff_recoveries` | bus-off 수, bus-off 뒤 CAN 링크를 새 포트 epoch로 다시 연 수 |
+| `rtd.busoff_tx_aborts`, `rtd.busoff_rx_dropped` | bus-off 때 TX MB에 남아 있어 abort한 프레임 수(아래 TX timeout abort와 따로 센다), CAN 링크가 닫힌 동안 받아 버린 프레임 수 |
+| `rtd.busoff_streak`, `rtd.can_link_state` | 마지막으로 프레임이 나간 뒤의 bus-off 수(닫아 두는 시간을 정한다), CAN 링크 상태(0 열림, 1 닫힘) |
 | `rtd.tx_timeout_aborts` | TX MB가 100 ms 안에 끝나지 않아 abort한 수 |
-| `rtd.tx_abort_already_sent` | 그중 abort가 `FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS`(abort 전에 이미 송신됨, TX_COMPLETE 없음)라 성공으로 정산한 수 |
-| `rtd.tx_abort_timeouts`, `rtd.tx_quarantine_released` | 그중 abort가 `FLEXCAN_STATUS_TIMEOUT`이라 실패로 보고하고 그 MB를 격리한 수, 격리한 MB의 플래그가 서서 다시 쓰게 된 수 |
+| `rtd.tx_abort_already_sent` | 위의 두 abort(`tx_timeout_aborts`, `busoff_tx_aborts`) 중 abort가 `FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS`(abort 전에 이미 송신됨, TX_COMPLETE 없음)라 성공으로 정산한 수 |
+| `rtd.tx_abort_timeouts`, `rtd.tx_quarantine_released` | 위의 두 abort 중 abort가 `FLEXCAN_STATUS_TIMEOUT`이라 실패로 보고하고 그 MB를 격리한 수, 격리한 MB의 플래그가 서서 다시 쓰게 된 수 |
 | `rtd.tx_abort_last_status` | 마지막 abort의 RTD 반환값 |
 
 - 문서 통신량 부하(host): `vss_node.load_doc_traffic`(`_hook`은 보드 시계 hook 빌드). 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. VSS가 받는 것은 다른 노드 몫 10개)을 넣고, 앱 역할로 VSS_STATUS를 250 ms마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 20 ms 주기다. 손실 0(링·큐·M04 슬롯, DOMAIN_PERMISSION·VSS_WARNING_STATE 전부 전달), VSS_STATUS 간격 ≤ 250 ms + 20 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD VSS ...` 한 줄로 남긴다.
@@ -266,10 +270,10 @@ int main(void)
   ```
 - **구성:** VSS 라이브러리 `vss_fw_host`(`src/**/*.c`에서 `hal/s32k344/` 제외 + `hal_mock.c`, VSS `host_test.py`와 같은 플래그 + `VSS_CFG_NET_STUB=0 VSS_CFG_TEST_INPUT=0`), Network 라이브러리 `network_node_vss_integ`(`tools/s32ds_sources.txt` 목록 + mock SDK, `NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks`, `NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32`, 시험용 노드 설정·µs hook, `-funsigned-char`). GCC/Clang 전용이다(`-Wl,--wrap`).
 - **시험 프로그램:** `vss_net_api.h`와 `net_if_*.h`는 같은 타입을 정의하므로 두 번역 단위로 나눈다. `test_vss_integ.c`는 VSS 헤더만, `vss_integ_bus.c`(DOMAIN 프레임 codec, 버스, 0x340 해독, Network 진단)는 Network 헤더만 include하고, 둘은 `vss_integ_bus.h`(기본 C 타입)로만 만난다. 슈퍼루프는 tick(1.25 ms)마다 1바퀴, 오디오 출력 경계는 48 kHz 1024 frame마다 올린다. `VssApp_On*`·`VssNet_PublishStatus`는 link spy(`--wrap`)로 기록한 뒤 실제 함수를 부른다.
-- **케이스(`vss_integ.*`, 케이스당 프로세스 1개):** vi0 두 헤더 배치(`vss_integ_layout.h` 목록을 두 반쪽이 각자 헤더로 펼쳐 비교, 다르면 첫 불일치 항목과 두 값을 출력), vi1 부팅 순서, vi2 수신 시각 축, vi3 메시지별 TX, vi4 DOMAIN 재부팅, vi5 같은 occurrence 재전송, vi6 구조 오류 선검사, vi7 Warning 수신 끊김, vi8 0x340 주기(10 s에 40±2건), vi9 링크 잠김 재제출, vi10 수신 폭주 처리 상한, vi11 한 lane의 품질 하향, vi12 같은 평가 1초 반복(도착 0~2.5 ms 흔들림)에도 경고 유지.
+- **케이스(`vss_integ.*`, 케이스당 프로세스 1개):** vi0 두 헤더 배치(`vss_integ_layout.h` 목록을 두 반쪽이 각자 헤더로 펼쳐 비교, 다르면 첫 불일치 항목과 두 값을 출력), vi1 부팅 순서, vi2 수신 시각 축, vi3 메시지별 TX, vi4 DOMAIN 재부팅, vi5 같은 occurrence 재전송, vi6 구조 오류 선검사, vi7 Warning 수신 끊김, vi8 0x340 주기(10 s에 40±2건), vi9 bus-off로 링크가 닫힌 동안 재제출과 다시 열린 뒤 송신(이 빌드는 닫아 두는 시간 1,500 ms), vi10 수신 폭주 처리 상한, vi11 한 lane의 품질 하향, vi12 같은 평가 1초 반복(도착 0~2.5 ms 흔들림)에도 경고 유지.
 
 ## 제한
 
-- 버스오프 자동 복구는 없다. bus-off가 나면 CAN 링크가 잠기고, 보드를 리셋해야 다시 송수신한다.
+- bus-off 뒤 회복: 생성 설정은 FlexCAN 하드웨어 자동 복구(`FLEXCAN_IP_BUSOFF_RECOVERY_U32`)가 켜져 있다. Network는 bus-off를 받은 바퀴에 CAN 링크를 닫는다. TX MB에 남은 프레임은 abort하거나 이미 나갔으면 성공으로, 실제 결과대로 정산하고, 그 뒤로 새 제출은 `NET_SUBMIT_NOT_READY`, 받은 프레임은 전달하지 않고 버린다(`rtd.busoff_rx_dropped`). 100 ms 지나 새 포트 epoch로 다시 연다. 프레임이 하나도 나가지 않은 채 이어진 bus-off는 다섯 번째까지 100 ms, 여섯 번째부터 1 s 닫아 둔다(`net_board_cfg.h` `NET_BOARD_CAN_BUSOFF_*`, 잠정 값). bus-off 전에 보낸 것은 다시 보내지 않는다. VSS는 NOT_READY인 동안 재제출하고(C10), 다시 열린 뒤 받아들여진 보고가 나간다. bus-off가 난 뒤 Network가 그것을 받기 전(그 사이 바퀴 하나 이내)에 `NET_SUBMIT_OK`로 받은 제출은 나가지 못할 수 있다. VSS는 250 ms마다 새 평가를 제출하므로 다음 평가가 대신한다. abort가 제때 끝나지 않으면(`FLEXCAN_STATUS_TIMEOUT`) 그 프레임은 실패로 보고되고 MB는 격리되는데, 그 프레임이 나중에 나갈 수 있다(TX timeout abort와 같은 한계). 보드에서 bus-off를 일으켜 확인하지는 않았다.
 - DOMAIN이 같은 BOOT_ID로 재기동하면 복구되지 않는다(위 "DOMAIN 재부팅" 절). 끝난 BOOT 기억은 CAN ID마다 4개라, 4번 넘게 재부팅한 뒤 아주 오래된 BOOT의 프레임이 다시 오면 새 세대로 받는다.
 - VSS 노드는 UART 링크와 다른 노드의 facade를 쓰지 않는다.
