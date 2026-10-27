@@ -6,7 +6,7 @@ if(NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR AND BUILD_TESTING AND NETWORK_NODE_PROFILE
     endif()
     set(_domain_owner "${NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR}")
     add_executable(test_domain_pinned_owner
-        tests/product/test_domain_pinned_owner.c
+        nodes/domain/tests/product/test_domain_pinned_owner.c
         "${_domain_owner}/interface/domain_interface_core.c"
         "${_domain_owner}/application/vehicle_state_manager.c"
         "${_domain_owner}/application/domain_interface_state_binding.c"
@@ -29,8 +29,8 @@ if(NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR AND BUILD_TESTING AND NETWORK_NODE_PROFILE
     # CIS environment / Occupant transitions through the actual DOMAIN runtime:
     # the test-only binding calls the DOMAIN private BOOT transitions.
     add_executable(test_domain_transition_owner
-        tests/product/test_domain_transition_owner.c
-        tests/product/domain_transition_binding.c
+        nodes/domain/tests/product/test_domain_transition_owner.c
+        nodes/domain/tests/product/domain_transition_binding.c
         "${_domain_owner}/interface/domain_interface_core.c"
         "${_domain_owner}/application/domain_runtime.c"
         "${_domain_owner}/application/vehicle_state_manager.c"

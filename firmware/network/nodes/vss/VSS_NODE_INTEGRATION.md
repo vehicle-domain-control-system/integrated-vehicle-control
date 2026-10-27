@@ -2,10 +2,12 @@
 
 VSS 노드(profile 6) 펌웨어에 Network를 붙일 때 지켜야 할 사항만 모았다. 설계 근거는 `docs/network/`이다. VSS 쪽 전제는 VSS 펌웨어의 `src/net_if/vss_net_api.h`, `src/app/vss_main.c`, `src/infra/vss_time.h`, `README.md` §6·§7이다.
 
+경로는 `firmware/network` 기준이다. VSS만 쓰는 파일은 `nodes/vss/` 아래에 공통 트리와 같은 모양으로 있고, 보드 프로젝트 사본(`tools/sync_to_s32ds.py`)에는 `nodes/vss/`를 뺀 같은 경로로 들어간다(예: `nodes/vss/include/network/app/net_if_vss.h` → `include/network/app/net_if_vss.h`).
+
 ## App 경계 (정본 헤더)
 
 - `include/network/app/net_if_common.h`: `04_COMMON/10_DATA_AND_ID_RULES.md` 공통 타입 중 이 펌웨어의 노드 헤더(VSS·CIS·BCM, Pi UART-C 기록)가 쓰는 것을 옮긴 것. DOMAIN 전용 타입 4개(`NetResultConfirmation`, `NetWarningType`, `NetSeverity`, `NetFunctionId`)는 이 노드 헤더에서 제외했다.
-- `include/network/app/net_if_vss.h`: `02_NODES/VSS/20_API.md` 원형을 그대로 옮긴 것. 아래 진입 헤더도 include한다.
+- `nodes/vss/include/network/app/net_if_vss.h`: `02_NODES/VSS/20_API.md` 원형을 그대로 옮긴 것. 아래 진입 헤더도 include한다.
 - `include/network/app/net_if_entry.h`: 공개 진입 `Net_Init`, `Net_MainFunction`. 선언은 VSS 사본(`vss_net_api.h`)과 글자 그대로 같다.
 - VSS 앱은 자기 사본 `src/net_if/vss_net_api.h`를 그대로 쓴다(두 헤더 모델, 아래 "VSS 연동 절차"). 두 헤더는 같은 타입을 정의하므로 한 번역 단위에 함께 넣지 않고 링크에서 만난다. struct 배치와 코드 값이 같은지는 host 시험 `vss_integ.vi0_api_layout`이 확인한다.
 
@@ -42,7 +44,7 @@ VSS 펌웨어(브랜치 `feat/vss-firmware` 커밋 `8fcf25c`, 2026-10-20 S32K344
 
 ## VSS 수신 처리 (VSS 쪽 동작, 시험 기대값의 근거)
 
-VSS 앱이 받은 필드를 다루는 방식이다. Network는 바꾸지 않으며, 통합 하네스(`tests/vss_integ`)의 기대값이 이를 따른다.
+VSS 앱이 받은 필드를 다루는 방식이다. Network는 바꾸지 않으며, 통합 하네스(`nodes/vss/tests/vss_integ`)의 기대값이 이를 따른다.
 
 - **`VSS_EVENT`:** `event_kind` 1~5만 사용한다(WELCOME·GOODBYE·LOCK_COMPLETE·UNLOCK_COMPLETE·LOCK_ERROR). 중복 판정 키는 `{origin, DOMAIN, boot_id, occurrence_id}`이고, `occurrence_id`는 DOMAIN 한 기동 안에서 단조 증가해야 한다. 사용 한도 L = min(`use_limit_ms`, 500, 2000) ms이고, `use_limit_ms`·`occurrence_id`·`tx_sequence`가 0이면 거부한다. 같은 occurrence 재전송은 사용 한도 안이면 중복, 뒤면 기한 초과로 거부되어 다시 울리지 않는다. `original_age_ms`가 65535(포화)인 Event는 AGE가 불완전하므로 재생하지 않는다. VSS 기동 전에 발생한 Event는 재생하지 않는다(`02_NODES/VSS/10_DATA.md` 입력 연결·시간·복구의 한정 계약).
 - **`VSS_WARNING_STATE`:** lane은 후방 활성, 후방 위험(CLEAR/CAUTION/EMERGENCY), 탑승자, 끼임이다. `*_source_boot`/`*_source_sequence`가 둘 다 0이 아니어야 출처가 있는 근거다. quality OK + reason NONE이면 확정, 그 밖은 미확정이다. 끼임 경고는 PRODUCT origin(실제 CAN)에서 재생하지 않는다.
@@ -52,7 +54,7 @@ VSS 앱이 받은 필드를 다루는 방식이다. Network는 바꾸지 않으�
 
 ## VSS 연동 확인 시험
 
-VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host에서는 `tests/vss_integ`(아래 "VSS 통합 하네스")가 같은 항목을 돌린다.
+VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host에서는 `nodes/vss/tests/vss_integ`(아래 "VSS 통합 하네스")가 같은 항목을 돌린다.
 
 - DOMAIN 재부팅(BOOT 변경) 뒤 입력 재개, 옛 BOOT 늦은 프레임 거부.
 - Event·Warning TX가 서로 독립(한쪽이 앞서도 다른 쪽 수용).
@@ -117,7 +119,7 @@ VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host�
 
 **두 헤더 모델:** VSS 소스는 바꾸지 않는다. VSS는 자기 `src/net_if/vss_net_api.h`를, Network 소스는 `network/app/net_if_*.h`를 쓰고 둘은 링크에서 만난다. 두 헤더는 같은 타입을 정의하므로 한 번역 단위에 함께 넣지 않는다. VSS 헤더를 Network 헤더로 바꾸는 방식은 쓰지 않는다(VSS `check_layers.py`가 net_if의 외부 include를 막는다). 근거: host 시험 `vss_integ.vi0_api_layout`이 두 헤더의 struct 크기, 모든 필드의 offset·크기, 경계를 넘는 코드 값(`NET_SUBMIT_*`, 품질·사유·가용성, VSS 상태·이벤트·fault, `NET_AGE_SATURATED_MS`)이 같음을 확인하고, `vss_integ`의 나머지 케이스가 실제 VSS 소스와 링크해 동작을 확인한다.
 
-**Network 쪽 보드 파일:** 노드 설정 hook `VssBoard_NetNodeConfig`(`board/s32k344_vss/net_vss_board.c`)는 Network 타입 `NetNodeConfig`를 쓰므로 VSS 저장소가 아니라 Network 쪽에 둔다. `network/net_node.h`만 include한다. BOOT_ID 출처(NVM, noinit 카운터)는 아직 정하지 않아 시험대 상수다(HOLD, 계약 C4).
+**Network 쪽 보드 파일:** 노드 설정 hook `VssBoard_NetNodeConfig`(`nodes/vss/board/s32k344_vss/net_vss_board.c`)는 Network 타입 `NetNodeConfig`를 쓰므로 VSS 저장소가 아니라 Network 쪽에 둔다. `network/net_node.h`만 include한다. BOOT_ID 출처(NVM, noinit 카운터)는 아직 정하지 않아 시험대 상수다(HOLD, 계약 C4).
 
 **µs hook:** `NET_BOARD_US_HOOK`은 넣지 않는다. VSS에는 µs 자유 카운터가 없고, DWT 사이클 카운터를 160으로 나눈 값은 약 26.8초마다 끊긴다. `main_max_us`는 0으로 남고, 슈퍼루프 시간은 VSS `loopMaxTicks`로 본다.
 
@@ -171,11 +173,11 @@ int main(void)
 
 - 제품 C 소스 목록의 정본은 `tools/s32ds_sources.txt`다. host 빌드(`NETWORK_BUILD_RTD_MOCK`)도 같은 목록을 읽어 링크까지 확인한다.
 - 목록의 줄에는 노드 태그(`@VSS`, `@CIS`, `@BCM`, `@DOMAIN`)가 붙을 수 있다. 태그 없는 `.c`는 모든 노드 공통, 태그 붙은 `.c`와 헤더는 그 노드 전용이다. host RTD mock 빌드와 노드별 사본(`sync_to_s32ds.py --node`, 예: `DOMAIN_NODE_INTEGRATION.md`)은 공통 `.c`와 자기 노드 `.c`만 쓴다. 아래 `--project` 복사 집합은 태그와 상관없이 같고, DOMAIN 전용 C2 어댑터 `.c`만 빠진다.
-- 보드 프로젝트에는 `tools/sync_to_s32ds.py`로 넣는다(목록의 소스, `include/network/**`, 소스 폴더의 헤더 → `src/network/`). 보드 빌드에 쓰지 않는 헤더(`net_host_mock.h`, `net_virtual.h`, DOMAIN 앱 헤더가 있어야 컴파일되는 `net_domain_c2.h`)는 넣지 않는다. 보드 폴더는 `--board`로 고른다: `bench`(S32K344 벤치 → `src/net_bench/`), `bench144`(S32K144 BCM 벤치 → `src/net_bench/`), `cis144`(S32K144 CIS 벤치 → `src/net_bench/`), `vss`(VSS 프로젝트 → `src/net_board/`), `none`.
+- 보드 프로젝트에는 `tools/sync_to_s32ds.py`로 넣는다(목록의 소스, `include/network/**`와 `nodes/<node>/include/network/**`, 소스 폴더의 헤더 → `src/network/`의 논리 경로). 보드 빌드에 쓰지 않는 헤더(`net_host_mock.h`, `net_virtual.h`, DOMAIN 앱 헤더가 있어야 컴파일되는 `net_domain_c2.h`)는 넣지 않는다. 보드 폴더는 `--board`로 고른다: `bench`(S32K344 벤치 → `src/net_bench/`), `bench144`(S32K144 BCM 벤치 → `src/net_bench/`), `cis144`(S32K144 CIS 벤치 → `src/net_bench/`), `vss`(VSS 프로젝트 → `src/net_board/`), `none`.
 - RTD backend는 세 파일이다. `src/platform/rtd/net_hal_rtd.c`(시간원, ISR 시각 변환, 임계구역, 시작 순서, backend ops 등록, 링 비우기 진입), `src/platform/rtd/net_hal_rtd_can.c`(FlexCAN RX/TX/error ISR → ISR 링, 링 → 어댑터, TX MB, abort), `src/platform/rtd/net_hal_rtd_uart.c`(LPUART: 1바이트 연속 수신 → 링크별 바이트 링, 링 → 어댑터, 링크당 송신 1건, 송신 시간 초과 abort). 서로 비공개 헤더 `net_hal_rtd_internal.h`로만 연결된다.
 - `net_hal_rtd_uart.c`는 프로필에 UART 링크가 있을 때만 내용이 컴파일된다(UART-M: HOST·DOMAIN, UART-C: HOST·CIS). VSS 프로필에서는 빈 파일이므로 목록에 그대로 두어도 LPUART 심볼을 참조하지 않는다.
 - 공개 진입은 `src/node/net_entry.c`다. 보드 hook을 쓰므로 `net_board_cfg.h`와 같은 define으로 컴파일한다.
-- 조립 루트는 공통 부분 `src/node/net_node.c`와 노드 프로필 표 `src/node/net_node_profile_<node>.c`(VSS, CIS, BCM)로 나뉜다. App facade(`net_app_port_<node>.c`)와 프로필 표는 빌드의 `NETWORK_UPPER_NODE_PROFILE`이 자기 노드일 때만 내용이 컴파일되므로, 목록 전체를 그대로 넣어도 다른 노드의 심볼(`CisApp_*` 등)을 참조하지 않는다.
+- 조립 루트는 공통 부분 `src/node/net_node.c`와 노드 프로필 표 `nodes/<node>/src/node/net_node_profile_<node>.c`(VSS, CIS, BCM)로 나뉜다. App facade(`net_app_port_<node>.c`)와 프로필 표는 빌드의 `NETWORK_UPPER_NODE_PROFILE`이 자기 노드일 때만 내용이 컴파일되므로, 목록 전체를 그대로 넣어도 다른 노드의 심볼(`CisApp_*` 등)을 참조하지 않는다.
 - RTD 헤더를 include하는 Network 파일은 `src/platform/rtd/` 안에만 있다.
 
 ## 보드 설정 요구 (`src/platform/rtd/net_board_cfg.h`)
@@ -250,7 +252,7 @@ int main(void)
 
 - 문서 통신량 부하(host): `vss_node.load_doc_traffic`(`_hook`은 보드 시계 hook 빌드). 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. VSS가 받는 것은 다른 노드 몫 10개)을 넣고, 앱 역할로 VSS_STATUS를 250 ms마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 20 ms 주기다. 손실 0(링·큐·M04 슬롯, DOMAIN_PERMISSION·VSS_WARNING_STATE 전부 전달), VSS_STATUS 간격 ≤ 250 ms + 20 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD VSS ...` 한 줄로 남긴다.
 
-## VSS 통합 하네스 (host, `tests/vss_integ`)
+## VSS 통합 하네스 (host, `nodes/vss/tests/vss_integ`)
 
 실제 VSS 소스(`VssMain_Boot`·`VssMain_LoopOnce`, VSS HAL 대역 `tests/host/hal_mock.c`)를 이 Network 노드(VSS 프로필, mock RTD, 방식 A 시계)와 링크해 위 "VSS 연동 확인 시험"과 VSS 계약(C1~C12)을 host에서 돌린다. VSS 파일은 읽기만 하고 리포에 복사하지 않는다.
 

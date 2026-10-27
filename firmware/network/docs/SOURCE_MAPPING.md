@@ -14,17 +14,18 @@
 | L05 / M08 | `net_upper_port.c`, `net_hal_adapter.c`, `src/platform/*/net_*_upper_port.c`, `src/platform/rtd/net_hal_rtd*.c`, `src/platform/host_virtual/net_virtual.c`, `src/platform/net_boot_id.c` | F22-F23: 시계·백엔드 주입, capture, 손실·reset epoch, 직렬 수명 주기, RTD 백엔드(FlexCAN·LPUART·시간원, ISR 링), 실행 가능한 가상 버스 백엔드. `net_boot_id.c`는 BOOT_ID 계산(`net_boot_id_next`)이다 |
 | L05 / M09 | `net_upper_observation.c`, `net_upper_diagnostics.c` | F24-F25: 포화하는 raw 카운터, snapshot, 링크·큐 관측. 실제 C2 raw Health getter는 위임하고 Owner 심각도를 지어내지 않는다 |
 
-앞 다섯 줄의 소스 파일은 그 Module 폴더 안에 있다. 공용 wire LE helper와 바뀌지 않는 registry는 `src/l04_frame_codec/`에 남는다. `include/network/`에는 이식형 타입과 Network 헤더가 있다(M02 내부 경계 헤더 `net_upper_query.h`도 여기 있다). 노드 앱 쪽 선언은 `include/network/app/net_if_<node>.h`(VSS·CIS·BCM)에 있다. VSS 앱은 같은 선언의 자기 사본 `vss_net_api.h`를 쓰고 Network와 링크에서 만난다. 원래 Owner 공개 헤더는 명시적인 CMake include 경로로 읽기 전용으로 받는다.
+앞 다섯 줄의 소스 파일은 그 Module 폴더 안에 있다. 한 노드만 쓰는 M03 파일(App Port facade `net_app_port_<node>.c`, DOMAIN C2 어댑터 `net_domain_*.c`)은 `nodes/<node>/` 아래 같은 Module 폴더에 있다. 공용 wire LE helper와 바뀌지 않는 registry는 `src/l04_frame_codec/`에 남는다. `include/network/`에는 이식형 타입과 Network 헤더가 있다(M02 내부 경계 헤더 `net_upper_query.h`도 여기 있다). 노드 앱 쪽 선언은 `nodes/<node>/include/network/app/net_if_<node>.h`(VSS·CIS·BCM)에 있다. VSS 앱은 같은 선언의 자기 사본 `vss_net_api.h`를 쓰고 Network와 링크에서 만난다. 원래 Owner 공개 헤더는 명시적인 CMake include 경로로 읽기 전용으로 받는다.
 
 `network_common` 라이브러리에는 남겨 둔 골격 `net_runtime`, `net_buffer`, `net_handoff`, `net_can_codec`, `net_uart_stream`, `net_port`, `net_observation`과 그 원래 raw fixture가 있다. 제품이 쓰는 `net_source.c`(M01)와 BOOT_ID 계산 `net_boot_id.c`도 이 라이브러리로 빌드되고, `network_product`가 이 라이브러리를 링크한다. 골격의 Host 시험은 회귀 증거로 남는다. 이 예전 합성 fixture API는 제품 wire도, 실제 차량 Owner API도 아니다.
 
 Layer 밖에는 다음이 있다.
 
-- `src/node/`: 노드 조립 루트. 공개 진입 `net_entry.c`(`Net_Init`, `Net_MainFunction`, `Net_TxFlush`, `Net_GetBootId`), VSS·CIS·BCM 공통 `net_node.c`와 노드 프로필 표 `net_node_profile_<node>.c`, DOMAIN 조립 루트 `net_node_domain.c`.
-- `board/`: 실제 보드 프로젝트에 넣는 보드 hook(`s32k344_vss/`, `s32k344_domain/`). `bench/s32k344/`는 시험대 코드이고 제품 코드가 아니다.
+- `src/node/`: 노드 공통 진입. 공개 진입 `net_entry.c`(`Net_Init`, `Net_MainFunction`, `Net_TxFlush`, `Net_GetBootId`), VSS·CIS·BCM 공통 `net_node.c`. 노드 프로필 표 `net_node_profile_<node>.c`와 DOMAIN 조립 루트 `net_node_domain.c`는 `nodes/<node>/src/node/`에 있다.
+- `nodes/<node>/`: 한 노드만 쓰는 파일. 안은 공통 트리와 같은 모양이다(위 M03 파일, 노드 프로필 표·조립 루트, 공개 헤더). 실제 보드 프로젝트에 넣는 보드 hook(`nodes/vss/board/s32k344_vss/`, `nodes/domain/board/s32k344_domain/`), 시험대 코드(`nodes/<node>/bench/`, 제품 코드 아님), 노드 시험, 노드 연동 문서도 여기 있다. 보드 프로젝트 사본과 노드 사본에는 `nodes/<node>/`를 뺀 같은 경로로 들어간다.
+- `docs/`: 이 대응표, 보드 시험 결과, 과거 기록.
 - `sdk_mock/rtd/`: Host에서 RTD 백엔드를 돌리는 mock SDK다. NXP 파일이 아니다.
 
-파일 단위 표 `IMPLEMENTATION_MATRIX.csv`는 예전 표다. Layer 폴더와 `src/platform/`의 host_mock·host_virtual·s32k144·s32k344 파일만 담았고, `src/node/`, `src/platform/rtd/`, `net_boot_id.c`, `board/`, 그 뒤에 생긴 App Port 파일과 `net_upper_publish.c`는 없다. 지금 파일 구성은 이 문서를 본다.
+파일 단위 표 `IMPLEMENTATION_MATRIX.csv`는 예전 표다. Layer 폴더와 `src/platform/`의 host_mock·host_virtual·s32k144·s32k344 파일만 담았고(경로는 `nodes/`로 나누기 전이다), `src/node/`, `src/platform/rtd/`, `net_boot_id.c`, 보드 hook, 그 뒤에 생긴 App Port 파일과 `net_upper_publish.c`는 없다. 지금 파일 구성은 이 문서를 본다.
 
 ## 실행 증거와 상세 설계 추적
 

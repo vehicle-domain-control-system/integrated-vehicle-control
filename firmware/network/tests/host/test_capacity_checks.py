@@ -11,7 +11,7 @@ of the node build:
          the default and -DNET_UPPER_POLL_BUDGET=<RX> compile.
   tx     NET_UPPER_TX_CAPACITY >= entries of the node publish table
          CIS and BCM with -DNET_UPPER_TX_CAPACITY=<entries - 1> do not compile
-         (src/node/net_node_profile_<node>.c); the default and
+         (nodes/<node>/src/node/net_node_profile_<node>.c); the default and
          -DNET_UPPER_TX_CAPACITY=<entries> compile, the VSS default too.
   publish NET_UPPER_PUBLISH_CAPACITY >= entries of the node publish table
          (one publisher slot per entry): CIS and BCM with
@@ -42,7 +42,9 @@ import tempfile
 NETWORK = pathlib.Path(__file__).resolve().parents[2]
 INCLUDES = ('include', 'src/l04_frame_codec', 'src/l02_typed_handoff/m03_typed_handoff',
             'src/l05_transport_port/m07_buffer_outcome', 'src/l05_transport_port/m09_observation',
-            'src/l03_message_service/m04_message_service', 'src/platform/rtd')
+            'src/l03_message_service/m04_message_service', 'src/platform/rtd',
+            # this tree: node roots next to src/node/net_node_profile.h, node headers
+            'src/node', 'nodes/vss/include', 'nodes/cis/include', 'nodes/bcm/include')
 MOCK_INCLUDE = 'sdk_mock/rtd/include'
 FLAGS = ['-std=c99', '-Wall', '-Wextra', '-Wpedantic', '-Werror']
 # node profile -> MCU of its node build (NETWORK_NODE_PLATFORM)
@@ -150,9 +152,14 @@ def profile_ids():
     return {m.group(1): int(m.group(2)) for m in re.finditer(r'^#define NET_UPPER_PROFILE_(\w+) (\d+)\s*$', text, re.M)}
 
 
+def profile_file(node):
+    """Node profile file of a node, relative to firmware/network."""
+    return 'nodes/%s/src/node/net_node_profile_%s.c' % (node.lower(), node.lower())
+
+
 def publish_table(node):
     """{(link, id)} of the publish table of the node profile file."""
-    text = (NETWORK / 'src' / 'node' / ('net_node_profile_%s.c' % node.lower())).read_text(encoding='utf-8')
+    text = (NETWORK / profile_file(node)).read_text(encoding='utf-8')
     m = re.search(r'publish_table\[\]\s*=\s*\{(.*?)\n\};', text, re.S)
     if not m:
         return None
@@ -183,7 +190,7 @@ def main():
             c.accepted('poll', node, SERVICE)
             c.accepted('poll', node, SERVICE, 'NET_UPPER_POLL_BUDGET=%du' % rx)
             c.refused('poll', node, SERVICE, 'NET_UPPER_POLL_BUDGET=%du' % (rx + 1))
-            profile = 'src/node/net_node_profile_%s.c' % node.lower()
+            profile = profile_file(node)
             c.accepted('tx', node, profile)
             if node in ('CIS', 'BCM'):
                 c.accepted('tx', node, profile, 'NET_UPPER_TX_CAPACITY=%du' % entries)

@@ -15,7 +15,7 @@ DOMAIN profile is excluded and reported; the DOMAIN side of the bus is then
 the HOST peer (product service, node DOMAIN, test owner, no C2 adapter).
 
 DOMAIN node (--domain-owner-src <DOMAIN src folder>, with --domain-c2-include):
-the DOMAIN node composition root (src/node/net_node_domain.c), the DOMAIN board
+the DOMAIN node composition root (nodes/domain/src/node/net_node_domain.c), the DOMAIN board
 file and the actual DOMAIN runtime, compiled by path from the read-only DOMAIN
 sources, run as one more worker on the Host virtual backend (its own tree,
 SDK-checked as well). A second node run then has this worker as the DOMAIN

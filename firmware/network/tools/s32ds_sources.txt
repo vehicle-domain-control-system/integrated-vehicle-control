@@ -5,11 +5,19 @@
 # - A .c line without a tag belongs to every node. A tagged .c line belongs
 #   only to the nodes it names.
 # - A .h line must carry tags: that header belongs only to the named nodes.
-#   Every header that is not listed is common: include/network/** (except the
+#   A header that is not listed is common: include/network/** (except the
 #   host headers net_host_mock.h and net_virtual.h) and the *.h files of the
-#   folders of the selected .c files.
+#   folders of the selected .c files. An unlisted header in nodes/<node>/
+#   belongs to that node in a node bundle (a board project copy takes the
+#   headers of every node except net_domain_c2.h).
+# - A file of one node lives in nodes/<node>/ (vss, cis, bcm, domain) at its
+#   logical path, the path without nodes/<node>/ that it has in a board
+#   project copy and in a node bundle. Its line carries exactly that node's
+#   tag. Files of no node or of several nodes live outside nodes/.
 # - An unknown or repeated tag, a header line without a tag, a path listed
-#   twice or one of the characters semicolon and square brackets is an error
+#   twice, a tag that does not match the nodes/<node>/ folder (or one tag on
+#   a file outside its node folder), two lines with the same logical path or
+#   one of the characters semicolon and square brackets is an error
 #   for every reader (tools/source_list.py and tools/s32ds_sources.cmake
 #   implement the same rules). A listed file that does not exist: CMake stops
 #   (FATAL_ERROR), sync_to_s32ds.py refuses (exit 1), sdk_swap_check.py fails
@@ -79,28 +87,28 @@ src/l05_transport_port/m08_device_port/net_hal_adapter.c
 # L02/M03 application port: common helpers + node facades
 # (a facade also compiles to nothing unless it is the build's node profile)
 src/l02_typed_handoff/m03_typed_handoff/net_app_port_common.c
-src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c          @VSS
-src/l02_typed_handoff/m03_typed_handoff/net_app_port_cis.c          @CIS
-src/l02_typed_handoff/m03_typed_handoff/net_app_port_bcm.c          @BCM
-include/network/app/net_if_vss.h                                    @VSS
-include/network/net_app_port_vss.h                                  @VSS
-include/network/app/net_if_cis.h                                    @CIS
-include/network/app/net_if_pi_data.h                                @CIS
-include/network/net_app_port_cis.h                                  @CIS
-include/network/app/net_if_bcm.h                                    @BCM
-include/network/net_app_port_bcm.h                                  @BCM
+nodes/vss/src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c            @VSS
+nodes/cis/src/l02_typed_handoff/m03_typed_handoff/net_app_port_cis.c            @CIS
+nodes/bcm/src/l02_typed_handoff/m03_typed_handoff/net_app_port_bcm.c            @BCM
+nodes/vss/include/network/app/net_if_vss.h                                      @VSS
+nodes/vss/include/network/net_app_port_vss.h                                    @VSS
+nodes/cis/include/network/app/net_if_cis.h                                      @CIS
+nodes/cis/include/network/app/net_if_pi_data.h                                  @CIS
+nodes/cis/include/network/net_app_port_cis.h                                    @CIS
+nodes/bcm/include/network/app/net_if_bcm.h                                      @BCM
+nodes/bcm/include/network/net_app_port_bcm.h                                    @BCM
 
 # L02/M03 DOMAIN C2 adapter (needs the DOMAIN C2 headers,
 # Domain_Interface_v0.5_C2_target.h and Vehicle_Types_v0.2.h)
-src/l02_typed_handoff/m03_typed_handoff/net_domain_c2.c             @DOMAIN
-src/l02_typed_handoff/m03_typed_handoff/net_domain_rx.c             @DOMAIN
-src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c             @DOMAIN
-src/l02_typed_handoff/m03_typed_handoff/net_domain_uart.c           @DOMAIN
-src/l02_typed_handoff/m03_typed_handoff/net_domain_query.c          @DOMAIN
-src/l02_typed_handoff/m03_typed_handoff/net_domain_owner_binding.c  @DOMAIN
-include/network/net_domain_c2.h                                     @DOMAIN
-src/l02_typed_handoff/m03_typed_handoff/net_domain_private.h        @DOMAIN
-src/l02_typed_handoff/m03_typed_handoff/net_domain_enum_internal.h  @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_c2.c            @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_rx.c            @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c            @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_uart.c          @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_query.c         @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_owner_binding.c @DOMAIN
+nodes/domain/include/network/net_domain_c2.h                                    @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_private.h       @DOMAIN
+nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_enum_internal.h @DOMAIN
 
 # L05/M08 RTD backend: common part + FlexCAN part + LPUART part
 # (net_hal_rtd_uart.c compiles to nothing unless the node profile has a UART
@@ -112,16 +120,16 @@ src/platform/rtd/net_hal_rtd_uart.c
 # Node composition root (common part + node profile tables for VSS, CIS and
 # BCM, the DOMAIN root of its own with the C2 adapter as Owner) + public
 # entry (Net_Init / Net_MainFunction / Net_TxFlush).
-src/node/net_node.c                                                 @VSS @CIS @BCM
-src/node/net_node_profile_vss.c                                     @VSS
-src/node/net_node_profile_cis.c                                     @CIS
-src/node/net_node_profile_bcm.c                                     @BCM
-src/node/net_node_domain.c                                          @DOMAIN
-src/node/net_entry.c                                                @VSS @CIS @BCM @DOMAIN
-include/network/app/net_if_entry.h                                  @VSS @CIS @BCM @DOMAIN
-include/network/net_node.h                                          @VSS @CIS @BCM @DOMAIN
+src/node/net_node.c                                                             @VSS @CIS @BCM
+nodes/vss/src/node/net_node_profile_vss.c                                       @VSS
+nodes/cis/src/node/net_node_profile_cis.c                                       @CIS
+nodes/bcm/src/node/net_node_profile_bcm.c                                       @BCM
+nodes/domain/src/node/net_node_domain.c                                         @DOMAIN
+src/node/net_entry.c                                                            @VSS @CIS @BCM @DOMAIN
+include/network/app/net_if_entry.h                                              @VSS @CIS @BCM @DOMAIN
+include/network/net_node.h                                                      @VSS @CIS @BCM @DOMAIN
 
 # DOMAIN board project files (node configuration, C2 binding and time hooks,
 # public DOMAIN C2 header only)
-board/s32k344_domain/net_domain_board.c                             @DOMAIN
-board/s32k344_domain/net_domain_board.h                             @DOMAIN
+nodes/domain/board/s32k344_domain/net_domain_board.c                            @DOMAIN
+nodes/domain/board/s32k344_domain/net_domain_board.h                            @DOMAIN

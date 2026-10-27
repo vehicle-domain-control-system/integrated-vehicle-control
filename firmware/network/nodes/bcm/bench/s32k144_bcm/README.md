@@ -21,7 +21,7 @@ Network 제품 코드가 아니라 S32K144 보드 시험대 코드다. 144 디�
 - `Board_TickMs32()`는 ISR에서 읽기만 하는 tick이고, `Board_TickToMs32()`는 항등 변환이다. `Board_NowMs32()`는 main 루프가 `Net_MainFunction`에 넘기는 값이다.
 - `Board_Us32()`는 2^32에서 순환하는 µs 카운터다(`NET_BOARD_US_HOOK`, `NetNodeDiag.main_max_us`).
   - 계산은 ms × 1000 + 현재 ms 안의 경과 사이클 / 48이고, ms 카운터가 2^32에서 돌아도 끊기지 않는다.
-  - 경합 처리는 344 시험대(`bench/s32k344/README.md`)와 같다: SysTick pending 비트(ICSR.PENDSTSET)가 켜져 있고 현재 값이 reload의 위쪽 절반이면 1 ms를 더한다.
+  - 경합 처리는 344 시험대(`nodes/vss/bench/s32k344/README.md`)와 같다: SysTick pending 비트(ICSR.PENDSTSET)가 켜져 있고 현재 값이 reload의 위쪽 절반이면 1 ms를 더한다.
   - 인터럽트를 1 ms 넘게 막으면 놓친 reload를 알 수 없다.
 - `Board_NetNodeConfig()`: `boot_id` = 0x42434D31("BCM1", 시험대 상수), `local_epoch` = 1, CAN epoch = 1.
   - **보드 출처 HOLD.** 리셋하면 같은 BOOT로 TX가 1부터 다시 시작한다(BOOT 수용 규칙의 전제 위반, 시험대 한정).

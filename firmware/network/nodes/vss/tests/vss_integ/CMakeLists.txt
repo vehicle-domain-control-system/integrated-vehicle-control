@@ -36,7 +36,7 @@ if(_vss_git)
     endif()
 endif()
 
-get_filename_component(_net_root "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+get_filename_component(_net_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
 
 # ---- VSS library: as tools/host_test.py of the VSS firmware builds it ------
 # src/**/*.c without the vendor-driver adapters (hal/s32k344), plus the HAL

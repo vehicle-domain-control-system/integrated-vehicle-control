@@ -2,9 +2,9 @@
 #define __USE_MINGW_ANSI_STDIO 1
 #endif
 /* HAL-less DOMAIN node worker: the DOMAIN node composition root
- * (src/node/net_node_domain.c: NetNode_Init / NetNode_Step, its M04 publish
+ * (nodes/domain/src/node/net_node_domain.c: NetNode_Init / NetNode_Step, its M04 publish
  * table, receive policies and C2 adapter settings), the DOMAIN board file
- * (board/s32k344_domain/net_domain_board.c) and the actual DOMAIN runtime
+ * (nodes/domain/board/s32k344_domain/net_domain_board.c) and the actual DOMAIN runtime
  * (pinned DOMAIN sources, compiled by path) run on the Host virtual backend.
  * Only the RTD backend functions the root calls (net_hal_rtd.h) are replaced
  * below: the virtual backend is the HAL and captures frames and bytes
@@ -13,7 +13,7 @@
  * TEST ONLY parts:
  *   - the C2 hook: the board settings plus observation wrappers around five
  *     DOMAIN Rx functions and a test Power permission bundle;
- *   - the CIS transition binding (tests/product/domain_transition_binding.c),
+ *   - the CIS transition binding (nodes/domain/tests/product/domain_transition_binding.c),
  *     handed to the board file before NetNode_Init as the DOMAIN integration
  *     would do;
  *   - the driver commands: the DOMAIN application does not call its TxPort

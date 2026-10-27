@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 project(network_scaffold LANGUAGES C)
 
+# Public headers: include/network (common) and nodes/<node>/include/network
+# (headers of one node). Every build sees all of them, as one include/network
+# folder of a board project copy does (tools/sync_to_s32ds.py).
+set(NETWORK_PUBLIC_INCLUDES include nodes/vss/include nodes/cis/include nodes/bcm/include nodes/domain/include)
+
 set(NETWORK_TARGET "host" CACHE STRING "Portable platform selection; SDK binding is external")
 set_property(CACHE NETWORK_TARGET PROPERTY STRINGS host s32k144 s32k344)
 if(NOT NETWORK_TARGET MATCHES "^(host|s32k144|s32k344)$")
@@ -42,7 +47,7 @@ if(NETWORK_BUILD_WIRE_CANDIDATE)
         src/l04_frame_codec/m06_uart_codec/net_wire_uart_m_projection.c
         src/l04_frame_codec/m06_uart_codec/net_wire_uart_c_status.c
         src/l04_frame_codec/m06_uart_codec/net_wire_stream.c)
-    target_include_directories(network_wire_candidate PUBLIC include PRIVATE src/l04_frame_codec)
+    target_include_directories(network_wire_candidate PUBLIC ${NETWORK_PUBLIC_INCLUDES} PRIVATE src/l04_frame_codec)
     # Warning function is defined below, so options are applied after declarations.
 endif()
 
@@ -57,13 +62,13 @@ add_library(network_common STATIC
     src/l05_transport_port/m09_observation/net_observation.c)
 # Portable BOOT_ID computation of the board layer (no state, no SDK).
 target_sources(network_common PRIVATE src/platform/net_boot_id.c)
-target_include_directories(network_common PUBLIC include PRIVATE
+target_include_directories(network_common PUBLIC ${NETWORK_PUBLIC_INCLUDES} PRIVATE
     src/l02_typed_handoff/m03_typed_handoff
     src/l05_transport_port/m07_buffer_outcome
     src/l05_transport_port/m09_observation)
 if(NETWORK_TARGET STREQUAL "host")
 add_library(network_host_mock STATIC src/platform/host_mock/net_host_mock.c)
-target_include_directories(network_host_mock PUBLIC include)
+target_include_directories(network_host_mock PUBLIC ${NETWORK_PUBLIC_INCLUDES})
 target_link_libraries(network_host_mock PUBLIC network_common)
 endif()
 
@@ -331,7 +336,7 @@ if(NETWORK_BUILD_UPPER_STACK)
         src/l05_transport_port/m09_observation/net_upper_observation.c
         src/l05_transport_port/m09_observation/net_upper_diagnostics.c)
     target_compile_definitions(network_product PUBLIC NETWORK_UPPER_NODE_PROFILE=${_network_profile_id})
-    target_include_directories(network_product PUBLIC include PRIVATE
+    target_include_directories(network_product PUBLIC ${NETWORK_PUBLIC_INCLUDES} PRIVATE
         src/l03_message_service/m04_message_service)
     target_link_libraries(network_product PUBLIC network_wire_candidate network_common)
     network_warnings(network_product)
@@ -472,30 +477,30 @@ if(NETWORK_BUILD_DOMAIN_C2)
         message(FATAL_ERROR "C2 Adapter requires upper stack and explicit actual NETWORK_DOMAIN_C2_INCLUDE_DIR")
     endif()
     add_library(network_domain_c2 STATIC
-        src/l02_typed_handoff/m03_typed_handoff/net_domain_c2.c
-        src/l02_typed_handoff/m03_typed_handoff/net_domain_rx.c
-        src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c
-        src/l02_typed_handoff/m03_typed_handoff/net_domain_uart.c
-        src/l02_typed_handoff/m03_typed_handoff/net_domain_query.c
-        src/l02_typed_handoff/m03_typed_handoff/net_domain_owner_binding.c)
+        nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_c2.c
+        nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_rx.c
+        nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c
+        nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_uart.c
+        nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_query.c
+        nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_owner_binding.c)
     target_include_directories(network_domain_c2 PUBLIC "${NETWORK_DOMAIN_C2_INCLUDE_DIR}")
     target_link_libraries(network_domain_c2 PUBLIC network_product)
     network_warnings(network_domain_c2)
     add_dependencies(portable_network network_domain_c2)
-    include(tests/product/domain_pinned_owner.cmake)
+    include(nodes/domain/tests/product/domain_pinned_owner.cmake)
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "HOST")
-        add_executable(test_domain_c2 tests/product/test_domain_c2.c)
+        add_executable(test_domain_c2 nodes/domain/tests/product/test_domain_c2.c)
         target_link_libraries(test_domain_c2 PRIVATE network_domain_c2)
         network_warnings(test_domain_c2)
         foreach(case IN ITEMS units observer_failure request_tags command_lifetime expiry context_cancel
                 failed_sink result_mapping query_binding missing_getters route_slots window_and_warning)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2 ${case})
         endforeach()
-        add_executable(test_domain_routes tests/product/test_domain_routes.c)
+        add_executable(test_domain_routes nodes/domain/tests/product/test_domain_routes.c)
         target_link_libraries(test_domain_routes PRIVATE network_domain_c2)
         network_warnings(test_domain_routes)
         add_test(NAME domain_c2_all_routes COMMAND test_domain_routes)
-        add_executable(test_domain_c2_ingress tests/product/test_domain_c2_ingress.c)
+        add_executable(test_domain_c2_ingress nodes/domain/tests/product/test_domain_c2_ingress.c)
         target_link_libraries(test_domain_c2_ingress PRIVATE network_domain_c2)
         network_warnings(test_domain_c2_ingress)
         foreach(case IN ITEMS ingress_sender_reboot ingress_blocked_survives_reboot ingress_uart_wrap
@@ -507,9 +512,9 @@ if(NETWORK_BUILD_DOMAIN_C2)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2_ingress ${case})
         endforeach()
         # DOMAIN_PERMISSION transmit: synthesized CAN UPDATE_SEQUENCE, UNKNOWN power 255.
-        add_executable(test_domain_c2_permission tests/product/test_domain_c2_permission.c)
+        add_executable(test_domain_c2_permission nodes/domain/tests/product/test_domain_c2_permission.c)
         target_link_libraries(test_domain_c2_permission PRIVATE network_domain_c2)
-        target_include_directories(test_domain_c2_permission PRIVATE src/l02_typed_handoff/m03_typed_handoff)
+        target_include_directories(test_domain_c2_permission PRIVATE nodes/domain/src/l02_typed_handoff/m03_typed_handoff)
         network_warnings(test_domain_c2_permission)
         foreach(case IN ITEMS perm_first perm_withdraw_immediate perm_repeat_kept perm_value_change_same_seq
                 perm_quality_restrict_same_seq perm_new_success perm_relax_guard perm_older_domain_seq
@@ -518,7 +523,7 @@ if(NETWORK_BUILD_DOMAIN_C2)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2_permission ${case})
         endforeach()
         # CIS environment / Occupant BOOT transitions: barriers, epochs, results.
-        add_executable(test_domain_c2_transition tests/product/test_domain_c2_transition.c)
+        add_executable(test_domain_c2_transition nodes/domain/tests/product/test_domain_c2_transition.c)
         target_link_libraries(test_domain_c2_transition PRIVATE network_domain_c2)
         network_warnings(test_domain_c2_transition)
         foreach(case IN ITEMS barrier_first_epoch barrier_reboot_epoch2 barrier_not_initialized_retry
@@ -602,17 +607,17 @@ if(NETWORK_BUILD_VIRTUAL_NODE)
     elseif(NETWORK_NODE_PROFILE MATCHES "^(VSS|CIS|BCM)$")
         add_executable(network_virtual_node_${NETWORK_NODE_PROFILE} tests/virtual_ecu/virtual_node.c
             src/l02_typed_handoff/m03_typed_handoff/net_app_port_common.c
-            src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
-            src/l02_typed_handoff/m03_typed_handoff/net_app_port_cis.c
-            src/l02_typed_handoff/m03_typed_handoff/net_app_port_bcm.c
-            src/node/net_node_profile_vss.c
-            src/node/net_node_profile_cis.c
-            src/node/net_node_profile_bcm.c)
+            nodes/vss/src/l02_typed_handoff/m03_typed_handoff/net_app_port_vss.c
+            nodes/cis/src/l02_typed_handoff/m03_typed_handoff/net_app_port_cis.c
+            nodes/bcm/src/l02_typed_handoff/m03_typed_handoff/net_app_port_bcm.c
+            nodes/vss/src/node/net_node_profile_vss.c
+            nodes/cis/src/node/net_node_profile_cis.c
+            nodes/bcm/src/node/net_node_profile_bcm.c)
         target_include_directories(network_virtual_node_${NETWORK_NODE_PROFILE} PRIVATE src/node)
         target_link_libraries(network_virtual_node_${NETWORK_NODE_PROFILE} PRIVATE network_host_virtual)
         network_warnings(network_virtual_node_${NETWORK_NODE_PROFILE})
     elseif(NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
-        # The DOMAIN node root (src/node/net_node_domain.c) and the DOMAIN board
+        # The DOMAIN node root (nodes/domain/src/node/net_node_domain.c) and the DOMAIN board
         # file with the actual DOMAIN runtime, compiled by path from the pinned
         # read-only DOMAIN sources (never copied). The worker replaces the RTD
         # backend calls of the root by the virtual backend; its board
@@ -625,9 +630,9 @@ if(NETWORK_BUILD_VIRTUAL_NODE)
         endif()
         set(_domain_owner "${NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR}")
         add_executable(network_virtual_node_DOMAIN tests/virtual_ecu/virtual_domain_node.c
-            src/node/net_node_domain.c
-            board/s32k344_domain/net_domain_board.c
-            tests/product/domain_transition_binding.c
+            nodes/domain/src/node/net_node_domain.c
+            nodes/domain/board/s32k344_domain/net_domain_board.c
+            nodes/domain/tests/product/domain_transition_binding.c
             "${_domain_owner}/interface/domain_interface_core.c"
             "${_domain_owner}/application/domain_runtime.c"
             "${_domain_owner}/application/vehicle_state_manager.c"
@@ -644,7 +649,7 @@ if(NETWORK_BUILD_VIRTUAL_NODE)
             "${_domain_owner}/application/domain_interface_cis_occupant_binding.c"
             "${_domain_owner}/application/domain_interface_cis_environment_binding.c")
         target_include_directories(network_virtual_node_DOMAIN PRIVATE src/node tests/virtual_ecu/domain_node
-            board/s32k344_domain tests/product "${_domain_owner}/application" "${_domain_owner}/interface")
+            nodes/domain/board/s32k344_domain nodes/domain/tests/product "${_domain_owner}/application" "${_domain_owner}/interface")
         target_compile_definitions(network_virtual_node_DOMAIN PRIVATE NETWORK_NODE_PLATFORM=344
             NET_BOARD_DOMAIN_C2_HOOK=VirtualDomain_C2Config)
         target_link_libraries(network_virtual_node_DOMAIN PRIVATE network_host_virtual network_domain_c2)
@@ -768,19 +773,23 @@ if(NETWORK_BUILD_RTD_MOCK)
         # Board-bound sources (RTD backend, public entry, the DOMAIN root with
         # its C2 hook) are compiled once per time-base variant, with that
         # variant's net_board_cfg.h hook definitions. Board project files
-        # (board/) are compiled on their own below.
+        # (nodes/<node>/board/) are compiled on their own below.
         if(_src MATCHES "^src/platform/rtd/" OR _src STREQUAL "src/node/net_entry.c"
-           OR _src STREQUAL "src/node/net_node_domain.c")
+           OR _src STREQUAL "nodes/domain/src/node/net_node_domain.c")
             list(APPEND _node_rtd_sources ${_src})
-        elseif(_src MATCHES "^board/")
+        elseif(_src MATCHES "^nodes/[a-z]+/board/")
             list(APPEND _node_board_sources ${_src})
         else()
             list(APPEND _node_core_sources ${_src})
         endif()
     endforeach()
-    # Board project include paths (same seven folders), plus the mock SDK.
+    # Board project include paths (same seven folders; include/network also
+    # holds the node headers there), plus the mock SDK. src/node: a board
+    # project copy puts the node roots of nodes/<node>/src/node next to
+    # net_node_profile.h; this tree needs the folder on the include path.
     set(_node_includes
-        include
+        ${NETWORK_PUBLIC_INCLUDES}
+        src/node
         src/l04_frame_codec
         src/l02_typed_handoff/m03_typed_handoff
         src/l05_transport_port/m07_buffer_outcome
@@ -823,7 +832,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         target_compile_definitions(network_node_rtd_mock_tick PRIVATE NET_BOARD_ISR_DRAIN_BUDGET=8)
         # VSS board project file (node configuration hook): compiled with the
         # project warnings, not linked (the board project links it).
-        add_library(network_vss_board_objs OBJECT board/s32k344_vss/net_vss_board.c)
+        add_library(network_vss_board_objs OBJECT nodes/vss/board/s32k344_vss/net_vss_board.c)
         target_include_directories(network_vss_board_objs PRIVATE ${_node_includes})
         target_compile_definitions(network_vss_board_objs PRIVATE NETWORK_UPPER_NODE_PROFILE=${_network_profile_id} ${_node_platform_define})
         network_warnings(network_vss_board_objs)
@@ -835,7 +844,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         foreach(_variant IN ITEMS rtd_mock rtd_mock_hook rtd_mock_tick)
             target_compile_definitions(network_node_${_variant} PRIVATE NET_BOARD_UART_CALLBACK=Uart344_BringupCallback)
         endforeach()
-        # DOMAIN board project files (board/s32k344_domain: node configuration,
+        # DOMAIN board project files (nodes/domain/board/s32k344_domain: node configuration,
         # C2 binding, time hooks): compiled with the project warnings; the
         # node tests link them for the board C2 hook and the time conversion.
         add_library(network_domain_board_objs OBJECT ${_node_board_sources})
@@ -920,7 +929,7 @@ if(NETWORK_BUILD_RTD_MOCK)
 
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "VSS")
         foreach(_variant IN ITEMS ostimer hook)
-            add_executable(test_vss_node_e2e_${_variant} tests/vss_node/test_vss_node_e2e.c)
+            add_executable(test_vss_node_e2e_${_variant} nodes/vss/tests/vss_node/test_vss_node_e2e.c)
             # Documented traffic of the load case (tests/node_load).
             target_sources(test_vss_node_e2e_${_variant} PRIVATE tests/node_load/net_load_traffic.c)
             target_include_directories(test_vss_node_e2e_${_variant} PRIVATE tests/node_load)
@@ -955,7 +964,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_test(NAME vss_node.load_doc_traffic_hook COMMAND test_vss_node_e2e_hook load_doc_traffic)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
-        add_executable(test_vss_entry tests/vss_node/test_vss_entry.c)
+        add_executable(test_vss_entry nodes/vss/tests/vss_node/test_vss_entry.c)
         target_link_libraries(test_vss_entry PRIVATE network_node_rtd_mock_tick)
         network_warnings(test_vss_entry)
         foreach(case IN ITEMS e1_init e2_clock_axis e2_future_tick_clamped e3_now_wrap
@@ -975,11 +984,11 @@ if(NETWORK_BUILD_RTD_MOCK)
     # adapter, a fake DOMAIN C2 boundary). One case per process: NetNode_Init /
     # Net_Init act once.
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "DOMAIN")
-        add_executable(test_domain_node tests/domain_node/test_domain_node.c
+        add_executable(test_domain_node nodes/domain/tests/domain_node/test_domain_node.c
             $<TARGET_OBJECTS:network_domain_board_objs>)
         # Documented traffic of the load case (tests/node_load).
         target_sources(test_domain_node PRIVATE tests/node_load/net_load_traffic.c)
-        target_include_directories(test_domain_node PRIVATE board/s32k344_domain)
+        target_include_directories(test_domain_node PRIVATE nodes/domain/board/s32k344_domain)
         target_include_directories(test_domain_node PRIVATE tests/node_load)
         target_link_libraries(test_domain_node PRIVATE network_node_rtd_mock_domain)
         network_warnings(test_domain_node)
@@ -1046,7 +1055,7 @@ if(NETWORK_BUILD_RTD_MOCK)
     # CIS node end-to-end (CAN + UART-C through the node root and the CIS
     # facade). One case per process: NetNode_Init / Net_Init act once.
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "CIS")
-        add_executable(test_cis_node_e2e tests/cis_node/test_cis_node_e2e.c)
+        add_executable(test_cis_node_e2e nodes/cis/tests/cis_node/test_cis_node_e2e.c)
         # Documented traffic of the load case (tests/node_load).
         target_sources(test_cis_node_e2e PRIVATE tests/node_load/net_load_traffic.c)
         target_include_directories(test_cis_node_e2e PRIVATE tests/node_load)
@@ -1074,7 +1083,7 @@ if(NETWORK_BUILD_RTD_MOCK)
                  COMMAND test_cis_node_e2e f27_occupant_relay_after_repetition)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
-        add_executable(test_cis_node_entry tests/cis_node/test_cis_node_e2e.c)
+        add_executable(test_cis_node_entry nodes/cis/tests/cis_node/test_cis_node_e2e.c)
         target_sources(test_cis_node_entry PRIVATE tests/node_load/net_load_traffic.c)
         target_include_directories(test_cis_node_entry PRIVATE tests/node_load)
         target_link_libraries(test_cis_node_entry PRIVATE network_node_rtd_mock_tick)
@@ -1093,7 +1102,7 @@ if(NETWORK_BUILD_RTD_MOCK)
     # BCM node end-to-end (CAN through the node root and the BCM facade).
     # One case per process: NetNode_Init / Net_Init act once.
     if(BUILD_TESTING AND NETWORK_NODE_PROFILE STREQUAL "BCM")
-        add_executable(test_bcm_node_e2e tests/bcm_node/test_bcm_node_e2e.c)
+        add_executable(test_bcm_node_e2e nodes/bcm/tests/bcm_node/test_bcm_node_e2e.c)
         # Documented traffic of the load case (tests/node_load).
         target_sources(test_bcm_node_e2e PRIVATE tests/node_load/net_load_traffic.c)
         target_include_directories(test_bcm_node_e2e PRIVATE tests/node_load)
@@ -1109,7 +1118,7 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_test(NAME bcm_node.load_doc_traffic COMMAND test_bcm_node_e2e load_doc_traffic)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
-        add_executable(test_bcm_node_entry tests/bcm_node/test_bcm_node_e2e.c)
+        add_executable(test_bcm_node_entry nodes/bcm/tests/bcm_node/test_bcm_node_e2e.c)
         target_sources(test_bcm_node_entry PRIVATE tests/node_load/net_load_traffic.c)
         target_include_directories(test_bcm_node_entry PRIVATE tests/node_load)
         target_link_libraries(test_bcm_node_entry PRIVATE network_node_rtd_mock_tick)
@@ -1125,7 +1134,7 @@ if(NETWORK_BUILD_RTD_MOCK)
     endif()
 endif()
 
-# Host integration harness with the real VSS firmware sources (tests/vss_integ):
+# Host integration harness with the real VSS firmware sources (nodes/vss/tests/vss_integ):
 # VSS boot sequence and super-loop + this Network node on the mock SDK. Off
 # unless the firmware/vss folder of a VSS worktree is given; its files are
 # only read.
@@ -1134,7 +1143,7 @@ if(NOT NETWORK_VSS_FW_DIR STREQUAL "")
     if(NOT NETWORK_NODE_PROFILE STREQUAL "VSS" OR NOT NETWORK_BUILD_RTD_MOCK)
         message(FATAL_ERROR "NETWORK_VSS_FW_DIR needs -DNETWORK_NODE_PROFILE=VSS -DNETWORK_BUILD_RTD_MOCK=ON")
     endif()
-    add_subdirectory(tests/vss_integ)
+    add_subdirectory(nodes/vss/tests/vss_integ)
 endif()
 
 # Host bench helper for board tests (tools/vss_bench). Off by default; it

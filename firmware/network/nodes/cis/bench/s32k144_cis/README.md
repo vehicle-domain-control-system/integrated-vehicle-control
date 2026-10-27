@@ -6,12 +6,12 @@ CIS 노드의 MCU는 S32K144다(`feat/cis-rtd-network`의 `firmware/CIS/board/RE
 
 | 파일 | 내용 |
 |---|---|
-| `net_board_time144.c/.h` | SysTick 1 kHz 시계(시간원 방식 A의 tick, 항등 변환), µs 카운터, `Net_Init` 노드 설정 hook. `bench/s32k144_bcm/`의 같은 이름 파일과 BOOT_ID 상수만 다르다 |
+| `net_board_time144.c/.h` | SysTick 1 kHz 시계(시간원 방식 A의 tick, 항등 변환), µs 카운터, `Net_Init` 노드 설정 hook. `nodes/bcm/bench/s32k144_bcm/`의 같은 이름 파일과 BOOT_ID 상수만 다르다 |
 | `cis_bench_app.c/.h` | CIS 앱 대역. 수신 콜백 수와 마지막 값, Pi 판정마다 CIS_OCCUPANT relay, 주기 제출 3종, DOMAIN_PERMISSION 감독 사유 추적, `NetNode_GetDiag` 주기 갱신. `NETWORK_UPPER_NODE_PROFILE`이 CIS(1)일 때만 내용이 컴파일된다 |
 
 ## 시계 (`net_board_time144.c`)
 
-- 내용은 BCM 시험대(`bench/s32k144_bcm/README.md` "시계")와 같다. 코어 클럭 FIRC 48 MHz 상수, SysTick 1 kHz, `Board_Us32()` 경합 처리도 같다.
+- 내용은 BCM 시험대(`nodes/bcm/bench/s32k144_bcm/README.md` "시계")와 같다. 코어 클럭 FIRC 48 MHz 상수, SysTick 1 kHz, `Board_Us32()` 경합 처리도 같다.
 - `Board_NetNodeConfig()`: `boot_id` = 0x43495331("CIS1", 시험대 상수), `local_epoch` = 1, CAN epoch = 1. UART-C port epoch는 Network가 hook에 넘기는 값 1을 그대로 둔다.
   - **보드 출처 HOLD.** 리셋하면 같은 BOOT로 CAN TX_SEQUENCE와 UART-C LINK_SEQUENCE가 1부터 다시 시작한다(BOOT 수용 규칙의 전제 위반, 시험대 한정).
   - Network의 수신 규칙을 쓰는 상대는 같은 BOOT 안에서 순번이 뒤로 간 프레임을 옛 프레임으로 버린다. 보드 시험의 상대(S32K344 디버그 노드, Pi 도구)는 Network 노드가 아니어서 버리지 않고 센다(디버그 노드 `rx watch`의 역행 수, Pi 도구의 +1이 아닌 단계 수). 그래서 보드 시험에서는 CIS만 리셋해도 된다. 상대의 수신 통계는 CIS를 리셋한 뒤에 지운다(디버그 노드 `rx clear`).

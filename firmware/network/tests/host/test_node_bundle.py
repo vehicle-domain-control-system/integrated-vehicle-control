@@ -13,7 +13,9 @@ dirty source states.
 
 The expected bundle contents are derived here from the bundle rules
 (DOMAIN_NODE_INTEGRATION.md, tools/s32ds_sources.txt header) and the minimum
-node tags below, not from the tool's own code.
+node tags below, not from the tool's own code. Paths in this test are logical
+paths (the paths of a bundle); the files of one node live in nodes/<node>/ at
+that path, and logical() / source_of() below map the two without the tool.
 """
 import argparse
 import hashlib
@@ -31,6 +33,7 @@ NETWORK = pathlib.Path(__file__).resolve().parents[2]
 FIXTURE = NETWORK / 'tests' / 'host' / 'fixtures' / 'board_copy_sets.json'
 PROBE = NETWORK / 'tests' / 'host' / 'node_bundle_list_probe.cmake'
 NODES = ('VSS', 'CIS', 'BCM', 'DOMAIN')
+NODE_DIRS = {n: 'nodes/%s/' % n.lower() for n in NODES}
 RECORD = 'NETWORK_BUNDLE.txt'
 M03 = 'src/l02_typed_handoff/m03_typed_handoff/'
 ADAPTERS = tuple(M03 + n for n in ('net_domain_c2.c', 'net_domain_rx.c', 'net_domain_tx.c', 'net_domain_uart.c',
@@ -65,11 +68,33 @@ MIN_TAGS.update({p: {'VSS', 'CIS', 'BCM'} for p in ROOT})
 MIN_TAGS.update({p: {'VSS', 'CIS', 'BCM', 'DOMAIN'} for p in ROOT if p in DOMAIN_ROOT})
 MIN_TAGS.update({p: {'DOMAIN'} for p in ('src/node/net_node_domain.c',) + DOMAIN_BOARD})
 COMMON_PROBE = 'src/l04_frame_codec/net_wire_common.c'
+# A file of one node, as listed (in its node folder).
+NODE_PORT = NODE_DIRS['VSS'] + M03 + 'net_app_port_vss.c'
 REGISTRY = 'src/l04_frame_codec/net_wire_registry.c'
 
 
 def fwd(p):
     return str(p).replace('\\', '/')
+
+
+def logical(path):
+    """Bundle path of a path relative to firmware/network: without nodes/<node>/."""
+    for folder in NODE_DIRS.values():
+        if path.startswith(folder):
+            return path[len(folder):]
+    return path
+
+
+def source_of(net, rel):
+    """The file of the tree net behind the logical path rel (firmware/network or one node folder)."""
+    hits = [p for p in [net / rel] + [net / d / rel for d in NODE_DIRS.values()] if p.is_file()]
+    if len(hits) != 1:
+        raise AssertionError('logical path %s: %d files in the tree' % (rel, len(hits)))
+    return hits[0]
+
+
+def integration(net, node):
+    return net / NODE_DIRS[node] / ('%s_NODE_INTEGRATION.md' % node)
 
 
 def lf_sha(path):
@@ -132,20 +157,25 @@ def profile_ids(net):
 
 
 def expected_bundle(net, node):
-    """Bundle paths of node by the rules: .c untagged or tagged with node; include/network/** without
-    the host headers and the *.h of the folders of those .c, minus headers tagged for other nodes only,
-    plus headers tagged with node; board/s32k344_<node>/ .c/.h; README.md."""
+    """Bundle paths of node by the rules (logical paths): .c untagged or tagged with node;
+    include/network/** without the host headers, nodes/<node>/include/network/** and the *.h of the
+    folders of those .c (in firmware/network and in this node's folder: a header in another node's
+    folder belongs to that node), minus headers tagged for other nodes only, plus headers tagged with
+    node; nodes/<node>/board/s32k344_<node>/ .c/.h; README.md."""
     lines = list_lines(net)
-    tagged_h = {p: t for p, t in lines if p.endswith('.h')}
-    cs = [p for p, t in lines if p.endswith('.c') and (not t or node in t)]
+    tagged_h = {logical(p): t for p, t in lines if p.endswith('.h')}
+    cs = [logical(p) for p, t in lines if p.endswith('.c') and (not t or node in t)]
+    home = net / NODE_DIRS[node]
     heads = {fwd(h.relative_to(net)) for h in (net / 'include' / 'network').rglob('*.h')}
+    heads |= {fwd(h.relative_to(home)) for h in (home / 'include' / 'network').rglob('*.h')}
     for folder in {c.rsplit('/', 1)[0] for c in cs}:
-        heads |= {fwd(h.relative_to(net)) for h in (net / folder).glob('*.h')}
+        for base in (net, home):
+            heads |= {fwd(h.relative_to(base)) for h in (base / folder).glob('*.h')}
     heads -= set(HOST_HEADERS)
     heads = {h for h in heads if h not in tagged_h or node in tagged_h[h]}
     heads |= {h for h, t in tagged_h.items() if node in t}
-    board = net / 'board' / ('s32k344_' + node.lower())
-    extra = {fwd(f.relative_to(net)) for f in board.rglob('*') if f.suffix in ('.c', '.h')} if board.is_dir() else set()
+    board = home / 'board' / ('s32k344_' + node.lower())
+    extra = {fwd(f.relative_to(home)) for f in board.rglob('*') if f.suffix in ('.c', '.h')} if board.is_dir() else set()
     return set(cs) | heads | extra | {'README.md'}
 
 
@@ -250,7 +280,7 @@ def case_tags(c):
     net = c.copy()
     sl = load_module(net / 'tools' / 'source_list.py', 'source_list_under_test')
     entries = sl.read()
-    tags = {e.path: set(e.tags) for e in entries}
+    tags = {logical(e.path): set(e.tags) for e in entries}
     for path, nodes in sorted(MIN_TAGS.items()):
         c.check(tags.get(path) == nodes, 'list: %s should be tagged %s, is %s'
                 % (path, ' '.join('@' + n for n in sorted(nodes)), tags.get(path)))
@@ -258,6 +288,9 @@ def case_tags(c):
         c.check((net / e.path).is_file(), 'list: %s missing' % e.path)
         if e.path.endswith('.h'):
             c.check(bool(e.tags), 'list: header %s without a node tag' % e.path)
+        homes = [n for n, d in NODE_DIRS.items() if e.path.startswith(d)]
+        c.check(set(e.tags) == set(homes) if homes else len(e.tags) != 1,
+                'list: %s with tags %s is not in its node folder' % (e.path, sorted(e.tags)))
     untagged = [e.path for e in entries if e.path.endswith('.c') and not e.tags]
     for node in NODES:
         want = [e.path for e in entries if e.path.endswith('.c') and (not e.tags or node in e.tags)]
@@ -297,14 +330,30 @@ def case_tags(c):
         'backslash path': replace_line(REGISTRY, REGISTRY.replace('/', '\\')),
         'absolute path': append_line('/src/l04_frame_codec/net_wire_common2.c'),
         'not a .c/.h file': append_line('src/l04_frame_codec/notes.txt @VSS'),
+        'one node tag outside its node folder': replace_line(REGISTRY, REGISTRY + '   @VSS'),
+        'other tag in a node folder': replace_line(NODE_PORT, NODE_PORT + '   @CIS'),
+        'unknown node folder': append_line('nodes/window/' + REGISTRY),
+        'same logical path': append_line(NODE_DIRS['VSS'] + REGISTRY + '   @VSS'),
         'semicolon': append_line('# a; b'),
         'square bracket': append_line('# see [x'),
     }
+    # The node folder rules are checked with files that exist, so that no reader stops at the
+    # missing file first; each reader must name the rule.
+    rule_text = {'one node tag outside its node folder': 'belongs to one node',
+                 'other tag in a node folder': 'must carry exactly the tag',
+                 'unknown node folder': 'not in a node folder',
+                 'same logical path': 'same logical path'}
+    probes = [net / 'nodes' / 'window' / REGISTRY, net / NODE_DIRS['VSS'] / REGISTRY]
+    for probe in probes:
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(str(net / REGISTRY), str(probe))
     for name, transform in bad.items():
         list_file.write_text(transform(original), encoding='utf-8', newline='\n')
         out = c.root / ('bad_' + re.sub(r'\W+', '_', name)) / 'network'
         rc, o = c.tool(net, '--node', 'VSS', '--out', out, '--apply', '--allow-dirty')
         c.check(rc == 2 and not out.exists(), '%s: --node --out exit %d (expected 2, nothing written)' % (name, rc), o)
+        if name in rule_text:
+            c.check(rule_text[name] in o, '%s: the tool does not name the rule (%r)' % (name, rule_text[name]), o)
         rc, o = c.tool(net, '--node', 'DOMAIN', '--check', out)
         c.check(rc == 2, '%s: --node --check exit %d (expected 2)' % (name, rc), o)
         rc, o = c.tool(net, '--project', fake, '--board', 'none')
@@ -315,6 +364,11 @@ def case_tags(c):
         rc, o = c.run([c.args.cmake, '-DNETWORK_LIST=' + fwd(list_file), '-DNETWORK_ROOT=' + fwd(net),
                        '-DNETWORK_NODE=VSS', '-P', PROBE])
         c.check(rc != 0 and 's32ds_sources.txt' in o, '%s: cmake reader exit %d (expected FATAL_ERROR)' % (name, rc), o)
+        if name in rule_text:
+            c.check(rule_text[name] in o, '%s: the cmake reader does not name the rule (%r)' % (name, rule_text[name]), o)
+    for probe in probes:
+        probe.unlink()
+    shutil.rmtree(str(net / 'nodes' / 'window'))
     # A listed file that does not exist: refused by the tools, FATAL_ERROR in CMake.
     list_file.write_text(append_line('src/l04_frame_codec/net_wire_missing.c')(original), encoding='utf-8',
                          newline='\n')
@@ -350,8 +404,8 @@ def bundle_basics(c, net, node, out):
     for h in HOST_HEADERS:
         c.check(h not in have, '%s: host header %s in the bundle' % (node, h))
     for rel in have - {'README.md'}:
-        c.check((out / rel).read_bytes() == (net / rel).read_bytes(), '%s: %s is not a byte copy' % (node, rel))
-    c.check((out / 'README.md').read_bytes() == (net / ('%s_NODE_INTEGRATION.md' % node)).read_bytes(),
+        c.check((out / rel).read_bytes() == source_of(net, rel).read_bytes(), '%s: %s is not a byte copy' % (node, rel))
+    c.check((out / 'README.md').read_bytes() == integration(net, node).read_bytes(),
             '%s: README.md is not %s_NODE_INTEGRATION.md' % (node, node))
     for rel in ('include/network/net_upper_profile.h', 'src/platform/rtd/net_board_cfg.h', COMMON_PROBE) + RTD:
         c.check(rel in have, '%s: common file %s missing' % (node, rel))
@@ -379,10 +433,18 @@ def case_domain_contents(c):
 
 def case_node_contents(c):
     net = c.copy()
+    # Headers in a node folder that the list does not name belong to that node only.
+    unlisted = (NODE_DIRS['CIS'] + M03 + 'net_cis_probe_private.h', NODE_DIRS['CIS'] + 'include/network/net_cis_probe.h')
+    for rel in unlisted:
+        (net / rel).parent.mkdir(parents=True, exist_ok=True)
+        (net / rel).write_text('/* bundle probe */\n', encoding='utf-8', newline='\n')
     for node in ('VSS', 'CIS', 'BCM'):
         out = c.root / node / 'network'
         c.make(node, net, out)
         have = bundle_basics(c, net, node, out)
+        for rel in unlisted:
+            c.check((logical(rel) in have) == (node == 'CIS'), '%s: unlisted CIS folder header %s %s'
+                    % (node, rel, 'missing' if node == 'CIS' else 'in the bundle'))
         for rel in ROOT + OWN[node]:
             c.check(rel in have, '%s: %s missing' % (node, rel))
         for rel in ADAPTERS + DOMAIN_HEADERS:
@@ -446,7 +508,7 @@ def case_record(c):
     c.check(set(paths) == set(files_of(one)) - {RECORD}, 'record: file lines differ from the folder')
     c.check('README.md' in paths and RECORD not in paths, 'record: README.md listed, NETWORK_BUNDLE.txt not')
     for p, digest in rows:
-        c.check(digest == lf_sha(one / p) == lf_sha(net / p if p != 'README.md' else net / 'VSS_NODE_INTEGRATION.md'),
+        c.check(digest == lf_sha(one / p) == lf_sha(source_of(net, p) if p != 'README.md' else integration(net, 'VSS')),
                 'record: %s hash is not the LF-normalized SHA-256' % p)
     c.check(not re.search(r'\d{4}-\d\d-\d\d|\d\d:\d\d:\d\d', text), 'record: no time stamp')
     for node in NODES:
@@ -557,13 +619,13 @@ def case_check_stale(c):
     c.check((out / 'include' / 'network' / 'net_bundle_probe.h').is_file(), 'new header not in the bundle')
     extra.unlink()
     check(3, 'removed header', 'include/network/net_bundle_probe.h')
-    set_list(net, replace_line(REGISTRY, REGISTRY + '   @VSS'))
-    check(3, 'source tagged for another node', REGISTRY)
+    set_list(net, replace_line(REGISTRY, REGISTRY + '   @VSS @CIS'))
+    check(3, 'source tagged for other nodes', REGISTRY)
     c.make('BCM', net, out)
     check(0, 'generated again after the tag change')
     c.check(not (out / REGISTRY).exists() and not (out / 'include/network/net_bundle_probe.h').exists(),
             'files that left the bundle are still there')
-    readme = net / 'BCM_NODE_INTEGRATION.md'
+    readme = integration(net, 'BCM')
     readme.write_text(readme.read_text(encoding='utf-8') + '\nchanged\n', encoding='utf-8')
     check(3, 'changed integration notes', 'README.md')
 
@@ -767,7 +829,7 @@ def case_board_set(c):
     rc, o = c.run([sys.executable, '-B', '-c', 'import sys; sys.path.insert(0, sys.argv[1]); import sdk_swap_check as s; '
                    'print("\\n".join(s.product_units()))', net / 'tools'])
     units = [l.strip() for l in o.splitlines() if l.strip()]
-    c.check(rc == 0 and set(units) == {p[len('network/'):] for p in got['none'] if p.endswith('.c')},
+    c.check(rc == 0 and {logical(u) for u in units} == {p[len('network/'):] for p in got['none'] if p.endswith('.c')},
             'sdk_swap_check compiles other .c files than the board project copy', o)
 
 

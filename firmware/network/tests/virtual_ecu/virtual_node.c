@@ -2,7 +2,7 @@
 #define __USE_MINGW_ANSI_STDIO 1
 #endif
 /* HAL-less node worker: the node profile table of this build
- * (src/node/net_node_profile_<node>.c) and its App Port facade
+ * (nodes/<node>/src/node/net_node_profile_<node>.c) and its App Port facade
  * (net_app_port_<node>.c) run on the Host virtual backend instead of the RTD
  * backend. No SDK header, no mock SDK. The composition below follows
  * NetNode_Init() / NetNode_Step() (src/node/net_node.c) step by step; only the

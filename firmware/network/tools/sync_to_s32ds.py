@@ -2,14 +2,17 @@
 
 Board project mode (--project):
   (1) the C sources of tools/s32ds_sources.txt except the DOMAIN-only ones,
-      include/network/** (except the headers no board build uses) and the *.h
-      files of the listed source folders (node tags of headers are ignored)
-      -> <project>/src/network/<same path relative to firmware/network>
+      include/network/** and nodes/<node>/include/network/** (except the
+      headers no board build uses) and the *.h files of the listed source
+      folders, in firmware/network and in the node folders (node tags of
+      headers are ignored)
+      -> <project>/src/network/<logical path>: the path relative to
+      firmware/network, without nodes/<node>/ for the files of one node
   (2) the board folder chosen with --board (default bench):
-        bench     bench/s32k344/*.c|*.h      -> <project>/src/net_bench/  (S32K344 bench clone)
-        bench144  bench/s32k144_bcm/*.c|*.h  -> <project>/src/net_bench/  (S32K144 BCM bench clone)
-        cis144    bench/s32k144_cis/*.c|*.h  -> <project>/src/net_bench/  (S32K144 CIS bench clone)
-        vss       board/s32k344_vss/*.c|*.h  -> <project>/src/net_board/  (VSS board project)
+        bench     nodes/vss/bench/s32k344/*.c|*.h      -> <project>/src/net_bench/  (S32K344 bench clone)
+        bench144  nodes/bcm/bench/s32k144_bcm/*.c|*.h  -> <project>/src/net_bench/  (S32K144 BCM bench clone)
+        cis144    nodes/cis/bench/s32k144_cis/*.c|*.h  -> <project>/src/net_bench/  (S32K144 CIS bench clone)
+        vss       nodes/vss/board/s32k344_vss/*.c|*.h  -> <project>/src/net_board/  (VSS board project)
         none      nothing (Network sources only)
   Default is a dry run: it prints what would be copied (new / changed /
   unchanged) and writes nothing into the project. --apply copies.
@@ -20,6 +23,7 @@ Board project mode (--project):
       CMake file, and any RTD-named stand-in header (FlexCAN_Ip.h, *_Sa_PBcfg.h ...)
       -- these must never enter an S32DS workspace
     - a destination outside <project>/src/network or the board folder
+    - two sources with the same logical path
     - --board bench, bench144 or cis144 on a VSS project (src/app/vss_main.c
       present): the bench files define SysTick_Handler and Board_* (bench: also
       VssApp_On*) that VSS already has
@@ -37,13 +41,17 @@ generate it again.
                          (writes nothing); --apply writes the bundle
   --check <dir>/network  compares a bundle with its record and with the current
                          sources (writes nothing)
-  Contents, at the same relative paths as in firmware/network:
+  Contents, at their logical paths (relative to firmware/network, without
+  nodes/<node>/ for the files of that node):
     - the .c files of tools/s32ds_sources.txt without a tag or tagged with the node
-    - include/network/** without net_host_mock.h and net_virtual.h, and the *.h
-      files of the folders of those .c files; a header tagged in the list goes
-      only to the nodes it names
-    - board/s32k344_<node>/ (.c, .h) when that folder exists
-    - README.md: a copy of <NODE>_NODE_INTEGRATION.md (refused when missing)
+    - include/network/** without net_host_mock.h and net_virtual.h,
+      nodes/<node>/include/network/**, and the *.h files of the folders of
+      those .c files (in firmware/network and in the node folders); a header
+      tagged in the list goes only to the nodes it names, and a header in
+      nodes/<node>/ only to that node
+    - nodes/<node>/board/s32k344_<node>/ (.c, .h) when that folder exists
+    - README.md: a copy of nodes/<node>/<NODE>_NODE_INTEGRATION.md (refused
+      when missing)
     - NETWORK_BUNDLE.txt: node, profile, source branch / commit / state, and the
       SHA-256 of every other file computed with CRLF read as LF (so a Windows
       checkout gives the same value); files are copied byte for byte
@@ -84,19 +92,19 @@ import source_list  # noqa: E402  (tools/source_list.py, the reader of tools/s32
 NETWORK = source_list.NETWORK
 SOURCES_LIST = source_list.LIST_PATH
 # --board: source folder, destination folder under <project>/src.
-BOARDS = {'bench': (NETWORK / 'bench' / 's32k344', 'net_bench'),
-          'bench144': (NETWORK / 'bench' / 's32k144_bcm', 'net_bench'),
-          'cis144': (NETWORK / 'bench' / 's32k144_cis', 'net_bench'),
-          'vss': (NETWORK / 'board' / 's32k344_vss', 'net_board')}
+BOARDS = {'bench': (NETWORK / 'nodes' / 'vss' / 'bench' / 's32k344', 'net_bench'),
+          'bench144': (NETWORK / 'nodes' / 'bcm' / 'bench' / 's32k144_bcm', 'net_bench'),
+          'cis144': (NETWORK / 'nodes' / 'cis' / 'bench' / 's32k144_cis', 'net_bench'),
+          'vss': (NETWORK / 'nodes' / 'vss' / 'board' / 's32k344_vss', 'net_board')}
 BOARD_DESTS = ('net_bench', 'net_board')
 VSS_MARKER = 'src/app/vss_main.c'
 # --board bench144 / cis144 need this S32DS CPU define in the project's .cproject.
 S32K144_MARKER = 'CPU_S32K144'
 S32K144_BOARDS = ('bench144', 'cis144')
 REFERENCE_PROJECTS = ('network_344_can_bringup', 'network_144_can_debuger')
-# Host-only headers: never in a board project copy or a node bundle.
+# Host-only headers (logical paths): never in a board project copy or a node bundle.
 HOST_HEADERS = ('include/network/net_host_mock.h', 'include/network/net_virtual.h')
-# Headers no board project copy uses: the host-only ones, and net_domain_c2.h,
+# Headers no board project copy uses (logical paths): the host-only ones, and net_domain_c2.h,
 # which only compiles together with the DOMAIN application headers (a node
 # bundle takes it from its DOMAIN tag instead).
 EXCLUDED_HEADERS = HOST_HEADERS + ('include/network/net_domain_c2.h',)
@@ -163,6 +171,37 @@ def read_list():
     return None, 2
 
 
+def public_header_roots():
+    """include/network and the include/network folder of every node folder (that exists)."""
+    roots = [NETWORK / 'include' / 'network']
+    for folder in source_list.NODE_DIRS.values():
+        root = NETWORK / folder / 'include' / 'network'
+        if root.is_dir():
+            roots.append(root)
+    return roots
+
+
+def folder_headers(sources):
+    """*.h files of the logical folders of sources, from firmware/network and every node folder."""
+    out = set()
+    for folder in sorted({source_list.logical(r).rsplit('/', 1)[0] for r in sources if '/' in r}):
+        for base in [NETWORK] + [NETWORK / d for d in source_list.NODE_DIRS.values()]:
+            out.update(fwd(h.relative_to(NETWORK)) for h in (base / folder).glob('*.h'))
+    return out
+
+
+def logical_paths(rels):
+    """({logical path: source path}, [refusals]) of source paths relative to firmware/network."""
+    out, refused = {}, []
+    for rel in sorted(rels):
+        lrel = source_list.logical(rel)
+        if lrel in out:
+            refused.append('%s: same logical path %s as %s' % (rel, lrel, out[lrel]))
+        else:
+            out[lrel] = rel
+    return out, refused
+
+
 def missing_listed(entries):
     return ['%s: listed in s32ds_sources.txt but missing' % e.path for e in entries
             if not (NETWORK / e.path).is_file()]
@@ -175,19 +214,20 @@ def plan(project, board, entries):
     items, refused = [], missing_listed(entries)
     net_dst = project / 'src' / 'network'
     rels = {r for r in source_list.board_sources(entries) if (NETWORK / r).is_file()}
-    for folder in sorted({r.rsplit('/', 1)[0] for r in rels if '/' in r}):
-        for h in sorted((NETWORK / folder).glob('*.h')):
-            rels.add(fwd(h.relative_to(NETWORK)))
-    for h in sorted((NETWORK / 'include' / 'network').rglob('*.h')):
-        rel = fwd(h.relative_to(NETWORK))
-        if rel not in EXCLUDED_HEADERS:
-            rels.add(rel)
-    for rel in sorted(rels):
-        reason = forbidden(rel)
+    rels.update(folder_headers(rels))
+    for root in public_header_roots():
+        for h in sorted(root.rglob('*.h')):
+            rel = fwd(h.relative_to(NETWORK))
+            if source_list.logical(rel) not in EXCLUDED_HEADERS:
+                rels.add(rel)
+    by_logical, refused_paths = logical_paths(rels)
+    refused += refused_paths
+    for lrel, rel in sorted(by_logical.items()):
+        reason = forbidden(rel) or forbidden(lrel)
         if reason:
             refused.append('%s: %s' % (rel, reason))
         else:
-            items.append((NETWORK / rel, net_dst / rel, 'network/' + rel))
+            items.append((NETWORK / rel, net_dst / lrel, 'network/' + lrel))
     roots = [net_dst.resolve()]
     if board in BOARDS:
         src_dir, dest = BOARDS[board]
@@ -319,29 +359,36 @@ def node_bundle(node, entries):
     refused = missing_listed(entries)
     sources = [r for r in source_list.node_sources(entries, node) if (NETWORK / r).is_file()]
     tagged = source_list.node_headers(entries)
+    home = NETWORK / source_list.NODE_DIRS[node]
     headers = {fwd(h.relative_to(NETWORK)) for h in (NETWORK / 'include' / 'network').rglob('*.h')}
-    for folder in sorted({r.rsplit('/', 1)[0] for r in sources if '/' in r}):
-        headers.update(fwd(h.relative_to(NETWORK)) for h in (NETWORK / folder).glob('*.h'))
-    headers.difference_update(HOST_HEADERS)
+    headers.update(fwd(h.relative_to(NETWORK)) for h in (home / 'include' / 'network').rglob('*.h'))
+    headers.update(folder_headers(sources))
+    headers = {h for h in headers if source_list.logical(h) not in HOST_HEADERS}
     headers = {h for h in headers if h not in tagged or node in tagged[h]}
+    # A header in another node's folder belongs to that node, listed or not.
+    headers = {h for h in headers if source_list.node_of(h) in (None, node)}
     headers.update(h for h, nodes in tagged.items() if node in nodes and (NETWORK / h).is_file())
-    files = {rel: NETWORK / rel for rel in sources + sorted(headers)}
-    board = NETWORK / 'board' / ('s32k344_' + node.lower())
+    rels = set(sources) | headers
+    board = home / 'board' / ('s32k344_' + node.lower())
     if board.is_dir():
         for f in sorted(board.rglob('*')):
             if f.is_file() and f.suffix in ('.c', '.h'):
-                files[fwd(f.relative_to(NETWORK))] = f
-    for rel in sorted(files):
-        reason = forbidden(rel)
+                rels.add(fwd(f.relative_to(NETWORK)))
+    by_logical, refused_paths = logical_paths(rels)
+    refused += refused_paths
+    files = {lrel: NETWORK / rel for lrel, rel in by_logical.items()}
+    for lrel, rel in sorted(by_logical.items()):
+        reason = forbidden(rel) or forbidden(lrel)
         if reason:
             refused.append('%s: %s' % (rel, reason))
-        elif not bundle_rel_ok(rel):
-            refused.append('%s: path not allowed in a bundle' % rel)
-    readme = NETWORK / ('%s_NODE_INTEGRATION.md' % node)
+        elif not bundle_rel_ok(lrel):
+            refused.append('%s: path not allowed in a bundle' % lrel)
+    readme = home / ('%s_NODE_INTEGRATION.md' % node)
     if readme.is_file():
         files['README.md'] = readme
     else:
-        refused.append('%s_NODE_INTEGRATION.md: missing (it is the README.md of the bundle)' % node)
+        refused.append('%s%s_NODE_INTEGRATION.md: missing (it is the README.md of the bundle)'
+                       % (source_list.NODE_DIRS[node], node))
     return files, refused
 
 

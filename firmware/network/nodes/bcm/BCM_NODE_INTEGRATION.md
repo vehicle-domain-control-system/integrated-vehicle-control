@@ -2,9 +2,11 @@
 
 BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 사항만 모았다. 설계 근거는 `docs/network/interface/02_NODES/BCM/{10_DATA,20_API}.md`, `04_COMMON/10_DATA_AND_ID_RULES.md`, `03_COMMUNICATION/10_CAN_FD.md`이다. 공개 진입, 시각, 보드 설정, ISR 링은 VSS와 같으므로 `VSS_NODE_INTEGRATION.md`를 따른다.
 
+경로는 `firmware/network` 기준이다. BCM만 쓰는 파일은 `nodes/bcm/` 아래에 공통 트리와 같은 모양으로 있고, 보드 프로젝트 사본(`tools/sync_to_s32ds.py`)에는 `nodes/bcm/`를 뺀 같은 경로로 들어간다(예: `nodes/bcm/include/network/app/net_if_bcm.h` → `include/network/app/net_if_bcm.h`).
+
 ## App 경계 (정본 헤더)
 
-- `include/network/app/net_if_bcm.h`: BCM `10_DATA.md` 타입과 `20_API.md` 원형 10개. 진입 헤더(`net_if_entry.h`)도 include한다.
+- `nodes/bcm/include/network/app/net_if_bcm.h`: BCM `10_DATA.md` 타입과 `20_API.md` 원형 10개. 진입 헤더(`net_if_entry.h`)도 include한다.
 - `include/network/app/net_if_common.h`: 공통 타입(`NetCommandMeta`, `NetRgb`, `NetVehicleResult`, `NetReason`, `NetFanLevel`, `NetThermalDirection`, `NetLightType`, `NetOrigin`, `NetFaultCategory`, `NetControllerState` 포함).
 
 | 함수 | 구현 | 메시지 | 비고 |
@@ -86,5 +88,5 @@ BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 �
 
 - BCM SysRS는 전용 S32K144를 지정하지만 이 저장소에 BCM 실제 보드 프로젝트는 없다. 실제 프로젝트의 `CPU_S32K144HFT0VLLT` 또는 확인한 MCU의 `NETWORK_NODE_PLATFORM=144/344`를 명시한다. 역할(profile 3)만으로 MCU를 정하지 않으며 선택 누락/충돌은 컴파일 오류다.
 - CAN 메시지 버퍼 배치는 MCU 선택(`NETWORK_NODE_PLATFORM`, S32DS에서는 CPU define)에 따라 `src/platform/rtd/net_board_cfg.h`가 기본값을 고른다. 144: `NET_BOARD_CAN_MAX_MB` 7(`network_144_can_debuger` CAN0의 `max_num_mb`, CAN FD 64 B), RX MB 0~1(`NET_BOARD_CAN_RX_MB_FIRST` 0, `NET_BOARD_CAN_RX_MB_COUNT` 2), TX MB 2~5(`NET_BOARD_CAN_TX_MB_FIRST` 2부터 `NET_HAL_TX_CAPACITY` 4개), MB 6은 쓰지 않는다. 344는 16, RX 0~3, TX 8부터다. RX MB는 모든 표준 ID를 받는다(mask 0). 실제 생성 설정의 `max_num_mb`가 다르면 네 값을 `-D`로 준다. RX와 TX가 겹치거나 `NET_BOARD_CAN_MAX_MB`를 넘는 배치(예: 144에서 `-DNET_BOARD_CAN_TX_MB_FIRST=4`, TX 4~7)는 `net_hal_rtd_can.c`의 정적 검사가 컴파일 오류로 막는다(시험 `tools.board_mb_layout`). `.build-bcm`의 mock 빌드도 이 144 배치로 돈다.
-- `.build-bcm`(`-DNETWORK_NODE_PROFILE=BCM -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `bcm_node.*`: `tests/bcm_node/test_bcm_node_e2e.c`. DOMAIN 쪽 CAN을 mock SDK로 구동한다. `bcm_node.b14_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
+- `.build-bcm`(`-DNETWORK_NODE_PROFILE=BCM -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `bcm_node.*`: `nodes/bcm/tests/bcm_node/test_bcm_node_e2e.c`. DOMAIN 쪽 CAN을 mock SDK로 구동한다. `bcm_node.b14_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
 - 문서 통신량 부하: `bcm_node.load_doc_traffic`. 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. BCM이 받는 것은 다른 노드 몫 7개)을 넣고, 앱 역할로 BCM_DOOR_STATE·CLIMATE_STATE·LIGHT_STATE·STATUS를 문서 주기마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 10 ms 주기다. 손실 0(링·큐·M04 슬롯, DOMAIN_PERMISSION 전부 감시에 전달), 자기 프레임 간격 ≤ 주기 + 10 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD BCM ...` 한 줄로 남긴다.

@@ -1,7 +1,7 @@
 #ifndef NETWORK_TEST_VIRTUAL_DOMAIN_NET_BOARD_CFG_H
 #define NETWORK_TEST_VIRTUAL_DOMAIN_NET_BOARD_CFG_H
 /* TEST ONLY. Board configuration of the HAL-less DOMAIN node worker
- * (tests/virtual_ecu/virtual_domain_node.c). src/node/net_node_domain.c takes
+ * (tests/virtual_ecu/virtual_domain_node.c). nodes/domain/src/node/net_node_domain.c takes
  * from its board configuration only the MCU (NETWORK_NODE_PLATFORM) and the C2
  * hook (NET_BOARD_DOMAIN_C2_HOOK); the worker build passes both as compile
  * definitions. There is no FlexCAN / LPUART layout, time hook or critical

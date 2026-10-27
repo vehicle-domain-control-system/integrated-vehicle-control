@@ -7,8 +7,8 @@ Network를 실제 보드에 올려 확인한 결과를 요약한다. Host 시험
 | 시험 | 보드 | Network 커밋 | 보드에 올린 앱 | 상대 노드 |
 |---|---|---|---|---|
 | VSS 노드 | S32K344 VSS 보드(S32DS 프로젝트 `S32K344_WB_Audio_Bringup`), VSS 프로필 | `342df4f` | VSS 펌웨어(`feat/vss-firmware` `8fcf25c`). 연동 절차의 빌드 설정 외에 음량을 100 %로 올렸다(저장소 기본 70 %) | S32K144 CAN 디버그 노드(2026-10-20판, 메시지 정의 기준 `6274b050`). 콘솔 명령으로 DOMAIN 프레임을 보낸다 |
-| BCM 노드 | S32K144(디버그 노드 프로젝트의 복제본 `network_144_net_bench`), BCM 프로필 | `e173cfd`(복사 원본 작업 트리) | 시험대 앱 `bench/s32k144_bcm/bcm_bench_app.c`(실제 BCM 앱 없음) | 위 S32K344 VSS 보드(같은 이미지) |
-| CIS 노드 | S32K144(디버그 노드 프로젝트의 복제본 `network_144_net_cis`), CIS 프로필 | `5e9ff0c`(아래 "CIS 시험에서 고친 결함"의 두 수정 뒤) | 시험대 앱 `bench/s32k144_cis/cis_bench_app.c`(실제 CIS 앱 없음) | DOMAIN 역할: S32K344로 옮긴 CAN 디버그 노드(2026-10-20판, 메시지 정의 기준 `6274b050`). Pi 역할: 노트북 도구 `tools/pi_bench/`(UART-C, S32K144 평가 보드의 OpenSDA 가상 COM 포트, 115200 8N1) |
+| BCM 노드 | S32K144(디버그 노드 프로젝트의 복제본 `network_144_net_bench`), BCM 프로필 | `e173cfd`(복사 원본 작업 트리) | 시험대 앱 `nodes/bcm/bench/s32k144_bcm/bcm_bench_app.c`(실제 BCM 앱 없음) | 위 S32K344 VSS 보드(같은 이미지) |
+| CIS 노드 | S32K144(디버그 노드 프로젝트의 복제본 `network_144_net_cis`), CIS 프로필 | `5e9ff0c`(아래 "CIS 시험에서 고친 결함"의 두 수정 뒤) | 시험대 앱 `nodes/cis/bench/s32k144_cis/cis_bench_app.c`(실제 CIS 앱 없음) | DOMAIN 역할: S32K344로 옮긴 CAN 디버그 노드(2026-10-20판, 메시지 정의 기준 `6274b050`). Pi 역할: 노트북 도구 `tools/pi_bench/`(UART-C, S32K144 평가 보드의 OpenSDA 가상 COM 포트, 115200 8N1) |
 
 - 버스: 두 보드만 연결한 CAN FD(ISO, 500 kbit/s / 2 Mbit/s, BRS). CIS 시험도 같은 S32K144 생성 설정으로 두 보드만 연결했다.
 - BOOT_ID: Network 노드(S32K344 VSS, S32K144 BCM·CIS)의 BOOT_ID는 보드 상수다(보드 출처 HOLD). BCM 시험은 처음부터 다시 할 때 두 보드를 함께 리셋했다. VSS 시험의 상대인 디버그 노드는 명령마다 BOOT를 정해 보내므로, VSS 보드만 리셋하며 진행했다. CIS 시험은 CIS 보드만 리셋했다. 상대(디버그 노드, Pi 도구)는 Network 노드가 아니어서 순번이 처음으로 돌아간 CIS 프레임을 버리지 않고 센다.
@@ -46,7 +46,7 @@ Network를 실제 보드에 올려 확인한 결과를 요약한다. Host 시험
 
 ## BCM 노드 (S32K144 시험대)
 
-시험대 앱은 BCM 상태 4종을 문서 주기로 제출하고(매번 새 평가, 품질 OK, SOURCE_AGE 0), DOMAIN 명령 콜백은 받은 수만 센다. 절차와 관찰 변수는 `bench/s32k144_bcm/README.md`에 있다.
+시험대 앱은 BCM 상태 4종을 문서 주기로 제출하고(매번 새 평가, 품질 OK, SOURCE_AGE 0), DOMAIN 명령 콜백은 받은 수만 센다. 절차와 관찰 변수는 `nodes/bcm/bench/s32k144_bcm/README.md`에 있다.
 
 ### 빌드
 
@@ -76,7 +76,7 @@ Network를 실제 보드에 올려 확인한 결과를 요약한다. Host 시험
 
 ## CIS 노드 (S32K144 시험대)
 
-시험대 앱은 CIS 상태 3종을 문서 주기로 제출하고(CIS_REAR 0x0A0 50 ms, CIS_ENVIRONMENT 0x300 200 ms, CIS_STATUS 0x320 250 ms, 매번 새 평가), Pi 판정(P_VISION_RESULT)을 받을 때마다 CIS_OCCUPANT(0x310)를 제출한다. DOMAIN_PERMISSION(0x080)은 Network가 P_PERMISSION으로 Pi에 relay한다. 절차와 관찰 변수는 `bench/s32k144_cis/README.md`에 있다.
+시험대 앱은 CIS 상태 3종을 문서 주기로 제출하고(CIS_REAR 0x0A0 50 ms, CIS_ENVIRONMENT 0x300 200 ms, CIS_STATUS 0x320 250 ms, 매번 새 평가), Pi 판정(P_VISION_RESULT)을 받을 때마다 CIS_OCCUPANT(0x310)를 제출한다. DOMAIN_PERMISSION(0x080)은 Network가 P_PERMISSION으로 Pi에 relay한다. 절차와 관찰 변수는 `nodes/cis/bench/s32k144_cis/README.md`에 있다.
 
 - Pi 도구는 P_VISION_RESULT(29 B)를 100 ms, P_VISION_STATUS(26 B)를 1 s마다 보내고(문서 주기), 받은 P_PERMISSION의 순번·간격·내용을 검사한다. CIS가 받은 바이트 수는 Pi 도구 기록의 보낸 바이트 수와 대조했다.
 - 실행마다 CIS를 리셋하고 시작했고(한 실행은 예외, "동작" 표 아래), 실행이 끝나면 한 번 멈춰 읽었다.

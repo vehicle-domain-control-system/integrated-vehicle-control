@@ -2,10 +2,12 @@
 
 CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야 할 사항만 모았다. 설계 근거는 `docs/network/interface/02_NODES/CIS/{10_DATA,20_API}.md`, `02_NODES/PI/10_DATA.md`, `03_COMMUNICATION/10_CAN_FD.md`, `30_UART_C.md`이다. 공개 진입, 시각, 보드 설정, ISR 링은 VSS와 같으므로 `VSS_NODE_INTEGRATION.md`를 따른다.
 
+경로는 `firmware/network` 기준이다. CIS만 쓰는 파일은 `nodes/cis/` 아래에 공통 트리와 같은 모양으로 있고, 보드 프로젝트 사본(`tools/sync_to_s32ds.py`)에는 `nodes/cis/`를 뺀 같은 경로로 들어간다(예: `nodes/cis/include/network/app/net_if_cis.h` → `include/network/app/net_if_cis.h`).
+
 ## App 경계 (정본 헤더)
 
-- `include/network/app/net_if_cis.h`: CIS `10_DATA.md` 타입과 `20_API.md` 원형 8개. 진입 헤더(`net_if_entry.h`)도 include한다.
-- `include/network/app/net_if_pi_data.h`: UART-C 기록(`NetVisionResult`, `NetVisionStatus`, `NetPiPermission`). Pi 문서에 한 번만 정의된 것을 그대로 옮겼다.
+- `nodes/cis/include/network/app/net_if_cis.h`: CIS `10_DATA.md` 타입과 `20_API.md` 원형 8개. 진입 헤더(`net_if_entry.h`)도 include한다.
+- `nodes/cis/include/network/app/net_if_pi_data.h`: UART-C 기록(`NetVisionResult`, `NetVisionStatus`, `NetPiPermission`). Pi 문서에 한 번만 정의된 것을 그대로 옮겼다.
 - `include/network/app/net_if_common.h`: 공통 타입(`NetUartRxMeta`, `NetValidity`, `NetSensorFunctionState` 포함).
 
 | 함수 | 구현 | 메시지 | 비고 |
@@ -76,7 +78,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 - CAN 메시지 버퍼 배치는 MCU 선택(`NETWORK_NODE_PLATFORM`, S32DS에서는 CPU define)에 따라 `src/platform/rtd/net_board_cfg.h`가 기본값을 고른다. 144: `NET_BOARD_CAN_MAX_MB` 7(`network_144_can_debuger` CAN0의 `max_num_mb`, CAN FD 64 B), RX MB 0~1(`NET_BOARD_CAN_RX_MB_FIRST` 0, `NET_BOARD_CAN_RX_MB_COUNT` 2), TX MB 2~5(`NET_BOARD_CAN_TX_MB_FIRST` 2부터 `NET_HAL_TX_CAPACITY` 4개), MB 6은 쓰지 않는다. 344는 16, RX 0~3, TX 8부터다. RX MB는 모든 표준 ID를 받는다(mask 0). 실제 생성 설정의 `max_num_mb`가 다르면 네 값을 `-D`로 준다. RX와 TX가 겹치거나 `NET_BOARD_CAN_MAX_MB`를 넘는 배치(예: 144에서 `-DNET_BOARD_CAN_TX_MB_FIRST=4`, TX 4~7)는 `net_hal_rtd_can.c`의 정적 검사가 컴파일 오류로 막는다(시험 `tools.board_mb_layout`). `.build-cis`의 mock 빌드도 이 144 배치로 돈다.
 - UART-C는 LPUART11(`NET_BOARD_UART_C_INSTANCE`), 생성 설정 `Lpuart_Uart_Ip_xHwConfigPB_11`이 기본값이다. DS344는 콘솔 LPUART0과 콜백을 공유하므로 라우팅 모드(`NetHalRtdUart_OnEvent`)를 쓴다.
 - 위 기본값과 Host mock은 DS344 벤치 설정이다. CIS S32K144 프로젝트에서는 실제 생성 설정에 맞춰 UART 인스턴스/심볼 등 `NET_BOARD_*`를 지정해야 한다. MCU 선택은 위 CAN 메시지 버퍼 배치 기본값만 바꾸고 UART 설정은 바꾸지 않는다.
-- S32K144 보드 시험대는 `bench/s32k144_cis/`다(144 디버그 노드 프로젝트의 복제본, UART-C LPUART1 = 평가 보드의 OpenSDA 가상 COM 포트, `.cproject` define과 관찰 변수는 그 README). 노트북이 Pi를 맡는 도구는 `tools/pi_bench/`다.
+- S32K144 보드 시험대는 `nodes/cis/bench/s32k144_cis/`다(144 디버그 노드 프로젝트의 복제본, UART-C LPUART1 = 평가 보드의 OpenSDA 가상 COM 포트, `.cproject` define과 관찰 변수는 그 README). 노트북이 Pi를 맡는 도구는 `tools/pi_bench/`다.
 - `NET_BOARD_NODE_CONFIG_HOOK`이 받는 `NetNodeConfig`의 `uart_c_port_epoch`는 1로 들어온다. 0으로 바꾸면 초기화가 실패한다.
 - main 주기는 UART 링 시간(256 B, 115200 bit/s 가득 찬 선로에서 약 22 ms)보다 짧고, 선로 평균 부하가 바퀴당 48 B(서비스 step 2회 × poll 24, 같은 바퀴의 CAN 사건 포함) 이하가 되게 둔다. 바퀴당 비우기 상한(16 B)을 넘는 바이트는 서비스 Port가 시각 검사 전에 넘긴다(`VSS_NODE_INTEGRATION.md` 보드 설정 절, 시험 `cis_node.f16_vision_rx_main_3ms`).
 
@@ -119,7 +121,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 
 ## 시험
 
-- `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `cis_node.*`: `tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
+- `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `cis_node.*`: `nodes/cis/tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
 - 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`, `f23_vision_repeat_delivered`(Pi 판정 반복·늦은 반복 50 ms 여유·정확한 중복), `f25_vision_repeat_long_age`(2초 넘는 Pi 반복).
 - P_PERMISSION relay와 Occupant 품질: `cis_node.f21_permission_quality_drop_relayed`, `f22_relay_sequence_cis_owned`, `f24_occupant_restricted_quality`.
 - 문서 통신량 부하: `cis_node.load_doc_traffic`. 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. CIS가 받는 것은 다른 노드 몫 7개)과 Pi UART-C(P_VISION_RESULT 29 B / 100 ms, P_VISION_STATUS 26 B / 1 s, 바이트 간격 87 µs)를 넣는다. 앱 역할은 CIS_REAR·ENVIRONMENT·STATUS를 문서 주기마다, CIS_OCCUPANT를 Pi 판정마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 10 ms 주기이고 10바퀴마다 한 번 7 ms 늦는다(17 ms). 손실 0(링·큐·M04 슬롯, CIS 몫 수신 전부 전달), 자기 프레임 간격 ≤ 주기 + 17 ms, P_PERMISSION 간격 ≤ 500 ms + 17 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD CIS ...` 한 줄로 남긴다. `upper.tx_deferred`(한 바퀴 기다림)는 손실로 세지 않는다.

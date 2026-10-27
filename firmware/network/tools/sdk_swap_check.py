@@ -30,7 +30,7 @@ exactly once.
 
 --vss <project> (optional) adds the VSS board project (S32K344, CAN only):
 every C source of tools/s32ds_sources.txt that a board project copies (all
-except the DOMAIN-only ones, tools/source_list.py) plus board/s32k344_vss/net_vss_board.c,
+except the DOMAIN-only ones, tools/source_list.py) plus nodes/vss/board/s32k344_vss/net_vss_board.c,
 VSS profile, time base A with the VSS clock (HalTimer_GetTicks /
 VssTime_TickToMs32), node configuration hook VssBoard_NetNodeConfig, the
 project's Debug_FLASH C compiler defines, VSS_CFG_NET_STUB=0 and
@@ -64,6 +64,10 @@ UNITS = ('src/platform/rtd/net_hal_rtd.c', 'src/platform/rtd/net_hal_rtd_can.c',
 NETWORK_INCLUDES = ('include', 'src/platform/rtd', 'src/l04_frame_codec', 'src/l02_typed_handoff/m03_typed_handoff',
                     'src/l05_transport_port/m07_buffer_outcome', 'src/l05_transport_port/m09_observation',
                     'src/l03_message_service/m04_message_service')
+# Extra include folders of this tree only: a board project copy has the node
+# headers of nodes/<node>/include in its include/network and the node files of
+# nodes/<node>/src/node next to src/node/net_node_profile.h (tools/sync_to_s32ds.py).
+TREE_INCLUDES = ('src/node', 'nodes/vss/include', 'nodes/cis/include', 'nodes/bcm/include')
 PROJECT_WARNINGS = ('-std=c99', '-Wall', '-Wextra', '-Wstrict-prototypes', '-Wsign-compare',
                     '-Werror=implicit-function-declaration', '-Wundef', '-Wdouble-promotion', '-fno-short-enums')
 PROFILES = {'VSS': 6, 'CIS': 1}
@@ -85,12 +89,12 @@ TX_MB_USED = 4  # largest NET_HAL_TX_CAPACITY of the node profiles (CIS, BCM 4; 
 VSS_HOOKS = ('NET_BOARD_ISR_TICK_HOOK=HalTimer_GetTicks', 'NET_BOARD_TICK_TO_MS_HOOK=VssTime_TickToMs32',
              'NET_BOARD_NODE_CONFIG_HOOK=VssBoard_NetNodeConfig')
 VSS_SWITCHES = ('VSS_CFG_NET_STUB=0', 'VSS_CFG_TEST_INPUT=0')
-VSS_BOARD_UNIT = 'board/s32k344_vss/net_vss_board.c'
+VSS_BOARD_UNIT = 'nodes/vss/board/s32k344_vss/net_vss_board.c'
 VSS_EXTRA_FLAGS = ('-funsigned-char', '-fno-short-enums')
 
 # UART-C instance per project: DS344 LPUART11 (the 344 bench wiring to the S32K144); DS144 LPUART1
 # (PTC6/PTC7), the UART-C of the CIS board (feat/cis-rtd-network firmware/CIS/board/README.md) and of the
-# S32K144 CIS bench (bench/s32k144_cis). The debug node project uses LPUART1 as its console and shares
+# S32K144 CIS bench (nodes/cis/bench/s32k144_cis). The debug node project uses LPUART1 as its console and shares
 # the callback with LPUART0.
 TARGETS = {
     'DS344': dict(cpu=('-mcpu=cortex-m7', '-mthumb', '-mfloat-abi=hard', '-mfpu=fpv5-sp-d16'),
@@ -275,7 +279,7 @@ def vss_run(proj, gcc, base, plat, t, out, rows, problems):
     except (OSError, ValueError, ET.ParseError) as e:
         problems.append(f'VSS: {e}')
         return None
-    includes = [NETWORK / i for i in NETWORK_INCLUDES] + [
+    includes = [NETWORK / i for i in NETWORK_INCLUDES + TREE_INCLUDES] + [
         proj / 'RTD' / 'include', proj / 'generate' / 'include', base / 'header', base / 'include',
         plat / 'include', plat / 'startup' / 'include']
     mock = [fwd(i) for i in includes if 'sdk_mock' in fwd(i).lower()]
@@ -417,7 +421,7 @@ def main():
         if why:
             continue
         base, plat = sdk_root / t['sdk'] / t['base'], sdk_root / t['sdk'] / t['platform']
-        includes = [NETWORK / i for i in NETWORK_INCLUDES] + [
+        includes = [NETWORK / i for i in NETWORK_INCLUDES + TREE_INCLUDES] + [
             proj / 'RTD' / 'include', proj / 'generate' / 'include', base / 'header', base / 'include',
             plat / 'include', plat / 'startup' / 'include']
         mock = [fwd(i) for i in includes if 'sdk_mock' in fwd(i).lower()]
