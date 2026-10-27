@@ -961,6 +961,12 @@ if(NETWORK_BUILD_RTD_MOCK)
             add_test(NAME vss_node.${case} COMMAND test_vss_node_e2e_ostimer ${case})
             add_test(NAME vss_node.${case}_hook COMMAND test_vss_node_e2e_hook ${case})
         endforeach()
+        # CAN RX re-arm refused in the ISR (armed again by the main context) and
+        # TX MBs quarantined for good (timed-out abort, flag lost), named the same way.
+        foreach(case IN ITEMS h19_rx_rearm_retry h20_quarantine_flag_lost)
+            add_test(NAME vss_node.${case} COMMAND test_vss_node_e2e_ostimer ${case})
+            add_test(NAME vss_node.${case}_hook COMMAND test_vss_node_e2e_hook ${case})
+        endforeach()
         # Load of the documented traffic, named the same way.
         add_test(NAME vss_node.load_doc_traffic COMMAND test_vss_node_e2e_ostimer load_doc_traffic)
         add_test(NAME vss_node.load_doc_traffic_hook COMMAND test_vss_node_e2e_hook load_doc_traffic)

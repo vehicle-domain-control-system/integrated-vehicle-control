@@ -57,6 +57,7 @@ typedef struct {
     Flexcan_Ip_StateType *state;
     Flexcan_Ip_RxMaskType mask_type;
     MockMb mb[MOCK_MB];
+    bool rx_refused;
     uint32 aborts, sends_on_aborting;
     Flexcan_Ip_StatusType abort_result;
     uint8 tec, rec;
@@ -150,6 +151,7 @@ Flexcan_Ip_StatusType FlexCAN_Ip_Receive(uint8 i, uint8 mb, Flexcan_Ip_MsgBuffTy
     (void)isPolling;
     if (!mb_ok(c, mb) || data == NULL || !c->mb[mb].rx_configured) return FLEXCAN_STATUS_ERROR;
     if (c->mb[mb].rx_armed) return FLEXCAN_STATUS_BUSY;
+    if (c->rx_refused) return FLEXCAN_STATUS_ERROR;     /* MockRtd_CanSetReceiveRefused */
     c->mb[mb].buf = data; c->mb[mb].rx_armed = true;
     return FLEXCAN_STATUS_SUCCESS;
 }
@@ -290,7 +292,25 @@ void MockRtd_CanFinishAbort(uint8 i)
     for (mb = 0u; mb < c->cfg->max_num_mb; ++mb)
         if (c->mb[mb].abort_pending) { c->mb[mb].abort_pending = false; c->mb[mb].iflag = true; }
 }
+void MockRtd_CanFinishAbortFlagLost(uint8 i)
+{
+    MockCan *c = get(i);
+    uint8 mb;
+    if (c == NULL || c->cfg == NULL) return;
+    for (mb = 0u; mb < c->cfg->max_num_mb; ++mb)
+        if (c->mb[mb].abort_pending) { c->mb[mb].abort_pending = false; c->mb[mb].iflag = false; }
+}
 uint32 MockRtd_CanSendsOnAbortingMb(uint8 i) { MockCan *c = get(i); return c ? c->sends_on_aborting : 0u; }
+void MockRtd_CanSetReceiveRefused(uint8 i, bool refused) { MockCan *c = get(i); if (c) c->rx_refused = refused; }
+uint32 MockRtd_CanRxArmed(uint8 i)
+{
+    MockCan *c = get(i);
+    uint32 n = 0u;
+    uint8 mb;
+    if (c == NULL || c->cfg == NULL) return 0u;
+    for (mb = 0u; mb < c->cfg->max_num_mb; ++mb) if (c->mb[mb].rx_configured && c->mb[mb].rx_armed) ++n;
+    return n;
+}
 
 /* -------------------------------------------------------------- LPUART -- */
 static MockUart *uget(uint8 i)

@@ -46,7 +46,7 @@ DOMAIN 노드(profile 5, CAN + UART-M)용 Network 사본의 안내다. 사본은
 
 ## 용량
 
-값은 `include/network/net_capacity.h`의 DOMAIN 블록이 정한다(`NETWORK_UPPER_NODE_PROFILE=5`). 모두 `#ifndef`라 프로젝트 `-D`로 바꿀 수 있지만, 여러 파일이 함께 쓰는 구조체의 칸 수이므로 한 빌드의 모든 파일에 같은 값을 준다. 통신량 근거는 `docs/network/interface/03_COMMUNICATION/10_CAN_FD.md`와 `20_UART_M.md`의 메시지 목록이다(WINDOW 제외). DOMAIN 보드에서 Network + RTD 백엔드에 주는 RAM 예산은 44 KB다. host ARM 측정(`-Os -fno-short-enums`, 정적 RAM)은 43,343 B다(보드 map은 아직 없다).
+값은 `include/network/net_capacity.h`의 DOMAIN 블록이 정한다(`NETWORK_UPPER_NODE_PROFILE=5`). 모두 `#ifndef`라 프로젝트 `-D`로 바꿀 수 있지만, 여러 파일이 함께 쓰는 구조체의 칸 수이므로 한 빌드의 모든 파일에 같은 값을 준다. 통신량 근거는 `docs/network/interface/03_COMMUNICATION/10_CAN_FD.md`와 `20_UART_M.md`의 메시지 목록이다(WINDOW 제외). DOMAIN 보드에서 Network + RTD 백엔드에 주는 RAM 예산은 44 KB다. host ARM 측정(`-Os -fno-short-enums`, 정적 RAM)은 43,367 B다(보드 map은 아직 없다).
 
 | 상수 | 값 | 기준 |
 |---|---|---|
@@ -60,7 +60,7 @@ DOMAIN 노드(profile 5, CAN + UART-M)용 Network 사본의 안내다. 사본은
 
 - **송신 묶음:** 장치 칸(HAL TX 4)보다 많은 프레임이 한 바퀴에 몰리면 나머지는 서비스 큐에서 다음 바퀴를 기다린다(`upper.tx_deferred`). 같은 번호 공간의 뒤 프레임(UART는 같은 링크 전체, CAN은 같은 ID)은 앞 프레임을 앞지르지 않는다. CAN 컨트롤러에는 한 ID의 프레임을 한 번에 하나만 둔다(FlexCAN은 같은 ID를 MB 번호 순으로 보내므로, 같은 ID의 C2 명령 둘은 앞 것이 끝난 뒤 다음 것이 나간다. `domain_node.n21_same_id_order`, `n22_same_id_order_deferred`). 그래서 LINK_SEQUENCE와 TX_SEQUENCE는 뒤바뀌어 나가지 않는다. 예외는 abort가 끝나지 않아 격리된 MB다. 그 프레임은 이미 실패로 보고했고 MB가 계속 묶일 수 있어 같은 ID를 막지 않는다. 그 프레임이 나중에 나가면 앞 번호라 수신 쪽이 오래된 프레임으로 버린다. 기다리는 동안에도 AGE는 늘고, 사용 기한이 지나거나 링크가 닫히면 보내지 않는다. 이렇게 기다리던 프레임이 취소·만료되면 그 번호는 건너뛸 수 있다(건너뜀은 허용, 재사용은 없음).
 - **문서 통신량 부하(host):** `domain_node.load_doc_traffic`. 10 s 동안 CIS·BCM·VSS 주기 프레임(67개/s), ESP32의 M_CONTEXT(48 B, 100 ms), 앱 역할로 DOMAIN_PERMISSION 새 평가 200 ms마다, UART-M 상태 중계 수만큼의 프레임(200 ms마다 6개, 1 s마다 7개 더, 같은 시점)을 넣는다. 상태 중계는 CAN 원본 수신과 DOMAIN snapshot 확인(이 보드에서 HOLD)이 있어야 해서 같은 수·비슷한 길이(46 B)의 M_USER_SETTINGS로 대신한다. main은 10 ms 주기이고 ESP32 쪽은 바퀴마다 UART-M 프레임 하나를 받는다(115200 bit/s 선로보다 느리다). 손실 0, DOMAIN_PERMISSION 간격 ≤ 50 ms + 10 ms, LINK_SEQUENCE 건너뜀 0, 최대 깊이 ≤ 용량을 확인하고 `LOAD DOMAIN ...` 한 줄로 남긴다. host 결과: CAN 링 최대 10/24, 어댑터 수신 16/16, 서비스 수신 24/24, 서비스 송신 13/16, UART 링 48/256, DOMAIN_PERMISSION 간격 최대 50 ms.
-- **보드 확인 항목:** 보드 빌드 map의 RAM, `main_max_us`, 링 최대 깊이(용량의 75 % 이하), `rtd.rx_overruns` 0. DOMAIN 루프 주기에 맞춰 CAN 링과 UART 링 시간을 다시 본다.
+- **보드 확인 항목:** 보드 빌드 map의 RAM, `main_max_us`, 링 최대 깊이(용량의 75 % 이하), `rtd.rx_overruns` 0, `rtd.tx_abort_timeouts`·`rtd.tx_quarantined`(지금 격리된 TX MB 수, 4이면 그 MB의 플래그가 서거나 리셋될 때까지 CAN 송신이 멈춘다)·`rtd.rx_rearm_errors`·`rtd.rx_unarmed` 0(`VSS_NODE_INTEGRATION.md` 보드 설정 절). DOMAIN 루프 주기에 맞춰 CAN 링과 UART 링 시간을 다시 본다.
 
 ## 나중에 빌드에 넣을 때 필요한 것
 

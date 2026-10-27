@@ -185,7 +185,8 @@ int main(void)
 - ConfigTools의 FlexCAN 콜백 이름(`NET_BOARD_CAN_CALLBACK`, `NET_BOARD_CAN_ERROR_CALLBACK`)은 HAL이 정의한다. 같은 이름을 정의하는 다른 파일은 빌드에서 빼야 한다.
 - 생성 설정·상태 심볼(`NET_BOARD_CAN_CONFIG`, `NET_BOARD_CAN_STATE`)의 선언은 `NET_BOARD_CAN_CFG_HEADER`(기본 `"FlexCAN_Ip.h"`)로 가져온다. RTD는 `FlexCAN_Ip.h` → `FlexCAN_Ip_DeviceReg.h` → `FlexCAN_Ip_Cfg.h` → 생성 PBcfg 헤더 순으로 include하고 그 `extern` 선언을 펼치므로, Functional Group 접미사(`FlexCAN_Ip_Sa_VS_0_PBcfg.h` 등)와 상관없이 기본값으로 된다. mock SDK도 같은 포함 관계다.
 - MB 배치 기본값: RX 0..3(마스크 0, 모든 표준 ID 수신 후 registry로 걸러냄), TX 8부터 `NET_HAL_TX_CAPACITY`개(VSS 2개: 8..9). `max_num_mb`(344=16) 안에 들어가야 한다.
-- TX MB가 `NET_BOARD_CAN_TX_TIMEOUT_MS`(기본 100 ms) 안에 끝나지 않으면 `FlexCAN_Ip_AbortTransfer`로 abort하고 그 반환값대로 정산한다. `NO_TRANSFER_IN_PROGRESS`는 abort 전에 프레임이 이미 나간 경우라(RTD는 이때 TX_COMPLETE를 부르지 않는다) 성공으로 정산한다. `TIMEOUT`은 abort가 끝나지 않은 경우라 실패로 보고하고, 그 MB는 `FlexCAN_Ip_GetBuffStatusFlag`가 설 때까지(컨트롤러가 MB를 놓을 때까지) 다시 쓰지 않는다. RTD는 TIMEOUT 뒤 그 플래그를 지우므로, 그 직전에 끝난 MB는 플래그가 다시 서지 않아 격리가 풀리지 않을 수 있다(`tx_abort_timeouts`와 `tx_quarantine_released`의 차이로 관찰, 리셋까지 TX MB 하나가 준다). 그 밖의 결과는 실패로 보고한다.
+- TX MB가 `NET_BOARD_CAN_TX_TIMEOUT_MS`(기본 100 ms) 안에 끝나지 않으면 `FlexCAN_Ip_AbortTransfer`로 abort하고 그 반환값대로 정산한다. `NO_TRANSFER_IN_PROGRESS`는 abort 전에 프레임이 이미 나간 경우라(RTD는 이때 TX_COMPLETE를 부르지 않는다) 성공으로 정산한다. `TIMEOUT`은 abort가 끝나지 않은 경우라 실패로 보고하고, 그 MB는 `FlexCAN_Ip_GetBuffStatusFlag`가 설 때까지(컨트롤러가 MB를 놓을 때까지) 다시 쓰지 않는다. RTD는 TIMEOUT 뒤 그 플래그를 지우므로, 그 직전에 끝난 MB는 플래그가 다시 서지 않아 격리가 풀리지 않을 수 있다(`tx_abort_timeouts`와 `tx_quarantine_released`의 차이로 관찰, 리셋까지 TX MB 하나가 준다). 그 밖의 결과는 실패로 보고한다. 지금 격리된 MB 수는 `tx_quarantined`다. 시간 초과만으로는 격리를 풀지 않는다(컨트롤러가 아직 그 MB를 쓰고 있을 수 있다). 모든 TX MB(VSS 2개)가 격리되면 플래그가 서거나 리셋될 때까지(플래그를 잃은 MB는 리셋까지) CAN 프레임이 나가지 않고, 제출한 프레임은 서비스 큐에서 기다린다(`upper.tx_deferred`, 시험 `vss_node.h20_quarantine_flag_lost`).
+- RX MB의 수신은 RX ISR이 프레임을 꺼낸 뒤 `FlexCAN_Ip_Receive`로 다시 건다. BUSY(드라이버가 이미 수신을 걸어 둠)가 아닌 거절이면 그 MB는 수신하지 않는다. main 바퀴마다 그런 MB에 한 번씩 다시 걸고(`rx_rearm_recovered`), 그동안 다른 RX MB가 받는다. 지금 수신을 걸지 못한 MB 수는 `rx_unarmed`, ISR의 거절 수는 `rx_rearm_errors`다(시험 `vss_node.h19_rx_rearm_retry`). RTD가 어떤 경우에 거절하는지는 보드에서 보지 않았다.
 - 시간원은 위 표의 A·B·C 중 하나다. 보드 빌드는 A를 쓴다. 셋 다 없으면(OsIf 타이머 OFF, hook 없음) 컴파일 오류(`OSIF_COUNTER_SYSTEM` 미정의)가 난다.
 - ISR 링: `NET_BOARD_CAN_ISR_RING`(기본 24, 1 이상), `NET_BOARD_ISR_DRAIN_BUDGET`(기본 16, 1 이상 `NET_HAL_RX_CAPACITY` 이하). 범위를 벗어나면 컴파일 오류다. 기본값은 빌드 프로필의 값(`include/network/net_capacity.h`)이고 여기 적은 것은 VSS 값이다. 아래 "용량" 절.
 - UART 링크(CIS·DOMAIN 프로필): `NET_BOARD_UART_C_INSTANCE`/`NET_BOARD_UART_C_CONFIG`(기본 11 / `Lpuart_Uart_Ip_xHwConfigPB_11`), `NET_BOARD_UART_M_INSTANCE`/`NET_BOARD_UART_M_CONFIG`(DOMAIN 보드 미정, 자리 표시 기본값 0 / `Lpuart_Uart_Ip_xHwConfigPB_0`), 링크별 송신 시간 초과(기본 100 ms), `NET_BOARD_UART_ISR_RING`(기본 256 B). 콜백은 `NET_BOARD_UART_CALLBACK`을 정의하면 HAL이 그 이름으로 정의하고, 정의하지 않으면 보드 콜백이 Network 인스턴스 이벤트를 `NetHalRtdUart_OnEvent()`(`net_hal_rtd_uart.h`)로 넘긴다(DS344: LPUART0 콘솔과 LPUART11이 `Uart344_BringupCallback`을 공유하므로 이 방식).
@@ -224,6 +225,7 @@ int main(void)
 | `upper.tx_deferred` | 기록한다. 장치 칸이 없어(같은 CAN ID 프레임이 아직 컨트롤러에 있을 때 포함) 프레임을 서비스 큐에 두고 다음 바퀴로 미룬 수다(번호는 그대로 쓰므로 손실 아님). `status_tx.counters.queue_full`은 서비스 큐가 찼을 때만 센다 |
 | `upper.rx_invalid` | 기록만 한다. RX MB가 모든 표준 ID를 받으므로 이 노드가 받지 않는 다른 노드 몫 프레임만큼 정상 운전에서도 늘어난다(host 부하 시험 10 s에 VSS 630). 버스 이상 판단에 쓰지 않는다 |
 | `rtd.rx_overruns` | 0 |
+| `rtd.tx_abort_timeouts`, `rtd.tx_quarantined`, `rtd.rx_rearm_errors`, `rtd.rx_unarmed` | 0. 0이 아니면 그 값과 `rtd.tx_abort_last_status`, `rtd.rx_rearm_recovered`를 기록한다. `tx_quarantined`는 지금 격리된 TX MB 수라 그 MB의 플래그가 서거나 리셋될 때까지 줄지 않고, TX MB 수(`NET_HAL_TX_CAPACITY`, 2)와 같아지면 그동안 CAN 송신이 멈춘다. `rx_unarmed`는 수신을 걸지 못한 RX MB 수이고 다음 바퀴에 다시 건다(위 보드 설정 절) |
 | 링커 스택 크기(`.ld`) | Network 경로 상한 2,048 B(main → `Net_MainFunction`, `Net_Init` 각각) + 앱 콜백 + ISR 이상. host ARM 측정은 약 1.9 KB이고 함수 포인터 호출(앱 콜백)과 ISR은 빼고 잰 값이다 |
 
 ## 진단 (`NetNode_GetDiag`)
@@ -249,6 +251,8 @@ int main(void)
 | `rtd.tx_abort_already_sent` | 위의 두 abort(`tx_timeout_aborts`, `busoff_tx_aborts`) 중 abort가 `FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS`(abort 전에 이미 송신됨, TX_COMPLETE 없음)라 성공으로 정산한 수 |
 | `rtd.tx_abort_timeouts`, `rtd.tx_quarantine_released` | 위의 두 abort 중 abort가 `FLEXCAN_STATUS_TIMEOUT`이라 실패로 보고하고 그 MB를 격리한 수, 격리한 MB의 플래그가 서서 다시 쓰게 된 수 |
 | `rtd.tx_abort_last_status` | 마지막 abort의 RTD 반환값 |
+| `rtd.tx_quarantined` | 지금 격리된 TX MB 수(`tx_abort_timeouts`에서 풀린 것을 뺀 수). TX MB 수와 같으면 플래그가 서거나 리셋될 때까지 CAN 송신이 멈춘다 |
+| `rtd.rx_rearm_errors`, `rtd.rx_unarmed`, `rtd.rx_rearm_recovered` | RX ISR이 수신을 다시 걸지 못한 수(BUSY 포함), 지금 수신을 걸지 못한 RX MB 수(0이어야 한다), main이 다시 건 수 |
 
 - 문서 통신량 부하(host): `vss_node.load_doc_traffic`(`_hook`은 보드 시계 hook 빌드). 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. VSS가 받는 것은 다른 노드 몫 10개)을 넣고, 앱 역할로 VSS_STATUS를 250 ms마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 20 ms 주기다. 손실 0(링·큐·M04 슬롯, DOMAIN_PERMISSION·VSS_WARNING_STATE 전부 전달), VSS_STATUS 간격 ≤ 250 ms + 20 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD VSS ...` 한 줄로 남긴다.
 
@@ -277,5 +281,6 @@ int main(void)
 ## 제한
 
 - bus-off 뒤 회복: 생성 설정은 FlexCAN 하드웨어 자동 복구(`FLEXCAN_IP_BUSOFF_RECOVERY_U32`)가 켜져 있다. Network는 bus-off를 받은 바퀴에 CAN 링크를 닫는다. TX MB에 남은 프레임은 abort하거나 이미 나갔으면 성공으로, 실제 결과대로 정산하고, 그 뒤로 새 제출은 `NET_SUBMIT_NOT_READY`, 받은 프레임은 전달하지 않고 버린다(`rtd.busoff_rx_dropped`). 100 ms 지나 새 포트 epoch로 다시 연다. 프레임이 하나도 나가지 않은 채 이어진 bus-off는 다섯 번째까지 100 ms, 여섯 번째부터 1 s 닫아 둔다(`net_board_cfg.h` `NET_BOARD_CAN_BUSOFF_*`, 잠정 값). bus-off 전에 보낸 것은 다시 보내지 않는다. VSS는 NOT_READY인 동안 재제출하고(C10), 다시 열린 뒤 받아들여진 보고가 나간다. bus-off가 난 뒤 Network가 그것을 받기 전(그 사이 바퀴 하나 이내)에 `NET_SUBMIT_OK`로 받은 제출은 나가지 못할 수 있다. VSS는 250 ms마다 새 평가를 제출하므로 다음 평가가 대신한다. abort가 제때 끝나지 않으면(`FLEXCAN_STATUS_TIMEOUT`) 그 프레임은 실패로 보고되고 MB는 격리되는데, 그 프레임이 나중에 나갈 수 있다(TX timeout abort와 같은 한계). 보드에서 bus-off를 일으켜 확인하지는 않았다.
+- TX MB 격리: abort가 TIMEOUT이고 그 MB의 플래그가 다시 서지 않으면 리셋 전까지 그 MB를 쓰지 않는다(`rtd.tx_quarantined`). 컨트롤러를 다시 초기화해 MB를 되찾는 경로는 넣지 않았다. 보드에서 `tx_abort_timeouts`가 생기는지 먼저 본다.
 - DOMAIN이 같은 BOOT_ID로 재기동하면 복구되지 않는다(위 "DOMAIN 재부팅" 절). 끝난 BOOT 기억은 CAN ID마다 4개라, 4번 넘게 재부팅한 뒤 아주 오래된 BOOT의 프레임이 다시 오면 새 세대로 받는다.
 - VSS 노드는 UART 링크와 다른 노드의 facade를 쓰지 않는다.

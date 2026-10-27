@@ -70,6 +70,8 @@ typedef char net_board_rx_tx_disjoint[(RX_FIRST + RX_COUNT <= TX_FIRST ||
 typedef char net_board_mb_in_range[(RX_FIRST + RX_COUNT <= NET_BOARD_CAN_MAX_MB &&
                                     TX_FIRST + TX_COUNT <= NET_BOARD_CAN_MAX_MB &&
                                     RX_COUNT >= 1u) ? 1 : -1];
+/* One bit per RX MB in RtdCan.rx_unarmed. */
+typedef char net_board_rx_mb_bits[(RX_COUNT <= 32u) ? 1 : -1];
 
 /* FlexCAN MB control/status word (hardware layout, also used by RTD's copy). */
 #define CS_EDL   0x80000000UL
@@ -132,6 +134,9 @@ typedef struct {
     uint8_t link;           /* LINK_*: CLOSED refuses new frames, drops received ones */
     uint32_t ring_stale;    /* ring entries stored while the link was closed, still to drain */
     uint64_t hold_until_ms; /* CLOSED: the link opens again at this time */
+    /* RX MBs left without a reception by a refused re-arm in the RX ISR (bit
+     * i: MB RX_FIRST + i); the main context arms them again (rx_retry). */
+    volatile uint32_t rx_unarmed;
 } RtdCan;
 
 static RtdCan can;
@@ -240,6 +245,7 @@ static void rx_complete(uint32_t mb)
     Flexcan_Ip_MsgBuffType *m = &can.rx[mb - RX_FIRST];
     NetWireCanEnvelope f;
     RingEntry *e;
+    Flexcan_Ip_StatusType st;
     uint32_t cs = m->cs, n, key, overrun = 0u;
 
     memset(&f, 0, sizeof(f));
@@ -276,9 +282,17 @@ static void rx_complete(uint32_t mb)
         inc(&can.ring.lost);
     }
     net_board_irq_restore(key);
-    /* Copy is complete: re-arm immediately so back-to-back frames are kept. */
-    if (FlexCAN_Ip_Receive(NET_BOARD_CAN_INSTANCE, (uint8)mb, m, FALSE) != FLEXCAN_STATUS_SUCCESS)
+    /* Copy is complete: re-arm immediately so back-to-back frames are kept.
+     * BUSY: the driver already holds a reception on this MB. Any other
+     * refusal leaves the MB without one: it is marked, and the main context
+     * arms it again (rx_retry); until then the other RX MBs receive. */
+    st = FlexCAN_Ip_Receive(NET_BOARD_CAN_INSTANCE, (uint8)mb, m, FALSE);
+    if (st != FLEXCAN_STATUS_SUCCESS) {
+        key = net_board_irq_save();
         inc(&rtd.diag.rx_rearm_errors);
+        if (st != FLEXCAN_STATUS_BUSY) can.rx_unarmed |= 1UL << (mb - RX_FIRST);
+        net_board_irq_restore(key);
+    }
 }
 
 static void tx_complete(uint32_t mb)
@@ -502,7 +516,9 @@ NetStatus net_hal_rtd_can_arm(void)
  * The RTD clears the flag itself right after a timed-out abort, so an MB
  * that finished just before that clear never shows it again and stays
  * quarantined until reset (seen as tx_abort_timeouts above
- * tx_quarantine_released). */
+ * tx_quarantine_released). The MBs quarantined now are counted in
+ * tx_quarantined; when it reaches TX_COUNT no CAN frame can be sent until a
+ * flag shows or a reset. A timeout alone never frees an MB: the controller may still own it. */
 static void release_quarantined(uint32_t i)
 {
     TxSlot *slot = &can.tx[i];
@@ -516,6 +532,7 @@ static void release_quarantined(uint32_t i)
     slot->aborting = false;
     slot->busy = false;
     inc(&rtd.diag.tx_quarantine_released);
+    if (rtd.diag.tx_quarantined != 0u) --rtd.diag.tx_quarantined;
     net_board_irq_restore(key);
 }
 
@@ -557,6 +574,7 @@ static void abort_expired(uint32_t i, bool busoff)
         ev.outcome = NET_TX_FAILED;
         slot->quarantined = true;   /* busy stays set: the MB is not handed out */
         inc(&rtd.diag.tx_abort_timeouts);
+        inc(&rtd.diag.tx_quarantined);
     } else {
         ev.outcome = NET_TX_FAILED;
         slot->busy = false;
@@ -566,6 +584,34 @@ static void abort_expired(uint32_t i, bool busoff)
     c.port_epoch = rtd.can_epoch; c.captured_at_ms = net_hal_rtd_now_locked(); c.timestamp_known = true;
     net_board_irq_restore(key);
     (void)net_hal_capture_tx(rtd.adapter, NET_WIRE_CAN, &ev, &c);
+}
+
+/* RX MBs a refused RX ISR re-arm left without a reception: one
+ * FlexCAN_Ip_Receive per MB and pass. The mark is cleared before the call, so
+ * a refusal of a later ISR re-arm of the same MB marks it again. BUSY: the
+ * driver holds a reception already. Still refused: marked for the next pass
+ * (counted once, in the ISR). rx_unarmed: MBs without a reception now. */
+static void rx_retry(void)
+{
+    uint32_t i, key, bit, left, n = 0u;
+    for (i = 0u; i < RX_COUNT; ++i) {
+        Flexcan_Ip_StatusType st;
+        bit = 1UL << i;
+        key = net_board_irq_save();
+        if ((can.rx_unarmed & bit) == 0u) { net_board_irq_restore(key); continue; }
+        can.rx_unarmed &= ~bit;
+        net_board_irq_restore(key);
+        st = FlexCAN_Ip_Receive(NET_BOARD_CAN_INSTANCE, (uint8)(RX_FIRST + i), &can.rx[i], FALSE);
+        key = net_board_irq_save();
+        if (st == FLEXCAN_STATUS_SUCCESS || st == FLEXCAN_STATUS_BUSY) inc(&rtd.diag.rx_rearm_recovered);
+        else can.rx_unarmed |= bit;
+        net_board_irq_restore(key);
+    }
+    key = net_board_irq_save();
+    left = can.rx_unarmed;
+    net_board_irq_restore(key);
+    for (; left != 0u; left &= left - 1u) ++n;
+    rtd.diag.rx_unarmed = n;
 }
 
 /* The hold after a bus-off is over: LINK_RESET under port epoch + 1, then
@@ -602,6 +648,7 @@ void net_hal_rtd_can_service(uint64_t now)
         net_board_irq_restore(key);
         if (expired) abort_expired(i, false);
     }
+    rx_retry();
     busoff_reopen(now);
     rtd.diag.tx_error_counter = FlexCAN_Ip_GetControllerTxErrorCounter(NET_BOARD_CAN_INSTANCE);
     rtd.diag.rx_error_counter = FlexCAN_Ip_GetControllerRxErrorCounter(NET_BOARD_CAN_INSTANCE);

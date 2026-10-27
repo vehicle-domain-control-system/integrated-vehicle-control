@@ -51,8 +51,17 @@ void MockRtd_CanSetAbortResult(uint8 instance, Flexcan_Ip_StatusType result);
 /* The controller finishes a timed-out abort: the MB becomes idle and its
  * message buffer flag is set (no interrupt). */
 void MockRtd_CanFinishAbort(uint8 instance);
+/* The controller finishes a timed-out abort but the flag is gone: the RTD
+ * cleared it right after the timeout, so the MB is idle and its message
+ * buffer flag stays clear (nothing shows the MB free again). */
+void MockRtd_CanFinishAbortFlagLost(uint8 instance);
 /* Send calls on an MB whose timed-out abort had not finished yet. */
 uint32 MockRtd_CanSendsOnAbortingMb(uint8 instance);
+/* FlexCAN_Ip_Receive refuses (ERROR) while set and leaves the MB without a
+ * reception: models a failed RX re-arm. */
+void MockRtd_CanSetReceiveRefused(uint8 instance, bool refused);
+/* RX MBs holding a reception (armed) now. */
+uint32 MockRtd_CanRxArmed(uint8 instance);
 
 /* LPUART virtual line (instances 0..15). The node side uses the
  * Lpuart_Uart_Ip API; these hooks are the far end of the wire.

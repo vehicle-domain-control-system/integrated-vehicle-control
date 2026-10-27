@@ -82,6 +82,7 @@ BCM 노드(profile 3, CAN만) 펌웨어에 Network를 붙일 때 지켜야 할 �
 | `upper.tx_deferred` | 기록한다. 장치 칸이 없어(같은 CAN ID 프레임이 아직 컨트롤러에 있을 때 포함) 프레임을 서비스 큐에 두고 다음 바퀴로 미룬 수다(번호는 그대로 쓰므로 손실 아님). 슬롯 `counters.queue_full`(`result_tx` … `status_tx`)은 서비스 큐가 찼을 때만 센다 |
 | `upper.rx_invalid` | 기록만 한다. RX MB가 모든 표준 ID를 받으므로 이 노드가 받지 않는 다른 노드 몫 프레임만큼 정상 운전에서도 늘어난다(host 부하 시험 10 s에 BCM 630). 버스 이상 판단에 쓰지 않는다 |
 | `rtd.rx_overruns` | 0. 1초 경계에 11개가 함께 시작할 때 RX MB 2개(`NET_BOARD_CAN_RX_MB_COUNT`)에서 덮어쓰기가 없어야 한다. 0이 아니면 `-DNET_BOARD_CAN_RX_MB_COUNT=3u -DNET_BOARD_CAN_TX_MB_FIRST=3u`(TX MB 3..6, `NET_BOARD_CAN_MAX_MB` 7 안)로 다시 본다 |
+| `rtd.tx_abort_timeouts`, `rtd.tx_quarantined`, `rtd.rx_rearm_errors`, `rtd.rx_unarmed` | 0. 0이 아니면 그 값과 `rtd.tx_abort_last_status`, `rtd.rx_rearm_recovered`를 기록한다. `tx_quarantined`는 지금 격리된 TX MB 수라 그 MB의 플래그가 서거나 리셋될 때까지 줄지 않고, TX MB 수(`NET_HAL_TX_CAPACITY`, 4)와 같아지면 그동안 CAN 송신이 멈춘다. `rx_unarmed`는 수신을 걸지 못한 RX MB 수이고 다음 바퀴에 다시 건다(`VSS_NODE_INTEGRATION.md` 보드 설정 절) |
 | 링커 스택 크기(`.ld`) | Network 경로 상한 2,048 B(main → `Net_MainFunction`, `Net_Init` 각각) + 앱 콜백 + ISR 이상. host ARM 측정은 약 1.9 KB이고 함수 포인터 호출(앱 콜백)과 ISR은 빼고 잰 값이다 |
 
 ## MCU 선택과 시험

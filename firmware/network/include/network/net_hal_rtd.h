@@ -91,6 +91,12 @@ typedef struct {
     /* CAN frames stored right after a loss (ring full or MB overrun): loss
      * boundaries. The stored frame itself is complete and delivered. */
     uint32_t rx_loss_events;
+    /* RX re-arm: rx_rearm_errors counts the refusals in the RX ISR; a refusal
+     * other than BUSY leaves that MB without a reception until the main
+     * context arms it again (one try per MB and pass). rx_unarmed: RX MBs
+     * without a reception after the last pass (0 normally); rx_rearm_recovered:
+     * MBs the main context armed again. */
+    uint32_t rx_unarmed, rx_rearm_recovered;
     uint32_t tx_sent, tx_busy, tx_send_errors, tx_complete;
     /* TX MB timeout (NET_BOARD_CAN_TX_TIMEOUT_MS) and its abort result:
      * tx_timeout_aborts: aborts of a transfer not completed before them;
@@ -101,6 +107,11 @@ typedef struct {
      * tx_abort_last_status: raw Flexcan_Ip_StatusType of the last abort. */
     uint32_t tx_timeout_aborts, tx_abort_already_sent, tx_abort_timeouts, tx_quarantine_released;
     uint32_t tx_abort_last_status;
+    /* TX MBs quarantined now (tx_abort_timeouts not yet released): that many
+     * fewer TX MBs until each flag shows or a reset. Equal to the TX MB count
+     * (NET_HAL_TX_CAPACITY): no CAN frame can be sent until a flag shows or a
+     * reset. */
+    uint32_t tx_quarantined;
     uint32_t err_events, busoff_events, last_error_status, unexpected_events;
     /* Bus-off recovery (net_hal_rtd_can.c): links opened again under a new
      * port epoch; bus-offs since the last sent frame (picks the hold time);
@@ -146,7 +157,8 @@ NetStatus net_hal_rtd_start(void);
 /* Foreground supervision: abort TX MBs older than NET_BOARD_CAN_TX_TIMEOUT_MS
  * (no ACK on the bench) and UART transfers older than the link timeout, report
  * them FAILED + released, start a waiting UART transfer, re-arm a UART
- * reception that stopped, run the CAN bus-off recovery. Read error counters. */
+ * reception that stopped and a CAN RX MB whose ISR re-arm was refused, run the
+ * CAN bus-off recovery. Read error counters. */
 void net_hal_rtd_service(void);
 
 /* Main context only. Application clock (time base A): now_ms becomes the

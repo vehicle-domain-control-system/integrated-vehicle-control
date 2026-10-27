@@ -131,6 +131,7 @@ Network를 실제 보드에 올려 확인한 결과를 요약한다. Host 시험
 - **문서 통신량에서의 링 깊이:** 노드 문서의 보드 확인 항목(문서 통신량이 흐르는 버스에서 수 분, 링 최대 깊이 용량의 75 % 이하)은 남아 있다. 이번 부하는 VSS 초당 20프레임(한 흐름), BCM 송신 초당 24 + 수신 4였다. CIS는 CAN 송신 초당 약 39(상태 3종 29 + CIS_OCCUPANT 10)와 수신 20(0x080), UART-C는 문서 주기의 Pi 링크(초당 316 B)와 P_PERMISSION relay 초당 20이었다(CAN ISR 링 최대 3/16, UART-C 바이트 링 최대 26/256).
 - **실제 DOMAIN 보드, 실제 Pi와 CIS 앱, DOMAIN UART-M, WINDOW:** 시험 범위 밖이다. CIS 시험의 DOMAIN은 디버그 노드, Pi는 노트북 도구, CIS 앱은 시험대 대역이었다.
 - **bus-off:** 세 시험 모두 나지 않았다(ACK 없음 시험 포함). 생성 설정은 FlexCAN 하드웨어 자동 복구가 켜져 있다. 이 시험들 뒤에 Network는 bus-off 뒤 CAN 링크를 닫고, 남은 송신을 정산한 뒤 100 ms(다섯 번 넘게 이어지면 1 s) 지나 새 포트 epoch로 다시 열도록 바뀌었다(`VSS_NODE_INTEGRATION.md` "제한"). 이 동작은 host 시험으로만 확인했고, 보드에서는 보지 않았다.
+- **TX abort 시간 초과와 RX 재등록 거절:** RTD가 TX abort를 TIMEOUT으로 끝내는 경우, 그 뒤 MB 플래그가 다시 서는지, RX 재등록(`FlexCAN_Ip_Receive`)을 거절하는 경우는 보드에서 일으켜 보지 않았다. Network는 플래그가 서지 않은 MB를 리셋 전까지 쓰지 않고(`rtd.tx_quarantined`), 거절된 RX MB는 main에서 다시 건다(`rtd.rx_unarmed`). host 시험으로만 확인했다.
 - **링크 실패 뒤 회복:** 어댑터 수신 큐가 넘치면 Network는 그 링크(CAN 또는 UART-C)를 실패로 두고 리셋 전까지 회복하지 않는다(CIS 시험의 첫 결함에서 UART-C로 본 동작). 고친 뒤에는 넘침이 없었고, 지금 RTD 백엔드에서는 이 경로가 나지 않는다(drain은 빈칸 이하). 회복하는 것은 bus-off뿐이다(위 줄).
 - **BOOT_ID의 보드 출처:** Network 노드의 BOOT_ID는 상수다. 한쪽만 리셋하면 상대 Network 노드가 그 노드의 프레임을 옛 것으로 거부한다.
 

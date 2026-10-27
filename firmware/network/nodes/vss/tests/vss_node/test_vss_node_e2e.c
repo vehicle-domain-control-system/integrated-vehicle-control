@@ -1445,6 +1445,94 @@ static int h18_abort_result(void)
     return 0;
 }
 
+/* A refused RX re-arm (FlexCAN_Ip_Receive in the RX ISR, other than BUSY)
+ * leaves that MB without a reception; the main context arms it again in a
+ * later pass. While the driver keeps refusing, each RX MB that takes a frame
+ * drops out (rtd.rx_unarmed) until none receives and the bus frame is lost on
+ * this node. Once the driver accepts again, every MB receives again and the
+ * next events reach VSS, more of them than there are RX MBs. */
+static int h19_rx_rearm_retry(void)
+{
+    NetWireVssEventRaw r;
+    NetWireCanEnvelope e;
+    NetNodeDiag d;
+    uint32_t armed, k;
+    int events0;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    armed = MockRtd_CanRxArmed(BUS);
+    CHECK(armed >= 2u);
+    MockRtd_CanSetReceiveRefused(BUS, true);
+    for (k = 0u; k < armed; ++k) {
+        r = event_raw(1u + k, 10u + k);
+        CHECK(encode_event(&r, &e) && inject(&e) >= 0);
+        step_ms(1u);
+        CHECK(event_count == (int)(k + 1u));
+        d = diag();
+        CHECK(d.rtd.rx_unarmed == k + 1u && d.rtd.rx_rearm_errors == k + 1u && d.rtd.rx_rearm_recovered == 0u);
+    }
+    CHECK(MockRtd_CanRxArmed(BUS) == 0u);
+    r = event_raw(1u + armed, 10u + armed);
+    CHECK(encode_event(&r, &e) && inject(&e) < 0);     /* no RX MB armed: lost on this node */
+    step_ms(5u);
+    d = diag();
+    CHECK(d.rtd.rx_unarmed == armed && d.rtd.rx_rearm_recovered == 0u && d.rtd.rx_rearm_errors == armed);
+    MockRtd_CanSetReceiveRefused(BUS, false);
+    step_ms(1u);
+    d = diag();
+    CHECK(d.rtd.rx_unarmed == 0u && d.rtd.rx_rearm_recovered == armed && MockRtd_CanRxArmed(BUS) == armed);
+    events0 = event_count;
+    for (k = 0u; k <= armed; ++k) {
+        r = event_raw(2u + armed + k, 20u + k);
+        CHECK(encode_event(&r, &e) && inject(&e) >= 0);
+        step_ms(1u);
+    }
+    CHECK(event_count == events0 + (int)armed + 1);
+    CHECK(diag().rtd.rx_unarmed == 0u && diag().rtd.rx_rearm_errors == armed);
+    return 0;
+}
+
+/* A timed-out abort whose message buffer flag is then lost (the RTD cleared
+ * it right after the timeout while the controller finished the MB): nothing
+ * shows that MB free again, so it stays quarantined until a reset, counted in
+ * rtd.tx_quarantined, also after many passes. One after the other, every TX MB
+ * ends this way: then no CAN frame leaves, and the next status report waits in
+ * the service queue (upper.tx_deferred) instead of going into an MB the
+ * controller may still own; no Send writes a quarantined MB. */
+static int h20_quarantine_flag_lost(void)
+{
+    NetVssStatus s;
+    MockCanFrame f;
+    NetNodeDiag d;
+    uint32_t sent_at, k;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    MockRtd_CanSetAckMissing(BUS, true);
+    for (k = 0u; k < NET_HAL_TX_CAPACITY; ++k) {
+        s = status_ready(1u + k, 0u);
+        CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+        step_ms(1u);
+        sent_at = now_ms();
+        CHECK(diag().rtd.tx_sent == k + 1u);
+        MockRtd_CanSetAbortResult(BUS, FLEXCAN_STATUS_TIMEOUT);
+        past_tx_timeout(sent_at);
+        MockRtd_CanFinishAbortFlagLost(BUS);
+        step_ms(128u);
+        d = diag();
+        CHECK(d.rtd.tx_abort_timeouts == k + 1u && d.rtd.tx_quarantined == k + 1u);
+        CHECK(d.rtd.tx_quarantine_released == 0u && d.upper.tx_failed == k + 1u);
+    }
+    MockRtd_CanSetAckMissing(BUS, false);
+    s = status_ready(1u + k, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(20u);
+    d = diag();
+    CHECK(d.rtd.tx_sent == NET_HAL_TX_CAPACITY && d.upper.tx_deferred >= 1u);
+    CHECK(d.rtd.tx_quarantined == NET_HAL_TX_CAPACITY && d.rtd.tx_quarantine_released == 0u);
+    CHECK(MockRtd_CanTransmitNext(BUS, &f) < 0 && MockRtd_CanSendsOnAbortingMb(BUS) == 0u);
+    return 0;
+}
+
 /* ------------------------------------------------ documented traffic ---- */
 /* Ten seconds of the documented traffic (net_load_traffic.h):
  *   CAN  : the periodic frames of DOMAIN, CIS and BCM as their senders put
@@ -1640,6 +1728,7 @@ int main(int argc, char **argv)
         { "h14_rx_burst", h14_rx_burst }, { "h15_warning_quality_drop", h15_warning_quality_drop },
         { "h16_warning_repeat_delivered", h16_warning_repeat_delivered },
         { "h17_domain_boot_switch", h17_domain_boot_switch },
+        { "h19_rx_rearm_retry", h19_rx_rearm_retry }, { "h20_quarantine_flag_lost", h20_quarantine_flag_lost },
         { "load_doc_traffic", load_doc_traffic },
         { "h18_abort_result", h18_abort_result }
     };
