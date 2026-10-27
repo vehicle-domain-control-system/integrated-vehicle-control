@@ -193,6 +193,12 @@ static unsigned can_count, can_bad, uart_count, uart_bad;
 static unsigned uart_type_count[256], uart_seq_gaps;
 static bool uart_seq_seen;
 static uint16_t uart_seq_last;
+/* M_USER_SETTINGS (0x25) by update sequence: the time of each submission;
+ * the longest wait until the line took one, and the most its wire AGE fell
+ * behind the real age (the AGE is set when the frame goes to the device). */
+#define SETTINGS_LOG 512u
+static uint32_t settings_at[SETTINGS_LOG];
+static long settings_wait_max, settings_age_lag_max;
 static uint32_t now_ms; /* the DOMAIN main-loop ms function */
 
 /* The ESP32 end of UART-M stops reading (n24): the active transfer stays on
@@ -235,6 +241,12 @@ static void collect(void)
         if (uart_count < UART_LOG) { uart_seen[uart_count].at = now_ms; uart_seen[uart_count].m = u; }
         ++uart_count;
         ++uart_type_count[u.type];
+        if (u.type == 0x25u && u.data.m_user_settings.update_sequence < SETTINGS_LOG) {
+            long wait = (long)(now_ms - settings_at[u.data.m_user_settings.update_sequence]);
+            long lag = wait + 5 - (long)u.data.m_user_settings.source_age_ms;
+            if (wait > settings_wait_max) settings_wait_max = wait;
+            if (lag > settings_age_lag_max) settings_age_lag_max = lag;
+        }
         if (uart_seq_seen && (uint16_t)(uart_seq_last + 1u) != u.sequence) ++uart_seq_gaps;
         uart_seq_seen = true;
         uart_seq_last = u.sequence;
@@ -1269,6 +1281,7 @@ static DomainIf_Status_t tx_settings(uint32_t n)
     v.meta.quality = DATA_QUALITY_OK;
     v.meta.updateSequence = n;
     v.meta.ageMs = 5u;
+    if (n < SETTINGS_LOG) settings_at[n] = now_ms;
     return port.txMobileUserSettings(&v);
 }
 
@@ -1469,6 +1482,7 @@ static int load_doc_traffic(void)
            rear_calls, (unsigned long)rear_in, door_state_calls, (unsigned long)door_in, bcm_status_calls,
            (unsigned long)bcm_status_in, cis_status_calls, (unsigned long)cis_status_in,
            (unsigned long)d.rtd.main_drained_max, (unsigned long)d.rtd.isr_drain_budget, uart_type_count[0x02u]);
+    printf("load uart: settings_wait_max_ms=%ld settings_age_lag_max_ms=%ld\n", settings_wait_max, settings_age_lag_max);
     fflush(stdout);
     CHECK(d.rtd.rx_frames == injected);
     CHECK(lost == 0u);
@@ -1479,6 +1493,9 @@ static int load_doc_traffic(void)
     /* The high-water marks saw the traffic: nine bus frames at once, a
      * 13-frame UART-M group waiting for the device. */
     CHECK(d.rtd.isr_ring_max_depth >= 9u && d.upper.tx_max_depth >= 13u && d.upper.tx_deferred >= 1u);
+    /* One UART-M frame leaves per pass: the 13-frame group is out before the
+     * next group 200 ms later. */
+    CHECK(settings_wait_max > 0 && settings_wait_max < 200);
     return 0;
 }
 

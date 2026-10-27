@@ -72,6 +72,14 @@ typedef struct {
     uint32_t uart_rx_idle_events;   /* receive idle-line events (timeout interrupt builds): re-armed */
     uint32_t uart_tx_send_errors;   /* AsyncSend refused */
     uint32_t uart_tx_expired;       /* deadline passed before the transfer could start */
+    /* TX timeout abort refused while the transfer had not finished (transmit
+     * status not SUCCESS and bytes remaining: the driver may still read the
+     * buffer): the transfer stayed on the link, its buffer kept, the abort
+     * retried every pass (each refusal also in uart_tx_abort_errors). waits:
+     * transfers that waited so; waiting: 1 while one waits now (no later
+     * transfer of the link starts until the driver lets go or a reset). */
+    uint32_t uart_tx_abort_waits;
+    uint32_t uart_tx_abort_waiting;
 } NetHalRtdUartDiag;
 
 /* Time base selected at compile time (NetHalRtdDiag.time_source). */

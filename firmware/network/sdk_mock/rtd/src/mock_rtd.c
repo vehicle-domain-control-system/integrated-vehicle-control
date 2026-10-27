@@ -67,10 +67,16 @@ typedef struct {
     const Lpuart_Uart_Ip_UserConfigType *cfg;
     Lpuart_Uart_Ip_StateStructureType *st;
     bool tx_stall, rx_refused;
+    bool abort_refused;     /* MockRtd_UartSetAbortRefused */
+    bool end_at_send;       /* MockRtd_UartEndTransferAtSend: armed */
+    bool end_pending;       /* that END_TRANSFER raised while masked */
     uint32 inits, sends, aborts, rx_lost;
 } MockUart;
 
 #define MOCK_UART_INSTANCES 16u
+
+/* Host critical section of net_board_cfg.h: nonzero = interrupts masked. */
+volatile uint32_t net_board_host_irq_depth;
 
 static MockCan can[MOCK_INSTANCES];
 static MockUart uart[MOCK_UART_INSTANCES];
@@ -82,6 +88,7 @@ void MockRtd_Reset(void)
 {
     memset(can, 0, sizeof(can));
     memset(uart, 0, sizeof(uart));
+    net_board_host_irq_depth = 0u;
     now_us = 0u;
     timer_enabled = true;
 }
@@ -347,6 +354,13 @@ Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_AsyncSend(const uint8 Instance, const u
 {
     MockUart *u = uget(Instance);
     if (u == NULL || TxBuff == NULL || TxSize == 0u) return LPUART_UART_IP_STATUS_ERROR;
+    if (u->end_at_send) {
+        /* An END_TRANSFER interrupt pending as this call starts: runs now
+         * unless the caller masked interrupts. */
+        u->end_at_send = false;
+        if (net_board_host_irq_depth == 0u) uevent(Instance, u, LPUART_UART_IP_EVENT_END_TRANSFER);
+        else u->end_pending = true;
+    }
     if (u->st->IsTxBusy) return LPUART_UART_IP_STATUS_BUSY;
     u->st->TxBuff = TxBuff;
     u->st->TxSize = TxSize;
@@ -366,6 +380,7 @@ Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_AbortSendingData(const uint8 Instance)
 {
     MockUart *u = uget(Instance);
     if (u == NULL) return LPUART_UART_IP_STATUS_ERROR;
+    if (u->abort_refused && u->st->IsTxBusy) return LPUART_UART_IP_STATUS_ERROR;   /* keeps sending */
     if (u->st->IsTxBusy) {
         u->st->IsTxBusy = FALSE;
         u->st->TxSize = 0u;
@@ -463,6 +478,18 @@ uint32 MockRtd_UartTransmitTake(uint8 i, uint8 *out, uint32 max)
         }
     }
     return n;
+}
+
+void MockRtd_UartSetAbortRefused(uint8 i, bool refused) { MockUart *u = uget(i); if (u) u->abort_refused = refused; }
+void MockRtd_UartEndTransferAtSend(uint8 i) { MockUart *u = uget(i); if (u) u->end_at_send = true; }
+void MockRtd_RunPendingIrq(void)
+{
+    uint8 i;
+    if (net_board_host_irq_depth != 0u) return;
+    for (i = 0u; i < MOCK_UART_INSTANCES; ++i) {
+        MockUart *u = uget(i);
+        if (u != NULL && u->end_pending) { u->end_pending = false; uevent(i, u, LPUART_UART_IP_EVENT_END_TRANSFER); }
+    }
 }
 
 void MockRtd_UartRaiseError(uint8 i, Lpuart_Uart_Ip_StatusType status)

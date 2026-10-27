@@ -1060,6 +1060,12 @@ if(NETWORK_BUILD_RTD_MOCK)
         endforeach()
         # Pass drain bounded by the adapter queue's free slots (CIS UART-C).
         add_test(NAME uart_hal.u16_drain_adapter_room COMMAND test_uart_hal_e2e_ostimer u16_drain_adapter_room)
+        # TX abort refused while the driver still sends (buffer kept, abort tried again) and an
+        # END_TRANSFER pending as AsyncSend starts (interrupts masked around the start), UART-C and UART-M.
+        foreach(case IN ITEMS u17_abort_refused_keeps_buffer u18_end_transfer_before_send)
+            add_test(NAME uart_hal.${case} COMMAND test_uart_hal_e2e_ostimer ${case})
+            add_test(NAME uart_hal.${case}_uart_m COMMAND test_uart_hal_e2e_uart_m ${case})
+        endforeach()
     endif()
 
     # CIS node end-to-end (CAN + UART-C through the node root and the CIS

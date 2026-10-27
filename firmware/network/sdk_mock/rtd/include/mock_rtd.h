@@ -89,6 +89,15 @@ void MockRtd_UartRaiseIdle(uint8 instance);
 void MockRtd_UartSetTxStall(uint8 instance, bool stall);
 /* AsyncReceive refuses (ERROR) while set: models a failed re-arm. */
 void MockRtd_UartSetReceiveRefused(uint8 instance, bool refused);
+/* AbortSendingData returns ERROR while set and the active transfer goes on
+ * (the driver still reads its buffer, transmit status BUSY). */
+void MockRtd_UartSetAbortRefused(uint8 instance, bool refused);
+/* The next AsyncSend finds an END_TRANSFER interrupt pending (a reception
+ * that ended): it runs at once when interrupts are not masked
+ * (net_board_irq_save), otherwise it waits for MockRtd_RunPendingIrq. */
+void MockRtd_UartEndTransferAtSend(uint8 instance);
+/* Runs the interrupts raised while masked, once nothing is masked. */
+void MockRtd_RunPendingIrq(void);
 bool MockRtd_UartRxArmed(uint8 instance);
 uint32 MockRtd_UartTxRemaining(uint8 instance);  /* bytes of the active transfer not yet taken */
 uint32 MockRtd_UartSends(uint8 instance);        /* AsyncSend calls that started a transfer */

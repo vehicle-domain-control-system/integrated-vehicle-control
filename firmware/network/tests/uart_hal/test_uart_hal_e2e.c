@@ -1140,6 +1140,100 @@ static int u16_drain_adapter_room(void)
     return 0;
 }
 
+/* TX timeout with the abort refused while the driver still sends from the
+ * buffer (transmit status BUSY): nothing is reported and the buffer stays
+ * borrowed, the abort is tried again every pass and no later transfer of the
+ * link starts. Once the driver lets go (here the line takes the rest of the
+ * frame; the END_TRANSFER that comes while aborting is not taken as sent),
+ * the transfer is reported FAILED + release (no success claim) and the next
+ * one starts in that pass. */
+static int u17_abort_refused_keeps_buffer(void)
+{
+    NetTxKey k1, k2;
+    NetHalRtdDiag d;
+    uint8_t out[NET_WIRE_UART_FRAME_MAX];
+    uint64_t started;
+    uint32 errors;
+    CHECK(start() == NET_OK);
+    step_ms(2u);
+    tx_prepare();
+    MockRtd_UartSetTxStall(LPUART, true);
+    CHECK(tx_publish(&k1) == NET_OK);
+    step_ms(1u);
+    started = line_ms();
+    CHECK(MockRtd_UartSends(LPUART) == 1u);
+    MockRtd_UartSetAbortRefused(LPUART, true);
+    while (line_ms() < started + 99u) step_ms(1u);
+    RUN(snapshot_is(k1, true, NET_TX_UNKNOWN, false));
+    step_ms(1u);                                        /* 100 ms: abort refused */
+    d = rdiag();
+    CHECK(d.uart[DIAG].uart_tx_abort_waits == 1u && d.uart[DIAG].uart_tx_abort_waiting == 1u);
+    CHECK(d.uart[DIAG].uart_tx_abort_errors == 1u && d.uart[DIAG].uart_tx_timeout_aborts == 0u);
+    CHECK(d.uart[DIAG].uart_tx_abort_last_status == (uint32_t)LPUART_UART_IP_STATUS_ERROR);
+    RUN(snapshot_is(k1, true, NET_TX_UNKNOWN, false));  /* not reported: the buffer stays borrowed */
+    CHECK(MockRtd_UartTxRemaining(LPUART) > 0u && MockRtd_UartAborts(LPUART) == 0u);
+    CHECK(tx_publish(&k2) == NET_OK);
+    step_ms(10u);
+    d = rdiag();
+    errors = d.uart[DIAG].uart_tx_abort_errors;
+    CHECK(errors >= 10u && d.uart[DIAG].uart_tx_abort_waits == 1u);    /* tried again every pass */
+    CHECK(MockRtd_UartSends(LPUART) == 1u);             /* the next transfer did not start */
+    RUN(snapshot_is(k1, true, NET_TX_UNKNOWN, false));
+    RUN(snapshot_is(k2, false, NET_TX_UNKNOWN, false));
+    MockRtd_UartSetTxStall(LPUART, false);
+    CHECK(line_out(out, sizeof(out)) > 0u && MockRtd_UartTxRemaining(LPUART) == 0u);
+    CHECK(rdiag().uart[DIAG].uart_tx_complete == 0u);   /* ended while aborting: not taken as sent */
+    step_ms(1u);
+    RUN(snapshot_is(k1, true, NET_TX_FAILED, true));
+    d = rdiag();
+    CHECK(d.uart[DIAG].uart_tx_timeout_aborts == 1u && d.uart[DIAG].uart_tx_abort_waiting == 0u);
+    CHECK(d.uart[DIAG].uart_tx_abort_errors == errors);
+    CHECK(MockRtd_UartSends(LPUART) == 2u);             /* the waiting transfer started */
+    RUN(snapshot_is(k2, true, NET_TX_UNKNOWN, false));
+    CHECK(net_upper_retire(&service, k1) == NET_OK);
+    MockRtd_UartSetAbortRefused(LPUART, false);
+    CHECK(line_out(out, sizeof(out)) > 0u);
+    step_ms(1u);
+    RUN(snapshot_is(k2, true, NET_TX_SUCCEEDED, true));
+    CHECK(net_upper_retire(&service, k2) == NET_OK);
+    RUN(link_healthy());
+    return 0;
+}
+
+/* An END_TRANSFER interrupt pending right as AsyncSend starts (a reception
+ * that ended; the continuous one-byte reception normally re-arms first and
+ * raises none) must not complete the new transfer while the transmit status
+ * still reads the previous transfer's SUCCESS. AsyncSend runs with
+ * interrupts masked, so the event runs after it, reads BUSY and is ignored;
+ * the transfer is reported SUCCEEDED only once the line took its bytes. */
+static int u18_end_transfer_before_send(void)
+{
+    NetTxKey k;
+    NetHalRtdDiag d0;
+    uint8_t out[NET_WIRE_UART_FRAME_MAX];
+    CHECK(start() == NET_OK);
+    step_ms(2u);
+    tx_prepare();
+    RUN(tx_cycle(1u));                                  /* transmit status SUCCESS now */
+    d0 = rdiag();
+    MockRtd_UartEndTransferAtSend(LPUART);
+    CHECK(tx_publish(&k) == NET_OK);
+    step_ms(1u);
+    CHECK(MockRtd_UartSends(LPUART) == 2u);
+    MockRtd_RunPendingIrq();                            /* the event after the restore */
+    CHECK(rdiag().uart[DIAG].uart_tx_complete == d0.uart[DIAG].uart_tx_complete);
+    step_ms(1u);
+    RUN(snapshot_is(k, true, NET_TX_UNKNOWN, false));
+    CHECK(MockRtd_UartTxRemaining(LPUART) > 0u);
+    CHECK(line_out(out, sizeof(out)) > 0u);
+    step_ms(1u);
+    RUN(snapshot_is(k, true, NET_TX_SUCCEEDED, true));
+    CHECK(rdiag().uart[DIAG].uart_tx_complete == d0.uart[DIAG].uart_tx_complete + 1u);
+    CHECK(net_upper_retire(&service, k) == NET_OK);
+    RUN(link_healthy());
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1156,6 +1250,8 @@ int main(int argc, char **argv)
         , { "u15_idle_event_rearm", u15_idle_event_rearm }
 #endif
         , { "u16_drain_adapter_room", u16_drain_adapter_room }
+        , { "u17_abort_refused_keeps_buffer", u17_abort_refused_keeps_buffer }
+        , { "u18_end_transfer_before_send", u18_end_transfer_before_send }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

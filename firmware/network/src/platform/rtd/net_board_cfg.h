@@ -319,9 +319,13 @@ static inline void net_board_irq_restore(uint32_t key)
     __asm volatile ("msr primask, %0" : : "r" (key) : "memory");
 }
 #else
-/* Host simulation: the mock SDK runs "ISRs" synchronously on one thread. */
-static inline uint32_t net_board_irq_save(void) { return 0u; }
-static inline void net_board_irq_restore(uint32_t key) { (void)key; }
+/* Host simulation: the mock SDK runs "ISRs" synchronously on one thread. The
+ * nesting depth (defined by the mock SDK) stands for the masked CPU: a mock
+ * interrupt raised while it is nonzero waits until it is back to zero
+ * (mock_rtd.h, MockRtd_RunPendingIrq). */
+extern volatile uint32_t net_board_host_irq_depth;
+static inline uint32_t net_board_irq_save(void) { return net_board_host_irq_depth++; }
+static inline void net_board_irq_restore(uint32_t key) { net_board_host_irq_depth = key; }
 #endif
 
 #endif

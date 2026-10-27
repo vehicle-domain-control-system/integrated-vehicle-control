@@ -42,7 +42,18 @@
  *            reports SUCCEEDED + release and starts the next waiting transfer.
  *   timeout: net_hal_rtd_service() aborts a transfer older than the link
  *            timeout (AbortSendingData, its result recorded) and reports
- *            FAILED + release.
+ *            FAILED + release once the driver let go of the buffer: the abort
+ *            returned SUCCESS, or the transmit status reads SUCCESS, or no
+ *            byte remains. An abort refused otherwise (the driver may still
+ *            read the buffer) keeps the transfer on the link (buffer borrowed,
+ *            nothing reported) and is tried again every pass; no later
+ *            transfer of that link starts meanwhile. A driver that never lets
+ *            go keeps the link's transmission stopped until a reset, seen only
+ *            in the diagnostics (as a quarantined CAN TX MB).
+ *   start  : the transfer flags and AsyncSend under one critical section, so
+ *            an END_TRANSFER (also raised when a reception ends) cannot run
+ *            between them while the transmit status still reads the previous
+ *            transfer's SUCCESS (tx_end would take it for the new one).
  * Callback wiring (net_board_cfg.h NET_BOARD_UART_CALLBACK): the HAL defines
  * the generated-config callback, or board code routes the Network instance
  * to NetHalRtdUart_OnEvent() (net_hal_rtd_uart.h).
@@ -100,6 +111,7 @@ typedef struct {
     const NetHalTransfer *q[TXQ];
     uint32_t q_head, q_count;
     volatile bool tx_active, tx_done, aborting;
+    bool abort_wait;    /* timed out, abort refused, driver still sending: retried every pass */
     uint32_t done_stamp;
     uint64_t started_at_ms;
 } UartLink;
@@ -352,18 +364,18 @@ static Lpuart_Uart_Ip_StatusType start_head(UartLink *u, const NetUpperCapture *
     uint32_t key;
     *expired = net_upper_packet_eligible(&t->packet, c->captured_at_ms) != NET_OK;
     if (*expired) return LPUART_UART_IP_STATUS_ERROR;
+    /* AsyncSend inside the critical section (file header, start): it only
+     * sets the transfer up, and its interrupts run after the restore (the RTD
+     * exclusive areas keep the interrupts masked when entered masked). */
     key = net_board_irq_save();
     u->tx_active = true;
     u->tx_done = false;
     u->aborting = false;
+    u->abort_wait = false;
     u->started_at_ms = c->captured_at_ms;
-    net_board_irq_restore(key);
     st = Lpuart_Uart_Ip_AsyncSend(u->instance, t->packet.uart.bytes, (uint32)t->packet.uart.length);
-    if (st != LPUART_UART_IP_STATUS_SUCCESS) {
-        key = net_board_irq_save();
-        u->tx_active = false;
-        net_board_irq_restore(key);
-    }
+    if (st != LPUART_UART_IP_STATUS_SUCCESS) u->tx_active = false;
+    net_board_irq_restore(key);
     return st;
 }
 
@@ -504,24 +516,39 @@ void net_hal_rtd_uart_service(uint64_t now)
     uint32_t i, key;
     for (i = 0u; i < LINKS; ++i) {
         UartLink *u = &uart[i];
-        bool expired;
+        bool expired, held = false;
         key = net_board_irq_save();
-        expired = u->tx_active && !u->tx_done && !u->aborting && now - u->started_at_ms >= u->tx_timeout_ms;
+        expired = u->tx_active && !u->tx_done &&
+                  (u->abort_wait || (!u->aborting && now - u->started_at_ms >= u->tx_timeout_ms));
         if (expired) u->aborting = true;
         net_board_irq_restore(key);
         if (expired) {
-            /* The transfer is reported FAILED + release whatever the abort
-             * returns (no success claim); a non-SUCCESS result is recorded. */
+            /* The transfer is reported FAILED + release (no success claim) once
+             * the driver let go of the buffer. A refused abort keeps it unless
+             * the transmit status reads SUCCESS or no byte remains (the driver
+             * may still read the buffer): tried again in the next pass. */
             Lpuart_Uart_Ip_StatusType ast = Lpuart_Uart_Ip_AbortSendingData(u->instance);
+            if (ast != LPUART_UART_IP_STATUS_SUCCESS) {
+                uint32 remaining = 0u;
+                Lpuart_Uart_Ip_StatusType ts = Lpuart_Uart_Ip_GetTransmitStatus(u->instance, &remaining);
+                held = ts != LPUART_UART_IP_STATUS_SUCCESS && remaining != 0u;
+            }
             key = net_board_irq_save();
             u->diag->uart_tx_abort_last_status = (uint32_t)ast;
             if (ast != LPUART_UART_IP_STATUS_SUCCESS) inc(&u->diag->uart_tx_abort_errors);
-            if (!u->tx_done) {
+            if (!u->tx_done && held) {
+                if (!u->abort_wait) inc(&u->diag->uart_tx_abort_waits);
+                u->abort_wait = true;
+                u->diag->uart_tx_abort_waiting = 1u;
+                net_board_irq_restore(key);
+            } else if (!u->tx_done) {
                 /* Not ended before the abort: never claim success. */
                 NetUpperCapture c;
                 NetTxKey k;
                 u->tx_active = false;
                 u->aborting = false;
+                u->abort_wait = false;
+                u->diag->uart_tx_abort_waiting = 0u;
                 net_board_irq_restore(key);
                 k = pop(u);
                 inc(&u->diag->uart_tx_timeout_aborts);
@@ -529,6 +556,8 @@ void net_hal_rtd_uart_service(uint64_t now)
                 report(u, k, true, NET_TX_FAILED, true, &c);
             } else {
                 u->aborting = false;    /* ended in the meantime; the drain reports it */
+                u->abort_wait = false;
+                u->diag->uart_tx_abort_waiting = 0u;
                 net_board_irq_restore(key);
             }
         }
