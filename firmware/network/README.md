@@ -59,6 +59,6 @@ wire 전송 식별과 원 관측 식별은 따로다. 전송 식별이 같은데
 
 G01~G08, WINDOW 실행, 외부 Owner 정책·ABI 채택, BOOT_ID의 보드 출처, CAN TX_SEQUENCE 순환, 실제 드라이버·RTD 시각과 해제 의미, 대상 ECU 전체 RAM·스택·힙, ARM 빌드, Flash, 실제 버스 시험은 해당하는 대로 HOLD/UNKNOWN/NOT_RUN으로 명시해 둔다. HAL과 무관한 코드는 Host 백엔드로 돈다. Host에서의 성공을 실제 보드나 ECU 전체가 맞는다는 주장으로 올리지 않는다.
 
-보드에 올려 실제로 확인한 것(S32K344 VSS 노드, S32K144 BCM 시험대)과 확인하지 못한 것은 `BOARD_TEST_RESULTS.md`에 있다.
+보드에 올려 실제로 확인한 것(S32K344 VSS 노드, S32K144 BCM·CIS 시험대)과 확인하지 못한 것은 `BOARD_TEST_RESULTS.md`에 있다.
 
 BOOT_ID 계산 함수 `net_boot_id_next`(`include/network/net_boot_id.h`, `src/platform/net_boot_id.c`)는 있고 Host 시험도 돈다. HOLD인 것은 보드 쪽이다. warm reset에도 남는 noinit 기록 위치, 리셋 원인 읽기, seed 출처가 아직 없어서, 보드 파일은 지금 고정 시험값을 쓴다. 그래서 보드 시험 중에는 한 노드만 리셋하면 상대가 그 노드의 프레임을 옛 것으로 거부한다. 양쪽을 함께 리셋한다.
