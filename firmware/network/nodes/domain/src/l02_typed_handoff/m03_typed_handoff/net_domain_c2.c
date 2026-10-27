@@ -353,7 +353,7 @@ if(!a->service->context_seen||a->service->context_port_epoch!=a->service->config
 *session=a->service->context.session_id;
 return NET_OK;
 }
-static NetStatus remember(NetDomainC2 *a,NetTxKey key,uint64_t now,const NetworkLocalFailure_t *id){size_t i;
+NetStatus nd_remember(NetDomainC2 *a,NetTxKey key,uint64_t now,const NetworkLocalFailure_t *id){size_t i;
 for(i=0u;i<NET_UPPER_TX_CAPACITY;++i)if(!a->tx[i].used){NetDomainC2TxRecord *r=&a->tx[i];
 memset(r,0,sizeof(*r));
 r->used=true;
@@ -366,7 +366,7 @@ return NET_OK;
 }
 return NET_NO_CAPACITY;
 }
-static NetStatus room(NetDomainC2 *a,const NetworkLocalFailure_t *id){size_t i;
+NetStatus nd_room(NetDomainC2 *a,const NetworkLocalFailure_t *id){size_t i;
 if(!nd_ready(a))return NET_NOT_CONFIGURED;
 if(id!=NULL&&(!a->config.failure_sink_ready||a->api.RxNetworkLocalFailure==NULL))return NET_HOLD;
 for(i=0u;i<NET_UPPER_TX_CAPACITY;++i)if(!a->tx[i].used)return NET_OK;
@@ -403,7 +403,7 @@ NetStatus nd_send_can(NetDomainC2 *a,NetUpperCanMessage *m,const NetworkLocalFai
 NetTxKey key;
 uint64_t now;
 uint32_t *sequence;
-ND_TRY(room(a,id));
+ND_TRY(nd_room(a,id));
 ND_TRY(net_upper_now(a->service,&now));
 sequence=nd_can_sequence(a,m->id);
 if(sequence==NULL)return NET_UNSUPPORTED;
@@ -414,7 +414,7 @@ source.observed_at_ms=now;
 source.original_age_ms=net_upper_can_max_age(m);
 ND_TRY(net_upper_submit_can(a->service,m,&source,&a->config.transmit_policy,&key));
 ++*sequence;
-return remember(a,key,now,id);
+return nd_remember(a,key,now,id);
 }
 /* The M04 slot takes the latest content and assigns BOOT_ID / TX_SEQUENCE per
  * frame; a newer submission replaces one no device has taken
@@ -426,13 +426,13 @@ return net_upper_publish_can(a->config.publisher,m,NULL,NULL);
 NetStatus nd_send_uart(NetDomainC2 *a,NetUpperUartMessage *m,const NetworkLocalFailure_t *id){NetSourceStamp source;
 NetTxKey key;
 uint64_t now;
-ND_TRY(room(a,id));
+ND_TRY(nd_room(a,id));
 ND_TRY(net_upper_now(a->service,&now));
 source.observation_id=a->service->next_token;
 source.observed_at_ms=now;
 source.original_age_ms=net_upper_uart_max_age(m);
 ND_TRY(net_upper_submit_uart_auto(a->service,m,&source,&a->config.transmit_policy,&key));
-return remember(a,key,now,id);
+return nd_remember(a,key,now,id);
 }
 NetStatus net_domain_c2_step(NetDomainC2 *a)
 {

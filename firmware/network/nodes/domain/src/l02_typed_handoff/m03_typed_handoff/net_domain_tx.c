@@ -412,18 +412,20 @@ case COMMAND_ORIGIN_CLIMATE_POLICY:case COMMAND_ORIGIN_SYSTEM:r->source_context=
 break;
 default:return NET_HOLD;
 }
-/* Inspection route stays disconnected from Owner actuator callbacks. */
+/* Inspection route stays disconnected from Owner actuator callbacks. Its
+ * frame takes a C2 TX record without a failure identity, retired by
+ * net_domain_c2_step like a state relay. */
 {NetSourceStamp source;
 NetTxKey key;
 uint64_t now;
+ND_TRY(nd_room(a,NULL));
 ND_TRY(net_upper_now(a->service,&now));
 source.observation_id=*sequence;
 source.observed_at_ms=now;
 source.original_age_ms=r->command_age_ms;
 ND_TRY(net_upper_submit_inspection_can(a->service,&m,&source,&a->config.transmit_policy,&key));
-a->last_tx_key=key;
 ++*sequence;
-return NET_OK;
+return nd_remember(a,key,now,NULL);
 }
 }
 /* WINDOW is held (implementation on hold, design kept). DOMAIN_PERMISSION has

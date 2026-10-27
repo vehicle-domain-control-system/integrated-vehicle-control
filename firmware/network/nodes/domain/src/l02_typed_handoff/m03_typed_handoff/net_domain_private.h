@@ -29,6 +29,13 @@ uint32_t *nd_can_sequence(NetDomainC2 *,uint16_t id);
 /* Records the sender BOOT_ID of an accepted BCM frame (command target). */
 void nd_bcm_boot(NetDomainC2 *,uint16_t id,uint32_t boot);
 NetStatus nd_send_uart(NetDomainC2 *,NetUpperUartMessage *,const NetworkLocalFailure_t *);
+/* C2 TX records (NetDomainC2.tx): every submission of the adapter takes one,
+ * and net_domain_c2_step retires its M04 slot once the frame ended and the
+ * device released it. nd_room: a free record (and, with a failure identity,
+ * a ready failure sink) before the submission; nd_remember: the accepted key
+ * into that record (id NULL: no local failure notice for it). */
+NetStatus nd_room(NetDomainC2 *,const NetworkLocalFailure_t *id);
+NetStatus nd_remember(NetDomainC2 *,NetTxKey key,uint64_t now,const NetworkLocalFailure_t *id);
 NetStatus nd_core_message(NetDomainC2 *,uint8_t,const void *,NetUpperUartMessage *);
 NetStatus nd_context(NetDomainC2 *,uint32_t *,uint64_t *);
 NetDomainC2 *nd_registered(void);

@@ -414,15 +414,21 @@ value.age_policy=a->config.transmit_policy;
 *out=value;
 return NET_OK;
 }
+/* A state relay (UART-M projection of a received CAN state) takes a C2 TX
+ * record like the other adapter submissions, without a failure identity:
+ * net_domain_c2_step retires its M04 slot once the frame ended (sent or
+ * failed) and the device released it. The record is checked first (before
+ * the projection asks DOMAIN to confirm the snapshot), so an accepted relay
+ * is always tracked. */
 NetStatus nd_publish_projection(NetDomainC2 *a,uint16_t id,const void *object){
 uint64_t now;
 NetUpperQueryOutput value;
 NetTxKey key;
+ND_TRY(nd_room(a,NULL));
 ND_TRY(net_upper_now(a->service,&now));
 ND_TRY(nd_projection(a,id,object,now,NULL,&value));
 ND_TRY(net_upper_submit_uart_auto(a->service,&value.message,&value.source,&value.age_policy,&key));
-a->last_tx_key=key;
-return NET_OK;
+return nd_remember(a,key,now,NULL);
 }
 
 NetStatus net_domain_c2_window_view(NetDomainC2 *a,const NetUpperCanMessage *m,const NetUpperDelivery *d,NetDomainC2WindowView *out)

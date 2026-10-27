@@ -313,6 +313,26 @@ static int perm_window_hold(void)
     CHECK(submit(&p)==DOMAIN_IF_OK&&sent_count==1u&&synth(0u)==1u);
     return 0;
 }
+/* WINDOW command on the inspection route (a held route; the test turns the
+ * transport on): every accepted frame takes a C2 TX record, retired once the
+ * frame was sent and released. Twice as many commands as the 16 records all
+ * go and no record is left. */
+static int window_command_retired(void)
+{
+    DomainIf_WindowCommand_t wc;unsigned k,i,used;
+    dom.config.inspection_transport=true;
+    adapter.config.window_transport_enabled=true;adapter.config.window_boot=501u;
+    for(k=0u;k<2u*NET_UPPER_TX_CAPACITY;++k){
+        memset(&wc,0,sizeof(wc));wc.context.commandId=100u+k;wc.context.origin=COMMAND_ORIGIN_SYSTEM;
+        wc.command=WINDOW_COMMAND_STOP;wc.channel=0u;
+        CHECK(ports.txWindowCommand(&wc)==DOMAIN_IF_OK);
+        (void)net_upper_step(&dom,0u);
+        CHECK(settle_and_deliver()==0&&sent_count==k+1u&&sent[k].can.standard_id==0x090u);
+        for(i=0u,used=0u;i<NET_UPPER_TX_CAPACITY;++i)if(adapter.tx[i].used)++used;
+        CHECK(used==0u);
+    }
+    return 0;
+}
 /* A submission the service refuses (the original life of 500 ms is over)
  * uses no number: the next accepted frame carries the next number. */
 static int perm_refused_not_consumed(void)
@@ -397,6 +417,7 @@ int main(int argc,char **argv)
         {"perm_bundle_provisional",perm_bundle_provisional}};
     size_t i;
     if(argc!=2)return 2;
+    if(strcmp(argv[1],"window_command_retired")==0){case_name=argv[1];if(start()!=0)return 2;if(window_command_retired()!=0)return 1;printf("C2 %s PASS\n",argv[1]);return 0;}
     for(i=0u;i<sizeof(cases)/sizeof(cases[0]);++i)if(strcmp(argv[1],cases[i].name)==0){
         case_name=cases[i].name;if(start()!=0)return 2;
         if(cases[i].run()!=0)return 1;

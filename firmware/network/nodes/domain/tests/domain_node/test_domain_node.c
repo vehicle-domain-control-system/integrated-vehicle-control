@@ -120,6 +120,14 @@ static unsigned node_config_calls, c2_hook_calls;
 static bool use_board_hook, alive_hook;
 static NetDomainC2AliveState alive_now;
 static NetStatus alive_return = NET_OK;
+/* confirm_snapshot (a DOMAIN team decision, NULL on the board: state relays
+ * held): the relay case binds one that confirms every snapshot. */
+static bool snapshot_hook;
+static bool confirm_every_snapshot(void *context, uint16_t id, uint64_t receipt, uint32_t boot, uint32_t sequence)
+{
+    (void)context; (void)id; (void)receipt; (void)boot; (void)sequence;
+    return true;
+}
 
 static NetStatus alive_source(void *context, NetDomainC2AliveState *out)
 {
@@ -167,6 +175,7 @@ bool MockBoard_DomainC2(NetDomainC2Api *api, NetDomainC2Config *config)
     config->domain_boot = 0x0BADu;
     config->bcm_boot = 0x0BADu;
     if (alive_hook) config->alive_state = alive_source;
+    if (snapshot_hook) config->confirm_snapshot = confirm_every_snapshot;
     /* cis_transition_barriers stays off here: the node turns the barriers on. */
     return true;
 }
@@ -185,6 +194,10 @@ static unsigned uart_type_count[256], uart_seq_gaps;
 static bool uart_seq_seen;
 static uint16_t uart_seq_last;
 static uint32_t now_ms; /* the DOMAIN main-loop ms function */
+
+/* The ESP32 end of UART-M stops reading (n24): the active transfer stays on
+ * the line until the TX timeout abort. */
+static bool uart_line_held;
 
 /* The bus takes every frame the node offered (TX_COMPLETE from the IRQ); the
  * ESP32 end of UART-M takes the active transfer (TX complete from the IRQ). */
@@ -210,6 +223,7 @@ static void collect(void)
         NetWireUartFrame fr;
         NetUpperUartMessage u;
         uint32 left = MockRtd_UartTxRemaining(UART_M);
+        if (uart_line_held) break;
         if (left == 0u) break;
         memset(&fr, 0, sizeof(fr));
         if (left > sizeof(fr.bytes)) { ++uart_bad; (void)MockRtd_UartTransmitTake(UART_M, fr.bytes, (uint32)sizeof(fr.bytes)); continue; }
@@ -1602,6 +1616,61 @@ static int n23_busoff_command_held(void)
     return 0;
 }
 
+/* State relay (C2 TxPort txMobileCisRear): DOMAIN relays the CIS_REAR it
+ * received to the mobile app as UART-M 0x36. Each relay takes a C2 TX record
+ * and its M04 slot is retired once the line took it: 32 relays, twice the 16
+ * service slots, all go out and no record is left. A relay the line does not
+ * take keeps its record until the TX timeout abort releases it; then it is
+ * retired too, without a local failure notice (a relay carries no identity),
+ * and the next relay goes out. */
+static int n24_state_relay_retired(void)
+{
+    NetWireUartFrame fr;
+    NetUpperCanMessage m;
+    unsigned k, relays0, aborts0;
+    uint32_t until;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    relays0 = uart_type_count[0x36u];
+    for (k = 0u; k < 2u * NET_UPPER_TX_CAPACITY; ++k) {
+        m = rear(k + 1u, k + 1u, 10u);
+        CHECK(inject(&m) >= 0);
+        run_to(now_ms + 1u);
+        CHECK(rear_calls == k + 1u);
+        CHECK(port.txMobileCisRear(&last_rear) == DOMAIN_IF_OK);
+        run_to(now_ms + 3u);
+        CHECK(uart_type_count[0x36u] - relays0 == k + 1u);
+        CHECK(c2_records_used() == 0u);
+    }
+    /* The line stops taking bytes: the relay keeps its record while it is on
+     * the line or waits behind another transfer. */
+    uart_line_held = true;
+    aborts0 = diag().rtd.uart[0].uart_tx_timeout_aborts;
+    m = rear(k + 1u, k + 1u, 10u);
+    CHECK(inject(&m) >= 0);
+    run_to(now_ms + 1u);
+    CHECK(port.txMobileCisRear(&last_rear) == DOMAIN_IF_OK);
+    run_to(now_ms + 50u);
+    CHECK(c2_records_used() == 1u && uart_type_count[0x36u] - relays0 == k);
+    until = now_ms + 400u;
+    while (c2_records_used() != 0u && (int32_t)(until - now_ms) > 0) run_to(now_ms + 1u);
+    CHECK(c2_records_used() == 0u && failure_calls == 0u);
+    CHECK(diag().rtd.uart[0].uart_tx_timeout_aborts > aborts0);
+    uart_line_held = false;
+    run_to(now_ms + 300u);
+    m = rear(k + 2u, k + 2u, 10u);
+    CHECK(inject(&m) >= 0);
+    run_to(now_ms + 1u);
+    CHECK(port.txMobileCisRear(&last_rear) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    CHECK(uart_type_count[0x36u] - relays0 == k + 1u && c2_records_used() == 0u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1625,6 +1694,7 @@ int main(int argc, char **argv)
         { "n21_same_id_order", n21_same_id_order },
         { "n22_same_id_order_deferred", n22_same_id_order_deferred },
         { "n23_busoff_command_held", n23_busoff_command_held },
+        { "n24_state_relay_retired", n24_state_relay_retired },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

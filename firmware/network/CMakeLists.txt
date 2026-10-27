@@ -522,6 +522,8 @@ if(NETWORK_BUILD_DOMAIN_C2)
                 perm_bundle_provisional)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2_permission ${case})
         endforeach()
+        # WINDOW command on the inspection route: its C2 TX record is retired once sent.
+        add_test(NAME domain_c2_window_command_retired COMMAND test_domain_c2_permission window_command_retired)
         # CIS environment / Occupant BOOT transitions: barriers, epochs, results.
         add_executable(test_domain_c2_transition nodes/domain/tests/product/test_domain_c2_transition.c)
         target_link_libraries(test_domain_c2_transition PRIVATE network_domain_c2)
@@ -1015,6 +1017,8 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_test(NAME domain_node.n22_same_id_order_deferred COMMAND test_domain_node n22_same_id_order_deferred)
         # A C2 command aborted at a bus-off: the record stays held with its identity, its M04 slot is retired.
         add_test(NAME domain_node.n23_busoff_command_held COMMAND test_domain_node n23_busoff_command_held)
+        # A state relay takes a C2 TX record and is retired once sent or released after a failure.
+        add_test(NAME domain_node.n24_state_relay_retired COMMAND test_domain_node n24_state_relay_retired)
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the
