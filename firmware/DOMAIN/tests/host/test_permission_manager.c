@@ -334,7 +334,7 @@ static int TestFailureAndNoDataInvalidateImmediately(void)
     ASSERT_EQ(1U, snapshot.updateSequence);
     ASSERT_EQ(3U, snapshot.stateRevision);
     ASSERT_TRUE(snapshot.expired);
-    ASSERT_EQ(DATA_QUALITY_STALE, snapshot.effectiveQuality);
+    ASSERT_EQ(DATA_QUALITY_NO_DATA, snapshot.effectiveQuality);
     ASSERT_TRUE(!snapshot.activeAllowed);
     return 0;
 }

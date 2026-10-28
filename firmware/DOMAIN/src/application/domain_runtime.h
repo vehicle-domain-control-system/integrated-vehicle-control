@@ -12,6 +12,7 @@
 #include "domain_interface_cis_environment_binding.h"
 #include "domain_interface_query_binding.h"
 #include "domain_interface_result_binding.h"
+#include "permission_coordinator.h"
 #include "permission_manager.h"
 
 #ifdef __cplusplus
@@ -88,7 +89,16 @@ typedef struct
     void *timeProviderContext;
     CommandManager_CommandId_t firstCommandId;
     ResultManager_Policy_t resultPolicy;
+    /*
+     * Startup-only opt-in. A zero-initialized config preserves the existing
+     * Runtime without scheduling or submitting CIS power permission. When
+     * enabled, the policy period must be exactly 200 ms and source validity
+     * must be nonzero. Runtime toggling is not supported.
+     */
+    bool permissionCoordinatorEnabled;
     PermissionManager_Policy_t permissionPolicy;
+    PermissionCoordinator_Evaluator_t permissionEvaluator;
+    void *permissionEvaluatorContext;
     /*
      * Optional startup-only feature selection. A zero-initialized config
      * keeps CIS Occupant disabled. When false, the policy TTL fields are
@@ -113,12 +123,14 @@ typedef struct
 {
     bool initialized;
     bool ready;
+    bool permissionCoordinatorEnabled;
     bool cisOccupantEnabled;
     DomainRuntime_InitStage_t initStage;
     bool hasPolled;
     uint32_t lastPollAtMs;
     uint32_t lastPollElapsedMs;
     uint32_t pollCount;
+    PermissionCoordinator_Status_t lastPermissionCoordinatorStatus;
 } DomainRuntime_Snapshot_t;
 
 /*
@@ -150,6 +162,7 @@ typedef struct
     ResultManager_Slot_t resultSlots[DOMAIN_RUNTIME_RESULT_CAPACITY];
 
     PermissionManager_t permissionManager;
+    PermissionCoordinator_t permissionCoordinator;
     CisOccupantManager_t cisOccupantManager;
     DomainCisOccupantPriv_t cisOccupantPrivate;
     CisEnvironmentManager_t cisEnvironmentManager;
@@ -158,11 +171,13 @@ typedef struct
     DomainRuntime_InitStage_t initStage;
     bool initialized;
     bool ready;
+    bool permissionCoordinatorEnabled;
     bool cisOccupantEnabled;
     bool hasPolled;
     uint32_t lastPollAtMs;
     uint32_t lastPollElapsedMs;
     uint32_t pollCount;
+    PermissionCoordinator_Status_t lastPermissionCoordinatorStatus;
 } DomainRuntime_t;
 
 /*

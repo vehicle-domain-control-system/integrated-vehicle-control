@@ -102,6 +102,17 @@ static DomainRuntime_Status_t DomainRuntime_InitManagers(
     }
     runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_PERMISSION_MANAGER;
 
+    if (config->permissionCoordinatorEnabled &&
+        (PermissionCoordinator_Init(
+             &runtime->permissionCoordinator,
+             &runtime->permissionManager,
+             config->permissionEvaluator,
+             config->permissionEvaluatorContext) !=
+         PERMISSION_COORDINATOR_OK))
+    {
+        return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
+    }
+
     if (config->cisOccupantEnabled &&
         (CisOccupantManager_Init(
              &runtime->cisOccupantManager,
@@ -237,6 +248,8 @@ DomainRuntime_Status_t DomainRuntime_Init(
     runtime->integrityMarker = DOMAIN_RUNTIME_INTEGRITY_MARKER;
     runtime->timeProvider = config->timeProvider;
     runtime->timeProviderContext = config->timeProviderContext;
+    runtime->permissionCoordinatorEnabled =
+        config->permissionCoordinatorEnabled;
     runtime->cisOccupantEnabled = config->cisOccupantEnabled;
 
     if (!DomainRuntime_GetTime(runtime, &initialNowMs))
@@ -293,6 +306,22 @@ DomainRuntime_Status_t DomainRuntime_Poll(DomainRuntime_t *runtime)
     runtime->lastPollElapsedMs = elapsedMs;
     runtime->pollCount += 1U;
     runtime->hasPolled = true;
+
+    if (runtime->permissionCoordinatorEnabled)
+    {
+        runtime->lastPermissionCoordinatorStatus = PermissionCoordinator_Poll(
+            &runtime->permissionCoordinator, nowMs);
+    }
+    else
+    {
+        runtime->lastPermissionCoordinatorStatus =
+            PERMISSION_COORDINATOR_NOT_INITIALIZED;
+    }
+    /*
+     * Evaluation and local Network admission failures remain observable in
+     * the coordinator and leave Permission fail-closed. They do not stop the
+     * bounded superloop; another attempt is made only at the next period.
+     */
     return DOMAIN_RUNTIME_OK;
 }
 
@@ -320,12 +349,16 @@ DomainRuntime_Status_t DomainRuntime_GetSnapshot(
 
     snapshot.initialized = runtime->initialized;
     snapshot.ready = DomainRuntime_IsReady(runtime);
+    snapshot.permissionCoordinatorEnabled =
+        runtime->permissionCoordinatorEnabled;
     snapshot.cisOccupantEnabled = runtime->cisOccupantEnabled;
     snapshot.initStage = runtime->initStage;
     snapshot.hasPolled = runtime->hasPolled;
     snapshot.lastPollAtMs = runtime->lastPollAtMs;
     snapshot.lastPollElapsedMs = runtime->lastPollElapsedMs;
     snapshot.pollCount = runtime->pollCount;
+    snapshot.lastPermissionCoordinatorStatus =
+        runtime->lastPermissionCoordinatorStatus;
     *outSnapshot = snapshot;
     return DOMAIN_RUNTIME_OK;
 }
