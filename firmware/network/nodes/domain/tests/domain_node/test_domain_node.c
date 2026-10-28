@@ -89,7 +89,18 @@ DomainIf_Status_t DomainIf_RxCisStatus(const DomainIf_CisStatusReport_t *s) { ow
 DomainIf_Status_t DomainIf_RxCisCabinEnvironment(const CisCabinEnvironmentState_t *s) { owner_call(); last_env = *s; ++env_calls; return DOMAIN_IF_OK; }
 static unsigned occupant_calls;
 DomainIf_Status_t DomainIf_RxCisOccupant(const CisOccupantState_t *s) { (void)s; owner_call(); ++occupant_calls; return DOMAIN_IF_OK; }
-DomainIf_Status_t DomainIf_RxNetworkLocalFailure(const NetworkLocalFailure_t *f) { (void)f; owner_call(); ++failure_calls; return DOMAIN_IF_OK; }
+/* Local failure notices: the last one, and the answers the case chooses, one
+ * for an occurrence (DOMAIN develop answers DOMAIN_IF_UNSUPPORTED there) and
+ * one for the other kinds. */
+static NetworkLocalFailure_t last_failure;
+static DomainIf_Status_t failure_return = DOMAIN_IF_OK, occurrence_failure_return = DOMAIN_IF_OK;
+DomainIf_Status_t DomainIf_RxNetworkLocalFailure(const NetworkLocalFailure_t *f)
+{
+    owner_call();
+    ++failure_calls;
+    last_failure = *f;
+    return f->itemKind == NETWORK_LOCAL_ITEM_OCCURRENCE ? occurrence_failure_return : failure_return;
+}
 DomainIf_Status_t DomainIf_RxDigitalKeyConnection(DeviceContextId_t device, const DigitalKeyConnectionState_t *c)
 {
     owner_call();
@@ -171,6 +182,8 @@ bool MockBoard_DomainC2(NetDomainC2Api *api, NetDomainC2Config *config)
     config->transmit_policy.maximum_age_ms = 65535u + 1000u;
     config->transmit_policy.expires_at_equality = true;
     config->failure_sink_ready = true;
+    /* The provisional local failure reason, as on the board. */
+    config->local_failure_reason = net_domain_c2_local_failure_reason_provisional;
     /* Values the node replaces: its own BOOT_ID, the received BCM BOOT_ID. */
     config->domain_boot = 0x0BADu;
     config->bcm_boot = 0x0BADu;
@@ -1043,9 +1056,10 @@ static int n14_uart_m_receive_policy(void)
     return 0;
 }
 
-/* The DOMAIN board hook: the pinned DOMAIN functions, the three provisional
- * rules (value quality, DOMAIN_PERMISSION bundle, status report quality), the
- * other six semantic callbacks NULL, the CIS transition barriers on. In the
+/* The DOMAIN board hook: the pinned DOMAIN functions, the four provisional
+ * rules (value quality, DOMAIN_PERMISSION bundle, status report quality, local
+ * failure reason), the other five semantic callbacks NULL, the CIS transition
+ * barriers on. In the
  * node: CIS_REAR and CIS_STATUS reach C2, and an ALLOW goes out as 1 / OK with
  * the Operation fields UNKNOWN (255 / 0 / NO_DATA). */
 static int n15_board_c2_hook(void)
@@ -1064,7 +1078,8 @@ static int n15_board_c2_hook(void)
     CHECK(cfg.permission_bundle == net_domain_c2_permission_bundle_provisional);
     CHECK(cfg.status_quality == net_domain_c2_status_quality_provisional);
     CHECK(cfg.window_permission_bundle == NULL && cfg.window_alive_bundle == NULL);
-    CHECK(cfg.window_event_projection == NULL && cfg.local_failure_reason == NULL);
+    CHECK(cfg.window_event_projection == NULL);
+    CHECK(cfg.local_failure_reason == net_domain_c2_local_failure_reason_provisional);
     CHECK(cfg.select_query_plan == NULL && cfg.confirm_snapshot == NULL);
     CHECK(cfg.cis_transition_barriers && !cfg.window_transport_enabled && cfg.alive_state == NULL && cfg.publisher == NULL);
     CHECK(cfg.failure_sink_ready && cfg.command_accept_limit_ms == 200u && cfg.event_use_limit_ms == 500u);
@@ -1590,46 +1605,68 @@ static int n22_same_id_order_deferred(void)
     return 0;
 }
 
-/* A door command the controller took, then a bus-off: the abort reports it
- * not sent. That is a failure after the device took the frame (an in-flight
- * failure, no local failure reason): RxNetworkLocalFailure is not called, the
- * C2 record keeps the command identity and stays held, and its M04 TX slot is
- * retired. Sixteen such bus-offs fill the 16 C2 TX records: the next command
- * is refused (QUEUE_FULL), and the periodic DOMAIN_PERMISSION, which takes M04
- * slots, still goes out. */
+/* Service TX slots (M04) in use now. */
+static unsigned service_slots_used(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    unsigned i, n = 0u;
+    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i) if (a->service->tx[i].state.used) ++n;
+    return n;
+}
+
+/* A door command the controller took, then it failed: a bus-off (the abort
+ * at the link close) or, every other time, a TX timeout abort (no ACK). That
+ * is a failure after the device took the frame (an in-flight failure, no
+ * local failure reason): RxNetworkLocalFailure is not called and nothing is
+ * sent again. Once the service settled it (released, M04 slot retired) the C2
+ * record is retired too, with the last one and a count kept as diagnostics.
+ * 32 such failures, twice the 16 records: no C2 record and no M04 slot is
+ * left, the next command goes out, and so does the periodic
+ * DOMAIN_PERMISSION. */
 static int n23_busoff_command_held(void)
 {
     NetUpperCanMessage m;
     const NetDomainC2 *a;
-    unsigned i, held, before;
+    const NetDomainC2RetiredTx *last;
+    unsigned i, before, busoffs = 0u;
     CHECK(start());
     m = bcm_status(201u, 1u);
     CHECK(inject(&m) >= 0);
     ++now_ms; pass();
     a = NetNode_DomainC2();
-    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i) {
+    for (i = 0u; i < 2u * NET_UPPER_TX_CAPACITY; ++i) {
         bus_busy(true);                        /* the bus does not take the frame */
         CHECK(tx_door(100u + i) == DOMAIN_IF_OK);
         ++now_ms; pass();                      /* in a TX MB */
-        CHECK(c2_records_used() == i + 1u);
-        MockRtd_CanRaiseBusOff(BUS);
-        bus_busy(false);
-        run_to(now_ms + 1100u);                /* closed, aborted, reopened */
-        CHECK(diag().rtd.busoff_recoveries == i + 1u && diag().rtd.can_link_state == 0u);
-        CHECK(c2_records_used() == i + 1u && a->tx_held == i + 1u);
+        CHECK(c2_records_used() == 1u);
+        if (i % 2u == 0u) {
+            MockRtd_CanRaiseBusOff(BUS);
+            ++busoffs;
+            bus_busy(false);
+            run_to(now_ms + 1100u);            /* closed, aborted, reopened */
+            CHECK(diag().rtd.busoff_recoveries == busoffs && diag().rtd.can_link_state == 0u);
+        } else {
+            run_to(now_ms + 150u);             /* TX timeout abort */
+            bus_busy(false);
+            run_to(now_ms + 2u);
+        }
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
+        CHECK(a->tx_retired_in_flight == i + 1u && a->tx_retired_unsupported == 0u);
     }
-    for (i = 0u, held = 0u; i < NET_UPPER_TX_CAPACITY; ++i) {
-        const NetDomainC2TxRecord *r = &a->tx[i];
-        if (r->used && r->held && r->identity.itemKind == NETWORK_LOCAL_ITEM_COMMAND && r->identity.hasCommandId &&
-            r->identity.commandId >= 100u && r->identity.commandId < 100u + NET_UPPER_TX_CAPACITY) ++held;
-    }
-    CHECK(held == NET_UPPER_TX_CAPACITY);
+    CHECK(diag().rtd.tx_timeout_aborts == NET_UPPER_TX_CAPACITY);
+    last = &a->tx_retired_last;
+    CHECK(last->cause == NET_DOMAIN_C2_RETIRED_IN_FLIGHT && !last->has_reason);
+    CHECK(last->identity.itemKind == NETWORK_LOCAL_ITEM_COMMAND && last->identity.hasCommandId &&
+          last->identity.commandId == 100u + 2u * NET_UPPER_TX_CAPACITY - 1u);
+    CHECK(last->submitted && last->admission_known && last->accepted && last->outcome == NET_TX_FAILED);
+    CHECK(last->identity.elapsedSinceAdmissionMs >= 100u && last->identity.elapsedSinceAdmissionMs < 200u);
     CHECK(failure_calls == 0u && count_id(0x100u, 0u) == 0u);
     before = can_count;
-    CHECK(tx_door(200u) == DOMAIN_IF_QUEUE_FULL);
+    CHECK(tx_door(200u) == DOMAIN_IF_OK);
     CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
     run_to(now_ms + 60u);
-    CHECK(count_id(0x100u, before) == 0u && count_id(0x080u, before) >= 2u);
+    CHECK(count_id(0x100u, before) == 1u && count_id(0x080u, before) >= 2u);
+    CHECK(c2_records_used() == 0u && failure_calls == 0u);
     return 0;
 }
 
@@ -1688,6 +1725,290 @@ static int n24_state_relay_retired(void)
     return 0;
 }
 
+/* C2 records with a failure identity that are still in use. */
+static unsigned c2_identity_records(NetworkLocalItemKind_t kind)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    unsigned i, n = 0u;
+    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i)
+        if (a->tx[i].used && !a->tx[i].failure_delivered && a->tx[i].identity.itemKind == kind) ++n;
+    return n;
+}
+
+/* One cause, a bus-off, found in two places by a door command that waits in
+ * the service queue behind the one in the device (one frame per CAN ID): the
+ * service drops it once it processed the link close (M04 queue, never
+ * offered), or, when the dispatch runs before the service processed the
+ * close (as when the poll budget left the port error waiting), the Port
+ * returns it (the adapter latched the link fault: offered). Both give the
+ * local failure reason CONTEXT_INVALIDATED_BEFORE_SEND, one notice each, and
+ * the records are retired; the command in the device (an in-flight failure)
+ * is retired without a notice. */
+static int n25_busoff_reason_queue_and_port(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    NetUpperTxSnapshot t;
+    NetTxKey key;
+    unsigned k, calls;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    a = NetNode_DomainC2();
+    for (k = 0u; k < 2u; ++k) {
+        calls = failure_calls;
+        bus_busy(true);
+        CHECK(tx_door(77u + 2u * k) == DOMAIN_IF_OK);
+        ++now_ms; pass();                          /* in a TX MB */
+        CHECK(tx_door(78u + 2u * k) == DOMAIN_IF_OK);
+        key = a->last_tx_key;
+        flush();                                   /* the same CAN ID is in the device: it waits */
+        CHECK(net_upper_tx_snapshot(a->service, key, &t) == NET_OK && t.queued && !t.offered);
+        MockRtd_CanRaiseBusOff(BUS);
+        ++now_ms;
+        (void)net_hal_rtd_drain();                 /* the link close reaches the adapter */
+        if (k == 0u) (void)net_upper_step(a->service, NET_UPPER_POLL_BUDGET); /* processed, then dispatched */
+        else (void)net_upper_dispatch(a->service);                         /* dispatched first */
+        CHECK(net_upper_tx_snapshot(a->service, key, &t) == NET_OK);
+        CHECK(t.admission_known && !t.accepted && !t.submitted && t.local_status == NET_HOLD);
+        CHECK(t.offered == (k == 1u));
+        pass();
+        CHECK(failure_calls == calls + 1u);
+        CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_CONTEXT_INVALIDATED_BEFORE_SEND);
+        CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_COMMAND && last_failure.commandId == 78u + 2u * k);
+        CHECK(a->tx_retired_in_flight == k + 1u && a->tx_retired_last.identity.commandId == 77u + 2u * k);
+        bus_busy(false);
+        run_to(now_ms + 1100u);                    /* reopened */
+        CHECK(diag().rtd.busoff_recoveries == k + 1u && diag().rtd.can_link_state == 0u);
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u && failure_calls == calls + 1u);
+    }
+    return 0;
+}
+
+/* A driver refusal of the submit (FlexCAN_Ip_Send, and Lpuart_Uart_Ip_AsyncSend
+ * on an idle line: ERROR) is a final refusal by the Port (NET_REJECTED): a door
+ * command and an M_RESULT get DRIVER_SUBMISSION_FINAL, one notice each, never
+ * CONTEXT_INVALIDATED_BEFORE_SEND, and their records are retired. The next
+ * ones go out. */
+static int n26_driver_submit_errors(void)
+{
+    NetWireUartFrame fr;
+    NetUpperCanMessage m;
+    unsigned before;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    MockRtd_CanSetSendErrors(BUS, 1u);
+    CHECK(tx_door(90u) == DOMAIN_IF_OK);
+    ++now_ms; pass();
+    CHECK(diag().rtd.tx_send_errors == 1u && failure_calls == 1u);
+    CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+    CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_COMMAND && last_failure.commandId == 90u);
+    CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
+    before = can_count;
+    CHECK(tx_door(91u) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    CHECK(count_id(0x100u, before) == 1u && failure_calls == 1u && c2_records_used() == 0u);
+    before = uart_type_count[0x20u];
+    MockRtd_UartSetSendErrors(UART_M, 1u);
+    CHECK(tx_result(6u) == DOMAIN_IF_OK);
+    ++now_ms; pass();
+    CHECK(diag().rtd.uart[0].uart_tx_send_errors == 1u && failure_calls == 2u);
+    CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+    CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_REQUEST_RESULT && last_failure.hasRequestContext);
+    CHECK(last_failure.requestContext.sessionId == 11u && last_failure.requestContext.requestId == 6u);
+    CHECK(c2_records_used() == 0u);
+    CHECK(tx_result(7u) == DOMAIN_IF_OK);
+    run_to(now_ms + 20u);
+    CHECK(uart_type_count[0x20u] == before + 1u && failure_calls == 2u && c2_records_used() == 0u);
+    return 0;
+}
+
+/* VSS_EVENT (an occurrence) refused by the driver, 32 times, twice the 16
+ * records: DOMAIN answers the notice DOMAIN_IF_UNSUPPORTED (as develop does,
+ * before any effect), so each record is retired, counted with the last one,
+ * and nothing is left. Any other non-OK answer keeps the record held, and so
+ * does DOMAIN_IF_UNSUPPORTED for a command (only an occurrence is retired):
+ * each keeps its C2 record and its M04 slot, with one notice. */
+static int n27_occurrence_unsupported_retired(void)
+{
+    NetUpperCanMessage m;
+    const NetDomainC2 *a;
+    const NetDomainC2RetiredTx *last;
+    unsigned i;
+    occurrence_failure_return = DOMAIN_IF_UNSUPPORTED;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    for (i = 0u; i < 2u * NET_UPPER_TX_CAPACITY; ++i) {
+        MockRtd_CanSetSendErrors(BUS, 1u);
+        CHECK(tx_event(500u + i) == DOMAIN_IF_OK);
+        ++now_ms; pass();
+        CHECK(failure_calls == i + 1u && last_failure.itemKind == NETWORK_LOCAL_ITEM_OCCURRENCE);
+        CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+        CHECK(last_failure.hasOccurrenceId && last_failure.occurrenceId == 500u + i);
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
+        CHECK(a->tx_retired_unsupported == i + 1u && a->tx_retired_in_flight == 0u);
+    }
+    last = &a->tx_retired_last;
+    CHECK(last->cause == NET_DOMAIN_C2_RETIRED_OCCURRENCE_UNSUPPORTED && last->has_reason);
+    CHECK(last->identity.occurrenceId == 500u + 2u * NET_UPPER_TX_CAPACITY - 1u &&
+          last->identity.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+    CHECK(last->offered && !last->submitted && last->admission_known && !last->accepted && last->local_status == NET_REJECTED);
+    occurrence_failure_return = DOMAIN_IF_NOT_INITIALIZED;
+    MockRtd_CanSetSendErrors(BUS, 1u);
+    CHECK(tx_event(600u) == DOMAIN_IF_OK);
+    run_to(now_ms + 20u);
+    CHECK(failure_calls == 2u * NET_UPPER_TX_CAPACITY + 1u && c2_records_used() == 1u && service_slots_used() == 1u);
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    failure_return = DOMAIN_IF_UNSUPPORTED;
+    MockRtd_CanSetSendErrors(BUS, 1u);
+    CHECK(tx_door(601u) == DOMAIN_IF_OK);
+    run_to(now_ms + 20u);
+    CHECK(failure_calls == 2u * NET_UPPER_TX_CAPACITY + 2u && c2_records_used() == 2u && service_slots_used() == 2u);
+    CHECK(a->tx_retired_unsupported == 2u * NET_UPPER_TX_CAPACITY);
+    return 0;
+}
+
+/* An M_RESULT waits in the service queue (the line stopped taking bytes and
+ * two UART-M frames hold the device's UART room) while the mobile app opens a
+ * new session (M_CONTEXT, device 7, session 12). The service context check
+ * refuses it before it is ever offered (NET_STALE): the local failure reason
+ * is CONTEXT_INVALIDATED_BEFORE_SEND, one notice with the original session 11
+ * and request 9, the record retired, and no M_RESULT goes out, for either
+ * session. */
+static int n28_m_result_session_changed(void)
+{
+    NetWireUartFrame fr;
+    const NetDomainC2 *a;
+    NetUpperTxSnapshot t;
+    NetTxKey key;
+    unsigned results0;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    results0 = uart_type_count[0x20u];
+    uart_line_held = true;
+    CHECK(tx_settings(1u) == DOMAIN_IF_OK);
+    CHECK(tx_settings(2u) == DOMAIN_IF_OK);
+    ++now_ms; pass();                              /* one on the line, one waiting in the device */
+    CHECK(tx_result(9u) == DOMAIN_IF_OK);
+    key = a->last_tx_key;
+    flush();                                       /* no UART room in the device: waits in the service */
+    CHECK(net_upper_tx_snapshot(a->service, key, &t) == NET_OK && t.queued && !t.offered);
+    CHECK(context_frame(2u, 12u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(now_ms + 5u);
+    CHECK(connection_calls == 2u && last_connection.sessionId == 12u);
+    CHECK(failure_calls == 1u && last_failure.reason == NETWORK_LOCAL_FAILURE_CONTEXT_INVALIDATED_BEFORE_SEND);
+    CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_REQUEST_RESULT && last_failure.hasRequestContext);
+    CHECK(last_failure.requestDeviceContextId == 7u && last_failure.requestContext.sessionId == 11u);
+    CHECK(last_failure.requestContext.requestId == 9u);
+    CHECK(c2_identity_records(NETWORK_LOCAL_ITEM_REQUEST_RESULT) == 0u);
+    uart_line_held = false;
+    run_to(now_ms + 300u);
+    CHECK(uart_type_count[0x20u] == results0 && failure_calls == 1u && c2_records_used() == 0u);
+    return 0;
+}
+
+/* Not resolved, recorded here: an M_RESULT the UART HAL took while another
+ * frame was on the line waits in the HAL queue (submitted). When it cannot
+ * start later, because it expired while waiting or because AsyncSend refuses
+ * it then, the HAL reports it not admitted without a cause
+ * (net_hal_rtd_uart.c start_next): the provisional rule gives no reason, so
+ * DOMAIN is not told and the record and its M04 slot stay. Three of each:
+ * six records and six M04 slots are left (the frames ahead, in-flight
+ * failures after the TX timeout abort, are retired). */
+static int n29_m_result_hal_queue_left(void)
+{
+    NetWireUartFrame fr;
+    NetDomainC2 *a;
+    unsigned k, expired0, errors0;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    expired0 = diag().rtd.uart[0].uart_tx_expired;
+    errors0 = diag().rtd.uart[0].uart_tx_send_errors;
+    for (k = 0u; k < 6u; ++k) {
+        /* Waiting expires the second one (its bound is shorter than the
+         * 100 ms TX timeout of the first), or AsyncSend refuses it. */
+        a->config.transmit_policy.maximum_age_ms = k < 3u ? 60u : 65535u + 1000u;
+        uart_line_held = true;
+        CHECK(tx_result(100u + 2u * k) == DOMAIN_IF_OK);   /* on the line: never ends */
+        CHECK(tx_result(101u + 2u * k) == DOMAIN_IF_OK);   /* waits in the HAL queue */
+        ++now_ms; pass();
+        if (k >= 3u) MockRtd_UartSetSendErrors(UART_M, 1u);
+        run_to(now_ms + 150u);                             /* the first one aborted, the second one refused */
+        uart_line_held = false;
+        run_to(now_ms + 20u);
+        CHECK(c2_identity_records(NETWORK_LOCAL_ITEM_REQUEST_RESULT) == k + 1u);
+        CHECK(a->tx_retired_in_flight == k + 1u);
+    }
+    CHECK(diag().rtd.uart[0].uart_tx_expired == expired0 + 3u);
+    CHECK(diag().rtd.uart[0].uart_tx_send_errors == errors0 + 3u);
+    CHECK(failure_calls == 0u && c2_records_used() == 6u && service_slots_used() == 6u);
+    printf("left after 3 expiries and 3 start errors in the HAL queue: c2_records=%u service_slots=%u notices=%u\n",
+           c2_records_used(), service_slots_used(), failure_calls);
+    return 0;
+}
+
+/* A door command whose TX timeout abort does not finish (TIMEOUT): the backend
+ * reports it FAILED and released once and keeps the MB quarantined; the C2
+ * record is retired at once (in-flight), without a notice. The next command
+ * takes another MB. When the controller finishes the abort later (the MB flag
+ * shows it idle) the backend frees the MB without another report: no service
+ * event (tx_stale unchanged), no unexpected event, no C2 record touched.
+ * Configuration: DOMAIN node, S32K344 FlexCAN RTD mock. */
+static int n30_quarantined_late_completion(void)
+{
+    NetUpperCanMessage m;
+    const NetDomainC2 *a;
+    unsigned before, stale0, unexpected0;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    a = NetNode_DomainC2();
+    bus_busy(true);
+    MockRtd_CanSetAbortResult(BUS, FLEXCAN_STATUS_TIMEOUT);
+    CHECK(tx_door(300u) == DOMAIN_IF_OK);
+    run_to(now_ms + 150u);
+    CHECK(diag().rtd.tx_abort_timeouts == 1u && diag().rtd.tx_quarantined == 1u);
+    CHECK(c2_records_used() == 0u && service_slots_used() == 0u && a->tx_retired_in_flight == 1u);
+    CHECK(a->tx_retired_last.identity.commandId == 300u && a->tx_retired_last.outcome == NET_TX_FAILED);
+    stale0 = diag().upper.tx_stale;
+    unexpected0 = diag().rtd.unexpected_events;
+    bus_busy(false);
+    before = can_count;
+    CHECK(tx_door(301u) == DOMAIN_IF_OK);
+    run_to(now_ms + 500u);
+    CHECK(count_id(0x100u, before) == 1u && diag().rtd.tx_quarantined == 1u && c2_records_used() == 0u);
+    /* The old frame leaves late: its TX_COMPLETE is only an unexpected event
+     * (the transfer was already reported), the MB stays quarantined. */
+    CHECK(MockRtd_CanCompleteAbortingMb(BUS) >= 0);
+    run_to(now_ms + 3u);
+    CHECK(diag().rtd.unexpected_events == unexpected0 + 1u && diag().rtd.tx_quarantined == 1u);
+    CHECK(diag().upper.tx_stale == stale0 && failure_calls == 0u && c2_records_used() == 0u);
+    MockRtd_CanFinishAbort(BUS);
+    run_to(now_ms + 3u);
+    CHECK(diag().rtd.tx_quarantined == 0u && diag().rtd.tx_quarantine_released == 1u);
+    CHECK(diag().upper.tx_stale == stale0 && diag().rtd.unexpected_events == unexpected0 + 1u);
+    CHECK(failure_calls == 0u && c2_records_used() == 0u && a->tx_retired_in_flight == 1u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1712,6 +2033,12 @@ int main(int argc, char **argv)
         { "n22_same_id_order_deferred", n22_same_id_order_deferred },
         { "n23_busoff_command_held", n23_busoff_command_held },
         { "n24_state_relay_retired", n24_state_relay_retired },
+        { "n25_busoff_reason_queue_and_port", n25_busoff_reason_queue_and_port },
+        { "n26_driver_submit_errors", n26_driver_submit_errors },
+        { "n27_occurrence_unsupported_retired", n27_occurrence_unsupported_retired },
+        { "n28_m_result_session_changed", n28_m_result_session_changed },
+        { "n29_m_result_hal_queue_left", n29_m_result_hal_queue_left },
+        { "n30_quarantined_late_completion", n30_quarantined_late_completion },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

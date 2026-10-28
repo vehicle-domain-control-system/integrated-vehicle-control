@@ -78,14 +78,17 @@ void NetDomainBoard_SetTransitionBinding(const NetDomainC2TransitionBinding *bin
 }
 
 /* C2 boundary: the pinned DOMAIN functions (net_domain_c2_pinned_owner_api).
- * Semantic callbacks: the three provisional rules of this board, the value
+ * Semantic callbacks: the four provisional rules of this board, the value
  * quality of VALIDITY / REASON, the Power / Operation bundle of
- * DOMAIN_PERMISSION and the status report quality (OK for an admitted
- * BCM_STATUS / CIS_STATUS / VSS_STATUS, DOMAIN judges freshness on the AGE);
- * without them CIS_REAR reception, DOMAIN_PERMISSION transmission and the
- * three status reports are held. The other six stay NULL, and their routes are
- * held until the DOMAIN team decides them: window_permission_bundle,
- * window_alive_bundle, window_event_projection, local_failure_reason,
+ * DOMAIN_PERMISSION, the status report quality (OK for an admitted
+ * BCM_STATUS / CIS_STATUS / VSS_STATUS, DOMAIN judges freshness on the AGE)
+ * and the local failure reason of a command, VSS_EVENT or M_RESULT refused
+ * before the device took it (by its cause: context invalidated or driver
+ * submission final, otherwise held); without them CIS_REAR reception,
+ * DOMAIN_PERMISSION transmission and the three status reports are held, and
+ * such a refused record keeps its C2 and M04 TX slots. The other five stay
+ * NULL, and their routes are held until the DOMAIN team decides them:
+ * window_permission_bundle, window_alive_bundle, window_event_projection,
  * select_query_plan, confirm_snapshot. Limits (10_CAN_FD.md): ACCEPT_LIMIT is
  * the 200 ms candidate (the 1 s conflict is OPEN), VSS_EVENT USE_LIMIT the
  * 500 ms draft. The node root sets BOOT_ID, TX_SEQUENCE start, the M04 slots,
@@ -100,6 +103,7 @@ bool NetDomainBoard_C2Config(NetDomainC2Api *api, NetDomainC2Config *config)
     config->value_quality = net_domain_c2_value_quality_provisional;
     config->permission_bundle = net_domain_c2_permission_bundle_provisional;
     config->status_quality = net_domain_c2_status_quality_provisional;
+    config->local_failure_reason = net_domain_c2_local_failure_reason_provisional;
     config->command_accept_limit_ms = 200u;
     config->event_use_limit_ms = 500u;
     /* Commands, events and UART-M results: the receiver judges the AGE; the

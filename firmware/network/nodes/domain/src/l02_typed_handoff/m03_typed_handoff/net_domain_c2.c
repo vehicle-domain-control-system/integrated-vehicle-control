@@ -264,6 +264,60 @@ r.source_age_ms=(uint16_t)in->meta.ageMs;
 *out=r;
 return NET_OK;
 }
+/* PROVISIONAL local failure reason, DOMAIN confirmation pending
+ * (docs/network/interface/04_COMMON/20_API_USAGE_AND_FAILURE.md, closed list
+ * of failures after admission; net_domain_c2.h). The adapter step calls it
+ * only for a record the service refused before the device took it and that
+ * did not expire. The reason follows the cause, not the place that found it:
+ * a closed or failed link gives NET_HOLD both when the service drops the
+ * queued frame (net_upper_service.c dispatch, reset_link; net_upper_control.c
+ * quiesce) and when the Port returns it (net_hal_adapter.c: link fault latched;
+ * net_hal_rtd_can.c: link closed after a bus-off), and so does a lost UART-M
+ * context (service context check). The driver's own submit errors are
+ * NET_REJECTED (net_hal_rtd_can.c, net_hal_rtd_uart.c). The other NET_HOLD
+ * of the service cannot reach a DOMAIN record with an identity: submission
+ * refuses an unbound age policy and a frame its encoder holds (the dispatch
+ * encodes the same content, only the AGE grows and saturates), the service
+ * clock never goes back (net_upper_read_clock), and commands, VSS_EVENT and
+ * M_RESULT have no projection source (CAN 0x310, UART-M projections). */
+NetStatus net_domain_c2_local_failure_reason_provisional(void *context,const NetUpperTxSnapshot *s,NetworkLocalFailureReason_t *out){
+(void)context;
+if(s==NULL||out==NULL)return NET_INVALID_ARGUMENT;
+/* Refused before the device took it, nothing pending. A frame the device
+ * refused after it waited there (submitted) carries no cause: HOLD. */
+if(!s->admission_known||s->accepted||s->submitted||s->conflict||!s->reference_released||s->outcome!=NET_TX_UNKNOWN)return NET_HOLD;
+switch(s->local_status){
+case NET_HOLD:*out=NETWORK_LOCAL_FAILURE_CONTEXT_INVALIDATED_BEFORE_SEND;
+return NET_OK;
+case NET_STALE:if(s->offered)return NET_HOLD;
+*out=NETWORK_LOCAL_FAILURE_CONTEXT_INVALIDATED_BEFORE_SEND;
+return NET_OK;
+case NET_REJECTED:case NET_NOT_CONFIGURED:case NET_INVALID_ARGUMENT:case NET_DUPLICATE:if(!s->offered)return NET_HOLD;
+*out=NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL;
+return NET_OK;
+default:return NET_HOLD;
+}
+}
+/* An occurrence notice DOMAIN refused as unsupported changed nothing there. */
+static bool nd_refused_without_effect(const NetDomainC2TxRecord *r){
+return r->failure_return==DOMAIN_IF_UNSUPPORTED&&r->identity.itemKind==NETWORK_LOCAL_ITEM_OCCURRENCE;
+}
+/* Diagnostics of a record retired without a notice DOMAIN applied. */
+static void nd_retired(NetDomainC2 *a,const NetDomainC2TxRecord *r,const NetUpperTxSnapshot *s,uint64_t now,NetDomainC2RetiredCause cause){
+NetDomainC2RetiredTx *d=&a->tx_retired_last;
+d->cause=cause;
+d->identity=r->identity;
+d->has_reason=cause!=NET_DOMAIN_C2_RETIRED_IN_FLIGHT;
+if(cause==NET_DOMAIN_C2_RETIRED_IN_FLIGHT)
+    d->identity.elapsedSinceAdmissionMs=now>=r->admitted_at&&now-r->admitted_at<=UINT32_MAX?(uint32_t)(now-r->admitted_at):UINT32_MAX;
+d->submitted=s->submitted;
+d->admission_known=s->admission_known;
+d->accepted=s->accepted;
+d->offered=s->offered;
+d->outcome=s->outcome;
+d->local_status=s->local_status;
+net_upper_observe_increment(cause==NET_DOMAIN_C2_RETIRED_IN_FLIGHT?&a->tx_retired_in_flight:&a->tx_retired_unsupported);
+}
 NetStatus nd_value(NetDomainC2 *a,uint8_t valid,uint8_t reason,uint32_t sequence,uint16_t age,uint64_t elapsed,ValueQuality_t *out){
 ValueQuality_t q;
 if(a->config.value_quality==NULL)return NET_HOLD;
@@ -446,7 +500,6 @@ NetStatus net_domain_c2_step(NetDomainC2 *a)
     for(i=0u;i<NET_UPPER_TX_CAPACITY;++i){
         NetDomainC2TxRecord *r=&a->tx[i];NetUpperTxSnapshot state;NetStatus st;bool rejected,terminal;
         if(!r->used)continue;
-        if(r->held){result=NET_HOLD;continue;}
         st=net_upper_tx_snapshot(a->service,r->key,&state);
         if(st!=NET_OK){result=st;continue;}
         rejected=state.admission_known&&!state.accepted;
@@ -455,11 +508,13 @@ NetStatus net_domain_c2_step(NetDomainC2 *a)
             if(state.conflict||(state.submitted&&!state.reference_released)){result=NET_HOLD;continue;}
             if(state.submitted&&!rejected){
                 /* The device took the frame and it failed afterwards: an
-                 * in-flight failure, no local failure reason applies. The record
-                 * keeps its identity and stays held; only its M04 slot is
-                 * retired (NetDomainC2TxRecord.held). */
-                if(now>=r->admitted_at&&now-r->admitted_at<=UINT32_MAX)
-                    r->identity.elapsedSinceAdmissionMs=(uint32_t)(now-r->admitted_at);
+                 * in-flight failure, no local failure reason applies. DOMAIN is
+                 * not told and nothing is sent again. Once the service settled
+                 * it (reference released, notice acknowledged, M04 slot
+                 * retired) the record is retired as well, its identity and send
+                 * phase kept as the last one (NetDomainC2RetiredCause). A late
+                 * event of the retired key finds no service record (tx_stale);
+                 * a quarantined CAN MB stays with the backend. */
                 if(a->service->config.retain_failure_notices){NetUpperTxDetail detail;
                     st=net_upper_tx_detail(a->service,r->key,&detail);
                     if(st==NET_OK&&detail.failure_version!=detail.failure_ack_version)
@@ -468,12 +523,16 @@ NetStatus net_domain_c2_step(NetDomainC2 *a)
                 }
                 st=net_upper_retire(a->service,r->key);
                 if(st!=NET_OK){result=st;continue;}
-                r->held=true;
-                if(a->tx_held<UINT32_MAX)++a->tx_held;
-                result=NET_HOLD;continue;
+                nd_retired(a,r,&state,now,NET_DOMAIN_C2_RETIRED_IN_FLIGHT);
+                r->used=false;
+                result=NET_OK;continue;
             }
             if(now<r->admitted_at||now-r->admitted_at>UINT32_MAX){result=NET_HOLD;continue;}
             if(state.local_status==NET_EXPIRED)r->identity.reason=NETWORK_LOCAL_FAILURE_EXPIRED_BEFORE_SEND;
+            /* A NET_STALE refusal has a known cause only on UART-M: the service
+             * context check (device / session of an M_RESULT). Elsewhere it is
+             * not given to the reason rule: held. */
+            else if(state.local_status==NET_STALE&&r->identity.link!=NETWORK_LINK_UART_M){result=NET_HOLD;continue;}
             else if(a->config.local_failure_reason!=NULL){
                 st=a->config.local_failure_reason(a->config.context,&state,&r->identity.reason);
                 if(st!=NET_OK){result=st;continue;}
@@ -483,9 +542,11 @@ NetStatus net_domain_c2_step(NetDomainC2 *a)
             r->failure_delivered=true;
             r->failure_return=a->api.RxNetworkLocalFailure(&r->identity);
             result=nd_call(a,r->failure_return);
+            if(nd_refused_without_effect(r))nd_retired(a,r,&state,now,NET_DOMAIN_C2_RETIRED_OCCURRENCE_UNSUPPORTED);
         }
-        /* A failed/ambiguous sink is retained once, without replaying Core. */
-        if(r->failure_delivered&&r->failure_return!=DOMAIN_IF_OK){result=NET_HOLD;continue;}
+        /* A failed/ambiguous sink is retained once, without replaying Core.
+         * An occurrence notice DOMAIN refused as unsupported is retired. */
+        if(r->failure_delivered&&r->failure_return!=DOMAIN_IF_OK&&!nd_refused_without_effect(r)){result=NET_HOLD;continue;}
         if(terminal&&(!state.submitted||state.reference_released)&&!state.conflict){
             if(a->service->config.retain_failure_notices){NetUpperTxDetail detail;
                 st=net_upper_tx_detail(a->service,r->key,&detail);

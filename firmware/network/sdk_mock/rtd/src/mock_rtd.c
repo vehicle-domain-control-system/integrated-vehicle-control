@@ -61,6 +61,7 @@ typedef struct {
     uint32 aborts, sends_on_aborting;
     Flexcan_Ip_StatusType abort_result;
     uint8 tec, rec;
+    uint32 send_errors;     /* MockRtd_CanSetSendErrors */
 } MockCan;
 
 typedef struct {
@@ -71,6 +72,7 @@ typedef struct {
     bool end_at_send;       /* MockRtd_UartEndTransferAtSend: armed */
     bool end_pending;       /* that END_TRANSFER raised while masked */
     uint32 inits, sends, aborts, rx_lost;
+    uint32 send_errors;     /* MockRtd_UartSetSendErrors */
 } MockUart;
 
 #define MOCK_UART_INSTANCES 16u
@@ -168,6 +170,7 @@ Flexcan_Ip_StatusType FlexCAN_Ip_Send(uint8 i, uint8 mb, const Flexcan_Ip_DataIn
     if (!mb_ok(c, mb) || info == NULL || data == NULL || info->data_length > 64u) return FLEXCAN_STATUS_ERROR;
     if (!c->started) return FLEXCAN_STATUS_ERROR;
     if (c->mb[mb].tx_pending) return FLEXCAN_STATUS_BUSY;
+    if (c->send_errors != 0u) { --c->send_errors; return FLEXCAN_STATUS_ERROR; } /* MockRtd_CanSetSendErrors */
     /* After a timed-out abort the RTD state is idle again, so the real driver
      * would write the MB the controller still holds: counted, not refused. */
     if (c->mb[mb].abort_pending) ++c->sends_on_aborting;
@@ -284,6 +287,19 @@ int MockRtd_CanTransmitNext(uint8 i, MockCanFrame *out)
 }
 
 void MockRtd_CanSetAckMissing(uint8 i, bool missing) { MockCan *c = get(i); if (c) c->ack_missing = missing; }
+void MockRtd_CanSetSendErrors(uint8 i, uint32 count) { MockCan *c = get(i); if (c) c->send_errors = count; }
+int MockRtd_CanCompleteAbortingMb(uint8 i)
+{
+    MockCan *c = get(i);
+    uint8 mb;
+    if (c == NULL || c->cfg == NULL) return -1;
+    for (mb = 0u; mb < c->cfg->max_num_mb; ++mb) {
+        if (!c->mb[mb].abort_pending) continue;
+        if (c->cfg->Callback != NULL) c->cfg->Callback(i, FLEXCAN_EVENT_TX_COMPLETE, (uint32)mb, c->state);
+        return (int)mb;
+    }
+    return -1;
+}
 void MockRtd_CanRaiseBusOff(uint8 i)
 {
     MockCan *c = get(i);
@@ -362,6 +378,7 @@ Lpuart_Uart_Ip_StatusType Lpuart_Uart_Ip_AsyncSend(const uint8 Instance, const u
         else u->end_pending = true;
     }
     if (u->st->IsTxBusy) return LPUART_UART_IP_STATUS_BUSY;
+    if (u->send_errors != 0u) { --u->send_errors; return LPUART_UART_IP_STATUS_ERROR; } /* MockRtd_UartSetSendErrors */
     u->st->TxBuff = TxBuff;
     u->st->TxSize = TxSize;
     u->st->IsTxBusy = TRUE;
@@ -481,6 +498,7 @@ uint32 MockRtd_UartTransmitTake(uint8 i, uint8 *out, uint32 max)
 }
 
 void MockRtd_UartSetAbortRefused(uint8 i, bool refused) { MockUart *u = uget(i); if (u) u->abort_refused = refused; }
+void MockRtd_UartSetSendErrors(uint8 i, uint32 count) { if (i < MOCK_UART_INSTANCES) uart[i].send_errors = count; }
 void MockRtd_UartEndTransferAtSend(uint8 i) { MockUart *u = uget(i); if (u) u->end_at_send = true; }
 void MockRtd_RunPendingIrq(void)
 {

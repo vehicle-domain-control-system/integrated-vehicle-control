@@ -534,6 +534,16 @@ if(NETWORK_BUILD_DOMAIN_C2)
                 occupant_cis_reboot_only occupant_latched_results occupant_disabled)
             add_test(NAME domain_c2_${case} COMMAND test_domain_c2_transition ${case})
         endforeach()
+        # C2 TX records after a failure: the provisional local failure reason, an in-flight failure
+        # retired after the release, an old event after the slots were used again, NET_STALE held
+        # outside UART-M.
+        add_executable(test_domain_c2_retire nodes/domain/tests/product/test_domain_c2_retire.c)
+        target_link_libraries(test_domain_c2_retire PRIVATE network_domain_c2)
+        target_include_directories(test_domain_c2_retire PRIVATE src/l03_message_service/m04_message_service)
+        network_warnings(test_domain_c2_retire)
+        foreach(case IN ITEMS reason_table in_flight_release_late old_event_after_reuse stale_only_uart_m)
+            add_test(NAME domain_c2_retire_${case} COMMAND test_domain_c2_retire ${case})
+        endforeach()
     endif()
 endif()
 
@@ -967,6 +977,9 @@ if(NETWORK_BUILD_RTD_MOCK)
             add_test(NAME vss_node.${case} COMMAND test_vss_node_e2e_ostimer ${case})
             add_test(NAME vss_node.${case}_hook COMMAND test_vss_node_e2e_hook ${case})
         endforeach()
+        # A driver refusal of the CAN submit: the status is not sent, its number stays used.
+        add_test(NAME vss_node.h21_send_error_refused COMMAND test_vss_node_e2e_ostimer h21_send_error_refused)
+        add_test(NAME vss_node.h21_send_error_refused_hook COMMAND test_vss_node_e2e_hook h21_send_error_refused)
         # Load of the documented traffic, named the same way.
         add_test(NAME vss_node.load_doc_traffic COMMAND test_vss_node_e2e_ostimer load_doc_traffic)
         add_test(NAME vss_node.load_doc_traffic_hook COMMAND test_vss_node_e2e_hook load_doc_traffic)
@@ -1021,10 +1034,18 @@ if(NETWORK_BUILD_RTD_MOCK)
         # Two frames of one CAN ID leave in TX_SEQUENCE order (one per ID in the device).
         add_test(NAME domain_node.n21_same_id_order COMMAND test_domain_node n21_same_id_order)
         add_test(NAME domain_node.n22_same_id_order_deferred COMMAND test_domain_node n22_same_id_order_deferred)
-        # A C2 command aborted at a bus-off: the record stays held with its identity, its M04 slot is retired.
+        # A C2 command that failed after the device took it (bus-off, TX timeout abort): its record is retired.
         add_test(NAME domain_node.n23_busoff_command_held COMMAND test_domain_node n23_busoff_command_held)
         # A state relay takes a C2 TX record and is retired once sent or released after a failure.
         add_test(NAME domain_node.n24_state_relay_retired COMMAND test_domain_node n24_state_relay_retired)
+        # Local failure reason by cause (bus-off found in the queue or by the Port, driver submit errors,
+        # an M_RESULT of an old session), occurrence notices DOMAIN does not support, what an M_RESULT
+        # refused in the UART HAL queue leaves, a quarantined MB that completes late.
+        foreach(case IN ITEMS n25_busoff_reason_queue_and_port n26_driver_submit_errors
+                n27_occurrence_unsupported_retired n28_m_result_session_changed n29_m_result_hal_queue_left
+                n30_quarantined_late_completion)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
+        endforeach()
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the
@@ -1066,6 +1087,9 @@ if(NETWORK_BUILD_RTD_MOCK)
             add_test(NAME uart_hal.${case} COMMAND test_uart_hal_e2e_ostimer ${case})
             add_test(NAME uart_hal.${case}_uart_m COMMAND test_uart_hal_e2e_uart_m ${case})
         endforeach()
+        # A driver refusal of AsyncSend on an idle line (final refusal) and of a frame that waited (no cause).
+        add_test(NAME uart_hal.u19_send_error_refused COMMAND test_uart_hal_e2e_ostimer u19_send_error_refused)
+        add_test(NAME uart_hal.u19_send_error_refused_uart_m COMMAND test_uart_hal_e2e_uart_m u19_send_error_refused)
     endif()
 
     # CIS node end-to-end (CAN + UART-C through the node root and the CIS

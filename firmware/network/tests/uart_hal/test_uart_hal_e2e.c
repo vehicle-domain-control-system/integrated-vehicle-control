@@ -1234,6 +1234,48 @@ static int u18_end_transfer_before_send(void)
     return 0;
 }
 
+/* AsyncSend refused on an idle line: the Port refuses that frame for good
+ * (NET_REJECTED, uart_tx_send_errors), it is never offered again and its
+ * LINK_SEQUENCE stays used. A frame that waited behind another one and is
+ * refused when it starts is reported not admitted, without a cause
+ * (submitted, local status OK). The next frame goes out with the next
+ * LINK_SEQUENCE. */
+static int u19_send_error_refused(void)
+{
+    NetTxKey k1, k2, k3;
+    NetUpperTxSnapshot s;
+    uint8_t out[NET_WIRE_UART_FRAME_MAX];
+    CHECK(start() == NET_OK);
+    step_ms(2u);
+    tx_prepare();
+    MockRtd_UartSetSendErrors(LPUART, 1u);
+    CHECK(tx_publish(&k1) == NET_OK);
+    step_ms(1u);
+    CHECK(net_upper_tx_snapshot(&service, k1, &s) == NET_OK);
+    CHECK(s.offered && !s.submitted && s.admission_known && !s.accepted && s.reference_released);
+    CHECK(s.local_status == NET_REJECTED && s.outcome == NET_TX_UNKNOWN);
+    CHECK(rdiag().uart[DIAG].uart_tx_send_errors == 1u && MockRtd_UartSends(LPUART) == 0u);
+    CHECK(net_upper_retire(&service, k1) == NET_OK);
+    MockRtd_UartSetTxStall(LPUART, true);
+    CHECK(tx_publish(&k2) == NET_OK);
+    step_ms(1u);                                        /* on the line */
+    CHECK(tx_publish(&k3) == NET_OK);
+    step_ms(1u);                                        /* waits in the HAL queue */
+    RUN(snapshot_is(k3, false, NET_TX_UNKNOWN, false));
+    MockRtd_UartSetSendErrors(LPUART, 1u);
+    MockRtd_UartSetTxStall(LPUART, false);
+    CHECK(line_out(out, sizeof(out)) > 0u);
+    step_ms(1u);
+    RUN(snapshot_is(k2, true, NET_TX_SUCCEEDED, true));
+    CHECK(net_upper_tx_snapshot(&service, k3, &s) == NET_OK);
+    CHECK(s.submitted && s.admission_known && !s.accepted && s.reference_released && s.local_status == NET_OK);
+    CHECK(rdiag().uart[DIAG].uart_tx_send_errors == 2u && MockRtd_UartSends(LPUART) == 1u);
+    CHECK(net_upper_retire(&service, k2) == NET_OK && net_upper_retire(&service, k3) == NET_OK);
+    RUN(tx_cycle(4u));
+    RUN(link_healthy());
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1252,6 +1294,7 @@ int main(int argc, char **argv)
         , { "u16_drain_adapter_room", u16_drain_adapter_room }
         , { "u17_abort_refused_keeps_buffer", u17_abort_refused_keeps_buffer }
         , { "u18_end_transfer_before_send", u18_end_transfer_before_send }
+        , { "u19_send_error_refused", u19_send_error_refused }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

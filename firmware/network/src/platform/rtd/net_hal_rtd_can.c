@@ -235,8 +235,10 @@ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t)
     }
     slot->busy = false; /* no borrow, no later event for this call */
     if (st == FLEXCAN_STATUS_BUSY) { inc(&rtd.diag.tx_busy); return NET_NO_CAPACITY; }
+    /* The driver refused this frame for good: a final submit refusal, not a
+     * closed link (NET_HOLD above). */
     inc(&rtd.diag.tx_send_errors);
-    return NET_HOLD;
+    return NET_REJECTED;
 }
 
 /* ------------------------------------------------------- ISR context ---- */

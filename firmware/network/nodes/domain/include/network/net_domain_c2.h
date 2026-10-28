@@ -156,19 +156,45 @@ typedef struct {
     NetStatus (*alive_state)(void *, NetDomainC2AliveState *out);
 } NetDomainC2Config;
 typedef struct {
-    /* held: the device took the frame and it failed afterwards (bus-off or TX
-     * timeout abort). That is an in-flight failure, none of the three local
-     * failure reasons (docs/network/interface/04_COMMON/20_API_USAGE_AND_FAILURE.md,
-     * closed list of failures after admission): RxNetworkLocalFailure is not
-     * called, the record keeps the identity and stays held (this path) for the
-     * run, and its M04 TX slot is retired, so these failures do not use up the
-     * slots the periodic frames share. A held record still takes a C2 TX record. */
-    bool used, failure_delivered, held;
+    bool used, failure_delivered;
     NetTxKey key;
     NetworkLocalFailure_t identity;
     uint64_t admitted_at;
     DomainIf_Status_t failure_return;
 } NetDomainC2TxRecord;
+/* Why net_domain_c2_step retired a C2 TX record that has a failure identity
+ * without a local failure notice DOMAIN applied (PROVISIONAL, DOMAIN
+ * agreement pending):
+ *   - IN_FLIGHT: the device took the frame and it failed afterwards (bus-off,
+ *     TX timeout abort). That is an in-flight failure, none of the three local
+ *     failure reasons (docs/network/interface/04_COMMON/20_API_USAGE_AND_FAILURE.md,
+ *     closed list of failures after admission): DOMAIN is not told, nothing is
+ *     sent again and no FAILED / DONE is made up. The record is retired once
+ *     the service settled the frame (reference released, failure notice
+ *     acknowledged, M04 slot retired).
+ *   - OCCURRENCE_UNSUPPORTED: DOMAIN answered the local failure notice of an
+ *     occurrence (NETWORK_LOCAL_ITEM_OCCURRENCE) with DOMAIN_IF_UNSUPPORTED, a
+ *     refusal without effect; any other non-OK answer keeps the record held.
+ * The DOMAIN command, request and result records are DOMAIN's: this retires
+ * only Network's own TX record. */
+typedef enum {
+    NET_DOMAIN_C2_RETIRED_NONE = 0,
+    NET_DOMAIN_C2_RETIRED_IN_FLIGHT,
+    NET_DOMAIN_C2_RETIRED_OCCURRENCE_UNSUPPORTED
+} NetDomainC2RetiredCause;
+/* Diagnostic copy of the last such record: its identity (elapsedSinceAdmissionMs
+ * is the time from admission to the in-flight settlement / to the notice) and
+ * its send phase from the service snapshot. identity.reason holds a reason only
+ * with has_reason (the notice of an occurrence); an in-flight failure has none
+ * of the three reasons. */
+typedef struct {
+    NetDomainC2RetiredCause cause;
+    NetworkLocalFailure_t identity;
+    bool has_reason;
+    bool submitted, admission_known, accepted, offered;
+    NetTxOutcome outcome;
+    NetStatus local_status;
+} NetDomainC2RetiredTx;
 typedef struct {
     bool used, blocked;
     NetWireLink link;
@@ -257,8 +283,11 @@ typedef struct {
      * DOMAIN_IF_REJECTED for: dropped one by one, route kept (nd_rx_call,
      * saturating). */
     uint32_t rejected_frames;
-    /* C2 TX records that became held (NetDomainC2TxRecord.held), saturating. */
-    uint32_t tx_held;
+    /* C2 TX records retired without a local failure notice DOMAIN applied
+     * (NetDomainC2RetiredCause), counted per cause (saturating), and the last
+     * one of either cause. */
+    uint32_t tx_retired_in_flight, tx_retired_unsupported;
+    NetDomainC2RetiredTx tx_retired_last;
     NetDomainC2TxRecord tx[NET_UPPER_TX_CAPACITY];
     /* Once-invoked boundary journal; Observer failure cannot replay Core. */
     NetDomainC2IngressRecord ingress[19];
@@ -316,6 +345,27 @@ NetStatus net_domain_c2_status_quality_provisional(void *, uint16_t, const NetUp
  * default: the integration (board hook) or a test binds it. */
 NetStatus net_domain_c2_permission_bundle_provisional(void *, const DomainIf_CisPowerPermission_t *,
     NetWireDomainPermissionRaw *);
+/* PROVISIONAL local failure reason (NetDomainC2Config.local_failure_reason) of
+ * a C2 TX record the service refused before the device took it (admission
+ * known, not accepted, not submitted, not expired). The reason follows the
+ * cause, not the place that found it (the M04 queue or the Port):
+ *   - NET_HOLD: the link was closed or failed (bus-off, port error), reset to
+ *     a new port epoch or quiesced, or the UART-M context was lost. On the
+ *     DOMAIN send paths (commands, VSS_EVENT, M_RESULT) every NET_HOLD of such
+ *     a record is one of these, whether the service dropped the queued frame
+ *     or the Port returned it: CONTEXT_INVALIDATED_BEFORE_SEND;
+ *   - NET_STALE of a frame never offered: the UART-M device / session of an
+ *     M_RESULT differs from the current one (service context check):
+ *     CONTEXT_INVALIDATED_BEFORE_SEND. The record keeps its original session
+ *     and request; nothing is relabeled or sent again;
+ *   - offered and refused for good by the Port or the driver (NET_REJECTED,
+ *     NET_NOT_CONFIGURED, NET_INVALID_ARGUMENT, NET_DUPLICATE):
+ *     DRIVER_SUBMISSION_FINAL;
+ *   - anything else, a frame the device refused after it waited there
+ *     (submitted) included: NET_HOLD, no reason is guessed.
+ * Not selected by default: the integration (board hook) or a test binds it. */
+NetStatus net_domain_c2_local_failure_reason_provisional(void *, const NetUpperTxSnapshot *,
+    NetworkLocalFailureReason_t *);
 /* Legacy presentation only. Actual C2 rearDistanceMm stays exact. */
 typedef enum { NET_DOMAIN_CM_EXACT_ONLY, NET_DOMAIN_CM_FLOOR, NET_DOMAIN_CM_NEAREST } NetDomainCmPolicy;
 NetStatus net_domain_c2_mm_to_cm(uint16_t mm, NetDomainCmPolicy, uint16_t *cm);

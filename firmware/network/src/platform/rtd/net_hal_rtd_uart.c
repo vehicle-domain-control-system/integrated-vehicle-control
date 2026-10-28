@@ -428,8 +428,11 @@ NetStatus net_hal_rtd_uart_submit(const NetHalTransfer *t)
     (void)pop(u);
     if (expired) { inc(&u->diag->uart_tx_expired); return NET_EXPIRED; }
     if (st == LPUART_UART_IP_STATUS_BUSY) return NET_NO_CAPACITY;
+    /* The driver refused this frame for good: a final submit refusal. (A frame
+     * that waited behind another one and cannot start is reported later as not
+     * admitted, start_next; that report carries no cause.) */
     inc(&u->diag->uart_tx_send_errors);
-    return NET_HOLD;
+    return NET_REJECTED;
 }
 
 /* A taken ring entry to the adapter, at its placed capture time. */

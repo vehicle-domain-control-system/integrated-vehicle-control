@@ -55,6 +55,11 @@ void MockRtd_CanFinishAbort(uint8 instance);
  * cleared it right after the timeout, so the MB is idle and its message
  * buffer flag stays clear (nothing shows the MB free again). */
 void MockRtd_CanFinishAbortFlagLost(uint8 instance);
+/* A TX_COMPLETE interrupt for the MB whose abort timed out (the frame left
+ * late): the configured Callback runs with TX_COMPLETE for that MB. The MB
+ * stays with the controller and its flag is not set (MockRtd_CanFinishAbort
+ * does that). Returns the MB, -1 when no abort is pending. */
+int MockRtd_CanCompleteAbortingMb(uint8 instance);
 /* Send calls on an MB whose timed-out abort had not finished yet. */
 uint32 MockRtd_CanSendsOnAbortingMb(uint8 instance);
 /* FlexCAN_Ip_Receive refuses (ERROR) while set and leaves the MB without a
@@ -62,6 +67,9 @@ uint32 MockRtd_CanSendsOnAbortingMb(uint8 instance);
 void MockRtd_CanSetReceiveRefused(uint8 instance, bool refused);
 /* RX MBs holding a reception (armed) now. */
 uint32 MockRtd_CanRxArmed(uint8 instance);
+/* The next count FlexCAN_Ip_Send calls on an idle MB return ERROR (a driver
+ * refusal; the MB stays idle), then Send works again. */
+void MockRtd_CanSetSendErrors(uint8 instance, uint32 count);
 
 /* LPUART virtual line (instances 0..15). The node side uses the
  * Lpuart_Uart_Ip API; these hooks are the far end of the wire.
@@ -96,6 +104,9 @@ void MockRtd_UartSetAbortRefused(uint8 instance, bool refused);
  * that ended): it runs at once when interrupts are not masked
  * (net_board_irq_save), otherwise it waits for MockRtd_RunPendingIrq. */
 void MockRtd_UartEndTransferAtSend(uint8 instance);
+/* The next count AsyncSend calls on an idle line return ERROR (a driver
+ * refusal; nothing starts), then AsyncSend works again. */
+void MockRtd_UartSetSendErrors(uint8 instance, uint32 count);
 /* Runs the interrupts raised while masked, once nothing is masked. */
 void MockRtd_RunPendingIrq(void);
 bool MockRtd_UartRxArmed(uint8 instance);

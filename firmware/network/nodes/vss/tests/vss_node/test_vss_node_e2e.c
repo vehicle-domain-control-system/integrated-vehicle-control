@@ -1709,6 +1709,41 @@ static int load_doc_traffic(void)
     return 0;
 }
 
+/* Publisher behaviour on a driver refusal of the submit (FlexCAN_Ip_Send:
+ * ERROR) is unchanged by the refusal status: the backend now reports
+ * NET_REJECTED (it was NET_HOLD), and the publisher settles both the same way
+ * (only NO_CAPACITY / BUSY are transient). VSS_STATUS is not sent and not
+ * offered again: the publisher counts it not sent and keeps its TX_SEQUENCE
+ * used (a number offered to a device is not reused, a gap is allowed). The
+ * next status goes out with the next number. */
+static int h21_send_error_refused(void)
+{
+    NetVssStatus s;
+    NetWireVssStatusRaw raw;
+    MockCanFrame f;
+    NetNodeDiag d;
+    int mb;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    MockRtd_CanSetSendErrors(BUS, 1u);
+    s = status_ready(1u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(3u);
+    d = diag();
+    CHECK(d.rtd.tx_send_errors == 1u && d.rtd.tx_sent == 0u && d.hal.tx_rejected == 1u);
+    CHECK(d.status_tx.counters.not_sent == 1u && d.status_tx.counters.tx_failed == 0u);
+    CHECK(MockRtd_CanTransmitNext(BUS, &f) < 0);
+    s = status_ready(2u, 0u);
+    CHECK(VssNet_PublishStatus(&s) == NET_SUBMIT_OK);
+    step_ms(1u);
+    mb = pull_status(&f, &raw);
+    CHECK(mb >= 0 && raw.update_sequence == 2u && raw.tx_sequence == 2u);
+    step_ms(2u);
+    d = diag();
+    CHECK(d.upper.tx_succeeded == 1u && d.upper.tx_failed == 0u && d.status_tx.counters.not_sent == 1u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1729,6 +1764,7 @@ int main(int argc, char **argv)
         { "h16_warning_repeat_delivered", h16_warning_repeat_delivered },
         { "h17_domain_boot_switch", h17_domain_boot_switch },
         { "h19_rx_rearm_retry", h19_rx_rearm_retry }, { "h20_quarantine_flag_lost", h20_quarantine_flag_lost },
+        { "h21_send_error_refused", h21_send_error_refused },
         { "load_doc_traffic", load_doc_traffic },
         { "h18_abort_result", h18_abort_result }
     };
