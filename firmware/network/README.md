@@ -76,4 +76,4 @@ G01~G08, WINDOW 실행, 외부 Owner 정책·ABI 채택, BOOT_ID의 보드 출�
 
 보드에 올려 실제로 확인한 것(S32K344 VSS 노드, S32K144 BCM·CIS 시험대)과 확인하지 못한 것은 `docs/BOARD_TEST_RESULTS.md`에 있다.
 
-BOOT_ID 계산 함수 `net_boot_id_next`(`include/network/net_boot_id.h`, `src/platform/net_boot_id.c`)는 있고 Host 시험도 돈다. HOLD인 것은 보드 쪽이다. warm reset에도 남는 noinit 기록 위치, 리셋 원인 읽기, seed 출처가 아직 없어서, 보드 파일은 지금 고정 시험값을 쓴다. 그래서 보드 시험 중에는 한 노드만 리셋하면 상대가 그 노드의 프레임을 옛 것으로 거부한다. 양쪽을 함께 리셋한다.
+BOOT_ID 계산 함수 `net_boot_id_next`(`include/network/net_boot_id.h`, `src/platform/net_boot_id.c`)는 있고 Host 시험도 돈다. HOLD인 것은 보드 쪽의 제품 출처다(warm reset에도 남는 noinit 기록 위치나 NVM 카운터, 리셋 원인 읽기). 그때까지 보드 파일은 부팅마다 코어 사이클 카운터(DWT_CYCCNT)를 seed로 값을 만든다. 리셋 버튼(warm reset)은 이 카운터를 지우지 않으므로 한 노드만 리셋해도 상대가 새 실행으로 받는다. 소프트웨어·디버거 리셋은 S32K344에서 destructive reset일 수 있어 보드에서 확인하지 않았다. 전원을 뺐다 꽂으면 값이 늘 같아서, 상대가 이번 실행 중에 그 값을 본 적이 있으면 그 노드를 리셋 버튼으로 한 번 더 리셋한다. `NET_BOARD_BOOT_ID_FIXED`를 정의하면 보드 파일은 고정 시험값을 쓴다.

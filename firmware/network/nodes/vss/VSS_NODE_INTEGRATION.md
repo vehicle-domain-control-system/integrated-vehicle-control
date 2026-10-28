@@ -119,7 +119,7 @@ VSS 펌웨어와 Network를 결합한 빌드에서 확인할 항목이다. host�
 
 **두 헤더 모델:** VSS 소스는 바꾸지 않는다. VSS는 자기 `src/net_if/vss_net_api.h`를, Network 소스는 `network/app/net_if_*.h`를 쓰고 둘은 링크에서 만난다. 두 헤더는 같은 타입을 정의하므로 한 번역 단위에 함께 넣지 않는다. VSS 헤더를 Network 헤더로 바꾸는 방식은 쓰지 않는다(VSS `check_layers.py`가 net_if의 외부 include를 막는다). 근거: host 시험 `vss_integ.vi0_api_layout`이 두 헤더의 struct 크기, 모든 필드의 offset·크기, 경계를 넘는 코드 값(`NET_SUBMIT_*`, 품질·사유·가용성, VSS 상태·이벤트·fault, `NET_AGE_SATURATED_MS`)이 같음을 확인하고, `vss_integ`의 나머지 케이스가 실제 VSS 소스와 링크해 동작을 확인한다.
 
-**Network 쪽 보드 파일:** 노드 설정 hook `VssBoard_NetNodeConfig`(`nodes/vss/board/s32k344_vss/net_vss_board.c`)는 Network 타입 `NetNodeConfig`를 쓰므로 VSS 저장소가 아니라 Network 쪽에 둔다. `network/net_node.h`만 include한다. BOOT_ID 출처(NVM, noinit 카운터)는 아직 정하지 않아 시험대 상수다(HOLD, 계약 C4).
+**Network 쪽 보드 파일:** 노드 설정 hook `VssBoard_NetNodeConfig`(`nodes/vss/board/s32k344_vss/net_vss_board.c`)는 Network 타입 `NetNodeConfig`를 쓰므로 VSS 저장소가 아니라 Network 쪽에 둔다. `network/net_node.h`와 `network/net_boot_id.h`만 include한다. BOOT_ID 제품 출처(NVM, noinit 카운터)는 아직 정하지 않았다(HOLD, 계약 C4). 그때까지는 부팅마다 코어 사이클 카운터(DWT_CYCCNT)를 seed로 값을 만들어 리셋 버튼(warm reset)마다 바뀐다. 전원을 켤 때는 늘 같은 값이다(`nodes/vss/board/s32k344_vss/README.md`). `NET_BOARD_BOOT_ID_FIXED`를 정의하면 시험대 상수다.
 
 **µs hook:** `NET_BOARD_US_HOOK`은 넣지 않는다. VSS에는 µs 자유 카운터가 없고, DWT 사이클 카운터를 160으로 나눈 값은 약 26.8초마다 끊긴다. `main_max_us`는 0으로 남고, 슈퍼루프 시간은 VSS `loopMaxTicks`로 본다.
 

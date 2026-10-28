@@ -3,6 +3,7 @@
 #include "net_board_time144.h"
 #include "S32K144_SCB.h"
 #include "S32K144_SYSTICK.h"
+#include "network/net_boot_id.h"
 
 #define BOARD_SYSTICK_RELOAD ((BOARD_CORE_CLK_HZ / 1000u) - 1u)
 #define BOARD_CYCLES_PER_US (BOARD_CORE_CLK_HZ / 1000000u)
@@ -80,16 +81,51 @@ uint32_t Board_Us32(void)
     return (ms * 1000u) + ((BOARD_SYSTICK_RELOAD - current) / BOARD_CYCLES_PER_US);
 }
 
+#ifndef NET_BOARD_BOOT_ID_FIXED
+/* BOOT_ID seed (temporary, until a product source such as an NVM reset counter
+ * or a hardware RNG): the core cycle counter DWT_CYCCNT. It belongs to the debug
+ * domain of the core, which a warm (functional) reset such as the reset pin
+ * does not clear, so the value read here carries the length of the earlier
+ * runs and changes on every such reset. A power-on reset, and a destructive
+ * reset (on the S32K344 some software and debugger resets), starts it again:
+ * the value is then the one of every power-on start, and a peer that saw it
+ * earlier drops the frames as an old run until the board is reset once more.
+ * Fixed ARMv7-M addresses, no SDK header. Other builds (host): 0.
+ * NET_BOARD_BOOT_ID_FIXED keeps the bench constant. */
+static uint32_t board_boot_seed(void)
+{
+#if defined(__ARM_ARCH_PROFILE) && (__ARM_ARCH_PROFILE == 'M')
+    volatile uint32_t *const demcr = (volatile uint32_t *)0xE000EDFCu;
+    volatile uint32_t *const dwt_ctrl = (volatile uint32_t *)0xE0001000u;
+    volatile uint32_t *const dwt_cyccnt = (volatile uint32_t *)0xE0001004u;
+    *demcr |= 1u << 24;                                  /* DEMCR.TRCENA: DWT on */
+    if ((*dwt_ctrl & (1u << 25)) != 0u) return 0u;       /* DWT_CTRL.NOCYCCNT: no cycle counter */
+    *dwt_ctrl |= 1u;                                     /* CYCCNTENA (kept when already on) */
+    return *dwt_cyccnt;
+#else
+    return 0u;
+#endif
+}
+#endif
+
 bool Board_NetNodeConfig(NetNodeConfig *out)
 {
     if (out == NULL) return false;
-    /* HOLD: bench constant ("CIS1"); the board source of the BOOT_ID is not
-     * decided. A product BOOT_ID must differ on every start; with this
-     * constant a reset restarts TX_SEQUENCE and LINK_SEQUENCE at 1 under the
-     * same BOOT_ID, which receivers reject, so the CIS and its peers are reset
-     * together (see README.md). The UART-C port epoch keeps the value Network
-     * gives the hook (1). */
-    out->boot_id = 0x43495331u;
+    /* BOOT_ID changes on every warm reset such as the reset pin
+     * (board_boot_seed), so a peer takes the restarted TX_SEQUENCE and
+     * LINK_SEQUENCE as a new run and the CIS can be reset alone (see README.md). The UART-C port epoch keeps the value
+     * Network gives the hook (1). */
+#ifdef NET_BOARD_BOOT_ID_FIXED
+    out->boot_id = 0x43495331u; /* bench constant ("CIS1") */
+#else
+    {
+        /* No record kept across resets: the seed alone gives the value (never 0). */
+        NetBootIdRecord none = { 0u, 0u, 0u };
+        if (net_boot_id_next(&none, NET_BOOT_RESET_POWER_ON, board_boot_seed() ^ 0x43495331u,
+                             &out->boot_id) != NET_OK)
+            return false;
+    }
+#endif
     out->local_epoch = 1u;
     out->can_port_epoch = 1u;
     return true;

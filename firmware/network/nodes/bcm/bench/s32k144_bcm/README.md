@@ -23,10 +23,9 @@ Network 제품 코드가 아니라 S32K144 보드 시험대 코드다. 144 디�
   - 계산은 ms × 1000 + 현재 ms 안의 경과 사이클 / 48이고, ms 카운터가 2^32에서 돌아도 끊기지 않는다.
   - 경합 처리는 344 시험대(`nodes/vss/bench/s32k344/README.md`)와 같다: SysTick pending 비트(ICSR.PENDSTSET)가 켜져 있고 현재 값이 reload의 위쪽 절반이면 1 ms를 더한다.
   - 인터럽트를 1 ms 넘게 막으면 놓친 reload를 알 수 없다.
-- `Board_NetNodeConfig()`: `boot_id` = 0x42434D31("BCM1", 시험대 상수), `local_epoch` = 1, CAN epoch = 1.
-  - **보드 출처 HOLD.** 리셋하면 같은 BOOT로 TX가 1부터 다시 시작한다(BOOT 수용 규칙의 전제 위반, 시험대 한정).
-  - 상대 노드는 같은 BOOT 안에서 TX가 뒤로 간 프레임을 옛 프레임으로 버린다. 상대 344(VSS)도 BOOT가 보드 상수다.
-  - 그래서 처음부터 다시 할 때는 **두 보드를 함께 리셋**한다.
+- `Board_NetNodeConfig()`: `local_epoch` = 1, CAN epoch = 1.
+  - `boot_id`: 부팅마다 코어 사이클 카운터(DWT_CYCCNT)를 seed로 `net_boot_id_next`가 만든 값(임시, 제품 출처는 HOLD). 리셋 버튼(warm·functional reset)은 이 카운터를 지우지 않으므로 누를 때마다 값이 바뀐다. 소프트웨어·디버거 리셋은 S32K344에서 destructive reset일 수 있어 보드에서 확인하지 않았다. 전원을 뺐다 꽂으면 카운터가 0부터라 값이 늘 같다. 상대가 이번 실행 중에 그 값을 본 적이 있으면 이 보드의 프레임을 옛 실행으로 버리므로, 리셋 버튼으로 한 번 더 리셋한다. `NET_BOARD_BOOT_ID_FIXED`를 정의하면 시험대 상수 0x42434D31("BCM1")다.
+  - BOOT가 바뀌면 상대 Network 노드는 TX가 1부터 다시 시작한 것을 새 실행으로 받는다. 상대 344(VSS)도 같은 방식이라 두 보드를 따로 리셋해도 된다.
 
 ## BCM 앱 대역 (`bcm_bench_app.c`)
 

@@ -134,7 +134,7 @@ Network를 실제 보드에 올려 확인한 결과를 요약한다. Host 시험
 - **TX abort 시간 초과와 RX 재등록 거절:** RTD가 TX abort를 TIMEOUT으로 끝내는 경우, 그 뒤 MB 플래그가 다시 서는지, RX 재등록(`FlexCAN_Ip_Receive`)을 거절하는 경우는 보드에서 일으켜 보지 않았다. Network는 플래그가 서지 않은 MB를 리셋 전까지 쓰지 않고(`rtd.tx_quarantined`), 거절된 RX MB는 main에서 다시 건다(`rtd.rx_unarmed`). host 시험으로만 확인했다.
 - **UART abort 거절과 송신 시작:** RTD가 UART 송신 abort를 거절하는 경우, 임계 구역(인터럽트 금지) 안에서 부른 `Lpuart_Uart_Ip_AsyncSend`가 그 상태를 지키는지는 보드에서 보지 않았다. Network는 abort가 거절되고 송신 상태가 BUSY이면 버퍼를 돌려주지 않고 바퀴마다 abort를 다시 한다(`rtd.uart[n].uart_tx_abort_waiting`). host 시험으로만 확인했다.
 - **링크 실패 뒤 회복:** 어댑터 수신 큐가 넘치면 Network는 그 링크(CAN 또는 UART-C)를 실패로 두고 리셋 전까지 회복하지 않는다(CIS 시험의 첫 결함에서 UART-C로 본 동작). 고친 뒤에는 넘침이 없었고, 지금 RTD 백엔드에서는 이 경로가 나지 않는다(drain은 빈칸 이하). 회복하는 것은 bus-off뿐이다(위 줄).
-- **BOOT_ID의 보드 출처:** Network 노드의 BOOT_ID는 상수다. 한쪽만 리셋하면 상대 Network 노드가 그 노드의 프레임을 옛 것으로 거부한다.
+- **BOOT_ID의 보드 출처:** 위 시험 때 Network 노드의 BOOT_ID는 상수였다(한쪽만 리셋하면 상대 Network 노드가 그 노드의 프레임을 옛 것으로 거부한다). 그 뒤 보드 hook은 부팅마다 코어 사이클 카운터(DWT_CYCCNT)를 seed로 값을 만든다. 리셋마다 값이 바뀌는지는 보드에서 아직 보지 않았다.
 
 ## 시험 중 관찰
 

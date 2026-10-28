@@ -21,6 +21,6 @@
 
 `NET_BOARD_US_HOOK`은 정의하지 않는다. VSS에는 µs 자유 카운터가 없고, DWT 사이클 카운터를 160으로 나눈 값은 약 26.8초마다 끊긴다. 그래서 `NetNodeDiag.main_max_us`는 0으로 남는다. 슈퍼루프 시간은 VSS 자체 `loopMaxTicks`로 본다.
 
-## BOOT_ID (HOLD)
+## BOOT_ID (제품 출처 HOLD)
 
-BOOT_ID 출처(NVM, noinit 카운터)는 아직 정하지 않았다. 지금은 시험대 상수 0x56535331이다(S32K344 벤치의 0x344와 다르다). 상수이므로 리셋하면 같은 BOOT로 TX가 1부터 다시 시작하고, 수신 쪽은 이를 옛 프레임으로 거부한다(VSS_NODE_INTEGRATION.md 계약 C4).
+제품 출처(NVM, noinit 카운터)는 아직 정하지 않았다. 지금 `boot_id`는 부팅마다 코어 사이클 카운터(DWT_CYCCNT)를 seed로 `net_boot_id_next`가 만든 값(임시, 제품 출처는 HOLD). 리셋 버튼(warm·functional reset)은 이 카운터를 지우지 않으므로 누를 때마다 값이 바뀐다. 소프트웨어·디버거 리셋은 S32K344에서 destructive reset일 수 있어 보드에서 확인하지 않았다. 전원을 뺐다 꽂으면 카운터가 0부터라 값이 늘 같다. 상대가 이번 실행 중에 그 값을 본 적이 있으면 이 보드의 프레임을 옛 실행으로 버리므로, 리셋 버튼으로 한 번 더 리셋한다. `NET_BOARD_BOOT_ID_FIXED`를 정의하면 시험대 상수 0x56535331(S32K344 벤치의 0x344와 다르다)이다. BOOT가 바뀌므로 수신 쪽은 TX가 1부터 다시 시작한 VSS 프레임을 새 실행으로 받는다(VSS_NODE_INTEGRATION.md 계약 C4).

@@ -15,8 +15,9 @@ Network 제품 코드가 아니라 S32K344 보드 시험대 코드다. S32DS 벤
 - `Board_Us32()`는 2^32에서 순환하는 µs 카운터다. `NetNodeDiag.main_max_us`(`Net_MainFunction` 1회 최대 실행 시간, VSS 계약 C8: 15 ms 초과 금지)를 보는 데 쓴다.
   - ms × 1000 + 현재 ms 안의 경과 사이클 / 160을 32비트로 계산한다. ms 카운터가 2^32에서 돌아도 µs 값은 끊기지 않는다. 사이클 카운터를 160으로 나눈 값은 약 26.8초마다 끊기므로 쓰지 않는다.
   - SysTick이 reload했지만 핸들러가 아직 ms를 올리지 않은 순간을 처리한다. COUNTFLAG는 읽으면 지워지므로 대신 SysTick pending 비트(ICSR.PENDSTSET)를 본다. pending이고 현재 값이 reload의 위쪽 절반이면 1 ms를 더한다. 인터럽트를 1 ms 넘게 막으면 놓친 reload를 알 수 없다.
-- `Board_NetNodeConfig()`: `boot_id` = 0x00000344(시험대 상수), `local_epoch` = 1, CAN epoch = 1.
-  - **리셋하면 같은 BOOT로 TX가 1부터 다시 시작한다(BOOT 수용 규칙의 전제 위반, 시험대 한정).** 수신 노드는 같은 BOOT 안에서 TX가 뒤로 간 프레임을 옛 프레임으로 버린다. 그래서 344를 리셋한 뒤에는 상대 노드도 리셋해야 0x340이 다시 받아들여진다. 제품 BOOT_ID는 기동마다 달라야 한다(VSS_NODE_INTEGRATION.md 계약 C4). 출처(NVM, noinit 카운터)는 아직 정하지 않았다.
+- `Board_NetNodeConfig()`: `local_epoch` = 1, CAN epoch = 1.
+  - `boot_id`: 부팅마다 코어 사이클 카운터(DWT_CYCCNT)를 seed로 `net_boot_id_next`가 만든 값(임시, 제품 출처는 HOLD). 리셋 버튼(warm·functional reset)은 이 카운터를 지우지 않으므로 누를 때마다 값이 바뀐다. 소프트웨어·디버거 리셋은 S32K344에서 destructive reset일 수 있어 보드에서 확인하지 않았다. 전원을 뺐다 꽂으면 카운터가 0부터라 값이 늘 같다. 상대가 이번 실행 중에 그 값을 본 적이 있으면 이 보드의 프레임을 옛 실행으로 버리므로, 리셋 버튼으로 한 번 더 리셋한다. `NET_BOARD_BOOT_ID_FIXED`를 정의하면 시험대 상수 0x00000344다.
+  - BOOT가 바뀌면 수신 노드는 TX가 1부터 다시 시작한 0x340을 새 실행으로 받으므로, 344만 리셋해도 된다. 제품 BOOT_ID는 기동마다 달라야 한다(VSS_NODE_INTEGRATION.md 계약 C4). 제품 출처(NVM, noinit 카운터)는 아직 정하지 않았다.
 
 ## VSS 앱 대역 (`vss_bench_app.c`)
 

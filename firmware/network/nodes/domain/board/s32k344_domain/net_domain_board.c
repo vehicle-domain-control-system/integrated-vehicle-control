@@ -1,20 +1,62 @@
 /* Network side of the DOMAIN board project. See net_domain_board.h. */
 #include "net_domain_board.h"
 #include <string.h>
+#include "network/net_boot_id.h"
 
-/* HOLD: the BOOT_ID source is not decided (include/network/net_boot_id.h
- * computes one from a noinit record; the record section, the reset cause and
- * the seed are board work not done yet). This test-bench constant stays the
- * same across resets, so after a reset every DOMAIN frame restarts at
- * TX_SEQUENCE 1 under the same BOOT_ID and receivers reject it as old
- * (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md common header: BOOT_ID
- * belongs to the sending Network, 0 reserved; it changes on every start). */
+/* BOOT_ID: the product source is not decided (include/network/net_boot_id.h
+ * also takes a noinit record and the reset cause; the record section and the
+ * reset cause are board work not done yet). Until then the value comes from
+ * the core cycle counter (board_boot_seed), so it changes on every warm reset
+ * such as the reset pin and receivers take the restarted TX_SEQUENCE of every
+ * DOMAIN frame as a new run (docs/network/interface/03_COMMUNICATION/10_CAN_FD.md common header:
+ * BOOT_ID belongs to the sending Network, 0 reserved; it changes on every
+ * start). DOMAIN_BOARD_BOOT_ID is mixed into the seed and is the value with
+ * NET_BOARD_BOOT_ID_FIXED. */
 #define DOMAIN_BOARD_BOOT_ID 0x444F4D42u
+
+#ifndef NET_BOARD_BOOT_ID_FIXED
+/* BOOT_ID seed (temporary, until a product source such as an NVM reset counter
+ * or a hardware RNG): the core cycle counter DWT_CYCCNT. It belongs to the debug
+ * domain of the core, which a warm (functional) reset such as the reset pin
+ * does not clear, so the value read here carries the length of the earlier
+ * runs and changes on every such reset. A power-on reset, and a destructive
+ * reset (on the S32K344 some software and debugger resets), starts it again:
+ * the value is then the one of every power-on start, and a peer that saw it
+ * earlier drops the frames as an old run until the board is reset once more.
+ * Fixed ARMv7-M addresses, no SDK header. Other builds (host): 0.
+ * NET_BOARD_BOOT_ID_FIXED keeps the bench constant. */
+static uint32_t board_boot_seed(void)
+{
+#if defined(__ARM_ARCH_PROFILE) && (__ARM_ARCH_PROFILE == 'M')
+    volatile uint32_t *const demcr = (volatile uint32_t *)0xE000EDFCu;
+    volatile uint32_t *const dwt_ctrl = (volatile uint32_t *)0xE0001000u;
+    volatile uint32_t *const dwt_cyccnt = (volatile uint32_t *)0xE0001004u;
+    *demcr |= 1u << 24;                                  /* DEMCR.TRCENA: DWT on */
+    *(volatile uint32_t *)0xE0001FB0u = 0xC5ACCE55u;     /* DWT_LAR: unlock (Cortex-M7 software lock) */
+    if ((*dwt_ctrl & (1u << 25)) != 0u) return 0u;       /* DWT_CTRL.NOCYCCNT: no cycle counter */
+    *dwt_ctrl |= 1u;                                     /* CYCCNTENA (kept when already on) */
+    return *dwt_cyccnt;
+#else
+    return 0u;
+#endif
+}
+#endif
 
 bool NetDomainBoard_NodeConfig(NetNodeConfig *out)
 {
     if (out == NULL) return false;
-    out->boot_id = DOMAIN_BOARD_BOOT_ID; /* epochs: Net_Init defaults (1) */
+#ifdef NET_BOARD_BOOT_ID_FIXED
+    out->boot_id = DOMAIN_BOARD_BOOT_ID; /* test-bench constant */
+#else
+    {
+        /* No record kept across resets: the seed alone gives the value (never 0). */
+        NetBootIdRecord none = { 0u, 0u, 0u };
+        if (net_boot_id_next(&none, NET_BOOT_RESET_POWER_ON, board_boot_seed() ^ DOMAIN_BOARD_BOOT_ID,
+                             &out->boot_id) != NET_OK)
+            return false;
+    }
+#endif
+    /* epochs: Net_Init defaults (1) */
     return true;
 }
 
