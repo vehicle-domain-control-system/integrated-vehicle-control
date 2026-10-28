@@ -3,7 +3,7 @@
 #include <string.h>
 
 static bool valid_link(NetWireLink link)
-{ return link>=NET_WIRE_CAN && link<=NET_WIRE_UART_C; }
+{ return (uint32_t)link<=(uint32_t)NET_WIRE_UART_C; }
 
 NetStatus net_upper_link_snapshot(const NetUpper *s, NetWireLink link,
     NetUpperLinkSnapshot *out)

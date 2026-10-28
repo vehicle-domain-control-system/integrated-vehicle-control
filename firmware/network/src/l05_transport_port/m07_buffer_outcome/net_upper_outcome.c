@@ -19,7 +19,7 @@ NetStatus net_upper_observe_tx(NetUpper *s, const NetTxEvent *e)
 {
     NetUpperTx *r=net_upper_find_tx(s,e->key); bool changed=false;
     if(r==NULL || !r->state.submitted) { net_upper_observe_increment(&s->observation.tx_stale); return NET_STALE; }
-    if(e->outcome<NET_TX_UNKNOWN || e->outcome>NET_TX_FAILED ||
+    if((uint32_t)e->outcome>(uint32_t)NET_TX_FAILED ||
        (!e->admission_observed && !e->release_observed && e->outcome==NET_TX_UNKNOWN)) return NET_INVALID_ARGUMENT;
     if(r->state.conflict) return NET_HOLD;
     if((e->admission_observed && r->state.admission_known && e->accepted!=r->state.accepted) ||

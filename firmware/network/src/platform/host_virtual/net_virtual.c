@@ -2,7 +2,7 @@
 #include <string.h>
 
 static bool ready(const NetVirtualBackend *b) { return b!=NULL && b->initialized; }
-static bool valid_link(NetWireLink link) { return link>=NET_WIRE_CAN && link<=NET_WIRE_UART_C; }
+static bool valid_link(NetWireLink link) { return (uint32_t)link<=(uint32_t)NET_WIRE_UART_C; }
 static void increment(uint32_t *n) { if(*n!=UINT32_MAX) ++*n; }
 static NetUpperCapture capture(const NetVirtualBackend *b, uint64_t epoch, uint64_t at)
 {
@@ -74,7 +74,7 @@ NetStatus net_virtual_set_timing(NetVirtualBackend *b,const NetVirtualTiming *t)
 NetStatus net_virtual_tx_fact(NetVirtualBackend *b,NetWireLink link,const NetTxEvent *e,uint64_t epoch)
 {
     NetUpperCapture c; size_t i;
-    if(!ready(b) || !valid_link(link) || e==NULL || e->outcome<NET_TX_UNKNOWN || e->outcome>NET_TX_FAILED ||
+    if(!ready(b) || !valid_link(link) || e==NULL || (uint32_t)e->outcome>(uint32_t)NET_TX_FAILED ||
        (!e->admission_observed && !e->release_observed && e->outcome==NET_TX_UNKNOWN)) return NET_INVALID_ARGUMENT;
     if(e->release_observed) for(i=0u;i<NET_HAL_TX_CAPACITY;++i) {
         NetVirtualPending *p=&b->pending[i];

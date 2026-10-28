@@ -423,8 +423,8 @@ NetStatus net_upper_cis_publish_rear(NetUpper *s,const NetWireCisRearRaw *rear,
 NetStatus net_upper_capture(NetUpper *s,const NetUpperEvent *e)
 {
     size_t tail;
-    if(s==NULL || !s->initialized || e==NULL || e->kind<NET_UPPER_CAN_RX || e->kind>NET_UPPER_PORT_ERROR ||
-       e->link<NET_WIRE_CAN || e->link>NET_WIRE_UART_C || net_wire_ranges_overlap(s,sizeof(*s),e,sizeof(*e)))return NET_INVALID_ARGUMENT;
+    if(s==NULL || !s->initialized || e==NULL || (uint32_t)e->kind>(uint32_t)NET_UPPER_PORT_ERROR ||
+       (uint32_t)e->link>(uint32_t)NET_WIRE_UART_C || net_wire_ranges_overlap(s,sizeof(*s),e,sizeof(*e)))return NET_INVALID_ARGUMENT;
     if(s->in_call)return NET_BUSY;
     if(!net_upper_profile_link(e->link))return NET_UNSUPPORTED;
     if(s->rx_count==NET_UPPER_RX_CAPACITY){INC(s->observation.rx_dropped);return NET_NO_CAPACITY;}
@@ -905,7 +905,7 @@ NetStatus net_upper_step(NetUpper *s,size_t budget)
         status=s->config.port.ops->poll(s->config.port.context,e);
         if(status==NET_NO_WORK){drained=true;break;}
         if(status!=NET_OK){INC(s->observation.errors);result=status;break;}
-        if(e->kind<NET_UPPER_CAN_RX || e->kind>NET_UPPER_PORT_ERROR || e->link<NET_WIRE_CAN || e->link>NET_WIRE_UART_C || !net_upper_profile_link(e->link)) {
+        if((uint32_t)e->kind>(uint32_t)NET_UPPER_PORT_ERROR || (uint32_t)e->link>(uint32_t)NET_WIRE_UART_C || !net_upper_profile_link(e->link)) {
             INC(s->observation.rx_invalid);result=NET_INVALID_ARGUMENT;continue;
         }
         ++s->rx_count;INC(s->observation.rx_captured);

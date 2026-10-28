@@ -511,7 +511,7 @@ NetStatus net_domain_c2_health(NetDomainC2 *a,NetworkLinkId_t link,uint32_t now,
     if(a->api.GetNetworkHealthSnapshot==NULL)return NET_HOLD;
     a->in_call=true;status=a->api.GetNetworkHealthSnapshot(link,now,&value);a->in_call=false;
     if(status!=DOMAIN_IF_OK)return nd_call(a,status);
-    if(value.link!=link||value.transportState<NETWORK_TRANSPORT_UNKNOWN||value.transportState>NETWORK_TRANSPORT_RECOVERING)return NET_REJECTED;
+    if(value.link!=link||(uint32_t)value.transportState>(uint32_t)NETWORK_TRANSPORT_RECOVERING)return NET_REJECTED;
     *out=value;return nd_call(a,status);
 }
 /* A non-OK Owner return blocks the route (the ingress record) for the rest of

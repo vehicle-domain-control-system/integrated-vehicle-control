@@ -7,7 +7,7 @@
  * interrupts on the RTD backend (net_hal_rtd.c ops_enter). */
 
 static void inc(uint32_t *v) { if(*v!=UINT32_MAX) ++*v; }
-static bool link_valid(NetWireLink link) { return link>=NET_WIRE_CAN && link<=NET_WIRE_UART_C; }
+static bool link_valid(NetWireLink link) { return (uint32_t)link<=(uint32_t)NET_WIRE_UART_C; }
 static bool ready(const NetHalAdapter *a) { return a!=NULL && a->initialized; }
 static bool overlap(const NetHalAdapter *a, const void *p, size_t n)
 { return p==NULL || net_wire_ranges_overlap(a,sizeof(*a),p,n); }
@@ -244,7 +244,7 @@ NetStatus net_hal_capture_tx(NetHalAdapter *a,NetWireLink link,const NetTxEvent 
 {
     NetHalAttempt *r; uintptr_t k; bool changed=false;
     if(!ready(a) || !link_valid(link) || overlap(a,event,sizeof(*event)) || overlap(a,capture,sizeof(*capture)) ||
-       event->outcome<NET_TX_UNKNOWN || event->outcome>NET_TX_FAILED ||
+       (uint32_t)event->outcome>(uint32_t)NET_TX_FAILED ||
        (!event->admission_observed && !event->release_observed && event->outcome==NET_TX_UNKNOWN)) return NET_INVALID_ARGUMENT;
     k=lock(a); r=find(a,event->key);
     if(r==NULL || r->transfer.packet.link!=link || r->transfer.port_epoch!=capture->port_epoch) {

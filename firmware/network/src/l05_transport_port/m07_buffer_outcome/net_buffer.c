@@ -10,7 +10,7 @@ NetStatus net_buffer_capture(NetRuntime *runtime, const NetFrame *frame)
 {
     size_t tail;
     if (frame == NULL || (frame->length == 0u && frame->link != NET_LINK_CAN) || frame->length > NET_FRAME_CAPACITY ||
-        frame->link < NET_LINK_CAN || frame->link > NET_LINK_UART_C) {
+        (uint32_t)frame->link > (uint32_t)NET_LINK_UART_C) {
         net_observe_increment(&runtime->observation.rx_invalid);
         return NET_INVALID_ARGUMENT;
     }
@@ -48,7 +48,7 @@ NetStatus net_buffer_observe_tx(NetRuntime *runtime, const NetTxEvent *event)
         net_observe_increment(&runtime->observation.stale_events);
         return NET_STALE;
     }
-    if (event->outcome < NET_TX_UNKNOWN || event->outcome > NET_TX_FAILED ||
+    if ((uint32_t)event->outcome > (uint32_t)NET_TX_FAILED ||
         (!event->admission_observed && !event->release_observed &&
          event->outcome == NET_TX_UNKNOWN)) return NET_INVALID_ARGUMENT;
     /* Conflicting evidence stays pinned for investigation, never guessed away. */

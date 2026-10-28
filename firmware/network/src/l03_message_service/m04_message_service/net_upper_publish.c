@@ -59,7 +59,7 @@ NetStatus net_upper_publish_init(NetUpperPublisher *p, NetUpper *s, const NetUpp
     for (i = 0u; i < c->entry_count; ++i) {
         const NetUpperPublishEntry *e = &c->entries[i];
         const NetWireRegistryEntry *r;
-        if (e->link < NET_WIRE_CAN || e->link > NET_WIRE_UART_C || !e->age.bound) return NET_INVALID_ARGUMENT;
+        if ((uint32_t)e->link > (uint32_t)NET_WIRE_UART_C || !e->age.bound) return NET_INVALID_ARGUMENT;
         for (j = 0u; j < i; ++j)
             if (c->entries[j].link == e->link && c->entries[j].id == e->id) return NET_INVALID_ARGUMENT;
         r = net_wire_registry_find(e->link, e->id);

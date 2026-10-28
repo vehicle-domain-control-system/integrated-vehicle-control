@@ -72,6 +72,7 @@ DOMAIN 노드(profile 5, CAN + UART-M)용 Network 사본의 안내다. 사본은
   - UART-M LPUART 인스턴스와 설정 심볼(`NET_BOARD_UART_M_INSTANCE`, `NET_BOARD_UART_M_CONFIG`, `NET_BOARD_UART_CFG_HEADER`), 콜백 연결 방식(`NET_BOARD_UART_CALLBACK`). **UART-M 기본값 LPUART0(`Lpuart_Uart_Ip_xHwConfigPB_0`)은 자리표시값이다.** 실제 인스턴스로 바꿔야 한다.
   - 시간원(방식 A·B·C 중 하나). 설명은 원본 `firmware/network/nodes/vss/VSS_NODE_INTEGRATION.md`의 시간원·보드 설정 절과 같다.
 - 사본 안의 모든 `.c`는 위 include 폴더, mock SDK(`firmware/network/sdk_mock/rtd/include`, NET_git 안에서만), C2 헤더 폴더로 `-std=c11 -Wall -Wextra -Wpedantic -Werror` 단독 컴파일이 된다. 실제 RTD 헤더로의 컴파일과 링크는 보드 적용 때 확인한다.
+- **enum 크기:** Network 소스는 `-fshort-enums`(`arm-none-eabi-gcc` 기본)와 `-fno-short-enums`(S32DS 프로젝트 설정) 모두에서 위 옵션으로 컴파일된다. 한 빌드 안의 DOMAIN·Network·RTD 파일은 같은 설정을 쓴다. C2 구조체와 Network 구조체의 배치가 enum 크기에 따라 달라지기 때문이다.
 
 ## DOMAIN 팀 확인이 필요한 것
 

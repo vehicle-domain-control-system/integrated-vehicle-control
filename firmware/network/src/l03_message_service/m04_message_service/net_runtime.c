@@ -8,7 +8,7 @@
 static NetStatus validate_frame(const NetFrame *frame)
 {
     if (frame == NULL || (frame->length == 0u && frame->link != NET_LINK_CAN) || frame->length > NET_FRAME_CAPACITY ||
-        frame->link < NET_LINK_CAN || frame->link > NET_LINK_UART_C)
+        (uint32_t)frame->link > (uint32_t)NET_LINK_UART_C)
         return NET_INVALID_ARGUMENT;
     if (frame->link == NET_LINK_CAN) return net_can_validate_capture(frame);
     return NET_OK; /* Raw UART capture only; never a product decoded message. */
