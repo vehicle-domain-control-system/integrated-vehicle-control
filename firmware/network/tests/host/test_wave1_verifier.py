@@ -103,17 +103,25 @@ class ReadOnlyVerifierTests(unittest.TestCase):
         self.invoke(["--check", *self.copied_inputs()])
 
     def test_newline_variants_preserved(self):
-        original = self.fixture.read_bytes()
-        self.assertEqual(sha(original), FIXTURE_SHA256)
-        self.assertIn(b"\r\n", original)
-        self.assertEqual(original.count(b"\n"), original.count(b"\r\n"))
-        self.invoke(["--check", *self.copied_inputs()])
-        normalized = original.replace(b"\r\n", b"\n")
-        self.assertEqual(json.loads(normalized), json.loads(original))
-        self.fixture.write_bytes(normalized)
+        # A CRLF (Windows) or LF checkout of the same content passes and is never
+        # rewritten; the archived CRLF bytes are FIXTURE_SHA256.
+        lf = self.fixture.read_bytes().replace(b"\r\n", b"\n")
+        crlf = lf.replace(b"\n", b"\r\n")
+        self.assertEqual(sha(crlf), FIXTURE_SHA256)
+        self.assertEqual(json.loads(lf), json.loads(crlf))
+        sources = {name: (self.project / name).read_bytes().replace(b"\r\n", b"\n") for name in SOURCES}
+        for ending in (b"\r\n", b"\n"):
+            for name, text in sources.items():
+                (self.project / name).write_bytes(text.replace(b"\n", ending))
+            variant = lf.replace(b"\n", ending)
+            self.fixture.write_bytes(variant)
+            self.invoke(["--check", *self.copied_inputs()])
+            self.assertEqual(self.fixture.read_bytes(), variant)
+        bare_cr = lf.replace(b"\n", b"\r", 1)
+        self.fixture.write_bytes(bare_cr)
         result = self.invoke(["--check", *self.copied_inputs()], expected=1)
         self.assertIn("Fixture SHA mismatch", result.stderr)
-        self.assertEqual(self.fixture.read_bytes(), normalized)
+        self.assertEqual(self.fixture.read_bytes(), bare_cr)
 
     def test_invalid_fixtures_preserved(self):
         original = self.fixture.read_bytes()

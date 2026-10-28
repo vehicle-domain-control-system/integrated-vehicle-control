@@ -6,10 +6,13 @@ stdlib struct/binascii reference and all nine fixed C literal vectors. They
 never write inputs, reports, caches, or normalized JSON. Generation is not
 supported. Use --network after moving this standalone project.
 
-The fixture is copied byte-for-byte from SOURCE_WAVE1_RESULT_20261017_v1.0.zip;
-its CRLF bytes are intentional, including on a Unix host. An LF-normalized
-copy is rejected without modification even when its parsed JSON is equal.
-No production codec is imported or invoked.
+The fixture content is the one archived in SOURCE_WAVE1_RESULT_20261017_v1.0.zip,
+whose bytes end their lines with CRLF. Git stores it with LF, so a checkout has
+either line end. The check reads it with CRLF turned into LF and compares the
+SHA-256 of that content written with CRLF line ends (FIXTURE_SHA256, the
+archived bytes): either checkout passes, any other change (a bare CR included)
+is rejected, and the file is never modified. The C source SHAs are taken the
+same way, with LF line ends. No production codec is imported or invoked.
 """
 from __future__ import annotations
 
@@ -29,6 +32,11 @@ import struct
 HERE = Path(__file__).resolve().parent
 FIXTURE_SHA256 = "4c979747887b76a0aed9a295309cb050650ea83da145b9d321569d8f475bd07e"
 FIXTURE = HERE / "fixtures" / "wave1_golden.json"
+
+
+def lf_bytes(raw: bytes) -> bytes:
+    # The same content in a CRLF (Windows) or LF checkout: CRLF read as LF.
+    return raw.replace(b"\r\n", b"\n")
 
 
 def require(condition: bool, message: str):
@@ -196,7 +204,7 @@ def verify(network: Path):
 
     require(binascii.crc_hqx(b"123456789", 0xffff) == 0x29b1, "CRC check mismatch")
     require(binascii.crc_hqx(b"", 0xffff) == 0xffff, "Empty CRC check mismatch")
-    sources = {source: hashlib.sha256((network / source).read_bytes()).hexdigest()
+    sources = {source: hashlib.sha256(lf_bytes((network / source).read_bytes())).hexdigest()
                for source in (CAN_TEST, DTO_TEST, STREAM_TEST)}
     return {
         "status": "PASS_INDEPENDENT_HOST_GOLDEN_REFERENCE", "client_date": "2026-10-17",
@@ -233,8 +241,8 @@ def main():
                         help="Authentic byte-for-byte Wave 1 JSON fixture")
     args = parser.parse_args()
     try:
-        raw = args.fixture.read_bytes()
-        actual_sha = hashlib.sha256(raw).hexdigest()
+        raw = lf_bytes(args.fixture.read_bytes())
+        actual_sha = hashlib.sha256(raw.replace(b"\n", b"\r\n")).hexdigest()
         require(actual_sha == FIXTURE_SHA256,
                 f"Fixture SHA mismatch: expected={FIXTURE_SHA256} actual={actual_sha}")
         frozen = json.loads(raw.decode("utf-8"))
