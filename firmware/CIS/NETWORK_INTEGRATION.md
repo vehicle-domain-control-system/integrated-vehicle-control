@@ -30,6 +30,18 @@ Network 담당자가 만든 S32K144 CIS 시험대(`nodes/cis/bench/s32k144_cis`,
 
 담당자 프로젝트 대신 S32DS 새 프로젝트(S32K144, RTD 3.0.0, 기본 Clock/Port/OsIf)에 아래를 넣는다. 2026-10-29 `newcis`에서 이렇게 만들었다.
 
+저장소에 있는 것:
+
+| 파일 | 내용 |
+|---|---|
+| `tools/add_network_to_mex.py` | 새 프로젝트 `.mex`에 아래 핀·FlexCAN·Lpuart_Uart·IntCtrl_Ip를 넣는다. 코드 생성 명령도 이 파일 머리말에 있다 |
+| `tools/add_network_to_cproject.py` | 2절의 include 경로와 define을 Debug_FLASH에 넣는다 |
+| `s32ds/cis_node.mex` | 위 도구를 적용한 `newcis`의 `.mex`(결과 확인용, ConfigTools로 열어 볼 수 있다) |
+| `s32ds/main.c` | 3절의 `main()`. 프로젝트 `src/main.c`로 복사한다 |
+
+순서: 새 프로젝트 → `add_network_to_mex.py --apply` → 코드 생성(Update Code) → 아래 RTD 드라이버 복사 → 1절 동기화 → `add_network_to_cproject.py --apply` → `s32ds/main.c` 복사 → 빌드.
+OpenSDA(PEMicro)로 디버그하려면 디버그 설정을 PEMicro로 만든다(새 프로젝트의 기본은 S32 Debug Probe다).
+
 - 클럭: 기본 설정 그대로(코어 48 MHz, FLEXCAN0 48 MHz, LPUART1 8 MHz, SOSCDIV1/2 8 MHz).
 - Pins: CAN0 RX PTE4(9번 핀), TX PTE5(8), LPUART1 RX PTC6(81), TX PTC7(80). LQFP100 번호다.
 - Peripherals:
@@ -63,9 +75,10 @@ FlexCAN·LPUART 콜백 이름, `NET_BOARD_UART_C_INSTANCE=1U` 등. 생성 설정
 
 `CIS_USE_NETWORK_API`를 켜면 우리 쪽 UART 구동과 `P_PERMISSION` 송신, 벤치 보고(0x70)가 꺼지고 Network 스택이 LPUART1을 쓴다.
 
-## 3. `main()` 수정 (프로젝트 쪽, 저장소에는 복사하지 않음)
+## 3. `main()` 수정 (프로젝트 쪽)
 
-담당자 시험대의 `NET_NODE_BUILD` 경로에서 시험대 앱 호출만 바꾼다.
+담당자 시험대의 `NET_NODE_BUILD` 경로에서 시험대 앱 호출만 바꾼다(담당자 `main.c`는 저장소에 복사하지 않는다).
+1-B처럼 새 프로젝트로 만들면 `s32ds/main.c`를 그대로 쓴다.
 
 ```c
 #include "net_board_time144.h"
