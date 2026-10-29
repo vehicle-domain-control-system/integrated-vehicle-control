@@ -199,22 +199,25 @@ PermissionManager_Status_t PermissionManager_GetSnapshot(
         snapshot.expired =
             (snapshot.effectiveAgeMs >= manager->policy.sourceValidityMs);
 
-        if (snapshot.expired &&
-            (snapshot.effectiveQuality == DATA_QUALITY_OK))
-        {
-            snapshot.effectiveQuality = DATA_QUALITY_STALE;
-        }
-        else if (!snapshot.expired &&
-                 (manager->lastAttemptOutcome ==
-                  PERMISSION_MANAGER_ATTEMPT_FAILED))
+        /*
+         * The latest explicit evaluation failure is the withdrawal reason,
+         * even when the retained diagnostic record has also expired. TTL
+         * expiry must not hide FAILED/NO_DATA from the Network submission.
+         */
+        if (manager->lastAttemptOutcome ==
+            PERMISSION_MANAGER_ATTEMPT_FAILED)
         {
             snapshot.effectiveQuality = DATA_QUALITY_INVALID;
         }
-        else if (!snapshot.expired &&
-                 (manager->lastAttemptOutcome ==
-                  PERMISSION_MANAGER_ATTEMPT_NO_DATA))
+        else if (manager->lastAttemptOutcome ==
+                 PERMISSION_MANAGER_ATTEMPT_NO_DATA)
         {
             snapshot.effectiveQuality = DATA_QUALITY_NO_DATA;
+        }
+        else if (snapshot.expired &&
+                 (snapshot.effectiveQuality == DATA_QUALITY_OK))
+        {
+            snapshot.effectiveQuality = DATA_QUALITY_STALE;
         }
         else if (!snapshot.expired &&
                  (snapshot.effectiveQuality == DATA_QUALITY_OK))

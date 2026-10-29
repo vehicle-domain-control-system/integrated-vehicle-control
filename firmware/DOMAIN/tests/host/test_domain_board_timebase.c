@@ -281,6 +281,9 @@ static void Test_RuntimeIntegration(void)
     CHECK(DomainBoardTimebase_Init(&timebase, &timebaseConfig) ==
           DOMAIN_BOARD_TIMEBASE_OK);
     runtimeConfig = RuntimeConfig(&timebase);
+    runtimeConfig.permissionCoordinatorEnabled = false;
+    runtimeConfig.permissionPolicy.reevaluationPeriodMs = 0U;
+    runtimeConfig.permissionPolicy.sourceValidityMs = 0U;
     CHECK(DomainRuntime_Init(&runtime, &runtimeConfig) == DOMAIN_RUNTIME_OK);
     counter.ticks = 425U;
     CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);

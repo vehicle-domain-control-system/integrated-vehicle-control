@@ -16,6 +16,9 @@ static DomainRuntime_t g_runtime;
 static TestClock_t g_clock;
 static int g_failures;
 static int g_tests;
+static uint32_t g_permissionEvaluationCalls;
+static uint32_t g_permissionTxCalls;
+static DomainIf_Status_t g_permissionTxStatus;
 
 #define CHECK(condition)                                                       \
     do                                                                         \
@@ -53,6 +56,28 @@ static bool TestClock_GetNow(void *context, uint32_t *outNowMs)
     }
     *outNowMs = clock->nowMs;
     return true;
+}
+
+static PermissionCoordinator_EvaluationResult_t TestPermission_Evaluate(
+    void *context,
+    uint32_t nowMs,
+    PermissionManager_Evaluation_t *outEvaluation)
+{
+    (void)context;
+    (void)nowMs;
+    ++g_permissionEvaluationCalls;
+    outEvaluation->permission = PERMISSION_MANAGER_PERMISSION_ALLOW;
+    outEvaluation->sourceQuality = DATA_QUALITY_OK;
+    outEvaluation->sourceAgeMs = 0U;
+    return PERMISSION_COORDINATOR_EVALUATION_SUCCEEDED;
+}
+
+static DomainIf_Status_t TestPermission_Transmit(
+    const DomainIf_CisPowerPermission_t *permission)
+{
+    ++g_permissionTxCalls;
+    CHECK(permission != NULL);
+    return g_permissionTxStatus;
 }
 
 static DomainRuntime_Config_t NormalConfig(void)
@@ -545,6 +570,125 @@ static void Test_DisabledOccupantIsUnavailableAndRuntimeReady(void)
     EndTest(before);
 }
 
+static void Test_PermissionCoordinatorRunsFromPoll(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_TxPort_t port;
+    DomainRuntime_Snapshot_t runtimeSnapshot;
+    PermissionCoordinator_Snapshot_t coordinatorSnapshot;
+    PermissionManager_Snapshot_t permissionSnapshot;
+    int before = g_failures;
+
+    BeginTest("Test_PermissionCoordinatorRunsFromPoll");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    config.permissionEvaluator = TestPermission_Evaluate;
+    config.permissionCoordinatorEnabled = true;
+    g_clock.available = true;
+    g_clock.nowMs = 100U;
+    g_permissionEvaluationCalls = 0U;
+    g_permissionTxCalls = 0U;
+    g_permissionTxStatus = DOMAIN_IF_OK;
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+
+    (void)memset(&port, 0, sizeof(port));
+    port.txCisPowerPermission = TestPermission_Transmit;
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_permissionEvaluationCalls == 1U);
+    CHECK(g_permissionTxCalls == 1U);
+
+    g_clock.nowMs = 299U;
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_permissionEvaluationCalls == 1U);
+    g_clock.nowMs = 300U;
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_permissionEvaluationCalls == 2U);
+    CHECK(g_permissionTxCalls == 2U);
+
+    g_permissionTxStatus = DOMAIN_IF_REJECTED;
+    g_clock.nowMs = 500U;
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(PermissionCoordinator_GetSnapshot(
+              &runtime.permissionCoordinator, &coordinatorSnapshot) ==
+          PERMISSION_COORDINATOR_OK);
+    CHECK(coordinatorSnapshot.lastTxStatus == DOMAIN_IF_REJECTED);
+    CHECK(coordinatorSnapshot.submissionSuccessCount == 2U);
+    CHECK(DomainRuntime_GetSnapshot(&runtime, &runtimeSnapshot) ==
+          DOMAIN_RUNTIME_OK);
+    CHECK(runtimeSnapshot.lastPermissionCoordinatorStatus ==
+          PERMISSION_COORDINATOR_TX_FAILED);
+    CHECK(PermissionManager_GetSnapshot(
+              &runtime.permissionManager, 500U, &permissionSnapshot) ==
+          PERMISSION_MANAGER_OK);
+    CHECK(permissionSnapshot.updateSequence == 3U);
+    EndTest(before);
+}
+
+static void Test_InvalidPermissionScheduleFailsAndCanRetry(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    int before = g_failures;
+
+    BeginTest("Test_InvalidPermissionScheduleFailsAndCanRetry");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    g_clock.available = true;
+    g_clock.nowMs = 0U;
+    config.permissionPolicy.reevaluationPeriodMs = 199U;
+    config.permissionCoordinatorEnabled = true;
+    CHECK(DomainRuntime_Init(&runtime, &config) ==
+          DOMAIN_RUNTIME_MANAGER_INIT_FAILED);
+    CHECK(!DomainRuntime_IsReady(&runtime));
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_NOT_INITIALIZED);
+
+    config.permissionPolicy.reevaluationPeriodMs =
+        PERMISSION_COORDINATOR_EVALUATION_PERIOD_MS;
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainRuntime_IsReady(&runtime));
+    EndTest(before);
+}
+
+static void Test_DisabledPermissionCoordinatorPreservesRuntimeReady(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainRuntime_Snapshot_t runtimeSnapshot;
+    PermissionManager_Snapshot_t permissionSnapshot;
+    int before = g_failures;
+
+    BeginTest("Test_DisabledPermissionCoordinatorPreservesRuntimeReady");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    config.permissionCoordinatorEnabled = false;
+    config.permissionPolicy.reevaluationPeriodMs = 0U;
+    config.permissionPolicy.sourceValidityMs = 0U;
+    config.permissionEvaluator = TestPermission_Evaluate;
+    g_clock.available = true;
+    g_clock.nowMs = 0U;
+    g_permissionEvaluationCalls = 0U;
+    g_permissionTxCalls = 0U;
+
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainRuntime_IsReady(&runtime));
+    CHECK(!runtime.permissionCoordinator.snapshot.initialized);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_permissionEvaluationCalls == 0U);
+    CHECK(g_permissionTxCalls == 0U);
+    CHECK(DomainRuntime_GetSnapshot(&runtime, &runtimeSnapshot) ==
+          DOMAIN_RUNTIME_OK);
+    CHECK(!runtimeSnapshot.permissionCoordinatorEnabled);
+    CHECK(runtimeSnapshot.lastPermissionCoordinatorStatus ==
+          PERMISSION_COORDINATOR_NOT_INITIALIZED);
+    CHECK(PermissionManager_GetSnapshot(
+              &runtime.permissionManager, 0U, &permissionSnapshot) ==
+          PERMISSION_MANAGER_OK);
+    CHECK(!permissionSnapshot.hasEvaluation);
+    CHECK(permissionSnapshot.effectivePermission ==
+          PERMISSION_MANAGER_PERMISSION_UNKNOWN);
+    CHECK(permissionSnapshot.effectiveQuality == DATA_QUALITY_NO_DATA);
+    EndTest(before);
+}
+
 int main(void)
 {
     Test_NullAndPreInitialization();
@@ -563,6 +707,9 @@ int main(void)
     Test_OccupantFreshnessAndNewRuntimeReset();
     Test_ZeroOccupantTtlPreventsRuntimeReady();
     Test_DisabledOccupantIsUnavailableAndRuntimeReady();
+    Test_PermissionCoordinatorRunsFromPoll();
+    Test_InvalidPermissionScheduleFailsAndCanRetry();
+    Test_DisabledPermissionCoordinatorPreservesRuntimeReady();
 
     (void)printf("%d tests, %d failures\n", g_tests, g_failures);
     return (g_failures == 0) ? 0 : 1;

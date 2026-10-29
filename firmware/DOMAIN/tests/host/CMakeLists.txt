@@ -309,6 +309,35 @@ endif()
 
 add_test(NAME permission_adapter COMMAND test_permission_adapter)
 
+add_executable(test_permission_coordinator
+    test_permission_coordinator.c
+    ../../src/application/permission_coordinator.c
+    ../../src/application/permission_adapter.c
+    ../../src/application/permission_manager.c
+    ../../src/interface/domain_interface_core.c
+)
+
+target_include_directories(test_permission_coordinator PRIVATE
+    ../../src/application
+    ../../src/interface
+)
+
+set_target_properties(test_permission_coordinator PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_permission_coordinator PRIVATE /W4)
+else()
+    target_compile_options(test_permission_coordinator PRIVATE
+        -Wall -Wextra -Wpedantic -Werror
+    )
+endif()
+
+add_test(NAME permission_coordinator COMMAND test_permission_coordinator)
+
 add_executable(test_cis_environment_manager
     test_cis_environment_manager.c
     ../../src/application/cis_environment_manager.c
@@ -502,6 +531,8 @@ add_executable(test_domain_runtime
     ../../src/application/command_manager.c
     ../../src/application/result_manager.c
     ../../src/application/permission_manager.c
+    ../../src/application/permission_adapter.c
+    ../../src/application/permission_coordinator.c
     ../../src/application/cis_occupant_manager.c
     ../../src/application/domain_cis_occupant_private.c
     ../../src/application/cis_environment_manager.c
@@ -550,6 +581,8 @@ add_executable(test_domain_board_timebase
     ../../src/application/command_manager.c
     ../../src/application/result_manager.c
     ../../src/application/permission_manager.c
+    ../../src/application/permission_adapter.c
+    ../../src/application/permission_coordinator.c
     ../../src/application/cis_occupant_manager.c
     ../../src/application/domain_cis_occupant_private.c
     ../../src/application/cis_environment_manager.c
