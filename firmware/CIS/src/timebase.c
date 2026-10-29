@@ -17,10 +17,14 @@ bool timebase_init(void)
 
     /* SOSC: 8 MHz crystal, dividers 1 (same as Cookbook SOSC_init_8MHz).
      * In the Network project the clock configuration may already run SOSC (and lock its
-     * registers): then only SOSCDIV1 is made non-zero when it is off, nothing else is changed. */
+     * registers): then only a divider that is off is turned on (divide by 1), a running one is
+     * left as it is (other peripherals may use it). SOSCDIV1 feeds FTM0, SOSCDIV2 feeds LPI2C0. */
     if ((SCG_SOSCCSR & SCG_SOSCCSR_SOSCEN) && (SCG_SOSCCSR & SCG_SOSCCSR_SOSCVLD)) {
         if ((SCG_SOSCDIV & 0x7u) == 0u) {
             SCG_SOSCDIV = (SCG_SOSCDIV & ~0x7u) | 0x1u;          /* SOSCDIV1 = divide by 1 */
+        }
+        if ((SCG_SOSCDIV & 0x700u) == 0u) {
+            SCG_SOSCDIV = (SCG_SOSCDIV & ~0x700u) | 0x100u;      /* SOSCDIV2 = divide by 1 */
         }
     } else {
         SCG_SOSCDIV = 0x00000101u;       /* SOSCDIV1 = SOSCDIV2 = divide by 1 */
@@ -29,7 +33,8 @@ bool timebase_init(void)
         SCG_SOSCCSR = SCG_SOSCCSR_SOSCEN;
         for (n = 0; !(SCG_SOSCCSR & SCG_SOSCCSR_SOSCVLD) && n < WAIT_LIMIT; n++) { }
     }
-    if (!(SCG_SOSCCSR & SCG_SOSCCSR_SOSCVLD) || (SCG_SOSCDIV & 0x7u) == 0u) {
+    /* FTM0 is 1 MHz only with SOSCDIV1 = divide by 1 (value 1); any other value is a wrong time base */
+    if (!(SCG_SOSCCSR & SCG_SOSCCSR_SOSCVLD) || (SCG_SOSCDIV & 0x7u) != 0x1u) {
         return false;
     }
 
