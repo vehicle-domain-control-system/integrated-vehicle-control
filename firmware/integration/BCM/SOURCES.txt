@@ -1,0 +1,41 @@
+# BCM 노드 통합 폴더의 출처 기록 (2026-10-29 생성)
+# SHA-256은 CRLF를 LF로 읽은 값이다(체크아웃 줄 끝과 관계없이 같다). src/network/는 NETWORK_BUNDLE.txt에 따로 기록돼 있다.
+#
+# src/main.c             <- 보드 확인한 S32DS 프로젝트 network_144_bcm_app의 src/main.c (144 디버그 노드 복제본의 main.c, NET_NODE_BUILD 경로 세 곳 변경)
+# src/bcm/bcm/           <- BCM 원본 폴더 src/bcm/ (git 저장소가 아니다. 커밋 대신 아래 해시로 판을 가린다)
+# src/bcm/port/          <- BCM 원본 폴더 src/port/bcm_sim.c|h
+# src/bcm/*.c|h          <- BCM 통합 작업 폴더 bcm_net/src/ (git 저장소가 아니다)
+# src/net_bench/         <- feat/vss-network-node 02051dba2b951422111b8de2973848276e43f510 (clean): firmware/network/nodes/bcm/bench/s32k144_bcm/
+# src/network/           <- 같은 커밋, sync_to_s32ds.py --node BCM (NETWORK_BUNDLE.txt)
+# s32ds/bcm144_board_tested.mex <- 보드 확인한 S32DS 프로젝트 network_144_bcm_app의 network_144_can_debuger.mex
+#
+cf7c15c4f54fc34d9b609f3f1389fb0f89802536a47f7bedcd4dbdf078d7b3d7  src/main.c
+d1cc6816184352b795f96966ca8da0fd7d7cad006250a2b5fd3b2779f6fe3c23  src/bcm/bcm/bcm_app.c
+7e70810644addc0e3091ce4ff8376f7316b5840c9e5230ea3d98b41a443a002d  src/bcm/bcm/bcm_app.h
+b1ada12f6ac5ff2625640878ffec3a7c2e1f84950d1271046cdb1ebd411dec4d  src/bcm/bcm/bcm_climate.c
+07cfb5a7c0b337d77820b809c86c9bdb4b11a916a3093b071667e9d84a0e259a  src/bcm/bcm/bcm_climate.h
+76a6b0012d190e165a6b03df55c36c46e224e3ec0e66b2b886adcfd45aeb0173  src/bcm/bcm/bcm_config.h
+1316ac1f3083a8b4054515d95484e11fcd149ec3886ea17968727c24d7e9839f  src/bcm/bcm/bcm_diag.c
+59c853cb3d4e68d88df6dcc019315598efae9548f7468d9a5672ad7f48b85af1  src/bcm/bcm/bcm_diag.h
+b26fbb8af65020e30a1d6c82c988695fbc2abcdb7906a60b7c323e45706d2e0a  src/bcm/bcm/bcm_door.c
+1ed6c273c2d24c8561ca2b0273dae1c668dced8803146a199e5fd82dc5b8f367  src/bcm/bcm/bcm_door.h
+a3da98182ad29d0f3ccabc8c5ab54aa72c24bc7bc8d0ffe03699eeed26c61ed2  src/bcm/bcm/bcm_light.c
+c0453fc25c85898e2cae4a72860149968183a9d671f379aa90aaa28f410ef1ea  src/bcm/bcm/bcm_light.h
+1751b47cf88dc7cfe54de4394f92b41734c9c3b96ed55c86f44a26ca876ae8dd  src/bcm/bcm/bcm_netlink.c
+b469b68faad25eab0c0ef1a862846f3b59e5855e087accced559cb3902c2c91d  src/bcm/bcm/bcm_netlink.h
+4f8d27740a9f786611870f7df7a24a3c43cd180130c44993f53f30e220c1e6ce  src/bcm/bcm/bcm_port.h
+d8787a490550f0e87af0c06f3c20137301ca6bc26e3df152e7c8e18cd57b1be4  src/bcm/bcm/bcm_result.c
+d1a04d13425136bc97f1c26e8b48b841450f0c8c489f82ba059cb4e4b9dbf98a  src/bcm/bcm/bcm_result.h
+fc8130406c6edd8bbdaf1f6243072f1aff37db4a9d503915d90fb69ee09e9de9  src/bcm/bcm/bcm_types.h
+56d47ce1097d98f4fc68699584c9a54a00689791a4d947ac5adc23df1269c046  src/bcm/bcm_net_adapter.c
+943e6b7759aa4ad757371744a9c0aa71ae81ceb183c429393e15be1038a31a9a  src/bcm/bcm_net_adapter.h
+3ee462e7a8eb8a0efac5ec4d61057515212de537f005bfa54c13c0f9b3f97130  src/bcm/bcm_node.c
+5ce58ab6117437a6ad174c9134d60463a545ced4deffc2d302db3c8d978bcabb  src/bcm/bcm_node.h
+67a6ef27ce2047b246e95ad240faf0b081afe73aeaa62e97080f0bf5b8b06b60  src/bcm/bcm_port_bench144.c
+9af3e42c656b1b6012d98a8866a245af585e62489d6636c46041e95d8580db8b  src/bcm/bcm_port_bench144.h
+07fdd1d066af8c92d6b386778c9805de24687c9b99fff4854fa5a19b42f96b7d  src/bcm/bcm_port_config.h
+578de3d8d52c84ab7b8cbd025c5639fcf9312c794876110a5103eecb4df6e293  src/bcm/port/bcm_sim.c
+3bd90ef3d309af02909e580c468ecd0614e8c2ebba02117afcdcfed2c62e93d7  src/bcm/port/bcm_sim.h
+b70f74e2120e8fcdd481d51d5147730805ed8e1e2e2c91a73b419c88d8f87c53  src/net_bench/net_board_time144.c
+9d33c780039779c96cbefd5d672183e76e726432c6bf38385e701794d3684327  src/net_bench/net_board_time144.h
+ff64f86937c33d62985efb11118c6020faf1c8b579e82946503467a4570d48b3  s32ds/bcm144_board_tested.mex

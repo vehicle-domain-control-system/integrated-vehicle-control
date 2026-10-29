@@ -1,0 +1,49 @@
+# CIS 노드 통합 폴더의 출처 기록 (2026-10-29 생성)
+# SHA-256은 CRLF를 LF로 읽은 값이다(체크아웃 줄 끝과 관계없이 같다). src/network/는 NETWORK_BUNDLE.txt에 따로 기록돼 있다.
+#
+# src/main.c, src/cis/   <- feat/cis-rtd-network 129ef584530c96182f4a7509129aee2fbd6a4e74 (clean): firmware/CIS/s32ds/main.c, firmware/CIS/src/
+# src/net_bench/         <- feat/vss-network-node 02051dba2b951422111b8de2973848276e43f510 (clean): firmware/network/nodes/cis/bench/s32k144_cis/
+# src/network/           <- 같은 커밋, sync_to_s32ds.py --node CIS (NETWORK_BUNDLE.txt)
+# s32ds/cis144_board_tested.mex <- 보드 확인한 S32DS 프로젝트 network_144_cis_app의 network_144_can_debuger.mex
+#
+a374136e463b12f6168353dc0fc0d32863f47ea994028af9b2d66cccd5ed5089  src/main.c
+6f6a583b274506bdabf475776bc4215d6c6a668adb30c6575f89b1262c7175d4  src/cis/cis_app.c
+11b2cefd6a40b7b21abaa51e9d12256b826ec77489e4dbd04c0a48e75512565a  src/cis/cis_app.h
+711e7473a8e20a66463a218a4a83035fab0d6c0ae41f408399101d96b107d25e  src/cis/cis_fault.c
+6e0bf6bf98d552ff3877f28def0721559214cc02eb55b00c7b249750b8cc709b  src/cis/cis_fault.h
+8511d37a44dc50a82010c06db530ca85f18e813dfd4892716fac0ca16e55cd0b  src/cis/cis_net_adapter.c
+5be33d645cfc4fe3950d2e9c9522dd3295a8281e73edd8d47e913b996b3995b1  src/cis/cis_net_adapter.h
+f68c3a0676bdbca602551b629d4f92df534750eb362a2dc8dca6d66f238d1b41  src/cis/cis_node.c
+9363c2a63adc6056475a06a8f25816beaab8191d93c6fb9a4f74860faff59656  src/cis/cis_node.h
+0a117e16761380af1f7a7a08df2d99139d36fdbaf109e7aec51d445632a30be1  src/cis/cis_state.c
+7cd070e6c4e6f703219fc8b9c33646735501d16c23d8664eb0b1ac76ba9288b2  src/cis/cis_state.h
+35c85a3094dc2a5ff84b99935fd30f8e06852058f6a06ef5af657964ff2d9817  src/cis/cis_types.h
+a58c06eeba881c07eb2aa074a774d924843738e5aeccf87e1e7521b754fbb534  src/cis/cis_value.c
+257774658c2d650e0ed2e84329f4f7cb7269f7d094b502472d478d23a4df2c75  src/cis/cis_value.h
+1bffe5ca66a558be15a13ce595d8200dedc0a1a907c4b89148d3bc97e306c793  src/cis/crc16.c
+b0790892f8db963ba8e98d7c3020f79d6cc0a2c72e4c81f4b0b9ce0d005b6e83  src/cis/crc16.h
+b2d0f0c91f4bfed01c7b22e2f10d16561c8d0a2db67cc66b56fe27ce11d3a562  src/cis/dht22.c
+0079964d56ffaa0bbdf363233fada27c4149edb455e703a4e5ad128930f2e4af  src/cis/dht22.h
+4b35c0a1aef04f5c4fff5d9b73e6ce72cebd8fb88a5d43f95a778aa464ce35f2  src/cis/env_logic.c
+5094b6eed9f6ad1b6c87a1812fb907460bbaaa78a3c0e3f57ad9bc85cdd0f594  src/cis/env_logic.h
+42632071cc0fbb2f534bd509acbeeb4f115180975305d045bff4b9a30105217e  src/cis/hcsr04.c
+3123fbcaf87dd8639358258c1ef257e21f45424d2307017cb189251f3a1755e7  src/cis/hcsr04.h
+61fedbe336e2f56e8d0704ee930385ecde3b8a12d7f984f946296034f4f80a52  src/cis/lux_logic.c
+66c8070aab46d4b45b9bc86f45de46e76ceb11570c56bc132194f0d13006b45c  src/cis/lux_logic.h
+2d435c66acec73a5047f57f70170d6bbd1f4ef3351fe4ea462668d4423f71bd5  src/cis/pi_protocol.c
+a26787b5f30abbe4e75baab66d7da12360567266c0c6490b36a6a7d4f7a960cd  src/cis/pi_protocol.h
+c6b89b7846fd93b9bba93ad94a9467ca0ae5ce69d64a8112225ef6e2d845ced1  src/cis/pi_uart.h
+bf3b638159e8600328d0013d9c24d5943e1d37f30e636d371374246fdd003c0d  src/cis/power_gate.c
+8b786aab3373880a8bb3f9c898b93d6241dccaac9b4cdae614ff386708a1f2ca  src/cis/power_gate.h
+da23245677165b148490f57eed57df577c9d1734215cfd9ce3d86d984523f5c2  src/cis/rear_logic.c
+45532117f400cd4c021d7567f98a88780f4bb77c1cd9b9462029592f4e2c8cca  src/cis/rear_logic.h
+e484773e818bf6781785382ea0cdf558c3f7638f19ff6ae63e4ad213f74e70fc  src/cis/regs_s32k144.h
+69dc4910a6f5207b4d8b682edad9954081ab2255df254f9c567761b3bc048d02  src/cis/timebase.c
+b41a2eca2a7e55c63d93da5b2ba21b1f7f9330e31cbd49595beccc41ee870efa  src/cis/timebase.h
+c4f031f335513fbaf779bcc9b20abede4fd7799d586e97e1946b9253e525d2bf  src/cis/veml7700.c
+878fe2c219249d6edfdb6b460184cbce985175d59c7b74b3d05d7a384c057412  src/cis/veml7700.h
+30a226f520236e9fb2c761a10384a039e20da5763c66bdb75e268773c6d3cc4f  src/cis/vision_logic.c
+67f1f3c5de00999f4f5dfb4c0b501562b45da6e202bfd65e35cac7e6ecf6562a  src/cis/vision_logic.h
+81f40ca726d3bef754e8bbba3db44c18a3a7aeed48bf1b21ce8990fc75857f7a  src/net_bench/net_board_time144.c
+9d33c780039779c96cbefd5d672183e76e726432c6bf38385e701794d3684327  src/net_bench/net_board_time144.h
+7959a56ea47a519dc75665cd4925290d1d8115e629160d756d82e1206e9eb283  s32ds/cis144_board_tested.mex
