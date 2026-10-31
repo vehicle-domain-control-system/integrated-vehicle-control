@@ -17,15 +17,16 @@ Network Software의 전체 Layer, 모듈 책임, Node별 적용 범위를 정의
 - UART와 CAN의 공통점 및 개별 책임
 - Domain / BCM / CIS / VSS의 Network SW 배치
 - Application과 Network SW의 책임 경계
-- FreeRTOS 기반 실행 구조의 기본 방향
+- 초기 Superloop 실행 구조와 후속 RTOS 전환 방향
 - 후속 상세 설계로 분리할 항목
 
 CAN ID, UART Type, payload layout, 주기, timeout 등
 **wire contract의 상세 값은 이 문서에서 다시 정의하지 않는다.**
 
-상세 통신 계약은 다음 문서를 기준으로 한다.
-
-- [`../network/network_design_draft_v0.1.md`](../network/network_design_draft_v0.1.md)
+상세 통신 계약의 현재 설계 후보는 [Interface 읽기 안내](interface/00_START_HERE.md)와 [노드 간 공통 규칙](interface/07_CROSS_NODE_INTERFACE_RULES.md)을 우선 대조한다.
+상세 처리 경계는 [SW 상세설계](sw_detail/01_NETWORK_OVERVIEW.md)를 따른다.
+[구형 네트워크 초안](network_design_draft_v0.1.md)은 이력 참고이며 현재 Wire 규범을 대체하지 않는다.
+문서 참조 정렬은 양단 채택·Production ABI·제품 통합 승인이 아니다.
 
 ---
 
@@ -92,13 +93,13 @@ flowchart TD
         CD --> CH["HAL Adapter / BSP"]
     end
 
-    UART_HW["UART / DMA HW"]
+    UART_HW["UART HW (DMA: 후속 선택)"]
     CAN_HW["CAN FD Controller"]
 
     UH --> UART_HW
     CH --> CAN_HW
 
-    COMMON["Common Infra<br/>RTOS Adapter / Timebase / Diagnostics"]
+    COMMON["Common Infra<br/>Timebase / Diagnostics / Sync Adapter"]
     COMMON -.-> NC
     COMMON -.-> UART
     COMMON -.-> CAN
@@ -120,7 +121,7 @@ flowchart TD
    - 서로 runtime, codec, queue를 공유하지 않는다.
 
 4. **Common Infra**
-   - RTOS primitive, timebase, bounded diagnostics 등 공통 기능을 제공한다.
+   - 초기 실행에서 시간원·정적 동기화·제한된 진단 기능을 제공하고, RTOS 전환 시 필요한 Adapter를 연결한다.
    - message semantics나 차량 정책을 소유하지 않는다.
 
 ---
@@ -138,7 +139,7 @@ flowchart TD
 | Transport | bounded TX/RX lifetime, stable data handoff, Driver admission/outcome | 기능 Result 생성 |
 | Driver | HW/SDK callback, TX/RX primitive, local HW error | parsing, policy |
 | HAL Adapter / BSP | vendor SDK 및 target 차이 격리 | Network semantic 소유 |
-| Common Infra | RTOS adapter, timebase, diagnostics, bounded utility | UART/CAN 간 routing |
+| Common Infra | 시간원, 정적 동기화, 진단, 제한된 공통 기능과 후속 RTOS Adapter | UART/CAN 간 routing |
 
 ---
 
@@ -149,7 +150,7 @@ flowchart TD
 UART와 CAN 모두 다음 원칙을 사용한다.
 
 - callback/ISR에서는 최소 작업만 수행한다.
-- 실제 parsing, codec, scheduling은 FreeRTOS Task context에서 처리한다.
+- 프레임 해석·Codec·송수신 선택은 초기 Network Superloop의 ISR 밖 처리 문맥에서 수행한다. RTOS Task 분리는 후속 선택이다.
 - Application에는 raw frame 대신 typed message/evidence를 전달한다.
 - 송신 요청의 admission과 실제 차량 기능 Result를 구분한다.
 - source freshness와 local transport 상태를 구분한다.
@@ -170,12 +171,12 @@ Driver
 
 현재 설계 방향:
 
-- DMA-first
+- 초기 UART 수신은 짧은 RX ISR과 정적 Ring Buffer를 사용한다. DMA는 필요 시 후속 전환으로 검토한다.
 - UART-M / UART-C는 동일 Stack 구조를 사용하되 Profile/Runtime은 독립
 - frame split/continuous 수신 대응
 - CRC 및 frame resync
 - LINK_SEQUENCE는 Message Service가 선택하고 Driver accepted 시 commit
-- DMA 완료와 실제 UART line 전송 완료를 구분
+- 후속 DMA 도입 시 DMA 완료와 실제 UART line 전송 완료를 구분
 - RTS/CTS를 사용하지 않으므로 RX overflow/loss를 명시적으로 검출
 
 ### 5.3 CAN 전용
@@ -263,38 +264,35 @@ Query에 속한 응답은 일반 current-state와 분리한다.
 
 ---
 
-## 8. FreeRTOS 실행 구조
+## 8. 초기 Superloop 실행 구조와 후속 RTOS 전환
 
-기본 실행 구조는 Link worker와 Node owner를 분리한다.
+초기 실행은 짧은 UART/CAN 수신 ISR과 정적 Ring Buffer/Queue, Network Superloop로 구성한다. DOMAIN의 C2 Rx·Query·Private Transition은 ISR 밖 단일 담당 문맥에서 직렬 처리한다. 그림의 연결은 처리 책임이며 별도 Task 생성 의무가 아니다.
 
 ```mermaid
 flowchart LR
-    UCB["UART Callback"] -->|"wake"| UT["UartCommTask"]
-    CCB["CAN Callback"] -->|"wake"| CT["CanCommTask"]
-
-    UT -->|"typed RX / local outcome"| OWNER["Node Owner Task"]
-    CT -->|"typed RX / local outcome"| OWNER
-
-    OWNER -->|"typed TX intent"| UT
-    OWNER -->|"typed TX intent"| CT
-
+    UI["UART RX ISR"] -->|"짧은 바이트·시각 인계"| UR["정적 UART Ring Buffer"]
+    CI["CAN RX ISR"] -->|"짧은 프레임·시각 인계"| CQ["정적 CAN RX Queue"]
+    UR --> LOOP["Network Superloop"]
+    CQ --> LOOP
+    LOOP -->|"ISR 밖 직렬 인계"| OWNER["노드 기능/C2 담당 경계"]
+    OWNER -->|"의미 기반 송신 요청"| LOOP
     APP["Application / Policy"] <--> OWNER
 ```
 
-기본 role:
+후속 RTOS 전환 시 참고할 기존 Task 역할 후보(초기 실행 필수 조건 아님):
 
-| Node | Task Role |
+| Node | 후속 RTOS 배치 후보 |
 | --- | --- |
 | Domain | `UartCommTask` + `CanCommTask` + `DomainOwnerTask` |
 | CIS | `UartCommTask` + `CanCommTask` + `CisOwnerTask` |
 | BCM | `CanCommTask` + Application role |
 | VSS | `CanCommTask` + Application role |
 
-실제 Task 수, priority, stack, queue depth는 아직 확정값이 아니다.
+초기 버퍼/큐 크기와 실행 주기, 후속 RTOS의 Task 수·우선순위·스택은 실제 자원·시간 검증 후 정한다.
 
 원칙:
 
-- callback은 wake reason과 최소 HW evidence만 제공
+- ISR/callback은 최소 수신 자료·실제 시각·장치 오류만 인계
 - data는 별도 bounded storage에 보존
 - notification count를 message count로 사용하지 않음
 - 고정 1 ms polling 대신 event/deadline 기반 실행
@@ -372,7 +370,8 @@ Issue #47에서 언급한 공통 Network Service 후보는 다음처럼 배치�
 | Network SW 논리 구조 | 정의 |
 | UART/CAN 책임 경계 | 정의 |
 | Node별 적용 범위 | 정의 |
-| FreeRTOS role baseline | 정의 |
+| 초기 Superloop + 짧은 ISR·정적 Buffer/Queue | 선택된 초기 실행 방향, 실제 보드 구성 검증 전 |
+| FreeRTOS Task 역할 | 후속 전환 후보(초기 필수 아님) |
 | Context / correlation 기본 원칙 | 정의 |
 | RTD / SDK target binding | 확인 필요 |
 | Resource numeric sizing | 실측 필요 |
@@ -386,7 +385,7 @@ Issue #47에서 언급한 공통 Network Service 후보는 다음처럼 배치�
 
 본 문서를 기준으로 실제 구현 단계에서는 다음 항목을 분리해 진행한다.
 
-1. UART Driver / DMA / Transport binding
+1. UART Driver / Transport binding 및 필요 시 후속 DMA 검토
 2. UART Framer / Codec / Message Service
 3. CAN Driver / MB-FIFO / Transport binding
 4. CAN Codec / Scheduling / Recovery
@@ -394,7 +393,7 @@ Issue #47에서 언급한 공통 Network Service 후보는 다음처럼 배치�
 6. Domain Request / Command / Result / Query integration
 7. CIS Vision / Permission integration
 8. BCM / VSS typed Port integration
-9. FreeRTOS Task / IPC 실제 배치
+9. 초기 Superloop·Ring Buffer/Queue 배치 및 후속 RTOS Task/IPC 전환 검토
 10. Resource / Timing 실측 및 closure
 11. Target / Node / Multi-node validation
 
@@ -419,7 +418,7 @@ Issue #47에서 언급한 공통 Network Service 후보는 다음처럼 배치�
 ## 15. 관련 문서
 
 - Network / Protocol contract: [`../network/network_design_draft_v0.1.md`](../network/network_design_draft_v0.1.md)
-- Architecture index: [`README.md`](README.md)
+- Architecture index: [`sw_detail/00_START_HERE.md`](sw_detail/00_START_HERE.md)
 
 본 문서는 Network SW의 **논리 구조와 책임 경계**를 관리한다.
 Wire contract를 변경할 경우 Network 설계 문서를 먼저 갱신하고,

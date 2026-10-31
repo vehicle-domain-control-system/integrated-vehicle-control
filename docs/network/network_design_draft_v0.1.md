@@ -1,5 +1,7 @@
 # 통합 차량 제어 시스템 네트워크 설계서
 
+> **비규범 이력 문서.** 이 문서는 과거 설계 초안의 기록이며 아래 표·필드 배치·시간값은 현재 구현의 규범으로 사용하지 않는다. 현재 대조 기준은 [Interface 읽기 안내](interface/00_START_HERE.md), [노드 간 공통 규칙](interface/07_CROSS_NODE_INTERFACE_RULES.md)과 [SW 상세설계](sw_detail/01_NETWORK_OVERVIEW.md)에서 연결한 설계 후보다. 문서 간 비교 우선순위를 표시하는 것이며 팀의 공식 Wire·DOMAIN ABI 채택이나 제품 통합 승인을 뜻하지 않는다. 기존 설계 이력과 WINDOW 구현 보류는 유지한다.
+
 개정: v0.1 · 기준일: 2026-10-06 · 상태: 팀 검토용 공유 초안(확인 항목 있음) / 보드 시험 미수행
 
 확정된 범위·연결은 §1~4를 따른다. CAN ID·UART Type·인코딩·주기·Timeout은 팀 검토로 조정할 수 있는 초안 제안이다. App–ESP32 BLE 구현 상세는 ESP32/MOBILE 담당 범위다. 먼저 전체 구조와 역할을 읽고, 담당 구간의 요약표를 확인한 뒤 필요한 상세 필드만 읽는다.
@@ -203,6 +205,8 @@ CAN ACK 수신은 어느 노드가 프레임을 받은 근거일 뿐이다. 실�
 
 <a id="can-list"></a>
 ### 5.2 메시지 목록과 CAN ID
+
+> **이력 표 — WARNING51.** 아래 VSS_WARNING_STATE의 사용51B 행은 구형 초안 기록으로 보존한다. 현재 대조할 후보는 [WARNING60 CAN 상세](interface/03_COMMUNICATION/10_CAN_FD.md#message-vss-warning-state)의 used60/frame64/DLC15다. 두 배치를 혼용하거나 DLC/B51로 자동 판별하지 않는다. 실제 양단 생산·수신·ABI 검증은 대기다.
 
 우선순위는 낮은 숫자 ID가 먼저 중재되는 관계를 사용한다. 생존·창문·후방·현재 경고를 먼저 배정하고 일반 표시 상태를 뒤에 둔다. 한 ID의 송신 노드는 한 개다. 일반 수신 노드는 표의 지정 노드이며 실제 수신 필터는 담당자가 맞춘다.
 
@@ -654,6 +658,8 @@ BCM의 Fan 지시–측정 불일치 2s는 최신 기능 기준을 유지한다.
 | 23~23 | PADDING | bytes | 0; 수신은 의미로 사용하지 않음 | 없음 |
 
 **VSS_WARNING_STATE — 0x0C0, Domain → VSS**
+
+> **이력 배치 — 신규 구현의 규범 아님.** 아래 사용51B 설명과 필드 표는 원문 기록이다. 현재 후보는 [VSS A1 입력 계약](interface/02_NODES/VSS/10_DATA.md#a1-binding)의 WARNING60이다. format0/1의 의미와 독립 활성 meta는 해당 후보를 대조하며, DOMAIN producer/VSS receiver·시간원·실물 음향 Binding은 미검증이다.
 
 공통 헤더(8 B). 사용 51 B / 전송 64 B / DLC 15.
 
@@ -1133,6 +1139,11 @@ App이 특정 종류의 정상 형식 갱신을 3 s 동안 받지 못하면 표�
 
 **[구현 보류 — 설계 유지]** WINDOW의 주기·수신 중단·원본 사용 한도·명령 완료 관측과 끼임 경고 시간값은 전체 설계안으로 유지한다. WINDOW 감시는 해당 기능/노드가 구현·활성화된 구성에서 적용한다. WINDOW가 실제 연결되지 않은 이번 구현 구성에 이 Timeout을 근거로 WINDOW 통신 고장을 계속 발생시키도록 요구하지 않는다.
 
+> **이력 시간표 — 현재 합의·후보와 구분.** 아래 표와 그 [초안 제안] 표기는 구형 기록으로 보존한다. 현재 대조는 [노드 간 시간 규칙](interface/07_CROSS_NODE_INTERFACE_RULES.md#timing)과 [Permission 계약](interface/07_CROSS_NODE_INTERFACE_RULES.md#permission)을 따른다.
+> - DOMAIN_PERMISSION의 CAN 송신50ms/수신감시150ms와 후방 활성 Power 원 판단의 사용 한도500ms는 별개다. CAN150을500으로 연장하거나500을 다른 Permission lane에 일괄 적용하지 않는다.
+> - P_PERMISSION의 구형 '허용 원본1500ms'는 현재 원 Power의 기한이 아니다. UART-C 반복500ms/수신감시1500ms, USE_LIMIT1500ms 후보와 같은 원 Power 전달이 확인된 경우의500ms 조건부 권장을 분리한다. 실제 송신값·만료 동작은 양단 채택 전 확정하지 않으며 원500ms를 중계로 연장하지 않는다.
+> - 온도·습도는 원 관측 기준 각각2500ms 도달 시 비사용이라는 현재 합의를 따른다. 조도1000ms는 미확정 후보이며 CAN200/600ms 감시·CIS 로컬5000ms 후보와 소비2500ms를 혼동하지 않는다.
+
 | 대상 | 적용 수신자 | 주기 | 수신 중단 기준 | 원본 사용 한도·대응 |
 |---|---|---|---|---|
 | DOMAIN_PERMISSION | BCM/CIS/WINDOW/VSS | 50ms | 150ms | 허용 평가 150ms.<br>WINDOW Domain 동작 허용 비활성화<br>CIS 전원 허용 확인 불가 |
@@ -1161,6 +1172,8 @@ App이 특정 종류의 정상 형식 갱신을 3 s 동안 받지 못하면 표�
 Domain은 차량 내부 사용 한도로 판단한 품질·가용성·원본 갱신 정보와 누적 AGE를 ESP32에 제공한다. App 표시에서 내부 한도를 다시 적용하지 않는다. App 도착 AGE와 BLE 전달 여유를 가정한 계산 예는 현재 네트워크 범위에서 제외하며, 표시 측 지연·수신 완료와 요구 한도는 ESP32/MOBILE 담당 검증 및 O-009/O-010의 경계 확인을 따른다.
 
 **원본 AGE 누적**
+
+> **이력 설명 — Driver 참조 중 Frame 변경 금지.** 아래 AGE/CRC 설명은 구형 기록이다. 재인코딩은 Driver 미제출·참조 없음이 입증된 단독 소유 저장소에서만 수행한다. Driver에 인계한 Frame은 참조 해제까지 변경하지 않는다. accepted·final TX·released는 독립 관측이며 timeout/accepted=false만으로 재사용을 허용하지 않는다. [현재 Driver 인계·수명 경계](sw_detail/functions/CAN_TRANSFER_CONTROL.md#port)를 대조한다. 원 AGE와 확인된 미반영 Queue/hop 경과는 한 번만 누적하며, 미측정 지연을0으로 간주하지 않는다.
 
 시계 동기화를 전제로 하지 않는다. 송신자는 원본 생성부터 실제 송신 시점까지의 시간을 AGE에 포함한다. 수신자는 그 구간의 전달 시간 여유를 더해 저장하고, 다시 송신할 때 저장 후 대기를 더한다. AGE는 전송 직전에 갱신한다. 이미 완성한 프레임을 대기시키면 AGE와 CRC를 함께 다시 갱신한다.
 
