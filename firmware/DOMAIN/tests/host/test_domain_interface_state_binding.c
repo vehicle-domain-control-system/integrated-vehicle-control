@@ -495,6 +495,156 @@ static int TestCisRearCopyAndValidation(void)
     return 0;
 }
 
+static int TestCisRearSameSequenceQualityWithdrawal(void)
+{
+    Fixture_t fixture;
+    CisRearState_t state = CisRear(4U, 30U);
+    CisRearState_t output;
+    VehicleStateManager_Snapshot_t snapshot;
+
+    ASSERT_EQ(0, ConfigureFixture(&fixture));
+    fixture.clock.nowMs = 100U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+
+    fixture.clock.nowMs = 105U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+    ASSERT_EQ(VEHICLE_STATE_MANAGER_OK,
+              VehicleStateManager_GetSnapshot(
+                  &fixture.manager, SLOT_CIS_REAR, 105U, UINT32_MAX,
+                  &output, sizeof(output), &snapshot));
+    ASSERT_EQ(100U, snapshot.receivedAtMs);
+    ASSERT_EQ(13U, snapshot.effectiveAgeMs);
+
+    state.distanceQuality.validity = VALUE_VALIDITY_INVALID;
+    state.distanceQuality.reason = QUALITY_REASON_SENSOR_FAULT;
+    state.distanceQuality.meta.quality = DATA_QUALITY_INVALID;
+    state.distanceQuality.meta.ageMs = 1U;
+    fixture.clock.nowMs = 110U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+    ASSERT_EQ(VEHICLE_STATE_MANAGER_OK,
+              VehicleStateManager_GetSnapshot(
+                  &fixture.manager, SLOT_CIS_REAR, 110U, UINT32_MAX,
+                  &output, sizeof(output), &snapshot));
+    ASSERT_EQ(VEHICLE_STATE_QUALITY_INVALID, snapshot.quality);
+    ASSERT_EQ(VALUE_VALIDITY_INVALID, output.distanceQuality.validity);
+    ASSERT_EQ(QUALITY_REASON_SENSOR_FAULT, output.distanceQuality.reason);
+    ASSERT_EQ(18U, snapshot.sourceAgeMs);
+    ASSERT_EQ(4U, snapshot.updateSequence);
+    ASSERT_EQ(30U, snapshot.sourceGeneration);
+    return 0;
+}
+
+static int TestCisRearSupportedMeasurementStatesPreserved(void)
+{
+    static const RearMeasurementState_t states[] = {
+        REAR_MEASUREMENT_VALID_DISTANCE,
+        REAR_MEASUREMENT_NO_OBJECT,
+        REAR_MEASUREMENT_UNAVAILABLE,
+        REAR_MEASUREMENT_FAULT,
+        REAR_MEASUREMENT_RECOVERING,
+        REAR_MEASUREMENT_INACTIVE
+    };
+    Fixture_t fixture;
+    CisRearState_t state = CisRear(1U, 30U);
+    CisRearState_t output;
+    VehicleStateManager_Snapshot_t snapshot;
+    size_t index;
+
+    ASSERT_EQ(0, ConfigureFixture(&fixture));
+    for (index = 0U; index < (sizeof(states) / sizeof(states[0])); ++index)
+    {
+        state.measurementState = states[index];
+        state.rearDistanceMm = (states[index] == REAR_MEASUREMENT_NO_OBJECT)
+                                   ? 0U
+                                   : 1234U;
+        state.distanceQuality.meta.updateSequence = (UpdateSequence_t)(index + 1U);
+        ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+        ASSERT_EQ(VEHICLE_STATE_MANAGER_OK,
+                  VehicleStateManager_GetSnapshot(
+                      &fixture.manager, SLOT_CIS_REAR, fixture.clock.nowMs,
+                      UINT32_MAX, &output, sizeof(output), &snapshot));
+        ASSERT_EQ(states[index], output.measurementState);
+        ASSERT_EQ(VEHICLE_STATE_QUALITY_OK, snapshot.quality);
+    }
+    return 0;
+}
+
+static int TestCisRearStaleIsNotPromoted(void)
+{
+    Fixture_t fixture;
+    CisRearState_t state = CisRear(4U, 30U);
+    CisRearState_t output;
+    VehicleStateManager_Snapshot_t snapshot;
+
+    ASSERT_EQ(0, ConfigureFixture(&fixture));
+    state.distanceQuality.validity = VALUE_VALIDITY_INVALID;
+    state.distanceQuality.reason = QUALITY_REASON_STALE;
+    state.distanceQuality.meta.quality = DATA_QUALITY_STALE;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+    ASSERT_EQ(VEHICLE_STATE_MANAGER_OK,
+              VehicleStateManager_GetSnapshot(
+                  &fixture.manager, SLOT_CIS_REAR, fixture.clock.nowMs,
+                  UINT32_MAX, &output, sizeof(output), &snapshot));
+    ASSERT_EQ(VEHICLE_STATE_QUALITY_STALE, snapshot.quality);
+    ASSERT_EQ(DATA_QUALITY_STALE, output.distanceQuality.meta.quality);
+    ASSERT_EQ(REAR_MEASUREMENT_VALID_DISTANCE, output.measurementState);
+    return 0;
+}
+
+static int TestCisRearSameSequenceNoDataClearsValue(void)
+{
+    Fixture_t fixture;
+    CisRearState_t state = CisRear(4U, 30U);
+    VehicleStateManager_Snapshot_t snapshot;
+
+    ASSERT_EQ(0, ConfigureFixture(&fixture));
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+    state.distanceQuality.validity = VALUE_VALIDITY_INVALID;
+    state.distanceQuality.reason = QUALITY_REASON_NO_DATA;
+    state.distanceQuality.meta.quality = DATA_QUALITY_NO_DATA;
+    fixture.clock.nowMs = 101U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+    ASSERT_EQ(VEHICLE_STATE_MANAGER_OK,
+              VehicleStateManager_GetSnapshot(
+                  &fixture.manager, SLOT_CIS_REAR, 101U, UINT32_MAX,
+                  NULL, 0U, &snapshot));
+    ASSERT_TRUE(!snapshot.hasValue);
+    ASSERT_EQ(VEHICLE_STATE_QUALITY_NO_DATA, snapshot.quality);
+    return 0;
+}
+
+static int TestCisRearSameSequenceRecoveryAndConflictRejected(void)
+{
+    Fixture_t fixture;
+    CisRearState_t state = CisRear(4U, 30U);
+    CisRearState_t output;
+    VehicleStateManager_Snapshot_t snapshot;
+
+    ASSERT_EQ(0, ConfigureFixture(&fixture));
+    state.distanceQuality.validity = VALUE_VALIDITY_INVALID;
+    state.distanceQuality.reason = QUALITY_REASON_SENSOR_FAULT;
+    state.distanceQuality.meta.quality = DATA_QUALITY_INVALID;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&state));
+
+    state.distanceQuality.validity = VALUE_VALIDITY_VALID;
+    state.distanceQuality.reason = QUALITY_REASON_NONE;
+    state.distanceQuality.meta.quality = DATA_QUALITY_OK;
+    ASSERT_EQ(DOMAIN_IF_REJECTED, DomainIf_RxCisRear(&state));
+    state.distanceQuality.validity = VALUE_VALIDITY_INVALID;
+    state.distanceQuality.reason = QUALITY_REASON_SENSOR_FAULT;
+    state.distanceQuality.meta.quality = DATA_QUALITY_INVALID;
+    state.rearDistanceMm = 4321U;
+    ASSERT_EQ(DOMAIN_IF_REJECTED, DomainIf_RxCisRear(&state));
+
+    ASSERT_EQ(VEHICLE_STATE_MANAGER_OK,
+              VehicleStateManager_GetSnapshot(
+                  &fixture.manager, SLOT_CIS_REAR, fixture.clock.nowMs,
+                  UINT32_MAX, &output, sizeof(output), &snapshot));
+    ASSERT_EQ(1234U, output.rearDistanceMm);
+    ASSERT_EQ(VEHICLE_STATE_QUALITY_INVALID, snapshot.quality);
+    return 0;
+}
+
 static int TestAllRxNullInputs(void)
 {
     Fixture_t fixture;
@@ -521,11 +671,16 @@ int main(void)
     failures += TestBcmStatusCommitBeforeObserverAndNoReplay();
     failures += TestCisStatusCommitThenObserver();
     failures += TestCisRearCopyAndValidation();
+    failures += TestCisRearSameSequenceQualityWithdrawal();
+    failures += TestCisRearSameSequenceNoDataClearsValue();
+    failures += TestCisRearSameSequenceRecoveryAndConflictRejected();
+    failures += TestCisRearSupportedMeasurementStatesPreserved();
+    failures += TestCisRearStaleIsNotPromoted();
     failures += TestAllRxNullInputs();
 
     if (failures == 0)
     {
-        printf("domain_interface_state_binding: 10 tests passed\n");
+        printf("domain_interface_state_binding: 15 tests passed\n");
     }
     return failures;
 }

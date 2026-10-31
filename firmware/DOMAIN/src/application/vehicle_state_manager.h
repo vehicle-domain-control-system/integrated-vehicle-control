@@ -37,6 +37,7 @@ typedef enum
     VEHICLE_STATE_MANAGER_CAPACITY_EXCEEDED,
     VEHICLE_STATE_MANAGER_DUPLICATE,
     VEHICLE_STATE_MANAGER_OUT_OF_ORDER,
+    VEHICLE_STATE_MANAGER_CONFLICT,
     VEHICLE_STATE_MANAGER_NO_DATA
 } VehicleStateManager_Status_t;
 
@@ -103,6 +104,18 @@ VehicleStateManager_Status_t VehicleStateManager_Init(
     size_t slotCount);
 
 VehicleStateManager_Status_t VehicleStateManager_Update(
+    VehicleStateManager_t *manager,
+    VehicleStateManager_SlotId_t slotId,
+    const VehicleStateManager_Update_t *update);
+
+/*
+ * Atomically applies a fail-closed quality withdrawal for the observation
+ * already stored at the same generation and sequence. The caller remains
+ * responsible for proving that the typed observation value is unchanged.
+ * A withdrawal never permits a same-sequence recovery to OK and never makes
+ * the original observation younger.
+ */
+VehicleStateManager_Status_t VehicleStateManager_WithdrawSameSequence(
     VehicleStateManager_t *manager,
     VehicleStateManager_SlotId_t slotId,
     const VehicleStateManager_Update_t *update);

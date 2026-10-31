@@ -88,6 +88,7 @@ static DomainIf_Status_t DomainIfStateBinding_MapManagerStatus(
         case VEHICLE_STATE_MANAGER_DUPLICATE:
             return DOMAIN_IF_OK;
         case VEHICLE_STATE_MANAGER_OUT_OF_ORDER:
+        case VEHICLE_STATE_MANAGER_CONFLICT:
             return DOMAIN_IF_REJECTED;
         case VEHICLE_STATE_MANAGER_INVALID_ARGUMENT:
             return DOMAIN_IF_INVALID_ARGUMENT;
@@ -99,6 +100,98 @@ static DomainIf_Status_t DomainIfStateBinding_MapManagerStatus(
         default:
             return DOMAIN_IF_REJECTED;
     }
+}
+
+static bool DomainIfStateBinding_IsCisRearUsable(
+    const CisRearState_t *state)
+{
+    return (state->distanceQuality.validity == VALUE_VALIDITY_VALID) &&
+           (state->distanceQuality.reason == QUALITY_REASON_NONE) &&
+           (state->distanceQuality.meta.quality == DATA_QUALITY_OK);
+}
+
+static bool DomainIfStateBinding_IsSameCisRearObservation(
+    const CisRearState_t *stored,
+    const CisRearState_t *incoming)
+{
+    return (stored->rearDistanceMm == incoming->rearDistanceMm) &&
+           (stored->measurementState == incoming->measurementState);
+}
+
+static bool DomainIfStateBinding_IsSameCisRearQuality(
+    const CisRearState_t *stored,
+    const CisRearState_t *incoming)
+{
+    return (stored->distanceQuality.validity ==
+            incoming->distanceQuality.validity) &&
+           (stored->distanceQuality.reason == incoming->distanceQuality.reason) &&
+           (stored->distanceQuality.meta.quality ==
+            incoming->distanceQuality.meta.quality);
+}
+
+static DomainIf_Status_t DomainIfStateBinding_StoreCisRear(
+    const CisRearState_t *state)
+{
+    VehicleStateManager_Update_t update;
+    VehicleStateManager_Status_t managerStatus;
+    VehicleStateManager_Slot_t *slot;
+    const CisRearState_t *stored;
+    DomainIf_Status_t status;
+    bool committed;
+
+    status = DomainIfStateBinding_MapQuality(
+        state->distanceQuality.meta.quality, &update.quality);
+    if (status != DOMAIN_IF_OK)
+    {
+        return status;
+    }
+    status = DomainIfStateBinding_GetNow(&update.receivedAtMs);
+    if (status != DOMAIN_IF_OK)
+    {
+        return status;
+    }
+    update.value = (update.quality == VEHICLE_STATE_QUALITY_NO_DATA)
+                       ? NULL
+                       : state;
+    update.valueSize = (update.value == NULL) ? 0U : sizeof(*state);
+    update.sourceAgeMs = state->distanceQuality.meta.ageMs;
+    update.updateSequence = state->distanceQuality.meta.updateSequence;
+    update.sourceGeneration = state->sourceGeneration;
+
+    managerStatus = VehicleStateManager_Update(
+        g_stateBinding.stateManager, g_stateBinding.slots.cisRearState,
+        &update);
+    if (managerStatus != VEHICLE_STATE_MANAGER_DUPLICATE)
+    {
+        return DomainIfStateBinding_MapManagerStatus(managerStatus, &committed);
+    }
+
+    slot = &g_stateBinding.stateManager->slots[
+        g_stateBinding.slots.cisRearState];
+    if (!slot->hasValue)
+    {
+        return (slot->quality == update.quality) ? DOMAIN_IF_OK
+                                                 : DOMAIN_IF_REJECTED;
+    }
+    stored = (const CisRearState_t *)slot->valueStorage;
+    if (!DomainIfStateBinding_IsSameCisRearObservation(stored, state))
+    {
+        return DOMAIN_IF_REJECTED;
+    }
+    if (DomainIfStateBinding_IsSameCisRearQuality(stored, state))
+    {
+        return DOMAIN_IF_OK;
+    }
+    if (!DomainIfStateBinding_IsCisRearUsable(stored) ||
+        DomainIfStateBinding_IsCisRearUsable(state))
+    {
+        return DOMAIN_IF_REJECTED;
+    }
+
+    managerStatus = VehicleStateManager_WithdrawSameSequence(
+        g_stateBinding.stateManager, g_stateBinding.slots.cisRearState,
+        &update);
+    return DomainIfStateBinding_MapManagerStatus(managerStatus, &committed);
 }
 
 static DomainIf_Status_t DomainIfStateBinding_Store(
@@ -236,8 +329,6 @@ DomainIf_Status_t DomainIf_RxBcmStatus(
 
 DomainIf_Status_t DomainIf_RxCisRear(const CisRearState_t *state)
 {
-    bool committed;
-
     if (state == NULL)
     {
         return DOMAIN_IF_INVALID_ARGUMENT;
@@ -252,9 +343,7 @@ DomainIf_Status_t DomainIf_RxCisRear(const CisRearState_t *state)
     }
 
     /* C2 v0.5 has no CIS-rear observer; commit is the terminal action. */
-    return DomainIfStateBinding_Store(
-        g_stateBinding.slots.cisRearState, state, sizeof(*state),
-        &state->distanceQuality.meta, state->sourceGeneration, &committed);
+    return DomainIfStateBinding_StoreCisRear(state);
 }
 
 DomainIf_Status_t DomainIf_RxCisStatus(
