@@ -717,3 +717,34 @@ add_test(
     NAME domain_application_entry_init_failure
     COMMAND test_domain_application_entry init-failure
 )
+
+add_executable(test_domain_network_transition_binding
+    test_domain_network_transition_binding.c
+    ../../src/application/domain_network_transition_binding.c
+)
+
+target_include_directories(test_domain_network_transition_binding PRIVATE
+    stubs
+    ../../src/application
+    ../../src/interface
+)
+
+set_target_properties(test_domain_network_transition_binding PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_domain_network_transition_binding PRIVATE /W4)
+else()
+    target_compile_options(test_domain_network_transition_binding PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Werror
+    )
+endif()
+
+add_test(NAME domain_network_transition_binding
+    COMMAND test_domain_network_transition_binding)

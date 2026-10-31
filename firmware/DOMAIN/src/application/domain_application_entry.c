@@ -75,6 +75,35 @@ bool DomainApplicationEntry_IsReady(void)
            DomainBoardRuntime_IsReady(&g_domainBoardRuntime);
 }
 
+bool DomainApplicationEntry_GetNowMs(uint32_t *outNowMs)
+{
+    uint32_t nowMs;
+
+    if ((outNowMs == NULL) || !DomainApplicationEntry_IsReady())
+    {
+        return false;
+    }
+    if (!DomainBoardTimebase_GetNowMs(
+            &g_domainBoardRuntime.timebase,
+            &nowMs))
+    {
+        return false;
+    }
+
+    *outNowMs = nowMs;
+    return true;
+}
+
+DomainRuntime_t *DomainApplicationEntry_GetRuntime(void)
+{
+    if (!DomainApplicationEntry_IsReady())
+    {
+        return NULL;
+    }
+
+    return DomainBoardRuntime_GetDomainRuntime(&g_domainBoardRuntime);
+}
+
 DomainApplicationEntry_Status_t DomainApplicationEntry_GetSnapshot(
     DomainApplicationEntry_Snapshot_t *outSnapshot)
 {
