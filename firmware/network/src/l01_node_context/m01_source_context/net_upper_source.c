@@ -23,6 +23,24 @@ static bool quality_conflict(uint8_t old_quality, uint8_t old_reason, uint8_t ne
     if(new_quality!=0u)return false;
     return old_quality!=0u || old_reason!=new_reason;
 }
+/* CIS_REAR (0x0A0) carries one quality for its distance: VALIDITY and
+ * QUALITY_REASON. Usable is VALID with no reason; every other pair is
+ * unusable. The magnitude of a quality value is never compared. The same
+ * pair is what DOMAIN maps to OK (net_domain_c2_value_quality_provisional)
+ * and stores as usable (DomainIfStateBinding_IsCisRearUsable). */
+static bool rear_usable(const NetWireCisRearRaw *r)
+{
+    return r->validity==1u && r->quality_reason==0u;
+}
+/* Promotion under the same original observation (same rule as
+ * quality_conflict): a usable quality after an unusable one or with another
+ * reason. A drop to an unusable quality is not a promotion. (Usable has no
+ * reason, so the reason clause only matters if VALID with a reason is ever
+ * decoded; the codec holds that pair today.) */
+static bool rear_promoted(const NetWireCisRearRaw *a, const NetWireCisRearRaw *b)
+{
+    return rear_usable(b) && (!rear_usable(a) || a->quality_reason!=b->quality_reason);
+}
 static bool permission_same(const NetWireDomainPermissionRaw *a, const NetWireDomainPermissionRaw *b)
 {
     return a->boot_id==b->boot_id && a->update_sequence==b->update_sequence;
@@ -232,11 +250,13 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
         if (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence && younger(old->data.cis_occupant.vision_age_ms,m->data.cis_occupant.vision_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
     case 0x0A0u:
-        /* The original observation identity cannot carry different values or quality. */
+        /* The original observation identity cannot carry a different distance
+         * or measurement state, and its quality is never promoted
+         * (rear_promoted). A drop to an unusable quality passes; whether it is
+         * delivered is net_upper_can_same_observation's. */
         if (old->data.cis_rear.boot_id==m->data.cis_rear.boot_id && old->data.cis_rear.update_sequence==m->data.cis_rear.update_sequence && (
             old->data.cis_rear.rear_distance_deci_cm!=m->data.cis_rear.rear_distance_deci_cm ||
-            old->data.cis_rear.validity!=m->data.cis_rear.validity ||
-            old->data.cis_rear.quality_reason!=m->data.cis_rear.quality_reason ||
+            rear_promoted(&old->data.cis_rear,&m->data.cis_rear) ||
             old->data.cis_rear.proximity_status!=m->data.cis_rear.proximity_status)) return NET_HOLD;
         if (old->data.cis_rear.boot_id==m->data.cis_rear.boot_id && old->data.cis_rear.update_sequence==m->data.cis_rear.update_sequence && younger(old->data.cis_rear.source_age_ms,m->data.cis_rear.source_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
@@ -664,7 +684,14 @@ bool net_upper_can_same_observation(const NetUpperCanMessage *old,const NetUpper
     case 0x310u:
         return (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence);
     case 0x0A0u:
-        return (old->data.cis_rear.boot_id==m->data.cis_rear.boot_id && old->data.cis_rear.update_sequence==m->data.cis_rear.update_sequence);
+        /* The first drop from a usable to an unusable quality is new to
+         * deliver: DOMAIN stores it as the withdrawal of that observation.
+         * Every other report of the same identity that original_age lets
+         * through, a change between unusable qualities included, is the same
+         * observation: the record takes it without an Owner call and DOMAIN
+         * keeps the first unusable state it was given. */
+        return (old->data.cis_rear.boot_id==m->data.cis_rear.boot_id && old->data.cis_rear.update_sequence==m->data.cis_rear.update_sequence) &&
+            !(rear_usable(&old->data.cis_rear) && !rear_usable(&m->data.cis_rear));
     case 0x320u:
         return (old->data.cis_status.boot_id==m->data.cis_status.boot_id && old->data.cis_status.update_sequence==m->data.cis_status.update_sequence);
     case 0x0B0u:

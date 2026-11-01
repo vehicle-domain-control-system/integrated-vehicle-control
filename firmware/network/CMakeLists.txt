@@ -1052,6 +1052,12 @@ if(NETWORK_BUILD_RTD_MOCK)
                 n30_quarantined_late_completion)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # CIS_REAR quality of one observation: the first drop to an unusable quality reaches DOMAIN once,
+        # later unusable changes stay in Network, a promotion or another value is held.
+        foreach(case IN ITEMS n31_rear_withdraw_invalid n32_rear_withdraw_stale n33_rear_withdraw_no_data
+                n34_rear_unusable_absorbed n35_rear_same_observation_held n36_rear_sequence_and_age_held)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
+        endforeach()
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

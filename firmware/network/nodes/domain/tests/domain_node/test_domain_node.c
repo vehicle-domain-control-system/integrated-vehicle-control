@@ -2028,6 +2028,189 @@ static int n30_quarantined_late_completion(void)
     return 0;
 }
 
+/* CIS_REAR quality of one observation (04_COMMON/10_DATA_AND_ID_RULES.md,
+ * repeat and current quality; DOMAIN develop DomainIfStateBinding_StoreCisRear
+ * takes, for the same BOOT_ID and UPDATE_SEQUENCE with the same distance and
+ * measurement state, the same quality or one drop from usable (VALID, NONE,
+ * OK) to unusable, and answers REJECTED to anything else, which blocks the
+ * route here for the run). Each frame keeps the distance, the measurement
+ * state, BOOT_ID and UPDATE_SEQUENCE, takes the next TX_SEQUENCE and an AGE
+ * grown by the time since the first frame, and changes VALIDITY and
+ * QUALITY_REASON only. Reasons: 3 SENSOR_FAULT (INVALID), 5 STALE, 6 NO_DATA
+ * (net_domain_c2_value_quality_provisional). */
+#define REAR_UPDATE 17u
+#define REAR_AGE0 23u
+static NetUpperCanMessage rear_at(uint32_t tx, uint8_t validity, uint8_t reason, uint32_t at)
+{
+    NetUpperCanMessage m = rear(tx, REAR_UPDATE, (uint16_t)(REAR_AGE0 + (at - START_MS)));
+    m.data.cis_rear.validity = validity;
+    m.data.cis_rear.quality_reason = reason;
+    return m;
+}
+/* The frame arrives at `at` (stamped with that pass) and is handled one ms later. */
+static int rear_send_at(const NetUpperCanMessage *m, uint32_t at)
+{
+    run_to(at);
+    if (inject(m) < 0) return 1;
+    ++now_ms;
+    pass();
+    return 0;
+}
+static bool rear_route_blocked(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    size_t i;
+    for (i = 0u; i < sizeof(a->ingress) / sizeof(a->ingress[0]); ++i)
+        if (a->ingress[i].used && a->ingress[i].link == NET_WIRE_CAN && a->ingress[i].id == 0x0A0u)
+            return a->ingress[i].blocked;
+    return false;
+}
+/* The receive record Network keeps for the route (the last frame it took). */
+static bool rear_record(uint32_t tx, uint8_t validity, uint8_t reason)
+{
+    NetUpperCanMessage m;
+    NetUpperDelivery d;
+    NetSourceStamp s;
+    if (net_upper_received_can(NetNode_DomainC2()->service, 0x0A0u, &m, &d, &s) != NET_OK) return false;
+    return m.data.cis_rear.tx_sequence == tx && m.data.cis_rear.validity == validity &&
+        m.data.cis_rear.quality_reason == reason;
+}
+/* A later observation (next UPDATE_SEQUENCE, usable) is delivered as before. */
+static int rear_next_observation(uint32_t tx, uint32_t at, unsigned calls)
+{
+    NetUpperCanMessage m = rear(tx, REAR_UPDATE + 1u, REAR_AGE0);
+    CHECK(rear_send_at(&m, at) == 0);
+    CHECK(rear_calls == calls && last_rear.distanceQuality.meta.quality == DATA_QUALITY_OK);
+    CHECK(last_rear.distanceQuality.meta.updateSequence == REAR_UPDATE + 1u && !rear_route_blocked());
+    return 0;
+}
+
+/* Usable -> one unusable quality of the same observation: delivered once; the
+ * same unusable quality again is not. In the whole case DOMAIN is called
+ * twice: the usable observation and its withdrawal. */
+static int rear_withdraw(uint8_t reason, DataQuality_t quality)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = rear_at(1u, 1u, 0u, START_MS);
+    CHECK(rear_send_at(&m, START_MS) == 0);
+    CHECK(rear_calls == 1u && last_rear.distanceQuality.meta.quality == DATA_QUALITY_OK);
+    m = rear_at(2u, 0u, reason, START_MS + 50u);
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_calls == 2u && failure_calls == 0u);
+    CHECK(last_rear.distanceQuality.meta.quality == quality);
+    CHECK(last_rear.distanceQuality.validity == VALUE_VALIDITY_INVALID && (unsigned)last_rear.distanceQuality.reason == reason);
+    CHECK(last_rear.sourceGeneration == CIS_BOOT && last_rear.distanceQuality.meta.updateSequence == REAR_UPDATE);
+    CHECK(last_rear.rearDistanceMm == 1234u && last_rear.measurementState == REAR_MEASUREMENT_VALID_DISTANCE);
+    CHECK(last_rear.distanceQuality.meta.ageMs == REAR_AGE0 + 50u + 1u);
+    CHECK(rear_record(2u, 0u, reason) && !rear_route_blocked());
+    m = rear_at(3u, 0u, reason, START_MS + 100u); /* the same unusable quality again */
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_calls == 2u && rear_record(3u, 0u, reason) && failure_calls == 0u);
+    CHECK(last_rear.distanceQuality.meta.quality == quality &&
+        last_rear.distanceQuality.meta.ageMs == REAR_AGE0 + 50u + 1u);
+    return 0;
+}
+static int n31_rear_withdraw_invalid(void) { return rear_withdraw(3u, DATA_QUALITY_INVALID); }
+static int n32_rear_withdraw_stale(void) { return rear_withdraw(5u, DATA_QUALITY_STALE); }
+static int n33_rear_withdraw_no_data(void) { return rear_withdraw(6u, DATA_QUALITY_NO_DATA); }
+
+/* After the first drop, the same unusable quality again and changes between
+ * unusable qualities are taken by Network (its record) without a DOMAIN call:
+ * DOMAIN keeps the first unusable state it was given. */
+static int n34_rear_unusable_absorbed(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = rear_at(1u, 1u, 0u, START_MS);
+    CHECK(rear_send_at(&m, START_MS) == 0 && rear_calls == 1u);
+    m = rear_at(2u, 0u, 3u, START_MS + 50u);
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0 && rear_calls == 2u);
+    m = rear_at(3u, 0u, 3u, START_MS + 100u); /* the same INVALID again */
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_calls == 2u && rear_record(3u, 0u, 3u));
+    m = rear_at(4u, 0u, 5u, START_MS + 150u); /* INVALID -> STALE */
+    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
+    CHECK(rear_calls == 2u && rear_record(4u, 0u, 5u));
+    m = rear_at(5u, 0u, 6u, START_MS + 200u); /* STALE -> NO_DATA */
+    CHECK(rear_send_at(&m, START_MS + 200u) == 0);
+    CHECK(rear_calls == 2u && rear_record(5u, 0u, 6u));
+    CHECK(last_rear.distanceQuality.meta.quality == DATA_QUALITY_INVALID && (unsigned)last_rear.distanceQuality.reason == 3u);
+    CHECK(last_rear.distanceQuality.meta.ageMs == REAR_AGE0 + 50u + 1u);
+    CHECK(failure_calls == 0u && !rear_route_blocked());
+    return rear_next_observation(6u, START_MS + 250u, 3u);
+}
+
+/* The same observation never gets its quality back to usable and never
+ * carries another distance or measurement state: Network holds the frame
+ * (no DOMAIN call, record unchanged), before and after the drop. */
+static int n35_rear_same_observation_held(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = rear_at(1u, 1u, 0u, START_MS);
+    CHECK(rear_send_at(&m, START_MS) == 0 && rear_calls == 1u);
+    m = rear_at(2u, 1u, 0u, START_MS + 50u);
+    m.data.cis_rear.rear_distance_deci_cm = 1300u; /* usable, another distance */
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(3u, 1u, 0u, START_MS + 100u);
+    m.data.cis_rear.proximity_status = 5u; /* usable, INACTIVE */
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(4u, 0u, 3u, START_MS + 150u);
+    m.data.cis_rear.rear_distance_deci_cm = 1300u; /* the drop with another distance */
+    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(5u, 0u, 3u, START_MS + 200u);
+    m.data.cis_rear.proximity_status = 3u; /* the drop with FAULT */
+    CHECK(rear_send_at(&m, START_MS + 200u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(6u, 0u, 3u, START_MS + 250u); /* the drop itself */
+    CHECK(rear_send_at(&m, START_MS + 250u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    m = rear_at(7u, 1u, 0u, START_MS + 300u); /* back to usable */
+    CHECK(rear_send_at(&m, START_MS + 300u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    m = rear_at(8u, 0u, 5u, START_MS + 350u);
+    m.data.cis_rear.rear_distance_deci_cm = 1300u; /* unusable, another distance */
+    CHECK(rear_send_at(&m, START_MS + 350u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    m = rear_at(9u, 0u, 5u, START_MS + 400u);
+    m.data.cis_rear.proximity_status = 4u; /* unusable, RECOVERING */
+    CHECK(rear_send_at(&m, START_MS + 400u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    CHECK(last_rear.distanceQuality.meta.quality == DATA_QUALITY_INVALID);
+    CHECK(failure_calls == 0u && !rear_route_blocked());
+    return rear_next_observation(10u, START_MS + 450u, 3u);
+}
+
+/* Unchanged by the quality rule: a frame with the same TX_SEQUENCE and other
+ * content is a conflict, and an AGE below the bound of the same observation
+ * (earlier AGE + elapsed) is held. The drop sent correctly afterwards is
+ * still delivered. */
+static int n36_rear_sequence_and_age_held(void)
+{
+    NetUpperCanMessage m;
+    uint32_t conflicts;
+    CHECK(start());
+    m = rear_at(1u, 1u, 0u, START_MS);
+    CHECK(rear_send_at(&m, START_MS) == 0 && rear_calls == 1u);
+    conflicts = diag().upper.rx_conflicts;
+    m = rear_at(1u, 0u, 3u, START_MS + 50u); /* TX_SEQUENCE 1 again, dropped quality */
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_calls == 1u && diag().upper.rx_conflicts == conflicts + 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(2u, 0u, 3u, START_MS + 100u);
+    m.data.cis_rear.source_age_ms = (uint16_t)(REAR_AGE0 + 100u - 1u); /* 1 ms under the bound */
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(3u, 0u, 3u, START_MS + 150u);
+    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
+    CHECK(rear_calls == 2u && last_rear.distanceQuality.meta.quality == DATA_QUALITY_INVALID && rear_record(3u, 0u, 3u));
+    CHECK(failure_calls == 0u && !rear_route_blocked());
+    return rear_next_observation(4u, START_MS + 200u, 3u);
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -2058,6 +2241,12 @@ int main(int argc, char **argv)
         { "n28_m_result_session_changed", n28_m_result_session_changed },
         { "n29_m_result_hal_queue_left", n29_m_result_hal_queue_left },
         { "n30_quarantined_late_completion", n30_quarantined_late_completion },
+        { "n31_rear_withdraw_invalid", n31_rear_withdraw_invalid },
+        { "n32_rear_withdraw_stale", n32_rear_withdraw_stale },
+        { "n33_rear_withdraw_no_data", n33_rear_withdraw_no_data },
+        { "n34_rear_unusable_absorbed", n34_rear_unusable_absorbed },
+        { "n35_rear_same_observation_held", n35_rear_same_observation_held },
+        { "n36_rear_sequence_and_age_held", n36_rear_sequence_and_age_held },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;
