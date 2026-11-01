@@ -88,7 +88,8 @@ DomainIf_Status_t DomainIf_RxCisRear(const CisRearState_t *s) { owner_call(); la
 DomainIf_Status_t DomainIf_RxCisStatus(const DomainIf_CisStatusReport_t *s) { owner_call(); last_cis_status = *s; ++cis_status_calls; return DOMAIN_IF_OK; }
 DomainIf_Status_t DomainIf_RxCisCabinEnvironment(const CisCabinEnvironmentState_t *s) { owner_call(); last_env = *s; ++env_calls; return DOMAIN_IF_OK; }
 static unsigned occupant_calls;
-DomainIf_Status_t DomainIf_RxCisOccupant(const CisOccupantState_t *s) { (void)s; owner_call(); ++occupant_calls; return DOMAIN_IF_OK; }
+static CisOccupantState_t last_occupant;
+DomainIf_Status_t DomainIf_RxCisOccupant(const CisOccupantState_t *s) { owner_call(); last_occupant = *s; ++occupant_calls; return DOMAIN_IF_OK; }
 /* Local failure notices: the last one, and the answers the case chooses, one
  * for an occurrence (DOMAIN develop answers DOMAIN_IF_UNSUPPORTED there) and
  * one for the other kinds. */
@@ -2115,30 +2116,87 @@ static int n31_rear_withdraw_invalid(void) { return rear_withdraw(3u, DATA_QUALI
 static int n32_rear_withdraw_stale(void) { return rear_withdraw(5u, DATA_QUALITY_STALE); }
 static int n33_rear_withdraw_no_data(void) { return rear_withdraw(6u, DATA_QUALITY_NO_DATA); }
 
+/* The relay and query projection of the DOMAIN adapter (net_domain_rx.c): it
+ * builds the UART-M message from Network's receive record and gives it only
+ * if the record equals the Owner's state (AGE included). A query of this
+ * device and session, at the time of the last pass. */
+NetStatus nd_projection(NetDomainC2 *, uint16_t, const void *, uint64_t, const NetWireMQueryRaw *,
+    NetUpperQueryOutput *);
+static NetStatus project_query(uint16_t id, const void *owner_state, NetUpperQueryOutput *out)
+{
+    NetWireMQueryRaw q;
+    memset(&q, 0, sizeof(q));
+    q.device_context_id = 7u;
+    q.session_id = 11u;
+    q.query_id = 1u;
+    return nd_projection(NetNode_DomainC2(), id, owner_state, now_ms, &q, out);
+}
+/* The last UART-M frame of a type the ESP32 end took (in the log). */
+static const NetUpperUartMessage *last_uart(uint8_t type)
+{
+    unsigned i = uart_count < UART_LOG ? uart_count : UART_LOG;
+    while (i > 0u) {
+        --i;
+        if (uart_seen[i].m.type == type) return &uart_seen[i].m;
+    }
+    return NULL;
+}
+/* A UART-M context (device 7, session 11) for the relays. */
+static int relay_context(void)
+{
+    NetWireUartFrame fr;
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    return 0;
+}
+
 /* After the first drop, the same unusable quality again and changes between
- * unusable qualities are taken by Network (its record) without a DOMAIN call:
- * DOMAIN keeps the first unusable state it was given. */
+ * unusable qualities are taken by Network without a DOMAIN call: DOMAIN keeps
+ * the first unusable state it was given, and so does Network's record (its
+ * VALIDITY and QUALITY_REASON; TX_SEQUENCE and AGE are the new frame's,
+ * rx_quality_kept counts the kept changes). So the record equals DOMAIN's
+ * state and the UART-M relay and the query answer go out with the first
+ * unusable quality. */
 static int n34_rear_unusable_absorbed(void)
 {
     NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisRearState_t held;
+    const NetUpperUartMessage *u;
+    unsigned relays0;
+    snapshot_hook = true;
     CHECK(start());
-    m = rear_at(1u, 1u, 0u, START_MS);
-    CHECK(rear_send_at(&m, START_MS) == 0 && rear_calls == 1u);
-    m = rear_at(2u, 0u, 3u, START_MS + 50u);
-    CHECK(rear_send_at(&m, START_MS + 50u) == 0 && rear_calls == 2u);
-    m = rear_at(3u, 0u, 3u, START_MS + 100u); /* the same INVALID again */
-    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(relay_context() == 0);
+    m = rear_at(1u, 1u, 0u, START_MS + 10u);
+    CHECK(rear_send_at(&m, START_MS + 10u) == 0 && rear_calls == 1u);
+    m = rear_at(2u, 0u, 3u, START_MS + 60u);
+    CHECK(rear_send_at(&m, START_MS + 60u) == 0 && rear_calls == 2u);
+    held = last_rear; /* the withdrawal DOMAIN took at START_MS + 61 */
+    m = rear_at(3u, 0u, 3u, START_MS + 110u); /* the same INVALID again */
+    CHECK(rear_send_at(&m, START_MS + 110u) == 0);
     CHECK(rear_calls == 2u && rear_record(3u, 0u, 3u));
-    m = rear_at(4u, 0u, 5u, START_MS + 150u); /* INVALID -> STALE */
-    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
-    CHECK(rear_calls == 2u && rear_record(4u, 0u, 5u));
-    m = rear_at(5u, 0u, 6u, START_MS + 200u); /* STALE -> NO_DATA */
-    CHECK(rear_send_at(&m, START_MS + 200u) == 0);
-    CHECK(rear_calls == 2u && rear_record(5u, 0u, 6u));
+    m = rear_at(4u, 0u, 5u, START_MS + 160u); /* INVALID -> STALE: the record keeps INVALID */
+    CHECK(rear_send_at(&m, START_MS + 160u) == 0);
+    CHECK(rear_calls == 2u && rear_record(4u, 0u, 3u));
+    m = rear_at(5u, 0u, 6u, START_MS + 210u); /* STALE -> NO_DATA */
+    CHECK(rear_send_at(&m, START_MS + 210u) == 0);
+    CHECK(rear_calls == 2u && rear_record(5u, 0u, 3u) && diag().upper.rx_quality_kept == 2u);
     CHECK(last_rear.distanceQuality.meta.quality == DATA_QUALITY_INVALID && (unsigned)last_rear.distanceQuality.reason == 3u);
-    CHECK(last_rear.distanceQuality.meta.ageMs == REAR_AGE0 + 50u + 1u);
     CHECK(failure_calls == 0u && !rear_route_blocked());
-    return rear_next_observation(6u, START_MS + 250u, 3u);
+    /* DOMAIN's state now: that withdrawal, its AGE grown since it was taken. */
+    held.distanceQuality.meta.ageMs += now_ms - (START_MS + 61u);
+    CHECK(project_query(0x0A0u, &held, &out) == NET_OK);
+    CHECK(out.message.type == 0x36u && out.message.data.m_cis_rear.validity == 0u &&
+        out.message.data.m_cis_rear.quality_reason == 3u && out.message.data.m_cis_rear.original_can_tx_sequence == 5u);
+    relays0 = uart_type_count[0x36u];
+    CHECK(port.txMobileCisRear(&held) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    u = last_uart(0x36u);
+    CHECK(uart_type_count[0x36u] == relays0 + 1u && u != NULL && u->data.m_cis_rear.validity == 0u &&
+        u->data.m_cis_rear.quality_reason == 3u);
+    return rear_next_observation(6u, START_MS + 260u, 3u);
 }
 
 /* The same observation never gets its quality back to usable and never
@@ -2211,6 +2269,250 @@ static int n36_rear_sequence_and_age_held(void)
     return rear_next_observation(4u, START_MS + 200u, 3u);
 }
 
+/* CIS_OCCUPANT quality of one observation (Pi BOOT, VISION_SEQUENCE): DOMAIN
+ * develop (CisOccupantManager_ApplyQualityWithdrawal) takes, field by field
+ * (presence, count), a drop to an unusable quality and a change between
+ * unusable ones, and refuses a promotion, another presence, count or vision
+ * function status and an AGE under its own bound (REJECTED, which blocks the
+ * route for the run). Network delivers each such change, holds the rest and
+ * takes a report that differs only in AGE without a call. The barrier stands
+ * open for this Pi BOOT (an applied transition). This mock DOMAIN takes every
+ * call; what the real one answers is the chat-side check against DOMAIN
+ * develop (CisOccupantManager), outside this repository. */
+#define PI_BOOT 0x50493031u
+#define OCC_AGE0 40u
+static NetUpperCanMessage occupant_at(uint32_t tx, uint8_t pv, uint8_t pr, uint8_t cv, uint8_t cr, uint32_t at)
+{
+    NetUpperCanMessage m;
+    NetWireCisOccupantRaw *r = &m.data.cis_occupant;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x310u;
+    r->boot_id = CIS_BOOT;
+    r->tx_sequence = tx;
+    r->pi_boot_id = PI_BOOT;
+    r->vision_sequence = 42u;
+    r->vision_age_ms = (uint16_t)(OCC_AGE0 + (at - START_MS));
+    r->occupant_presence = 1u;
+    r->presence_validity = pv;
+    r->presence_reason = pr;
+    r->occupant_count = 2u;
+    r->count_validity = cv;
+    r->count_reason = cr;
+    return m;
+}
+/* The receive record Network keeps for a CAN route: its TX_SEQUENCE. */
+static bool record_tx(uint16_t id, uint32_t tx)
+{
+    NetUpperCanMessage m;
+    NetUpperDelivery d;
+    NetSourceStamp s;
+    if (net_upper_received_can(NetNode_DomainC2()->service, id, &m, &d, &s) != NET_OK) return false;
+    return id == 0x310u ? m.data.cis_occupant.tx_sequence == tx : m.data.cis_environment.tx_sequence == tx;
+}
+static bool quality_is(const ValueQuality_t *q, ValueValidity_t validity, unsigned reason, DataQuality_t quality)
+{
+    return q->validity == validity && (unsigned)q->reason == reason && q->meta.quality == quality;
+}
+/* A CIS frame arrives at `at` and is handled one ms later. */
+static int cis_send_at(const NetUpperCanMessage *m, uint32_t at) { return rear_send_at(m, at); }
+static int n37_occupant_quality_delivered(void)
+{
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisOccupantState_t held;
+    const NetUpperUartMessage *u;
+    unsigned relays0;
+    NetDomainC2 *a;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT;
+    m = occupant_at(1u, 1u, 0u, 1u, 0u, START_MS + 10u);
+    CHECK(cis_send_at(&m, START_MS + 10u) == 0 && occupant_calls == 1u);
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 60u); /* presence OK -> INVALID, count stays OK */
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_VALID, 0u, DATA_QUALITY_OK));
+    CHECK(last_occupant.presenceQuality.meta.updateSequence == 42u && last_occupant.sourceGeneration == PI_BOOT);
+    CHECK(last_occupant.presenceQuality.meta.ageMs == OCC_AGE0 + 60u + 1u);
+    m = occupant_at(3u, 0u, 5u, 1u, 0u, START_MS + 110u); /* presence INVALID -> STALE */
+    CHECK(cis_send_at(&m, START_MS + 110u) == 0 && occupant_calls == 3u);
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+    m = occupant_at(4u, 0u, 6u, 0u, 3u, START_MS + 160u); /* presence STALE -> NO_DATA, count OK -> INVALID */
+    CHECK(cis_send_at(&m, START_MS + 160u) == 0 && occupant_calls == 4u);
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 6u, DATA_QUALITY_NO_DATA));
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    m = occupant_at(5u, 0u, 6u, 0u, 5u, START_MS + 185u); /* count INVALID -> STALE only */
+    CHECK(cis_send_at(&m, START_MS + 185u) == 0 && occupant_calls == 5u);
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 6u, DATA_QUALITY_NO_DATA));
+    held = last_occupant; /* taken at START_MS + 186 */
+    m = occupant_at(6u, 0u, 6u, 0u, 5u, START_MS + 210u); /* only the AGE differs: no call */
+    CHECK(cis_send_at(&m, START_MS + 210u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(7u, 1u, 0u, 0u, 5u, START_MS + 260u); /* presence promoted: held */
+    CHECK(cis_send_at(&m, START_MS + 260u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(8u, 0u, 6u, 1u, 0u, START_MS + 265u); /* count promoted: held */
+    CHECK(cis_send_at(&m, START_MS + 265u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(9u, 0u, 6u, 0u, 5u, START_MS + 270u);
+    m.data.cis_occupant.occupant_presence = 0u; /* another presence: held */
+    CHECK(cis_send_at(&m, START_MS + 270u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(10u, 0u, 6u, 0u, 5u, START_MS + 280u);
+    m.data.cis_occupant.occupant_count = 3u; /* another count: held */
+    CHECK(cis_send_at(&m, START_MS + 280u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(11u, 0u, 6u, 0u, 5u, START_MS + 290u);
+    m.data.cis_occupant.vision_function_status = 2u; /* another vision function status: held */
+    CHECK(cis_send_at(&m, START_MS + 290u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(12u, 0u, 5u, 0u, 5u, START_MS + 300u);
+    m.data.cis_occupant.vision_age_ms = (uint16_t)(OCC_AGE0 + 300u - 1u); /* a change 1 ms under the AGE bound: held */
+    CHECK(cis_send_at(&m, START_MS + 300u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    CHECK(failure_calls == 0u);
+    /* DOMAIN's state now: the last change it took, AGE grown since (with AGEs
+     * that grow exactly with the time, the field DOMAIN did not change has the
+     * same AGE). The record equals it: no HOLD. */
+    held.presenceQuality.meta.ageMs += now_ms - (START_MS + 186u);
+    held.countQuality.meta.ageMs += now_ms - (START_MS + 186u);
+    CHECK(project_query(0x310u, &held, &out) == NET_OK);
+    CHECK(out.message.type == 0x35u && out.message.data.m_cis_occupant.presence_reason == 6u &&
+        out.message.data.m_cis_occupant.count_reason == 5u);
+    relays0 = uart_type_count[0x35u];
+    CHECK(port.txMobileCisOccupant(&held) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    u = last_uart(0x35u);
+    CHECK(uart_type_count[0x35u] == relays0 + 1u && u != NULL && u->data.m_cis_occupant.count_reason == 5u);
+    return 0;
+}
+
+/* CIS_ENVIRONMENT quality per sensor (each with its sequence): DOMAIN develop
+ * (CisEnvironmentManager_Store) overwrites every field it is given, so Network
+ * keeps the guard: under a sensor's sequence another value, a promoted quality
+ * and an AGE under the bound are held; a drop to an unusable quality and a
+ * change between unusable ones are delivered, also in a frame where another
+ * sensor has a new sequence. A report with every sequence and quality the same
+ * is taken without a call. Sensor s: 0 temperature, 1 humidity, 2
+ * illuminance; each AGE grows exactly with the time since its observation. */
+static uint8_t env_validity[3], env_reason[3];
+static uint32_t env_sequence[3], env_since[3];
+static int32_t env_value[3];
+static void env_field(NetWireCisEnvironmentRaw *r, unsigned s, uint8_t validity, uint8_t reason, int32_t value,
+    uint16_t age)
+{
+    switch (s) {
+    case 0u:
+        r->temperature_validity = validity; r->temperature_reason = reason;
+        r->temperature_centi_c = (int16_t)value; r->temperature_sequence = env_sequence[0]; r->temperature_age_ms = age;
+        break;
+    case 1u:
+        r->humidity_validity = validity; r->humidity_reason = reason;
+        r->humidity_centi_percent = (uint16_t)value; r->humidity_sequence = env_sequence[1]; r->humidity_age_ms = age;
+        break;
+    default:
+        r->illuminance_validity = validity; r->illuminance_reason = reason;
+        r->illuminance_lux = (uint32_t)value; r->illuminance_sequence = env_sequence[2]; r->illuminance_age_ms = age;
+        break;
+    }
+}
+static uint16_t env_age(unsigned s, uint32_t at) { return (uint16_t)(100u + 20u * s + (at - env_since[s])); }
+static NetUpperCanMessage environment_now(uint32_t tx, uint32_t at)
+{
+    NetUpperCanMessage m;
+    unsigned s;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x300u;
+    m.data.cis_environment.boot_id = CIS_BOOT;
+    m.data.cis_environment.tx_sequence = tx;
+    for (s = 0u; s < 3u; ++s)
+        env_field(&m.data.cis_environment, s, env_validity[s], env_reason[s], env_value[s], env_age(s, at));
+    return m;
+}
+static const ValueQuality_t *env_quality(const CisCabinEnvironmentState_t *e, unsigned s)
+{
+    return s == 0u ? &e->temperatureQuality : s == 1u ? &e->humidityQuality : &e->illuminanceQuality;
+}
+static int n38_environment_quality_delivered(void)
+{
+    static const uint8_t drops[3] = { 3u, 5u, 6u }; /* INVALID, then STALE, then NO_DATA */
+    static const DataQuality_t dropped[3] = { DATA_QUALITY_INVALID, DATA_QUALITY_STALE, DATA_QUALITY_NO_DATA };
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisCabinEnvironmentState_t held;
+    const NetUpperUartMessage *u;
+    unsigned relays0, calls, s, k;
+    uint32_t tx = 1u, at = START_MS + 10u, taken, grown, kept;
+    NetDomainC2 *a;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].id = CIS_BOOT;
+    for (s = 0u; s < 3u; ++s) {
+        env_validity[s] = 1u; env_reason[s] = 0u; env_sequence[s] = 10u * (s + 1u); env_since[s] = START_MS;
+    }
+    env_value[0] = 2150; env_value[1] = 4500; env_value[2] = 300;
+    m = environment_now(tx, at);
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == 1u);
+    /* Humidity: a new sequence (another value); temperature: OK -> INVALID
+     * under its sequence, in the same frame. */
+    at += 50u; ++tx;
+    env_sequence[1] = 21u; env_since[1] = at; env_value[1] = 4600;
+    env_validity[0] = 0u; env_reason[0] = 3u;
+    m = environment_now(tx, at);
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == 2u);
+    CHECK(last_env.cabinHumidity == 4600u && last_env.humidityQuality.meta.updateSequence == 21u);
+    CHECK(quality_is(&last_env.temperatureQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(last_env.temperatureQuality.meta.updateSequence == 10u && last_env.temperatureQuality.meta.ageMs == env_age(0u, at) + 1u);
+    calls = 2u;
+    /* Every sensor under its sequence: the drops are delivered one by one; a
+     * promotion, another value and a change 1 ms under the AGE bound are held. */
+    for (s = 0u; s < 3u; ++s) {
+        for (k = s == 0u ? 1u : 0u; k < 3u; ++k) {
+            at += 10u; ++tx;
+            env_validity[s] = 0u; env_reason[s] = drops[k];
+            m = environment_now(tx, at);
+            CHECK(cis_send_at(&m, at) == 0 && env_calls == ++calls);
+            CHECK(quality_is(env_quality(&last_env, s), VALUE_VALIDITY_INVALID, drops[k], dropped[k]));
+        }
+        kept = tx;
+        at += 10u;
+        m = environment_now(tx + 1u, at); /* promoted: held */
+        env_field(&m.data.cis_environment, s, 1u, 0u, env_value[s], env_age(s, at));
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+        at += 10u;
+        m = environment_now(tx + 2u, at); /* another value: held */
+        env_field(&m.data.cis_environment, s, 0u, 6u, env_value[s] + 1, env_age(s, at));
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+        at += 10u;
+        m = environment_now(tx + 3u, at); /* a change 1 ms under the AGE bound: held */
+        env_field(&m.data.cis_environment, s, 0u, 3u, env_value[s], (uint16_t)(env_age(s, at) - 1u));
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+        tx += 3u;
+    }
+    CHECK(calls == 10u);
+    held = last_env;
+    taken = at - 30u + 1u; /* the last delivered frame: before the three held ones */
+    at += 10u; ++tx;
+    m = environment_now(tx, at); /* the same sequences and qualities: no call */
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, tx));
+    CHECK(failure_calls == 0u);
+    /* DOMAIN's state now: the last frame it took, AGEs grown since. No HOLD. */
+    grown = now_ms - taken;
+    held.temperatureQuality.meta.ageMs += grown;
+    held.humidityQuality.meta.ageMs += grown;
+    held.illuminanceQuality.meta.ageMs += grown;
+    CHECK(project_query(0x300u, &held, &out) == NET_OK);
+    CHECK(out.message.type == 0x34u && out.message.data.m_cis_environment.temperature_reason == 6u &&
+        out.message.data.m_cis_environment.illuminance_reason == 6u &&
+        out.message.data.m_cis_environment.humidity_sequence == 21u);
+    relays0 = uart_type_count[0x34u];
+    CHECK(port.txMobileCisEnvironment(&held) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    u = last_uart(0x34u);
+    CHECK(uart_type_count[0x34u] == relays0 + 1u && u != NULL && u->data.m_cis_environment.humidity_reason == 6u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -2247,6 +2549,8 @@ int main(int argc, char **argv)
         { "n34_rear_unusable_absorbed", n34_rear_unusable_absorbed },
         { "n35_rear_same_observation_held", n35_rear_same_observation_held },
         { "n36_rear_sequence_and_age_held", n36_rear_sequence_and_age_held },
+        { "n37_occupant_quality_delivered", n37_occupant_quality_delivered },
+        { "n38_environment_quality_delivered", n38_environment_quality_delivered },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

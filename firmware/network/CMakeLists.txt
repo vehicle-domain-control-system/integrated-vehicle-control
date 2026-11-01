@@ -1058,6 +1058,10 @@ if(NETWORK_BUILD_RTD_MOCK)
                 n34_rear_unusable_absorbed n35_rear_same_observation_held n36_rear_sequence_and_age_held)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # CIS_OCCUPANT and CIS_ENVIRONMENT quality of one observation, as DOMAIN stores it.
+        foreach(case IN ITEMS n37_occupant_quality_delivered n38_environment_quality_delivered)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
+        endforeach()
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

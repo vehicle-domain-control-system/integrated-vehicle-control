@@ -9,6 +9,7 @@ void net_upper_failure_changed(NetUpperTx *);
 NetStatus net_upper_can_original_age(const NetUpperCanMessage *, const NetUpperCanMessage *, uint64_t);
 NetStatus net_upper_uart_original_age(const NetUpperUartMessage *, const NetUpperUartMessage *, uint64_t);
 bool net_upper_can_same_observation(const NetUpperCanMessage *, const NetUpperCanMessage *);
+bool net_upper_can_keep_delivered_quality(const NetUpperCanMessage *, NetUpperCanMessage *);
 bool net_upper_uart_same_observation(const NetUpperUartMessage *, const NetUpperUartMessage *);
 bool net_upper_uart_same_source(const NetUpperUartMessage *, const NetUpperUartMessage *);
 NetStatus net_upper_can_repeat_age(const NetUpperCanMessage *, NetUpperCanMessage *, uint64_t, uint16_t, bool *);

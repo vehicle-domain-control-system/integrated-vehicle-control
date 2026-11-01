@@ -41,6 +41,32 @@ static bool rear_promoted(const NetWireCisRearRaw *a, const NetWireCisRearRaw *b
 {
     return rear_usable(b) && (!rear_usable(a) || a->quality_reason!=b->quality_reason);
 }
+/* CIS environment (0x300, per sensor) and Occupant (0x310, presence and count)
+ * fields carry a VALIDITY and a reason each. Usable is VALID with no reason,
+ * the pair DOMAIN maps to OK (net_domain_c2_value_quality_provisional) and
+ * stores as usable (CisOccupantManager_IsQualityUsable). No order is made
+ * among the unusable pairs. */
+static bool field_usable(uint8_t validity, uint8_t reason)
+{
+    return validity==1u && reason==0u;
+}
+/* Promotion of one field under the same original observation, as
+ * rear_promoted: usable now and (unusable before or another reason). */
+static bool field_promoted(uint8_t old_validity, uint8_t old_reason, uint8_t validity, uint8_t reason)
+{
+    return field_usable(validity,reason) && (!field_usable(old_validity,old_reason) || old_reason!=reason);
+}
+static bool environment_quality_same(const NetWireCisEnvironmentRaw *a, const NetWireCisEnvironmentRaw *b)
+{
+    return a->temperature_validity==b->temperature_validity && a->temperature_reason==b->temperature_reason &&
+        a->humidity_validity==b->humidity_validity && a->humidity_reason==b->humidity_reason &&
+        a->illuminance_validity==b->illuminance_validity && a->illuminance_reason==b->illuminance_reason;
+}
+static bool occupant_quality_same(const NetWireCisOccupantRaw *a, const NetWireCisOccupantRaw *b)
+{
+    return a->presence_validity==b->presence_validity && a->presence_reason==b->presence_reason &&
+        a->count_validity==b->count_validity && a->count_reason==b->count_reason;
+}
 static bool permission_same(const NetWireDomainPermissionRaw *a, const NetWireDomainPermissionRaw *b)
 {
     return a->boot_id==b->boot_id && a->update_sequence==b->update_sequence;
@@ -218,35 +244,48 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
         if (old->data.bcm_status.boot_id==m->data.bcm_status.boot_id && old->data.bcm_status.update_sequence==m->data.bcm_status.update_sequence && younger(old->data.bcm_status.source_age_ms,m->data.bcm_status.source_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
     case 0x300u:
-        /* The original observation identity cannot carry different values or quality. */
+        /* The original observation of this sensor cannot carry another value or a
+         * promoted quality; a drop to an unusable quality, or a change between
+         * unusable ones, passes and is delivered (DOMAIN stores every field it
+         * is given). */
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.temperature_sequence==m->data.cis_environment.temperature_sequence && (
             old->data.cis_environment.temperature_centi_c!=m->data.cis_environment.temperature_centi_c ||
-            old->data.cis_environment.temperature_validity!=m->data.cis_environment.temperature_validity ||
-            old->data.cis_environment.temperature_reason!=m->data.cis_environment.temperature_reason)) return NET_HOLD;
+            field_promoted(old->data.cis_environment.temperature_validity,old->data.cis_environment.temperature_reason,
+                m->data.cis_environment.temperature_validity,m->data.cis_environment.temperature_reason))) return NET_HOLD;
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.temperature_sequence==m->data.cis_environment.temperature_sequence && younger(old->data.cis_environment.temperature_age_ms,m->data.cis_environment.temperature_age_ms,elapsed)) return NET_HOLD;
-        /* The original observation identity cannot carry different values or quality. */
+        /* The original observation of this sensor cannot carry another value or a
+         * promoted quality; a drop to an unusable quality, or a change between
+         * unusable ones, passes and is delivered (DOMAIN stores every field it
+         * is given). */
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.humidity_sequence==m->data.cis_environment.humidity_sequence && (
             old->data.cis_environment.humidity_centi_percent!=m->data.cis_environment.humidity_centi_percent ||
-            old->data.cis_environment.humidity_validity!=m->data.cis_environment.humidity_validity ||
-            old->data.cis_environment.humidity_reason!=m->data.cis_environment.humidity_reason)) return NET_HOLD;
+            field_promoted(old->data.cis_environment.humidity_validity,old->data.cis_environment.humidity_reason,
+                m->data.cis_environment.humidity_validity,m->data.cis_environment.humidity_reason))) return NET_HOLD;
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.humidity_sequence==m->data.cis_environment.humidity_sequence && younger(old->data.cis_environment.humidity_age_ms,m->data.cis_environment.humidity_age_ms,elapsed)) return NET_HOLD;
-        /* The original observation identity cannot carry different values or quality. */
+        /* The original observation of this sensor cannot carry another value or a
+         * promoted quality; a drop to an unusable quality, or a change between
+         * unusable ones, passes and is delivered (DOMAIN stores every field it
+         * is given). */
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence && (
             old->data.cis_environment.illuminance_lux!=m->data.cis_environment.illuminance_lux ||
-            old->data.cis_environment.illuminance_validity!=m->data.cis_environment.illuminance_validity ||
-            old->data.cis_environment.illuminance_reason!=m->data.cis_environment.illuminance_reason)) return NET_HOLD;
+            field_promoted(old->data.cis_environment.illuminance_validity,old->data.cis_environment.illuminance_reason,
+                m->data.cis_environment.illuminance_validity,m->data.cis_environment.illuminance_reason))) return NET_HOLD;
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence && younger(old->data.cis_environment.illuminance_age_ms,m->data.cis_environment.illuminance_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
     case 0x310u:
-        /* The original observation identity cannot carry different values or quality. */
+        /* The original observation identity cannot carry another presence,
+         * count or vision function status, nor a promoted presence or count
+         * quality. A drop to an unusable quality, or a change between unusable
+         * ones, passes and is delivered: DOMAIN applies it field by field
+         * (CisOccupantManager_ApplyQualityWithdrawal). */
         if (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence && (
             old->data.cis_occupant.occupant_presence!=m->data.cis_occupant.occupant_presence ||
-            old->data.cis_occupant.presence_validity!=m->data.cis_occupant.presence_validity ||
-            old->data.cis_occupant.presence_reason!=m->data.cis_occupant.presence_reason ||
             old->data.cis_occupant.occupant_count!=m->data.cis_occupant.occupant_count ||
-            old->data.cis_occupant.count_validity!=m->data.cis_occupant.count_validity ||
-            old->data.cis_occupant.count_reason!=m->data.cis_occupant.count_reason ||
-            old->data.cis_occupant.vision_function_status!=m->data.cis_occupant.vision_function_status)) return NET_HOLD;
+            old->data.cis_occupant.vision_function_status!=m->data.cis_occupant.vision_function_status ||
+            field_promoted(old->data.cis_occupant.presence_validity,old->data.cis_occupant.presence_reason,
+                m->data.cis_occupant.presence_validity,m->data.cis_occupant.presence_reason) ||
+            field_promoted(old->data.cis_occupant.count_validity,old->data.cis_occupant.count_reason,
+                m->data.cis_occupant.count_validity,m->data.cis_occupant.count_reason))) return NET_HOLD;
         if (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence && younger(old->data.cis_occupant.vision_age_ms,m->data.cis_occupant.vision_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
     case 0x0A0u:
@@ -678,18 +717,24 @@ bool net_upper_can_same_observation(const NetUpperCanMessage *old,const NetUpper
     case 0x230u:
         return (old->data.bcm_status.boot_id==m->data.bcm_status.boot_id && old->data.bcm_status.update_sequence==m->data.bcm_status.update_sequence);
     case 0x300u:
+        /* A quality change of a sensor under its sequence is new to deliver. */
         return (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.temperature_sequence==m->data.cis_environment.temperature_sequence) &&
             (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.humidity_sequence==m->data.cis_environment.humidity_sequence) &&
-            (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence);
+            (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence) &&
+            environment_quality_same(&old->data.cis_environment,&m->data.cis_environment);
     case 0x310u:
-        return (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence);
+        /* A presence or count quality change under the sequence is new to
+         * deliver; a report that differs only in AGE is the same observation. */
+        return (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence) &&
+            occupant_quality_same(&old->data.cis_occupant,&m->data.cis_occupant);
     case 0x0A0u:
         /* The first drop from a usable to an unusable quality is new to
          * deliver: DOMAIN stores it as the withdrawal of that observation.
          * Every other report of the same identity that original_age lets
          * through, a change between unusable qualities included, is the same
-         * observation: the record takes it without an Owner call and DOMAIN
-         * keeps the first unusable state it was given. */
+         * observation: no Owner call, DOMAIN keeps the first unusable state it
+         * was given, and the record keeps that quality too
+         * (net_upper_can_keep_delivered_quality). */
         return (old->data.cis_rear.boot_id==m->data.cis_rear.boot_id && old->data.cis_rear.update_sequence==m->data.cis_rear.update_sequence) &&
             !(rear_usable(&old->data.cis_rear) && !rear_usable(&m->data.cis_rear));
     case 0x320u:
@@ -730,6 +775,28 @@ static NetStatus raise_age(uint16_t old_age, uint16_t *age, uint64_t elapsed, ui
     if(*age>=floor)return NET_OK;
     if((uint16_t)(floor-*age)>slack)return NET_HOLD;
     *age=floor;*raised=true;return NET_OK;
+}
+/* The quality a receive record keeps for a report taken as the same
+ * observation without an Owner call (net_upper_can_same_observation). The
+ * record is what the UART-M relay and the query answer are built from and
+ * compared with the Owner's state (nd_projection), so its quality follows the
+ * last quality the Owner was given, not the latest report. CIS_REAR (0x0A0):
+ * after the first withdrawal DOMAIN keeps that unusable quality
+ * (DomainIfStateBinding_StoreCisRear) and later changes between unusable
+ * qualities are not delivered, so the record keeps the delivered VALIDITY and
+ * QUALITY_REASON; everything else (TX_SEQUENCE, AGE) is the new report's.
+ * Returns true when m was changed. */
+bool net_upper_can_keep_delivered_quality(const NetUpperCanMessage *old, NetUpperCanMessage *m)
+{
+    NetWireCisRearRaw *r;
+    if(old==NULL || m==NULL || old->id!=m->id || m->id!=0x0A0u)return false;
+    r=&m->data.cis_rear;
+    if(old->data.cis_rear.boot_id!=r->boot_id || old->data.cis_rear.update_sequence!=r->update_sequence ||
+       rear_usable(&old->data.cis_rear) || rear_usable(r) ||
+       (old->data.cis_rear.validity==r->validity && old->data.cis_rear.quality_reason==r->quality_reason))return false;
+    r->validity=old->data.cis_rear.validity;
+    r->quality_reason=old->data.cis_rear.quality_reason;
+    return true;
 }
 NetStatus net_upper_can_repeat_age(const NetUpperCanMessage *old, NetUpperCanMessage *m, uint64_t elapsed,
     uint16_t slack, bool *raised)

@@ -211,6 +211,10 @@ typedef struct {
     uint32_t repeat_age_raised; /* of them: AGE raised to the lower bound within the slack */
     uint32_t generation_changes; /* receive keys moved to a new sender BOOT */
     uint32_t old_generation; /* frames of an ended BOOT refused (also counted in stale) */
+    /* Same-observation reports taken without an Owner call whose quality the
+     * record does not take: it keeps the quality the Owner was given (CIS_REAR
+     * after its first withdrawal, net_upper_can_keep_delivered_quality). */
+    uint32_t rx_quality_kept;
     /* Queue high-water marks, raw like the counters above (never reset, at
      * most the capacity): most transmit records in use at once (tx[],
      * NET_UPPER_TX_CAPACITY) and most events waiting at once in the receive

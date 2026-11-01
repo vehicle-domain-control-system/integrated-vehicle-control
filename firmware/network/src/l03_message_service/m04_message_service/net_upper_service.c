@@ -598,6 +598,9 @@ static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now
     if(status==NET_OK) {
         NetUpperAdmission *a=record;
         if(new_generation){end_boot(&a->ended,a->boot);INC(s->observation.generation_changes);}
+        /* Taken without an Owner call: the record keeps the quality the Owner holds. */
+        if(same_observation && !repeat && net_upper_can_keep_delivered_quality(&a->can,&m))
+            INC(s->observation.rx_quality_kept);
         a->seen=true;a->boot=boot;a->sequence=sequence;a->can=m;a->delivery=d;
         a->raw.can=event->can;a->raw_direction=r->direction;if(!same_observation)++s->next_receipt;
         if(raised)INC(s->observation.repeat_age_raised);
