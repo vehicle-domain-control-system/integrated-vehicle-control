@@ -7,7 +7,9 @@
  *     nor the service slot is used again;
  *   - an event that arrives for a retired key after its slots were used again
  *     touches no new record (tx_stale);
- *   - a NET_STALE refusal of a record that is not on UART-M is held.
+ *   - a NET_STALE refusal of a record that is not on UART-M is held;
+ *   - a frame the device held and refused gives a reason only with the cause
+ *     it reported (NetTxEvent.refusal).
  * Basis: docs/network/interface/04_COMMON/20_API_USAGE_AND_FAILURE.md (closed
  * list of failures after admission). */
 #include "network/net_domain_c2.h"
@@ -21,12 +23,19 @@ static NetDomainC2 adapter;
 static DomainIf_TxPort_t ports;
 static uint64_t now = 1000u;
 static unsigned failures;
+static NetworkLocalFailureReason_t last_reason;
 static NetTxKey offered[8];
 static unsigned offers;
 
 static bool initialized(void) { return true; }
 static DomainIf_Status_t set_port(const DomainIf_TxPort_t *p) { if (p) ports = *p; else memset(&ports, 0, sizeof(ports)); return DOMAIN_IF_OK; }
-static DomainIf_Status_t rx_failure(const NetworkLocalFailure_t *p) { (void)p; ++failures; return DOMAIN_IF_OK; }
+static NetworkLocalFailureReason_t reasons[4]; /* the first notices, in order */
+static DomainIf_Status_t rx_failure(const NetworkLocalFailure_t *p)
+{
+    if (p) { last_reason = p->reason; if (failures < 4u) reasons[failures] = p->reason; }
+    ++failures;
+    return DOMAIN_IF_OK;
+}
 static NetStatus clock_read(void *c, uint64_t *out) { (void)c; *out = now; return NET_OK; }
 static NetStatus submit(void *c, const NetUpperPacket *p, NetTxKey k) { (void)c; (void)p; if (offers < 8u) offered[offers] = k; ++offers; return NET_OK; }
 static NetStatus poll(void *c, NetUpperEvent *out) { (void)c; (void)out; return NET_NO_WORK; }
@@ -138,9 +147,14 @@ static int reason_table(void)
     CHECK(reason_is(refused(false, false, NET_EXPIRED), NET_HOLD, DRV));
     CHECK(reason_is(refused(false, false, NET_OK), NET_HOLD, DRV));
     CHECK(reason_is(refused(true, false, NET_UNSUPPORTED), NET_HOLD, DRV));
-    /* Refused after it waited in the device (submitted): no cause. */
+    /* Refused after it waited in the device (submitted): only the driver
+     * refusal the device reported has a reason; its expiry is the adapter's,
+     * no cause or another status: held. */
+    CHECK(reason_is(refused(true, true, NET_REJECTED), NET_OK, DRV));
+    CHECK(reason_is(refused(true, true, NET_EXPIRED), NET_HOLD, DRV));
     CHECK(reason_is(refused(true, true, NET_OK), NET_HOLD, DRV));
     CHECK(reason_is(refused(true, true, NET_HOLD), NET_HOLD, DRV));
+    CHECK(reason_is(refused(true, true, NET_NOT_CONFIGURED), NET_HOLD, DRV));
     /* Not a settled refusal before the device. */
     s = refused(false, false, NET_HOLD); s.accepted = true; CHECK(reason_is(s, NET_HOLD, CTX));
     s = refused(false, false, NET_HOLD); s.admission_known = false; CHECK(reason_is(s, NET_HOLD, CTX));
@@ -245,6 +259,50 @@ static int stale_only_uart_m(void)
     return 0;
 }
 
+/* -------------------------- refused by the device with a cause ---- */
+/* Three door commands the device took (submitted) and then refused without
+ * sending: the cause it reported becomes the local status in the service
+ * (expired: NET_EXPIRED, driver refusal: NET_REJECTED) and DOMAIN is told once
+ * with that reason (EXPIRED_BEFORE_SEND, DRIVER_SUBMISSION_FINAL); the record
+ * and the service slot are retired. Without a cause the local status stays
+ * NET_OK, no reason is given and the record is held. */
+static NetStatus refuse(NetTxKey key, uint8_t refusal)
+{
+    NetUpperEvent e;
+    memset(&e, 0, sizeof(e));
+    e.kind = NET_UPPER_TX_EVENT; e.link = NET_WIRE_CAN;
+    e.capture.port_epoch = 4u; e.capture.captured_at_ms = now; e.capture.timestamp_known = true;
+    e.tx.key = key; e.tx.admission_observed = true; e.tx.accepted = false; e.tx.release_observed = true;
+    e.tx.refusal = refusal;
+    if (net_upper_capture(&service, &e) != NET_OK) return NET_HOLD;
+    (void)net_upper_step(&service, 1u);
+    return NET_OK;
+}
+static int refused_with_cause(void)
+{
+    static const uint8_t cause[3] = { NET_TX_REFUSAL_EXPIRED, NET_TX_REFUSAL_DRIVER, NET_TX_REFUSAL_NONE };
+    static const NetStatus status[3] = { NET_EXPIRED, NET_REJECTED, NET_OK };
+    NetTxKey k[3];
+    NetUpperTxSnapshot t;
+    unsigned i;
+    for (i = 0u; i < 3u; ++i) { CHECK(door(90u + i) == DOMAIN_IF_OK); k[i] = adapter.last_tx_key; }
+    CHECK(net_upper_step(&service, 0u) == NET_OK && offers == 3u);
+    for (i = 0u; i < 3u; ++i) {
+        CHECK(refuse(k[i], cause[i]) == NET_OK);
+        CHECK(net_upper_tx_snapshot(&service, k[i], &t) == NET_OK);
+        CHECK(t.submitted && t.admission_known && !t.accepted && t.reference_released && t.outcome == NET_TX_UNKNOWN);
+        CHECK(t.local_status == status[i]);
+    }
+    (void)net_domain_c2_step(&adapter);
+    (void)net_domain_c2_step(&adapter);
+    CHECK(failures == 2u);
+    CHECK(index_of(k[0]) < 0 && service_index_of(k[0]) < 0 && index_of(k[1]) < 0 && service_index_of(k[1]) < 0);
+    CHECK(index_of(k[2]) >= 0 && service_index_of(k[2]) >= 0);       /* no cause: held */
+    CHECK(reasons[0] == NETWORK_LOCAL_FAILURE_EXPIRED_BEFORE_SEND);  /* one notice per frame, by its cause */
+    CHECK(reasons[1] == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -252,6 +310,7 @@ int main(int argc, char **argv)
         { "in_flight_release_late", in_flight_release_late },
         { "old_event_after_reuse", old_event_after_reuse },
         { "stale_only_uart_m", stale_only_uart_m },
+        { "refused_with_cause", refused_with_cause },
     };
     size_t i;
     if (argc != 2 || start() != 0) return 2;

@@ -1920,19 +1920,23 @@ static int n28_m_result_session_changed(void)
     return 0;
 }
 
-/* Not resolved, recorded here: an M_RESULT the UART HAL took while another
- * frame was on the line waits in the HAL queue (submitted). When it cannot
- * start later, because it expired while waiting or because AsyncSend refuses
- * it then, the HAL reports it not admitted without a cause
- * (net_hal_rtd_uart.c start_next): the provisional rule gives no reason, so
- * DOMAIN is not told and the record and its M04 slot stay. Three of each:
- * six records and six M04 slots are left (the frames ahead, in-flight
- * failures after the TX timeout abort, are retired). */
+/* An M_RESULT the UART HAL took while another frame was on the line waits in
+ * the HAL queue (submitted). When it cannot start later, because it expired
+ * while waiting or because AsyncSend refuses it then, the HAL reports it not
+ * admitted with that cause (net_hal_rtd_uart.c start_next, NetTxEvent.refusal):
+ * the service keeps it as the local status (NET_EXPIRED, NET_REJECTED), the
+ * adapter gives EXPIRED_BEFORE_SEND or the provisional rule
+ * DRIVER_SUBMISSION_FINAL, DOMAIN is told once with the original device,
+ * session and request, and the record and its M04 slot are retired. 32 of
+ * each: nothing is left (the frames ahead, in-flight failures after the TX
+ * timeout abort, are retired without a notice). The name is kept from the
+ * release that recorded the path as left. */
 static int n29_m_result_hal_queue_left(void)
 {
     NetWireUartFrame fr;
     NetDomainC2 *a;
-    unsigned k, expired0, errors0;
+    unsigned k, expired0, errors0, calls0, notices_expired = 0u, notices_driver = 0u, identity_kept = 0u;
+    const unsigned each = 32u;
     CHECK(start());
     a = NetNode_DomainC2();
     CHECK(context_frame(1u, 11u, &fr));
@@ -1941,26 +1945,41 @@ static int n29_m_result_hal_queue_left(void)
     CHECK(connection_calls == 1u);
     expired0 = diag().rtd.uart[0].uart_tx_expired;
     errors0 = diag().rtd.uart[0].uart_tx_send_errors;
-    for (k = 0u; k < 6u; ++k) {
+    for (k = 0u; k < 2u * each; ++k) {
+        const bool expire = k < each;
+        const uint32_t request = 1001u + 2u * k;
         /* Waiting expires the second one (its bound is shorter than the
          * 100 ms TX timeout of the first), or AsyncSend refuses it. */
-        a->config.transmit_policy.maximum_age_ms = k < 3u ? 60u : 65535u + 1000u;
+        a->config.transmit_policy.maximum_age_ms = expire ? 60u : 65535u + 1000u;
         uart_line_held = true;
-        CHECK(tx_result(100u + 2u * k) == DOMAIN_IF_OK);   /* on the line: never ends */
-        CHECK(tx_result(101u + 2u * k) == DOMAIN_IF_OK);   /* waits in the HAL queue */
+        CHECK(tx_result(request - 1u) == DOMAIN_IF_OK);    /* on the line: never ends */
+        CHECK(tx_result(request) == DOMAIN_IF_OK);         /* waits in the HAL queue */
         ++now_ms; pass();
-        if (k >= 3u) MockRtd_UartSetSendErrors(UART_M, 1u);
+        if (!expire) MockRtd_UartSetSendErrors(UART_M, 1u);
+        calls0 = failure_calls;
         run_to(now_ms + 150u);                             /* the first one aborted, the second one refused */
         uart_line_held = false;
         run_to(now_ms + 20u);
-        CHECK(c2_identity_records(NETWORK_LOCAL_ITEM_REQUEST_RESULT) == k + 1u);
+        CHECK(failure_calls == calls0 + 1u);               /* told once */
+        CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_REQUEST_RESULT && last_failure.link == NETWORK_LINK_UART_M);
+        CHECK(last_failure.reason == (expire ? NETWORK_LOCAL_FAILURE_EXPIRED_BEFORE_SEND
+                                             : NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL));
+        if (expire) ++notices_expired; else ++notices_driver;
+        if (last_failure.hasRequestContext && last_failure.requestDeviceContextId == 7u &&
+            last_failure.requestContext.sessionId == 11u && last_failure.requestContext.requestId == request)
+            ++identity_kept;
+        CHECK(c2_identity_records(NETWORK_LOCAL_ITEM_REQUEST_RESULT) == 0u);
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
         CHECK(a->tx_retired_in_flight == k + 1u);
     }
-    CHECK(diag().rtd.uart[0].uart_tx_expired == expired0 + 3u);
-    CHECK(diag().rtd.uart[0].uart_tx_send_errors == errors0 + 3u);
-    CHECK(failure_calls == 0u && c2_records_used() == 6u && service_slots_used() == 6u);
-    printf("left after 3 expiries and 3 start errors in the HAL queue: c2_records=%u service_slots=%u notices=%u\n",
-           c2_records_used(), service_slots_used(), failure_calls);
+    run_to(now_ms + 1100u);
+    CHECK(failure_calls == 2u * each);                    /* no second notice later */
+    CHECK(diag().rtd.uart[0].uart_tx_expired == expired0 + each);
+    CHECK(diag().rtd.uart[0].uart_tx_send_errors == errors0 + each);
+    CHECK(identity_kept == 2u * each && c2_records_used() == 0u && service_slots_used() == 0u);
+    printf("after %u expiries and %u start errors in the HAL queue: c2_records=%u service_slots=%u "
+           "notices_expired=%u notices_driver=%u identity_kept=%u\n",
+           each, each, c2_records_used(), service_slots_used(), notices_expired, notices_driver, identity_kept);
     return 0;
 }
 

@@ -335,7 +335,7 @@ void NET_BOARD_UART_CALLBACK(const uint8 HwInstance, const Lpuart_Uart_Ip_EventT
 
 /* ------------------------------------------------------- main context ---- */
 static void report(const UartLink *u, NetTxKey key, bool accepted, NetTxOutcome outcome,
-                   bool release, const NetUpperCapture *c)
+                   bool release, uint8_t refusal, const NetUpperCapture *c)
 {
     NetTxEvent ev;
     memset(&ev, 0, sizeof(ev));
@@ -344,6 +344,7 @@ static void report(const UartLink *u, NetTxKey key, bool accepted, NetTxOutcome 
     ev.accepted = accepted;
     ev.outcome = outcome;
     ev.release_observed = release;
+    ev.refusal = refusal;
     (void)net_hal_capture_tx(rtd.adapter, u->link, &ev, c);
 }
 
@@ -389,11 +390,13 @@ static void start_next(UartLink *u)
         Lpuart_Uart_Ip_StatusType st = start_head(u, &c, &expired);
         if (st == LPUART_UART_IP_STATUS_SUCCESS) {
             inc(&u->diag->uart_tx_sent);
-            report(u, u->q[u->q_head]->key, true, NET_TX_UNKNOWN, false, &c);
+            report(u, u->q[u->q_head]->key, true, NET_TX_UNKNOWN, false, NET_TX_REFUSAL_NONE, &c);
         } else {
             NetTxKey key = pop(u);
             inc(expired ? &u->diag->uart_tx_expired : &u->diag->uart_tx_send_errors);
-            report(u, key, false, NET_TX_UNKNOWN, true, &c);
+            /* Not taken after it waited: the cause goes up with the refusal. */
+            report(u, key, false, NET_TX_UNKNOWN, true,
+                   expired ? NET_TX_REFUSAL_EXPIRED : NET_TX_REFUSAL_DRIVER, &c);
         }
     }
 }
@@ -422,7 +425,7 @@ NetStatus net_hal_rtd_uart_submit(const NetHalTransfer *t)
     st = start_head(u, &c, &expired);
     if (st == LPUART_UART_IP_STATUS_SUCCESS) {
         inc(&u->diag->uart_tx_sent);
-        report(u, t->key, true, NET_TX_UNKNOWN, false, &c);
+        report(u, t->key, true, NET_TX_UNKNOWN, false, NET_TX_REFUSAL_NONE, &c);
         return NET_OK;
     }
     (void)pop(u);
@@ -430,7 +433,7 @@ NetStatus net_hal_rtd_uart_submit(const NetHalTransfer *t)
     if (st == LPUART_UART_IP_STATUS_BUSY) return NET_NO_CAPACITY;
     /* The driver refused this frame for good: a final submit refusal. (A frame
      * that waited behind another one and cannot start is reported later as not
-     * admitted, start_next; that report carries no cause.) */
+     * admitted, start_next, with the same cause in NetTxEvent.refusal.) */
     inc(&u->diag->uart_tx_send_errors);
     return NET_REJECTED;
 }
@@ -468,7 +471,7 @@ uint32_t net_hal_rtd_uart_drain(uint32_t budget)
             c.port_epoch = u->epoch;
             c.captured_at_ms = net_hal_rtd_place_stamp(stamp);
             c.timestamp_known = true;
-            report(u, k, true, NET_TX_SUCCEEDED, true, &c);
+            report(u, k, true, NET_TX_SUCCEEDED, true, NET_TX_REFUSAL_NONE, &c);
             start_next(u);
         }
     }
@@ -556,7 +559,7 @@ void net_hal_rtd_uart_service(uint64_t now)
                 k = pop(u);
                 inc(&u->diag->uart_tx_timeout_aborts);
                 c = net_hal_rtd_capture_now(u->epoch);
-                report(u, k, true, NET_TX_FAILED, true, &c);
+                report(u, k, true, NET_TX_FAILED, true, NET_TX_REFUSAL_NONE, &c);
             } else {
                 u->aborting = false;    /* ended in the meantime; the drain reports it */
                 u->abort_wait = false;

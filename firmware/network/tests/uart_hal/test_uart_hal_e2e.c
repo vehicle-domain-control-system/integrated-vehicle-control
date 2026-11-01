@@ -414,15 +414,18 @@ static void tx_prepare(void)
 #endif
 }
 
+static uint64_t tx_bound_ms; /* 0: the default bound of tx_publish */
 static NetStatus tx_publish(NetTxKey *key)
 {
 #if NETWORK_UPPER_NODE_PROFILE == NET_UPPER_PROFILE_CIS
     NetAgePolicy policy = { true, 1000u, true };
+    if (tx_bound_ms != 0u) policy.maximum_age_ms = tx_bound_ms;
     return net_upper_cis_publish_pi_permission(&service, CIS_BOOT, 1500u, &policy, key);
 #else
     NetWireMDomainAliveRaw a;
     NetSourceStamp s;
     NetAgePolicy policy = { true, 10000u, true };
+    if (tx_bound_ms != 0u) policy.maximum_age_ms = tx_bound_ms;
     memset(&a, 0, sizeof(a));
     a.domain_boot_id = DOMAIN_BOOT;
     a.update_sequence = 900u;
@@ -435,6 +438,15 @@ static NetStatus tx_publish(NetTxKey *key)
     s.original_age_ms = a.source_age_ms;     /* the stamp states the message's own age */
     return net_ecu_publish_m_domain_alive(&ecu, &a, &s, &policy, key);
 #endif
+}
+/* tx_publish with another use limit. */
+static NetStatus tx_publish_bound(NetTxKey *key, uint64_t maximum_age_ms)
+{
+    NetStatus st;
+    tx_bound_ms = maximum_age_ms;
+    st = tx_publish(key);
+    tx_bound_ms = 0u;
+    return st;
 }
 
 /* Wire bytes decode to the published message with this LINK_SEQUENCE, the
@@ -1237,8 +1249,8 @@ static int u18_end_transfer_before_send(void)
 /* AsyncSend refused on an idle line: the Port refuses that frame for good
  * (NET_REJECTED, uart_tx_send_errors), it is never offered again and its
  * LINK_SEQUENCE stays used. A frame that waited behind another one and is
- * refused when it starts is reported not admitted, without a cause
- * (submitted, local status OK). The next frame goes out with the next
+ * refused when it starts is reported not admitted with that cause (submitted,
+ * local status NET_REJECTED). The next frame goes out with the next
  * LINK_SEQUENCE. */
 static int u19_send_error_refused(void)
 {
@@ -1268,10 +1280,47 @@ static int u19_send_error_refused(void)
     step_ms(1u);
     RUN(snapshot_is(k2, true, NET_TX_SUCCEEDED, true));
     CHECK(net_upper_tx_snapshot(&service, k3, &s) == NET_OK);
-    CHECK(s.submitted && s.admission_known && !s.accepted && s.reference_released && s.local_status == NET_OK);
+    CHECK(s.submitted && s.admission_known && !s.accepted && s.reference_released && s.local_status == NET_REJECTED);
     CHECK(rdiag().uart[DIAG].uart_tx_send_errors == 2u && MockRtd_UartSends(LPUART) == 1u);
     CHECK(net_upper_retire(&service, k2) == NET_OK && net_upper_retire(&service, k3) == NET_OK);
     RUN(tx_cycle(4u));
+    RUN(link_healthy());
+    return 0;
+}
+
+/* A frame that waited in the HAL queue and expired before it could start is
+ * reported not admitted with that cause: the service keeps NET_EXPIRED as its
+ * local status (submitted, released, no outcome), uart_tx_expired counts it,
+ * nothing is sent for it. The frame ahead and the next one are not affected. */
+static int u20_queued_expiry_cause(void)
+{
+    NetTxKey k1, k2;
+    NetUpperTxSnapshot s;
+    NetHalRtdDiag d0;
+    uint8_t out[NET_WIRE_UART_FRAME_MAX];
+    CHECK(start() == NET_OK);
+    step_ms(2u);
+    tx_prepare();
+    d0 = rdiag();
+    MockRtd_UartSetTxStall(LPUART, true);
+    CHECK(tx_publish(&k1) == NET_OK);
+    step_ms(1u);                                        /* on the line */
+    CHECK(tx_publish_bound(&k2, 30u) == NET_OK);
+    step_ms(1u);                                        /* waits in the HAL queue */
+    RUN(snapshot_is(k2, false, NET_TX_UNKNOWN, false));
+    step_ms(40u);                                       /* past its bound, before the TX timeout */
+    MockRtd_UartSetTxStall(LPUART, false);
+    CHECK(line_out(out, sizeof(out)) > 0u);
+    step_ms(1u);
+    RUN(snapshot_is(k1, true, NET_TX_SUCCEEDED, true));
+    CHECK(net_upper_tx_snapshot(&service, k2, &s) == NET_OK);
+    CHECK(s.submitted && s.admission_known && !s.accepted && s.reference_released);
+    CHECK(s.outcome == NET_TX_UNKNOWN && s.local_status == NET_EXPIRED);
+    CHECK(rdiag().uart[DIAG].uart_tx_expired == d0.uart[DIAG].uart_tx_expired + 1u);
+    CHECK(rdiag().uart[DIAG].uart_tx_send_errors == d0.uart[DIAG].uart_tx_send_errors);
+    CHECK(MockRtd_UartSends(LPUART) == 1u);
+    CHECK(net_upper_retire(&service, k1) == NET_OK && net_upper_retire(&service, k2) == NET_OK);
+    RUN(tx_cycle(3u));
     RUN(link_healthy());
     return 0;
 }
@@ -1295,6 +1344,7 @@ int main(int argc, char **argv)
         , { "u17_abort_refused_keeps_buffer", u17_abort_refused_keeps_buffer }
         , { "u18_end_transfer_before_send", u18_end_transfer_before_send }
         , { "u19_send_error_refused", u19_send_error_refused }
+        , { "u20_queued_expiry_cause", u20_queued_expiry_cause }
     };
     size_t i;
     if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }

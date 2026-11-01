@@ -346,9 +346,10 @@ NetStatus net_domain_c2_status_quality_provisional(void *, uint16_t, const NetUp
 NetStatus net_domain_c2_permission_bundle_provisional(void *, const DomainIf_CisPowerPermission_t *,
     NetWireDomainPermissionRaw *);
 /* PROVISIONAL local failure reason (NetDomainC2Config.local_failure_reason) of
- * a C2 TX record the service refused before the device took it (admission
- * known, not accepted, not submitted, not expired). The reason follows the
- * cause, not the place that found it (the M04 queue or the Port):
+ * a C2 TX record refused before it was sent (admission known, not accepted,
+ * no outcome, not expired: the adapter gives EXPIRED_BEFORE_SEND itself). The
+ * reason follows the cause, not the place that found it (the M04 queue, the
+ * Port or the device queue):
  *   - NET_HOLD: the link was closed or failed (bus-off, port error), reset to
  *     a new port epoch or quiesced, or the UART-M context was lost. On the
  *     DOMAIN send paths (commands, VSS_EVENT, M_RESULT) every NET_HOLD of such
@@ -361,8 +362,11 @@ NetStatus net_domain_c2_permission_bundle_provisional(void *, const DomainIf_Cis
  *   - offered and refused for good by the Port or the driver (NET_REJECTED,
  *     NET_NOT_CONFIGURED, NET_INVALID_ARGUMENT, NET_DUPLICATE):
  *     DRIVER_SUBMISSION_FINAL;
- *   - anything else, a frame the device refused after it waited there
- *     (submitted) included: NET_HOLD, no reason is guessed.
+ *   - the device held the frame (submitted) and its driver refused to start
+ *     it (the device reported the cause, NET_REJECTED):
+ *     DRIVER_SUBMISSION_FINAL;
+ *   - anything else, a frame the device refused without a cause included:
+ *     NET_HOLD, no reason is guessed.
  * Not selected by default: the integration (board hook) or a test binds it. */
 NetStatus net_domain_c2_local_failure_reason_provisional(void *, const NetUpperTxSnapshot *,
     NetworkLocalFailureReason_t *);

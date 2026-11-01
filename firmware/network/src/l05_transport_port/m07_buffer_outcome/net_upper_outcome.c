@@ -19,7 +19,7 @@ NetStatus net_upper_observe_tx(NetUpper *s, const NetTxEvent *e)
 {
     NetUpperTx *r=net_upper_find_tx(s,e->key); bool changed=false;
     if(r==NULL || !r->state.submitted) { net_upper_observe_increment(&s->observation.tx_stale); return NET_STALE; }
-    if((uint32_t)e->outcome>(uint32_t)NET_TX_FAILED ||
+    if((uint32_t)e->outcome>(uint32_t)NET_TX_FAILED || e->refusal>NET_TX_REFUSAL_DRIVER ||
        (!e->admission_observed && !e->release_observed && e->outcome==NET_TX_UNKNOWN)) return NET_INVALID_ARGUMENT;
     if(r->state.conflict) return NET_HOLD;
     if((e->admission_observed && r->state.admission_known && e->accepted!=r->state.accepted) ||
@@ -32,6 +32,12 @@ NetStatus net_upper_observe_tx(NetUpper *s, const NetTxEvent *e)
     if(e->admission_observed && !r->state.admission_known) {
         r->state.admission_known=true; r->state.accepted=e->accepted; changed=true;
         if(e->accepted) net_upper_observe_increment(&s->observation.tx_admitted);
+        /* A device that held the frame and refused it may say why: kept as the
+         * frame's local status, as for a refusal before the device (expired:
+         * NET_EXPIRED, the driver refused to start it: NET_REJECTED). Without a
+         * cause the local status stays as it was. */
+        else if(e->refusal==NET_TX_REFUSAL_EXPIRED) r->state.local_status=NET_EXPIRED;
+        else if(e->refusal==NET_TX_REFUSAL_DRIVER) r->state.local_status=NET_REJECTED;
     }
     if(e->outcome!=NET_TX_UNKNOWN && r->state.outcome==NET_TX_UNKNOWN) {
         r->state.outcome=e->outcome; changed=true;

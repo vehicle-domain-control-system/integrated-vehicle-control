@@ -293,7 +293,7 @@ static NetStatus event(TxFixture *f, NetTxEvent e, const char *phase)
 }
 static int finish(TxFixture *f, NetTxKey key, NetTxOutcome outcome)
 {
-    NetTxEvent e = {key, true, true, true, outcome};
+    NetTxEvent e = {key, true, true, true, NET_TX_REFUSAL_NONE, outcome};
     CHECK(event(f, e, "host_combined_terminal_release") == NET_OK);
     CHECK(retire(f, key) == NET_OK);
     CHECK(net_host_mock_borrowed_frame(&f->mock, key) == NULL);
@@ -419,7 +419,7 @@ static int six_outcome_orders(const char *name)
             CHECK(submit(&f, CANDIDATE, &f.raw, &key) == NET_OK);
             CHECK(retire(&f, key) == NET_HOLD);
             for (step = 0u; step < 3u; ++step) {
-                NetTxEvent e = {key, false, false, false, NET_TX_UNKNOWN};
+                NetTxEvent e = {key, false, false, false, NET_TX_REFUSAL_NONE, NET_TX_UNKNOWN};
                 char phase[80];
                 unsigned kind = orders[order][step];
                 if (kind == 0u) { e.admission_observed = true; e.accepted = true; }
@@ -461,7 +461,7 @@ static int rejection_release(const char *name)
         CHECK(submit(&f, CANDIDATE, &f.raw, &key) == NET_OK);
         for (step = 0u; step < 2u; ++step) {
             bool release = (step != reverse);
-            NetTxEvent e = {key, !release, false, release, NET_TX_UNKNOWN};
+            NetTxEvent e = {key, !release, false, release, NET_TX_REFUSAL_NONE, NET_TX_UNKNOWN};
             CHECK(event(&f, e, release ? "release_only" : "admission_rejected") == NET_OK);
             CHECK(event(&f, e, "duplicate_rejection_or_release") == NET_DUPLICATE);
             CHECK(net_runtime_tx_snapshot(&f.runtime, key, &r) == NET_OK);
@@ -487,7 +487,7 @@ static int stale_conflict(const char *name)
         NetTxEvent e;
         CHECK(fixture_init(&f, name) == 0);
         CHECK(submit(&f, CANDIDATE, &f.raw, &key) == NET_OK);
-        e = (NetTxEvent){key, true, true, false, NET_TX_UNKNOWN};
+        e = (NetTxEvent){key, true, true, false, NET_TX_REFUSAL_NONE, NET_TX_UNKNOWN};
         CHECK(event(&f, e, "admission") == NET_OK);
         CHECK(event(&f, e, "duplicate_admission") == NET_DUPLICATE);
         e.key.epoch++;
@@ -498,7 +498,7 @@ static int stale_conflict(const char *name)
         CHECK(event(&f, e, "wrong_token_release") == NET_STALE);
         CHECK(net_host_mock_borrowed_frame(&f.mock, key) != NULL);
         CHECK(f.runtime.observation.stale_events == 2u && f.runtime.observation.duplicate_events == 1u);
-        e = (NetTxEvent){key, false, false, false, NET_TX_SUCCEEDED};
+        e = (NetTxEvent){key, false, false, false, NET_TX_REFUSAL_NONE, NET_TX_SUCCEEDED};
         if (variant == 0u) {
             CHECK(event(&f, e, "terminal_success") == NET_OK);
             CHECK(event(&f, e, "duplicate_terminal") == NET_DUPLICATE);
@@ -515,7 +515,7 @@ static int stale_conflict(const char *name)
         CHECK(r.outcome == (variant == 0u ? NET_TX_SUCCEEDED : NET_TX_UNKNOWN));
         CHECK(f.runtime.observation.conflicting_events == 1u && f.runtime.observation.tx_released == 0u);
         CHECK(retire(&f, key) == NET_HOLD);
-        e = (NetTxEvent){key, false, false, true, NET_TX_UNKNOWN};
+        e = (NetTxEvent){key, false, false, true, NET_TX_REFUSAL_NONE, NET_TX_UNKNOWN};
         CHECK(event(&f, e, "later_release_still_pinned") == NET_HOLD);
         CHECK(retire(&f, key) == NET_HOLD);
         CHECK(runtime_used(&f) == 1u && attached_count(&f) == 1u &&
@@ -663,20 +663,20 @@ static int retire_reuse(const char *name)
     CHECK(submit(&f, CANDIDATE, &f.raw, &old) == NET_OK);
     CHECK(retire(&f, old) == NET_HOLD);
     CHECK(failure_atomic(&f, CANDIDATE, &f.raw, NET_BUSY, "source_reserved_while_borrowed") == 0);
-    e = (NetTxEvent){old, false, false, true, NET_TX_UNKNOWN};
+    e = (NetTxEvent){old, false, false, true, NET_TX_REFUSAL_NONE, NET_TX_UNKNOWN};
     CHECK(event(&f, e, "release_without_admission") == NET_OK);
     CHECK(retire(&f, old) == NET_HOLD);
     CHECK(failure_atomic(&f, CANDIDATE, &f.raw, NET_BUSY, "source_reserved_after_release_before_retire") == 0);
-    e = (NetTxEvent){old, true, true, false, NET_TX_UNKNOWN};
+    e = (NetTxEvent){old, true, true, false, NET_TX_REFUSAL_NONE, NET_TX_UNKNOWN};
     CHECK(event(&f, e, "admission_without_terminal") == NET_OK);
     CHECK(retire(&f, old) == NET_HOLD);
-    e = (NetTxEvent){old, false, false, false, NET_TX_FAILED};
+    e = (NetTxEvent){old, false, false, false, NET_TX_REFUSAL_NONE, NET_TX_FAILED};
     CHECK(event(&f, e, "terminal_completes_evidence") == NET_OK);
     CHECK(retire(&f, old) == NET_OK);
     CHECK(retire(&f, old) == NET_STALE);
     CHECK(submit(&f, CANDIDATE, &f.raw, &newer) == NET_OK);
     CHECK(newer.epoch == old.epoch && newer.token > old.token);
-    e = (NetTxEvent){old, true, false, true, NET_TX_UNKNOWN};
+    e = (NetTxEvent){old, true, false, true, NET_TX_REFUSAL_NONE, NET_TX_UNKNOWN};
     CHECK(event(&f, e, "late_retired_key_release") == NET_STALE);
     CHECK(net_host_mock_borrowed_frame(&f.mock, newer) != NULL);
     CHECK(net_runtime_tx_snapshot(&f.runtime, newer, &r) == NET_OK);

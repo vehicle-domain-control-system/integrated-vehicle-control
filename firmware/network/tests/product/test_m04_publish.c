@@ -616,6 +616,83 @@ static int m12_queue_full_keeps_submission(void)
     return 0;
 }
 
+/* A UART frame the device took and then refused without sending it (it
+ * waited in the device and expired there, or its driver refused to start it).
+ * The device may report the cause with the refusal (NetTxEvent.refusal); the
+ * service keeps it as the frame's local status. The publisher settles a frame
+ * a device took on that fact alone: tx_failed, its LINK_SEQUENCE stays used
+ * and the next frame takes the number after it, whatever the cause. */
+static int refused_by_device(uint8_t refusal, NetStatus local, NetUpperPublishView *out)
+{
+    static const NetUpperPublishEntry vision[] = { { NET_WIRE_UART_C, 0x60u, 0u, { true, 2000u, true } } };
+    NetUpperUartMessage m, dec;
+    NetUpperTxSnapshot t;
+    NetUpperEvent e;
+    CHECK(start_service(NET_WIRE_NODE_PI, true) == NET_OK);
+    CHECK(start_table(vision, 1u) == NET_OK);
+    port.auto_settle = false;
+    memset(&m, 0, sizeof(m));
+    m.link = NET_WIRE_UART_C;
+    m.type = 0x60u;
+    m.data.p_vision_result.pi_boot_id = 1432778632u;
+    m.data.p_vision_result.vision_sequence = 100u;
+    m.data.p_vision_result.vision_age_ms = 5u;
+    m.data.p_vision_result.occupant_presence = 1u;
+    m.data.p_vision_result.presence_validity = 1u;
+    m.data.p_vision_result.occupant_count = 1u;
+    m.data.p_vision_result.count_validity = 1u;
+    m.data.p_vision_result.vision_status = 2u;
+    CHECK(net_upper_publish_uart(&pub, &m, NULL, NULL) == NET_OK);
+    pass();
+    CHECK(port.count == 1u && port.taken[0].open);       /* the device holds it */
+    memset(&e, 0, sizeof(e));
+    e.kind = NET_UPPER_TX_EVENT;
+    e.link = NET_WIRE_UART_C;
+    e.capture.port_epoch = 1u;
+    e.capture.captured_at_ms = port.now;
+    e.capture.timestamp_known = true;
+    e.tx.key = port.taken[0].key;
+    e.tx.admission_observed = true;
+    e.tx.accepted = false;
+    e.tx.release_observed = true;
+    e.tx.refusal = refusal;
+    e.tx.outcome = NET_TX_UNKNOWN;
+    CHECK(net_upper_capture(&svc, &e) == NET_OK);
+    port.taken[0].open = false;
+    CHECK(net_upper_step(&svc, NET_UPPER_POLL_BUDGET) == NET_OK);
+    CHECK(net_upper_tx_snapshot(&svc, port.taken[0].key, &t) == NET_OK);
+    CHECK(t.submitted && t.admission_known && !t.accepted && t.reference_released);
+    CHECK(t.outcome == NET_TX_UNKNOWN && t.local_status == local);
+    port.now += STEP_MS;
+    pass();                                               /* settled and retired */
+    CHECK(net_upper_tx_snapshot(&svc, port.taken[0].key, &t) == NET_STALE);
+    m.data.p_vision_result.vision_sequence = 101u;
+    CHECK(net_upper_publish_uart(&pub, &m, NULL, NULL) == NET_OK);
+    port.now += STEP_MS;
+    pass();
+    CHECK(port.count == 2u);
+    CHECK(net_upper_uart_decode(NET_WIRE_CANDIDATE_ONLY, NET_WIRE_UART_C, port.taken[1].packet.direction,
+                                &port.taken[1].packet.uart, &dec) == NET_WIRE_OK);
+    CHECK(dec.sequence == 2u && dec.data.p_vision_result.vision_sequence == 101u);
+    CHECK(net_upper_publish_view(&pub, NET_WIRE_UART_C, 0x60u, out) == NET_OK);
+    CHECK(out->counters.sent == 2u && out->counters.tx_failed == 1u && out->counters.not_sent == 0u);
+    CHECK(out->counters.queue_full == 0u && out->next_sequence == 3u);
+    return 0;
+}
+
+static int m22_device_refusal_cause(void)
+{
+    NetUpperPublishView none, expired, driver;
+    if (refused_by_device(NET_TX_REFUSAL_NONE, NET_OK, &none) != 0) return 1;
+    if (refused_by_device(NET_TX_REFUSAL_EXPIRED, NET_EXPIRED, &expired) != 0) return 1;
+    if (refused_by_device(NET_TX_REFUSAL_DRIVER, NET_REJECTED, &driver) != 0) return 1;
+    CHECK(expired.counters.sent == none.counters.sent && driver.counters.sent == none.counters.sent);
+    CHECK(expired.counters.tx_failed == none.counters.tx_failed && driver.counters.tx_failed == none.counters.tx_failed);
+    CHECK(expired.counters.not_sent == none.counters.not_sent && driver.counters.not_sent == none.counters.not_sent);
+    CHECK(expired.next_sequence == none.next_sequence && driver.next_sequence == none.next_sequence);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -627,6 +704,7 @@ int main(int argc, char **argv)
         { "m08_sequence_wrap_hold", m08_sequence_wrap_hold }, { "m09_pending_age", m09_pending_age },
         { "m10_uart_link_sequence", m10_uart_link_sequence }, { "m11_registration", m11_registration },
         { "m12_queue_full_keeps_submission", m12_queue_full_keeps_submission },
+        { "m22_device_refusal_cause", m22_device_refusal_cause },
         { "m13_uart_link_sequence_wrap", m13_uart_link_sequence_wrap }
     };
     size_t i;

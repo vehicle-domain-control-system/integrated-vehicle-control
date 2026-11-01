@@ -272,6 +272,37 @@ static int tx_conflict(void)
     CHECK(port.ops->poll(port.context,&out)==NET_OK && a.tx[0].held && a.tx[0].active);
     return 0;
 }
+/* The refusal cause of a refused admission (NetTxEvent.refusal) goes up with
+ * the admission part only. It plays no part in the conflict checks (a second
+ * refusal with another cause is a duplicate, not a conflict), an accepted
+ * admission carries none, a refusal without a cause stays without one, and a
+ * value out of range is refused. */
+static int tx_refusal_cause(void)
+{
+    NetUpperPacket p=packet(); NetUpperPort port; NetTxEvent e; NetUpperCapture c=capture(1u,100u); NetUpperEvent out;
+    uint32_t conflicts;
+    CHECK(init(&a,&fa,NET_HAL_S32K344)==0); port=net_hal_adapter_port(&a);
+    CHECK(port.ops->submit(port.context,&p,key(1u))==NET_OK);
+    CHECK(port.ops->submit(port.context,&p,key(2u))==NET_OK);
+    CHECK(port.ops->submit(port.context,&p,key(3u))==NET_OK);
+    memset(&e,0,sizeof(e)); e.key=key(1u); e.admission_observed=true; e.accepted=false; e.release_observed=true;
+    e.refusal=3u; CHECK(net_hal_capture_tx(&a,NET_WIRE_CAN,&e,&c)==NET_INVALID_ARGUMENT);
+    e.refusal=NET_TX_REFUSAL_EXPIRED; CHECK(net_hal_capture_tx(&a,NET_WIRE_CAN,&e,&c)==NET_OK);
+    conflicts=a.observation.tx_conflicts;
+    e.refusal=NET_TX_REFUSAL_DRIVER; CHECK(net_hal_capture_tx(&a,NET_WIRE_CAN,&e,&c)==NET_DUPLICATE);
+    CHECK(a.observation.tx_conflicts==conflicts && !a.tx[0].held && a.tx[0].refusal==NET_TX_REFUSAL_EXPIRED);
+    CHECK(port.ops->poll(port.context,&out)==NET_OK && out.tx.admission_observed && !out.tx.accepted);
+    CHECK(out.tx.refusal==NET_TX_REFUSAL_EXPIRED);
+    CHECK(port.ops->poll(port.context,&out)==NET_OK && out.tx.release_observed && out.tx.refusal==NET_TX_REFUSAL_NONE);
+    memset(&e,0,sizeof(e)); e.key=key(2u); e.admission_observed=true; e.accepted=true; e.refusal=NET_TX_REFUSAL_DRIVER;
+    CHECK(net_hal_capture_tx(&a,NET_WIRE_CAN,&e,&c)==NET_OK);
+    CHECK(port.ops->poll(port.context,&out)==NET_OK && out.tx.accepted && out.tx.refusal==NET_TX_REFUSAL_NONE);
+    memset(&e,0,sizeof(e)); e.key=key(3u); e.admission_observed=true; e.accepted=false; e.release_observed=true;
+    CHECK(net_hal_capture_tx(&a,NET_WIRE_CAN,&e,&c)==NET_OK);
+    CHECK(port.ops->poll(port.context,&out)==NET_OK && !out.tx.accepted && out.tx.refusal==NET_TX_REFUSAL_NONE);
+    CHECK(a.observation.tx_conflicts==conflicts);
+    return 0;
+}
 static int rx_pressure(void)
 {
     unsigned i; NetUpperPort port; NetUpperCapture c=capture(1u,100u); NetUpperEvent out;
@@ -502,6 +533,7 @@ int main(int argc,char **argv)
     else if(strcmp(name,"submit_reject")==0) result=submit_reject();
     else if(strcmp(name,"stale_key")==0) result=stale_key();
     else if(strcmp(name,"tx_conflict")==0) result=tx_conflict();
+    else if(strcmp(name,"tx_refusal_cause")==0) result=tx_refusal_cause();
     else if(strcmp(name,"rx_pressure")==0) result=rx_pressure();
     else if(strcmp(name,"tx_pressure")==0) result=tx_pressure();
     else if(strcmp(name,"reset_borrow")==0) result=reset_borrow();

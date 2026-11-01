@@ -54,7 +54,7 @@ static NetStatus submit(Fixture *f, uint64_t id, NetTxKey *key)
 static NetStatus tx_event(Fixture *f, NetTxKey key, bool admission, bool accepted,
                           NetTxOutcome outcome, bool release)
 {
-    NetTxEvent event = {key, admission, accepted, release, outcome};
+    NetTxEvent event = {key, admission, accepted, release, NET_TX_REFUSAL_NONE, outcome};
     NetStatus status = net_host_mock_inject_tx(&f->mock, &event);
     if (status != NET_OK) return status;
     return net_runtime_step(&f->runtime, 0u);

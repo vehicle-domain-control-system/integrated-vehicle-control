@@ -421,6 +421,8 @@ if(NETWORK_BUILD_HAL_PORT_ADAPTER)
                 tx_metadata_fault tx_capture_error)
             add_test(NAME hal.${case} COMMAND test_hal_adapter ${case})
         endforeach()
+        # The cause of a refused admission: kept, sent with the admission, not a conflict.
+        add_test(NAME hal.tx_refusal_cause COMMAND test_hal_adapter tx_refusal_cause)
     endif()
 endif()
 
@@ -536,12 +538,13 @@ if(NETWORK_BUILD_DOMAIN_C2)
         endforeach()
         # C2 TX records after a failure: the provisional local failure reason, an in-flight failure
         # retired after the release, an old event after the slots were used again, NET_STALE held
-        # outside UART-M.
+        # outside UART-M, a frame the device refused with or without a cause.
         add_executable(test_domain_c2_retire nodes/domain/tests/product/test_domain_c2_retire.c)
         target_link_libraries(test_domain_c2_retire PRIVATE network_domain_c2)
         target_include_directories(test_domain_c2_retire PRIVATE src/l03_message_service/m04_message_service)
         network_warnings(test_domain_c2_retire)
-        foreach(case IN ITEMS reason_table in_flight_release_late old_event_after_reuse stale_only_uart_m)
+        foreach(case IN ITEMS reason_table in_flight_release_late old_event_after_reuse stale_only_uart_m
+                refused_with_cause)
             add_test(NAME domain_c2_retire_${case} COMMAND test_domain_c2_retire ${case})
         endforeach()
     endif()
@@ -706,6 +709,8 @@ if(BUILD_TESTING AND NETWORK_BUILD_UPPER_STACK AND NETWORK_NODE_PROFILE STREQUAL
             m13_uart_link_sequence_wrap)
         add_test(NAME m04.${case} COMMAND test_m04_publish ${case})
     endforeach()
+    # A frame the device took and refused: the publisher result is the same whatever the cause.
+    add_test(NAME m04.m22_device_refusal_cause COMMAND test_m04_publish m22_device_refusal_cause)
     # UART LINK_SEQUENCE of publish slots: a frame no device took gives its
     # number back only while no later frame of the direction took one.
     add_executable(test_m04_link_sequence tests/product/test_m04_link_sequence.c)
@@ -1039,8 +1044,9 @@ if(NETWORK_BUILD_RTD_MOCK)
         # A state relay takes a C2 TX record and is retired once sent or released after a failure.
         add_test(NAME domain_node.n24_state_relay_retired COMMAND test_domain_node n24_state_relay_retired)
         # Local failure reason by cause (bus-off found in the queue or by the Port, driver submit errors,
-        # an M_RESULT of an old session), occurrence notices DOMAIN does not support, what an M_RESULT
-        # refused in the UART HAL queue leaves, a quarantined MB that completes late.
+        # an M_RESULT of an old session), occurrence notices DOMAIN does not support, M_RESULTs refused
+        # in the UART HAL queue with their cause (expired, driver start error), a quarantined MB that
+        # completes late.
         foreach(case IN ITEMS n25_busoff_reason_queue_and_port n26_driver_submit_errors
                 n27_occurrence_unsupported_retired n28_m_result_session_changed n29_m_result_hal_queue_left
                 n30_quarantined_late_completion)
@@ -1087,9 +1093,12 @@ if(NETWORK_BUILD_RTD_MOCK)
             add_test(NAME uart_hal.${case} COMMAND test_uart_hal_e2e_ostimer ${case})
             add_test(NAME uart_hal.${case}_uart_m COMMAND test_uart_hal_e2e_uart_m ${case})
         endforeach()
-        # A driver refusal of AsyncSend on an idle line (final refusal) and of a frame that waited (no cause).
+        # A driver refusal of AsyncSend on an idle line (final refusal) and of a frame that waited (the
+        # cause goes up), and a frame that expired while it waited (the cause goes up).
         add_test(NAME uart_hal.u19_send_error_refused COMMAND test_uart_hal_e2e_ostimer u19_send_error_refused)
         add_test(NAME uart_hal.u19_send_error_refused_uart_m COMMAND test_uart_hal_e2e_uart_m u19_send_error_refused)
+        add_test(NAME uart_hal.u20_queued_expiry_cause COMMAND test_uart_hal_e2e_ostimer u20_queued_expiry_cause)
+        add_test(NAME uart_hal.u20_queued_expiry_cause_uart_m COMMAND test_uart_hal_e2e_uart_m u20_queued_expiry_cause)
     endif()
 
     # CIS node end-to-end (CAN + UART-C through the node root and the CIS
@@ -1121,6 +1130,10 @@ if(NETWORK_BUILD_RTD_MOCK)
                  COMMAND test_cis_node_e2e f26_occupant_relay_after_newer_judgement)
         add_test(NAME cis_node.f27_occupant_relay_after_repetition
                  COMMAND test_cis_node_e2e f27_occupant_relay_after_repetition)
+        # One P_PERMISSION on the UART-C device at a time: the next relay waits in the
+        # publisher, never in the HAL queue; a driver start error refuses it at the submit.
+        add_test(NAME cis_node.f28_permission_relay_one_in_device
+                 COMMAND test_cis_node_e2e f28_permission_relay_one_in_device)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_cis_node_entry nodes/cis/tests/cis_node/test_cis_node_e2e.c)

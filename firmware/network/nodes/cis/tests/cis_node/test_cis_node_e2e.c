@@ -2451,6 +2451,59 @@ static int f27_occupant_relay_after_repetition(void)
     return 0;
 }
 
+/* P_PERMISSION has one frame on the UART-C device at a time: a new DOMAIN
+ * evaluation that comes while the relay before it is still on the line waits
+ * in the publisher (net_upper_publish_service offers it once the frame before
+ * is settled), never in the HAL queue. So a relay is never refused after a
+ * wait in the device (that path reports its cause in NetTxEvent.refusal);
+ * the driver's start error reaches it at the submit: not sent, its
+ * LINK_SEQUENCE stays used, the next relay goes on with the number after it. */
+static int f28_permission_relay_one_in_device(void)
+{
+    NetNodeDiag d, d0;
+    UartOut u1;
+    uint64_t received1, delivered1;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    d0 = diag();
+    MockRtd_UartSetTxStall(LPUART, true);
+    RUN(permission_in(1u, 41u, 10u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);                                          /* relay 1 on the line */
+    received1 = last_perm_meta.received_at_ms;
+    delivered1 = perm_delivered_at;
+    RUN(permission_in(2u, 42u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(5u);
+    d = diag();
+    CHECK(perm_count == 2u && uart_n == 0u && d.app.relay_submitted == 2u);
+    CHECK(d.pi_permission_tx.revision == 2u);
+    CHECK(d.pi_permission_tx.counters.sent == 1u && d.pi_permission_tx.next_sequence == 2u); /* relay 2 in the publisher */
+    CHECK(d.rtd.uart[1].uart_tx_waiting == d0.rtd.uart[1].uart_tx_waiting);                 /* none in the HAL queue */
+    MockRtd_UartSetSendErrors(LPUART, 1u);                /* the driver refuses the next start */
+    MockRtd_UartSetTxStall(LPUART, false);
+    step_ms(3u);
+    d = diag();
+    CHECK(uart_n == 1u && uart_bad == 0u);
+    u1 = uart_out[0];
+    u1.at = delivered1;                                   /* AGE was added when it was dispatched */
+    RUN(check_relay(&u1, 1u, 1u, NET_TRISTATE_YES, 10u, received1));
+    CHECK(d.rtd.uart[1].uart_tx_waiting == d0.rtd.uart[1].uart_tx_waiting);
+    CHECK(d.rtd.uart[1].uart_tx_send_errors == d0.rtd.uart[1].uart_tx_send_errors + 1u);
+    CHECK(d.rtd.uart[1].uart_tx_expired == d0.rtd.uart[1].uart_tx_expired);
+    CHECK(d.pi_permission_tx.counters.sent == 2u && d.pi_permission_tx.counters.not_sent == 1u);
+    CHECK(d.pi_permission_tx.counters.tx_failed == 0u && d.pi_permission_tx.next_sequence == 3u);
+    /* The next DOMAIN evaluation: LINK_SEQUENCE 3 (2 stays used), revision 3. */
+    RUN(permission_in(3u, 43u, 5u, NET_TRISTATE_YES, NET_QUALITY_OK));
+    step_ms(1u);
+    d = diag();
+    CHECK(perm_count == 3u && uart_n == 2u);
+    RUN(check_relay(&uart_out[1], 3u, 3u, NET_TRISTATE_YES, 5u, last_perm_meta.received_at_ms));
+    CHECK(d.pi_permission_tx.counters.sent == 3u && d.pi_permission_tx.counters.not_sent == 1u);
+    CHECK(d.pi_permission_tx.counters.tx_failed == 0u && d.pi_permission_tx.next_sequence == 4u);
+    CHECK(d.rtd.uart[1].uart_tx_waiting == d0.rtd.uart[1].uart_tx_waiting);
+    CHECK(isr_callbacks == 0u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -2485,6 +2538,7 @@ int main(int argc, char **argv)
         { "load_second_boundary", load_second_boundary },
         { "f26_occupant_relay_after_newer_judgement", f26_occupant_relay_after_newer_judgement },
         { "f27_occupant_relay_after_repetition", f27_occupant_relay_after_repetition },
+        { "f28_permission_relay_one_in_device", f28_permission_relay_one_in_device },
         { "f25_vision_repeat_long_age", f25_vision_repeat_long_age }
     };
     size_t i;

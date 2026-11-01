@@ -267,14 +267,16 @@ return NET_OK;
 /* PROVISIONAL local failure reason, DOMAIN confirmation pending
  * (docs/network/interface/04_COMMON/20_API_USAGE_AND_FAILURE.md, closed list
  * of failures after admission; net_domain_c2.h). The adapter step calls it
- * only for a record the service refused before the device took it and that
- * did not expire. The reason follows the cause, not the place that found it:
+ * only for a record refused before it was sent that did not expire. The
+ * reason follows the cause, not the place that found it:
  * a closed or failed link gives NET_HOLD both when the service drops the
  * queued frame (net_upper_service.c dispatch, reset_link; net_upper_control.c
  * quiesce) and when the Port returns it (net_hal_adapter.c: link fault latched;
  * net_hal_rtd_can.c: link closed after a bus-off), and so does a lost UART-M
  * context (service context check). The driver's own submit errors are
- * NET_REJECTED (net_hal_rtd_can.c, net_hal_rtd_uart.c). The other NET_HOLD
+ * NET_REJECTED (net_hal_rtd_can.c, net_hal_rtd_uart.c), also when the UART
+ * driver refuses a frame that waited in the device queue (the device reports
+ * the cause, net_upper_outcome.c sets the status). The other NET_HOLD
  * of the service cannot reach a DOMAIN record with an identity: submission
  * refuses an unbound age policy and a frame its encoder holds (the dispatch
  * encodes the same content, only the AGE grows and saturates), the service
@@ -283,9 +285,16 @@ return NET_OK;
 NetStatus net_domain_c2_local_failure_reason_provisional(void *context,const NetUpperTxSnapshot *s,NetworkLocalFailureReason_t *out){
 (void)context;
 if(s==NULL||out==NULL)return NET_INVALID_ARGUMENT;
-/* Refused before the device took it, nothing pending. A frame the device
- * refused after it waited there (submitted) carries no cause: HOLD. */
-if(!s->admission_known||s->accepted||s->submitted||s->conflict||!s->reference_released||s->outcome!=NET_TX_UNKNOWN)return NET_HOLD;
+/* Refused before the device took it, nothing pending. */
+if(!s->admission_known||s->accepted||s->conflict||!s->reference_released||s->outcome!=NET_TX_UNKNOWN)return NET_HOLD;
+/* The device held the frame (submitted) and refused it without sending: only
+ * the driver refusal it reported (NET_REJECTED) has a reason here. Its expiry
+ * (NET_EXPIRED) is the adapter's own reason; any other status: HOLD. */
+if(s->submitted){
+if(s->local_status!=NET_REJECTED)return NET_HOLD;
+*out=NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL;
+return NET_OK;
+}
 switch(s->local_status){
 case NET_HOLD:*out=NETWORK_LOCAL_FAILURE_CONTEXT_INVALIDATED_BEFORE_SEND;
 return NET_OK;
