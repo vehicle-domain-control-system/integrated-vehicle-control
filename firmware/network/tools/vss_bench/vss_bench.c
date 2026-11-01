@@ -959,7 +959,9 @@ static void usage(VssBenchText *t)
         "  vss_bench can decode-status <hex bytes of 0x340>\n"
         "  vss_bench can script [--boot <hex>] [--tx-base <n>] S1|S2|S3|S4|all ...\n"
         "  vss_bench uart vision-status|vision-result --boot <hex> --seq <n> [field=value ...]\n"
-        "  vss_bench uart decode <hex frame A5 5A ... or payload>\n");
+        "  vss_bench uart decode <hex frame A5 5A ... or payload>\n"
+        "  vss_bench uartm encode NAME|TYPE [--link N] [field=value ...]\n"
+        "  vss_bench uartm decode <hex frame A5 5A ...>\n");
 }
 
 int vss_bench_run(int argc, const char *const *argv, VssBenchText *out)
@@ -973,6 +975,8 @@ int vss_bench_run(int argc, const char *const *argv, VssBenchText *out)
         const UartMsg *m = find_uart_word(argv[1]);
         if (m != NULL) return uart_generate(out, m, argc - 2, argv + 2);
         if (strcmp(argv[1], "decode") == 0) return uart_decode(out, argc - 2, argv + 2);
+    } else if (argc >= 1 && strcmp(argv[0], "uartm") == 0) {
+        return vss_bench_uartm_run(argc - 1, argv + 1, out);
     }
     usage(out);
     return VSS_BENCH_USAGE;

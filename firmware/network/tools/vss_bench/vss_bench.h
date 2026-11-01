@@ -28,6 +28,11 @@ void vss_bench_text_init(VssBenchText *text, char *storage, size_t capacity);
  * All output, including error messages, is appended to out. */
 int vss_bench_run(int argc, const char *const *argv, VssBenchText *out);
 
+/* "uartm encode|decode ..." (vss_bench_uartm.c): UART-M frames of every
+ * message, both directions, for the host check of tools/esp32_bench. argv
+ * starts after "uartm". */
+int vss_bench_uartm_run(int argc, const char *const *argv, VssBenchText *out);
+
 /* Collects bytes from console-log tokens: "A5 5A ..", "data=A55A..",
  * "hex=A5", "0x1F" and offset labels such as "00:" (skipped). Returns false
  * on a non-hex token, an odd digit count or more than capacity bytes. */

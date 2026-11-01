@@ -124,3 +124,15 @@ vss_bench uart decode <hex>
 - **입력:** 144 로그에서 복사한 프레임 전체(`A5 5A ...`, CRC 포함, `hex=A5 5A ...`, 띄어 쓰거나 붙여 씀) 또는 payload만. payload만 주면 길이로 TYPE을 정한다: 19 = P_VISION_RESULT, 16 = P_VISION_STATUS, 15 = P_PERMISSION.
 - **프레임 출력:** 머리, `crc: OK` 또는 `crc: BAD stored=.. computed=..`, 그다음 필드와 함께 `codec: OK <name>` 또는 `codec: INVALID <name> (<status>)`.
 - **CRC:** CCITT-FALSE(poly 0x1021, init 0xFFFF, 반사 없음). VERSION부터 payload 끝까지 계산하고 SYNC는 뺀다. ASCII `123456789`의 검사값은 0x29B1이다(`docs/network/interface/03_COMMUNICATION/20_UART_M.md`). 144 `DebugFrame_Crc16`과 같은 계산이다.
+
+## UART-M: ESP32 대역 도구의 대조용 (`uartm`)
+
+```
+vss_bench uartm encode NAME|TYPE [--link N] [field=value ...]
+vss_bench uartm decode <hex frame A5 5A ...>
+```
+
+- `tools/esp32_bench`의 host 시험(`tests/host/test_esp32_bench.py`)이 쓰는 명령이다. 보드 콘솔 명령은 출력하지 않는다.
+- UART-M 메시지 23종(상향 4, 하향 19)을 모두 다룬다. NAME은 레지스트리 이름(`M_CONTEXT`), TYPE은 번호(`0x01`)다.
+- `encode`는 모든 필드를 0에서 시작해 `field=value`를 넣고 저장소 코덱의 encoder로 프레임을 만든다. 필드 이름은 코덱 구조체 멤버 이름이다(`args[0]`, `items[3].reason`). 부호 있는 온도 필드는 `-250`처럼 쓴다. 코덱이 받으면 `codec: OK <name>`, `fields: ...`, `frame: ...`(종료 0), 거절하면 `codec: <MALFORMED|CONTRACT_HOLD> <name>`(종료 2, 맨 위 종료 코드와 같다)이다. 필드 폭이나 64비트를 넘는 값은 명령줄 오류(종료 2)다.
+- `decode`는 프레임 하나의 CRC를 보고 저장소 코덱의 decoder로 해석한다. `codec: OK <name> link=<n>`와 `fields: ...`(종료 0), CRC나 코덱이 거절하면 종료 1이다.
