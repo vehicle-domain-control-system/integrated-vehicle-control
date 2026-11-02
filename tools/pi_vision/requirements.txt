@@ -1,0 +1,5 @@
+pyserial
+numpy
+opencv-python-headless  # on the Pi use: sudo apt install python3-opencv
+# optional, best accuracy (needs a Pi 4/5):
+# ultralytics
