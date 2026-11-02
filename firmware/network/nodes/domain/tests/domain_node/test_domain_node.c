@@ -2711,6 +2711,138 @@ static int n38_environment_quality_delivered(void)
     return 0;
 }
 
+/* DOMAIN_PERMISSION with no power basis: the DOMAIN application submits
+ * UNKNOWN (false, NO_DATA) about every 200 ms. (a) Each submission a new
+ * evaluation (a newer DOMAIN sequence, here 101..110; AGE from that
+ * evaluation): 0x080 stays on the bus every 50 ms, 255 / NO_DATA, Network's
+ * own UPDATE_SEQUENCE 1..10 (one per evaluation), TX_SEQUENCE +1 per frame,
+ * AGE under 200 ms. (b) Then the last evaluation kept as a failed one (the same
+ * DOMAIN sequence, AGE grown from it: 10_DATA_AND_ID_RULES.md
+ * #delta-permission-sequences): the same UPDATE_SEQUENCE goes on, its wire AGE
+ * the real age of the evaluation, until the original AGE reaches 500 ms; then
+ * 0x080 stops for good (the receivers report SOURCE_EXPIRED once the AGE of
+ * the last frame reaches 500 ms: bcm_node.b15_permission_unknown_stream). A
+ * submission of it past the life is refused (REJECTED), one with an AGE below
+ * the last submitted one is held (NOT_AVAILABLE). A resubmission of the kept
+ * evaluation goes out at once (the M04 slot takes the newer submission). */
+#define UNKNOWN_EVALUATIONS 10u
+#define UNKNOWN_SEQUENCE0 100u
+static int n43_permission_unknown_stream(void)
+{
+    const CanSeen *s, *prev = NULL;
+    const NetWireDomainPermissionRaw *p;
+    const uint32_t made = START_MS + 200u * (UNKNOWN_EVALUATIONS - 1u); /* the last evaluation */
+    const uint32_t kept = UNKNOWN_SEQUENCE0 + UNKNOWN_EVALUATIONS;      /* its DOMAIN sequence */
+    static const uint32_t kept_at[7] = { 200u, 250u, 300u, 350u, 400u, 401u, 451u }; /* after `made` */
+    uint32_t e;
+    unsigned k, mark;
+    CHECK(start());
+    for (e = 1u; e <= UNKNOWN_EVALUATIONS; ++e) {
+        run_to(START_MS + 200u * (e - 1u));
+        CHECK(tx_power(false, DATA_QUALITY_NO_DATA, UNKNOWN_SEQUENCE0 + e, 0u) == DOMAIN_IF_OK);
+    }
+    run_to(START_MS + 200u * UNKNOWN_EVALUATIONS - 1u);
+    CHECK(count_id(0x080u, 0u) == 4u * UNKNOWN_EVALUATIONS && can_bad == 0u && allows_from(0u) == 0u);
+    CHECK(consecutive(0x080u, 0u, 1u));
+    for (k = 0u; k < 4u * UNKNOWN_EVALUATIONS; ++k) {
+        s = nth_id(0x080u, 0u, k);
+        p = &s->m.data.domain_permission;
+        CHECK(s->at == START_MS + 1u + 50u * k);
+        CHECK(p->vehicle_power_permission == 255u && p->power_permission_quality == 3u);
+        CHECK(p->power_operation_state == 255u && p->operation_allowed == 0u && p->operation_quality == 3u);
+        CHECK(p->update_sequence == k / 4u + 1u);                    /* Network's number, one per evaluation */
+        CHECK(p->source_age_ms == 1u + 50u * (k % 4u) && p->source_age_ms < 200u);
+        if (prev != NULL) CHECK(s->at - prev->at == 50u);
+        prev = s;
+    }
+    /* (b) The last evaluation kept: same DOMAIN sequence, its real AGE. */
+    mark = can_count;
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, now_ms - made) == DOMAIN_IF_OK);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, 150u) ==
+          DOMAIN_IF_NOT_AVAILABLE);                                  /* below the last submitted AGE */
+    run_to(made + 400u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, now_ms - made) == DOMAIN_IF_OK);
+    run_to(made + 600u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, now_ms - made) ==
+          DOMAIN_IF_REJECTED);                                       /* past the 500 ms life */
+    run_to(made + 1400u);
+    CHECK(count_id(0x080u, mark) == 7u && consecutive(0x080u, 0u, 1u));
+    for (k = 0u; k < 7u; ++k) {
+        s = nth_id(0x080u, mark, k);
+        p = &s->m.data.domain_permission;
+        CHECK(s->at == made + kept_at[k]);
+        CHECK(p->update_sequence == UNKNOWN_EVALUATIONS && p->source_age_ms == s->at - made); /* the real age */
+        CHECK(p->vehicle_power_permission == 255u && p->power_permission_quality == 3u);
+        CHECK(p->power_operation_state == 255u && p->operation_allowed == 0u && p->operation_quality == 3u);
+    }
+    /* The last frame at AGE 451; none at 501 or later, nothing after it. */
+    CHECK(allows_from(0u) == 0u && failure_calls == 0u);
+    return 0;
+}
+
+/* CIS_REAR measurement state changes. The rear sensor of the CIS stops
+ * answering after a valid distance: a frame that keeps the observation
+ * number and changes the distance / state (a no-echo result sent under the
+ * last number) is held, also when it turns to FAULT; DOMAIN keeps the last
+ * valid distance (DOMAIN would refuse that state under the same number: its
+ * rule compares the distance and the state). The same changes each sent
+ * as a new observation (new UPDATE_SEQUENCE, AGE from that measurement) reach
+ * DOMAIN in order: UNAVAILABLE, FAULT, RECOVERING, then a valid distance; a
+ * quality drop of one observation (same distance and state) still goes as its
+ * withdrawal. The route is never blocked. */
+static NetUpperCanMessage rear_obs(uint32_t tx, uint32_t update, uint16_t age, uint16_t distance,
+    uint8_t state, uint8_t validity, uint8_t reason)
+{
+    NetUpperCanMessage m = rear(tx, update, age);
+    m.data.cis_rear.rear_distance_deci_cm = distance;
+    m.data.cis_rear.proximity_status = state;
+    m.data.cis_rear.validity = validity;
+    m.data.cis_rear.quality_reason = reason;
+    return m;
+}
+static int rear_state_is(unsigned calls, uint32_t update, uint16_t distance, RearMeasurementState_t state,
+    DataQuality_t quality)
+{
+    CHECK(rear_calls == calls && !rear_route_blocked() && failure_calls == 0u);
+    CHECK(last_rear.distanceQuality.meta.updateSequence == update && last_rear.rearDistanceMm == distance);
+    CHECK(last_rear.measurementState == state && last_rear.distanceQuality.meta.quality == quality);
+    return 0;
+}
+static int n44_rear_state_change_new_sequence(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = rear_obs(1u, 17u, 23u, 1234u, 0u, 1u, 0u);                    /* valid distance */
+    CHECK(rear_send_at(&m, START_MS) == 0);
+    CHECK(rear_state_is(1u, 17u, 1234u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    /* No echo, the observation number kept: 0xFFFF / UNAVAILABLE / NO_DATA, then FAULT. */
+    m = rear_obs(2u, 17u, 73u, 0xFFFFu, 2u, 0u, 6u);
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_state_is(1u, 17u, 1234u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    CHECK(rear_record(1u, 1u, 0u));
+    m = rear_obs(3u, 17u, 123u, 0xFFFFu, 3u, 0u, 3u);
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_state_is(1u, 17u, 1234u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    CHECK(rear_record(1u, 1u, 0u));
+    /* The same changes, each a new observation. */
+    m = rear_obs(4u, 18u, 5u, 0xFFFFu, 2u, 0u, 6u);                  /* no echo: UNAVAILABLE */
+    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
+    CHECK(rear_state_is(2u, 18u, 0xFFFFu, REAR_MEASUREMENT_UNAVAILABLE, DATA_QUALITY_NO_DATA) == 0);
+    m = rear_obs(5u, 19u, 5u, 0xFFFFu, 3u, 0u, 3u);                  /* failures in a row: FAULT */
+    CHECK(rear_send_at(&m, START_MS + 200u) == 0);
+    CHECK(rear_state_is(3u, 19u, 0xFFFFu, REAR_MEASUREMENT_FAULT, DATA_QUALITY_INVALID) == 0);
+    m = rear_obs(6u, 20u, 5u, 0xFFFFu, 4u, 0u, 8u);                  /* an answer again: RECOVERING */
+    CHECK(rear_send_at(&m, START_MS + 250u) == 0);
+    CHECK(rear_state_is(4u, 20u, 0xFFFFu, REAR_MEASUREMENT_RECOVERING, DATA_QUALITY_INVALID) == 0);
+    m = rear_obs(7u, 21u, 5u, 1500u, 0u, 1u, 0u);                    /* the next answer: a valid distance */
+    CHECK(rear_send_at(&m, START_MS + 300u) == 0);
+    CHECK(rear_state_is(5u, 21u, 1500u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    m = rear_obs(8u, 21u, 55u, 1500u, 0u, 0u, 5u);                   /* that observation gone stale */
+    CHECK(rear_send_at(&m, START_MS + 350u) == 0);
+    CHECK(rear_state_is(6u, 21u, 1500u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_STALE) == 0);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -2753,6 +2885,8 @@ int main(int argc, char **argv)
         { "n40_occupant_rejected_change_dropped", n40_occupant_rejected_change_dropped },
         { "n41_occupant_held_failure_blocks", n41_occupant_held_failure_blocks },
         { "n42_occupant_new_judgement_rejected_blocks", n42_occupant_new_judgement_rejected_blocks },
+        { "n43_permission_unknown_stream", n43_permission_unknown_stream },
+        { "n44_rear_state_change_new_sequence", n44_rear_state_change_new_sequence },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

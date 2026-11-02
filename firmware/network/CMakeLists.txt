@@ -985,6 +985,10 @@ if(NETWORK_BUILD_RTD_MOCK)
         # A driver refusal of the CAN submit: the status is not sent, its number stays used.
         add_test(NAME vss_node.h21_send_error_refused COMMAND test_vss_node_e2e_ostimer h21_send_error_refused)
         add_test(NAME vss_node.h21_send_error_refused_hook COMMAND test_vss_node_e2e_hook h21_send_error_refused)
+        # DOMAIN_PERMISSION with no power basis (UNKNOWN, a new evaluation every 200 ms): supervision.
+        add_test(NAME vss_node.h22_permission_unknown_stream COMMAND test_vss_node_e2e_ostimer h22_permission_unknown_stream)
+        add_test(NAME vss_node.h22_permission_unknown_stream_hook
+                 COMMAND test_vss_node_e2e_hook h22_permission_unknown_stream)
         # Load of the documented traffic, named the same way.
         add_test(NAME vss_node.load_doc_traffic COMMAND test_vss_node_e2e_ostimer load_doc_traffic)
         add_test(NAME vss_node.load_doc_traffic_hook COMMAND test_vss_node_e2e_hook load_doc_traffic)
@@ -1069,6 +1073,11 @@ if(NETWORK_BUILD_RTD_MOCK)
                 n42_occupant_new_judgement_rejected_blocks)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # DOMAIN_PERMISSION with no power basis (UNKNOWN about every 200 ms) and CIS_REAR
+        # measurement state changes sent under the same or a new observation number.
+        foreach(case IN ITEMS n43_permission_unknown_stream n44_rear_state_change_new_sequence)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
+        endforeach()
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the
@@ -1151,6 +1160,9 @@ if(NETWORK_BUILD_RTD_MOCK)
         # publisher, never in the HAL queue; a driver start error refuses it at the submit.
         add_test(NAME cis_node.f28_permission_relay_one_in_device
                  COMMAND test_cis_node_e2e f28_permission_relay_one_in_device)
+        # DOMAIN_PERMISSION with no power basis (UNKNOWN, a new evaluation every 200 ms):
+        # supervision BAD_QUALITY, one Pi relay per evaluation.
+        add_test(NAME cis_node.f29_permission_unknown_stream COMMAND test_cis_node_e2e f29_permission_unknown_stream)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_cis_node_entry nodes/cis/tests/cis_node/test_cis_node_e2e.c)
@@ -1186,6 +1198,8 @@ if(NETWORK_BUILD_RTD_MOCK)
             add_test(NAME bcm_node.${case} COMMAND test_bcm_node_e2e ${case})
         endforeach()
         add_test(NAME bcm_node.load_doc_traffic COMMAND test_bcm_node_e2e load_doc_traffic)
+        # DOMAIN_PERMISSION with no power basis (UNKNOWN, a new evaluation every 200 ms): supervision.
+        add_test(NAME bcm_node.b15_permission_unknown_stream COMMAND test_bcm_node_e2e b15_permission_unknown_stream)
 
         # Public entry Net_Init / Net_MainFunction on the application clock.
         add_executable(test_bcm_node_entry nodes/bcm/tests/bcm_node/test_bcm_node_e2e.c)

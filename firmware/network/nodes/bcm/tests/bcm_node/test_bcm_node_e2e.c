@@ -1318,6 +1318,85 @@ static int load_doc_traffic(void)
     return 0;
 }
 
+/* DOMAIN_PERMISSION as the DOMAIN node sends it with no power basis
+ * (domain_node.n43_permission_unknown_stream): power UNKNOWN 255 / NO_DATA,
+ * operation 255 / 0 / NO_DATA, a new evaluation every 200 ms sent every
+ * 50 ms (AGE 1, 51, 101, 151). The DOMAIN supervision of the BCM stays
+ * BAD_QUALITY (in time, not a usable quality), never a receive timeout or an
+ * expired source; every frame reaches the supervision record. 150 ms after
+ * the last frame it times out. Then the DOMAIN makes one more evaluation and
+ * keeps it as a failed one (domain_node.n43, part b: the same UPDATE_SEQUENCE,
+ * its AGE growing up to 451, then no frame): BAD_QUALITY until the original
+ * AGE reaches 500 ms, SOURCE_EXPIRED from then on (it takes precedence over
+ * the receive timeout). The BCM sends nothing for it. */
+#define UNKNOWN_FRAMES 40u
+static int permission_unknown(uint32_t tx, uint32_t update, uint16_t age)
+{
+    NetWireDomainPermissionRaw p;
+    NetWireCanEnvelope e;
+    memset(&p, 0, sizeof(p));
+    p.boot_id = DOMAIN_BOOT;
+    p.tx_sequence = tx;
+    p.vehicle_power_permission = NET_TRISTATE_UNKNOWN;
+    p.power_permission_quality = NET_QUALITY_NO_DATA;
+    p.power_operation_state = NET_TRISTATE_UNKNOWN;
+    p.operation_allowed = 0u;
+    p.operation_quality = NET_QUALITY_NO_DATA;
+    p.update_sequence = update;
+    p.source_age_ms = age;
+    CHECK(net_wire_can_encode_permission(NET_WIRE_CANDIDATE_ONLY, &p, &e) == NET_WIRE_OK);
+    return inject(&e);
+}
+
+static int b15_permission_unknown_stream(void)
+{
+    NetNodeDiag d;
+    uint64_t last = 0u;
+    unsigned k, ms, off = 0u;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    for (k = 0u; k < UNKNOWN_FRAMES; ++k) {
+        last = now_ms();
+        RUN(permission_unknown(k + 1u, k / 4u + 1u, (uint16_t)(1u + 50u * (k % 4u))));
+        for (ms = 0u; ms < 50u; ++ms) {
+            step_ms(1u);
+            d = diag();
+            if (!d.permission_valid || d.permission.reason != NET_PERMISSION_BAD_QUALITY || d.permission.power_usable)
+                ++off;
+        }
+    }
+    d = diag();
+    CHECK(off == 0u && d.app.permission_received == UNKNOWN_FRAMES);
+    CHECK(d.app.last_permission.vehicle_power_permission == NET_TRISTATE_UNKNOWN);
+    CHECK(d.app.last_permission.power_permission_quality == NET_QUALITY_NO_DATA);
+    CHECK(d.app.last_permission.update_sequence == UNKNOWN_FRAMES / 4u);
+    CHECK(d.app.last_permission_meta.received_at_ms == last);
+    /* The DOMAIN goes silent: the receive timeout 150 ms after the last frame. */
+    step_ms((unsigned)(last + 149u - now_ms()));
+    CHECK(diag().permission.reason == NET_PERMISSION_BAD_QUALITY);
+    step_ms(1u);
+    d = diag();
+    CHECK(now_ms() == last + 150u && d.permission.reason == NET_PERMISSION_RX_TIMEOUT && !d.permission.power_usable);
+    /* One more evaluation, kept as a failed one: AGE 1, 51, ..., 451, then nothing. */
+    for (k = 0u; k < 10u; ++k) {
+        last = now_ms();
+        RUN(permission_unknown(UNKNOWN_FRAMES + 1u + k, UNKNOWN_FRAMES / 4u + 1u, (uint16_t)(1u + 50u * k)));
+        for (ms = 0u; ms < (k + 1u < 10u ? 50u : 48u); ++ms) {
+            step_ms(1u);
+            d = diag();
+            if (d.permission.reason != NET_PERMISSION_BAD_QUALITY || d.permission.power_usable) ++off;
+        }
+    }
+    CHECK(off == 0u && diag().app.permission_received == UNKNOWN_FRAMES + 10u);
+    step_ms(1u);                                              /* AGE 451 + 49 = 500 */
+    d = diag();
+    CHECK(now_ms() == last + 49u && d.permission.reason == NET_PERMISSION_SOURCE_EXPIRED && !d.permission.power_usable);
+    step_ms(300u);                                            /* past the 150 ms silence too */
+    CHECK(diag().permission.reason == NET_PERMISSION_SOURCE_EXPIRED);
+    CHECK(can_n == 0u && door_count == 0u && climate_count == 0u && light_count == 0u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1335,6 +1414,7 @@ int main(int argc, char **argv)
         { "b12_publish_in_callback", b12_publish_in_callback },
         { "b13_not_ready", b13_not_ready },
         { "b13_domain_reboot", b13_domain_reboot },
+        { "b15_permission_unknown_stream", b15_permission_unknown_stream },
         { "load_doc_traffic", load_doc_traffic },
 #ifdef BCM_NODE_TEST_ENTRY
         { "b14_entry", b14_entry },

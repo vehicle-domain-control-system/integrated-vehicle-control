@@ -1744,6 +1744,60 @@ static int h21_send_error_refused(void)
     return 0;
 }
 
+/* DOMAIN_PERMISSION as the DOMAIN node sends it with no power basis
+ * (domain_node.n43_permission_unknown_stream): power UNKNOWN 255 / NO_DATA,
+ * operation 255 / 0 / NO_DATA, a new evaluation every 200 ms sent every
+ * 50 ms (AGE 1, 51, 101, 151). The DOMAIN supervision of the VSS stays
+ * BAD_QUALITY (in time, not a usable quality), never a receive timeout or an
+ * expired source; every frame reaches the supervision record and never a VSS
+ * App callback. 150 ms after the last frame it times out. */
+#define UNKNOWN_FRAMES 40u
+static int h22_permission_unknown_stream(void)
+{
+    NetWireDomainPermissionRaw p;
+    NetWireCanEnvelope e;
+    NetNodeDiag d;
+    uint32_t last = 0u;
+    unsigned k, ms, off = 0u;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    for (k = 0u; k < UNKNOWN_FRAMES; ++k) {
+        memset(&p, 0, sizeof(p));
+        p.boot_id = PEER_BOOT;
+        p.tx_sequence = k + 1u;
+        p.vehicle_power_permission = NET_TRISTATE_UNKNOWN;
+        p.power_permission_quality = NET_QUALITY_NO_DATA;
+        p.power_operation_state = NET_TRISTATE_UNKNOWN;
+        p.operation_allowed = 0u;
+        p.operation_quality = NET_QUALITY_NO_DATA;
+        p.update_sequence = k / 4u + 1u;
+        p.source_age_ms = (uint16_t)(1u + 50u * (k % 4u));
+        CHECK(net_wire_can_encode_permission(NET_WIRE_CANDIDATE_ONLY, &p, &e) == NET_WIRE_OK);
+        last = now_ms();
+        CHECK(inject(&e) >= 0);
+        for (ms = 0u; ms < 50u; ++ms) {
+            step_ms(1u);
+            d = diag();
+            if (!d.permission_valid || d.permission.reason != NET_PERMISSION_BAD_QUALITY || d.permission.power_usable)
+                ++off;
+        }
+    }
+    d = diag();
+    CHECK(off == 0u && d.app.permission_received == UNKNOWN_FRAMES);
+    CHECK(event_count == 0 && warning_count == 0);
+    CHECK(d.app.last_permission.vehicle_power_permission == NET_TRISTATE_UNKNOWN);
+    CHECK(d.app.last_permission.power_permission_quality == NET_QUALITY_NO_DATA);
+    CHECK(d.app.last_permission.update_sequence == UNKNOWN_FRAMES / 4u);
+    CHECK(d.app.last_permission_meta.received_at_ms == last);
+    /* The DOMAIN goes silent: the receive timeout 150 ms after the last frame. */
+    while (now_ms() < last + 149u) step_ms(1u);
+    CHECK(diag().permission.reason == NET_PERMISSION_BAD_QUALITY);
+    step_ms(1u);
+    d = diag();
+    CHECK(d.permission.reason == NET_PERMISSION_RX_TIMEOUT && !d.permission.power_usable);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -1765,6 +1819,7 @@ int main(int argc, char **argv)
         { "h17_domain_boot_switch", h17_domain_boot_switch },
         { "h19_rx_rearm_retry", h19_rx_rearm_retry }, { "h20_quarantine_flag_lost", h20_quarantine_flag_lost },
         { "h21_send_error_refused", h21_send_error_refused },
+        { "h22_permission_unknown_stream", h22_permission_unknown_stream },
         { "load_doc_traffic", load_doc_traffic },
         { "h18_abort_result", h18_abort_result }
     };

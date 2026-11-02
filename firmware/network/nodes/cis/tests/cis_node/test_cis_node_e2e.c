@@ -2504,6 +2504,82 @@ static int f28_permission_relay_one_in_device(void)
     return 0;
 }
 
+/* DOMAIN_PERMISSION as the DOMAIN node sends it with no power basis
+ * (domain_node.n43_permission_unknown_stream): power UNKNOWN 255 / NO_DATA,
+ * operation 255 / 0 / NO_DATA, a new evaluation every 200 ms sent every
+ * 50 ms (AGE 1, 51, 101, 151). The supervision stays BAD_QUALITY (in time,
+ * not a usable quality), never a receive timeout or an expired source; every
+ * frame reaches the callback; the Pi gets one P_PERMISSION per evaluation
+ * (255 / NO_DATA, reason NO_DATA) and none for the repetitions. 150 ms after
+ * the last frame the supervision times out and the Pi gets nothing more. */
+#define UNKNOWN_FRAMES 40u
+static int permission_unknown(uint32_t tx, uint32_t update, uint16_t age)
+{
+    NetWireDomainPermissionRaw p;
+    NetWireCanEnvelope e;
+    MockCanFrame f;
+    int mb;
+    memset(&p, 0, sizeof(p));
+    p.boot_id = DOMAIN_BOOT;
+    p.tx_sequence = tx;
+    p.vehicle_power_permission = NET_TRISTATE_UNKNOWN;
+    p.power_permission_quality = NET_QUALITY_NO_DATA;
+    p.power_operation_state = NET_TRISTATE_UNKNOWN;
+    p.operation_allowed = 0u;
+    p.operation_quality = NET_QUALITY_NO_DATA;
+    p.update_sequence = update;
+    p.source_age_ms = age;
+    CHECK(net_wire_can_encode_permission(NET_WIRE_CANDIDATE_ONLY, &p, &e) == NET_WIRE_OK);
+    memset(&f, 0, sizeof(f));
+    f.id = e.standard_id; f.fd = e.fdf; f.brs = e.brs; f.dlc = e.dlc; f.length = (uint8)e.length;
+    memcpy(f.data, e.bytes, e.length);
+    in_isr = true;
+    mb = MockRtd_CanInject(BUS, &f);
+    in_isr = false;
+    CHECK(mb >= 0);
+    return 0;
+}
+
+static int f29_permission_unknown_stream(void)
+{
+    NetNodeDiag d;
+    uint64_t received[UNKNOWN_FRAMES / 4u], delivered[UNKNOWN_FRAMES / 4u], last = 0u;
+    unsigned k, ms, off = 0u;
+    CHECK(start_node() == NET_OK);
+    step_ms(2u);
+    for (k = 0u; k < UNKNOWN_FRAMES; ++k) {
+        RUN(permission_unknown(k + 1u, k / 4u + 1u, (uint16_t)(1u + 50u * (k % 4u))));
+        for (ms = 0u; ms < 50u; ++ms) {
+            step_ms(1u);
+            if (ms == 0u) {
+                last = last_perm_meta.received_at_ms;
+                if (k % 4u == 0u) { received[k / 4u] = last; delivered[k / 4u] = perm_delivered_at; }
+            }
+            d = diag();
+            if (!d.permission_valid || d.permission.reason != NET_PERMISSION_BAD_QUALITY || d.permission.power_usable)
+                ++off;
+        }
+    }
+    CHECK(off == 0u && perm_count == UNKNOWN_FRAMES && isr_callbacks == 0u);
+    CHECK(last_perm.vehicle_power_permission == NET_TRISTATE_UNKNOWN &&
+          last_perm.power_permission_quality == NET_QUALITY_NO_DATA && last_perm.update_sequence == UNKNOWN_FRAMES / 4u);
+    CHECK(uart_n == UNKNOWN_FRAMES / 4u && uart_bad == 0u);
+    for (k = 0u; k < UNKNOWN_FRAMES / 4u; ++k) {
+        CHECK(uart_out[k].at == delivered[k]);                    /* at once, with the new evaluation */
+        RUN(check_relay_quality(&uart_out[k], (uint16_t)(k + 1u), k + 1u, NET_TRISTATE_UNKNOWN, NET_QUALITY_NO_DATA,
+                                NET_QUALITY_REASON_NO_DATA, 1u, received[k]));
+    }
+    /* The DOMAIN goes silent: the receive timeout 150 ms after the last frame. */
+    step_ms((unsigned)(last + 149u - now_ms()));
+    CHECK(diag().permission.reason == NET_PERMISSION_BAD_QUALITY);
+    step_ms(1u);
+    d = diag();
+    CHECK(now_ms() == last + 150u && d.permission.reason == NET_PERMISSION_RX_TIMEOUT && !d.permission.power_usable);
+    step_ms(2000u);
+    CHECK(uart_n == UNKNOWN_FRAMES / 4u && perm_count == UNKNOWN_FRAMES);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -2539,6 +2615,7 @@ int main(int argc, char **argv)
         { "f26_occupant_relay_after_newer_judgement", f26_occupant_relay_after_newer_judgement },
         { "f27_occupant_relay_after_repetition", f27_occupant_relay_after_repetition },
         { "f28_permission_relay_one_in_device", f28_permission_relay_one_in_device },
+        { "f29_permission_unknown_stream", f29_permission_unknown_stream },
         { "f25_vision_repeat_long_age", f25_vision_repeat_long_age }
     };
     size_t i;
