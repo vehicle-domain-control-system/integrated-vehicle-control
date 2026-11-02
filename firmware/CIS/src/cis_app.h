@@ -13,7 +13,6 @@
 #include "env_logic.h"
 #include "lux_logic.h"
 #include "vision_logic.h"
-#include "power_gate.h"
 
 /*
  * Build with CIS_USE_NETWORK_API once the Network stack is linked: it then owns the Pi UART and
@@ -36,20 +35,14 @@ void cis_app_init(void);
 /* One pass over all functions. now_ms from timebase_now_ms(). */
 void cis_app_run(uint32_t now_ms);
 
-/* DOMAIN_PERMISSION arrived (the Network stack calls this from CisApp_OnDomainPermission). */
-void cis_app_on_permission(uint8_t permission, bool quality_ok, uint32_t source_age_ms,
-                           uint32_t now_ms);
-
 /* Pi frames, delivered by the Network stack (CisApp_OnPiVision*) or by the own UART driver. */
 void cis_app_on_vision_result(const pi_vision_result_t *f, uint32_t now_ms);
 void cis_app_on_vision_status(const pi_vision_status_t *f, uint32_t now_ms);
 
 /* Read-only views of the current state. */
-const rear_state_t   *cis_app_rear(void);          /* raw measurement */
-const rear_output_t  *cis_app_rear_output(void);   /* after the power gate: what is reported */
+const rear_state_t   *cis_app_rear(void);          /* the rear measurement; always active, no permission needed */
 const env_state_t    *cis_app_env(void);
 const lux_state_t    *cis_app_lux(void);
 const vision_state_t *cis_app_vision(void);
-const power_gate_t   *cis_app_gate(void);
 
 #endif /* CIS_APP_H */

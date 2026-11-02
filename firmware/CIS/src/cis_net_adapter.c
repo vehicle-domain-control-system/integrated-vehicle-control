@@ -51,15 +51,12 @@ static uint16_t sat16(uint32_t v)
 
 /* ---- receive side: copy into the CIS and return ---------------------------------------- */
 
+/* The rear detection is always active: the DOMAIN permission is no longer used by the CIS.
+ * The Network stack still delivers the frame (and relays it to the Pi); the symbol is required. */
 void CisApp_OnDomainPermission(const NetDomainPermission *message, const NetCanRxMeta *meta)
 {
-    if (message == 0 || meta == 0) {
-        return;
-    }
-    /* quality OK (0) is the only quality that may allow */
-    cis_app_on_permission(message->vehicle_power_permission,
-                          message->power_permission_quality == 0u,
-                          message->source_age_ms, meta->received_at_ms);
+    (void)message;
+    (void)meta;
 }
 
 void CisApp_OnPiVisionResult(const NetVisionResult *message, const NetUartRxMeta *meta)
@@ -106,17 +103,16 @@ void CisApp_OnPiVisionStatus(const NetVisionStatus *message, const NetUartRxMeta
 
 static void fill_rear(NetCisRear *m, uint32_t now_ms)
 {
-    const rear_output_t *o = cis_app_rear_output();
     const rear_state_t *r = cis_app_rear();
 
-    m->update_sequence = o->sequence;
+    m->update_sequence = r->value.sequence;
     m->source_age_ms = cis_value_age_ms(&r->value, now_ms);
     /* the measurement is in mm, which is the same number as 0.1 cm: no division */
-    m->rear_distance_deci_cm = (o->status == CIS_PROX_VALID_DISTANCE) ? sat16(o->distance_mm)
+    m->rear_distance_deci_cm = (r->status == CIS_PROX_VALID_DISTANCE) ? sat16((uint32_t)r->value.value)
                                                                       : (uint16_t)REAR_NO_VALUE;
-    m->validity = o->valid ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
-    m->quality_reason = (NetQualityReason)o->reason;
-    m->proximity_status = (NetProximityStatus)o->status;
+    m->validity = r->value.valid ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
+    m->quality_reason = (NetQualityReason)r->value.reason;
+    m->proximity_status = (NetProximityStatus)r->status;
 }
 
 /* CIS_OCCUPANT (CIS 20_API.md, 10_DATA.md "Pi original observation and CIS evaluation"):

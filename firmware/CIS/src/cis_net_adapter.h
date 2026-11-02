@@ -5,7 +5,8 @@
  * Sending: cis_net_adapter_run() hands the current values to CisNet_Publish*() at the CAN
  * report periods. The Network stack repeats the last value and adds the transport delay;
  * values keep their own sequence and age, so a repeat is never a new observation.
- * Receiving: CisApp_OnDomainPermission() and CisApp_OnPiVision*() are called by the Network
+ * Receiving: CisApp_OnPiVision*() (and CisApp_OnDomainPermission(), which does nothing: the rear
+ * detection is always active) are called by the Network
  * stack in the owner context (never from an interrupt) and only copy the data.
  */
 #ifndef CIS_NET_ADAPTER_H
