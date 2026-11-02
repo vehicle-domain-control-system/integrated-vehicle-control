@@ -180,7 +180,7 @@ python3 vision_sender.py --port auto --simulate 0,1,2 --log-cis cis_sensors.csv
 CIS rear=VALID_DISTANCE 412mm (sensor status 0) temp=24.31C hum=48.2% lux=310 pi_link=1 count=2 presence=1 state=2
 ```
 
-- 유효하지 않은 값은 숫자 대신 `--`로 보인다. 후방 `INACTIVE`는 DOMAIN 허용이 없을 때 나오는 정상 값이다.
+- 유효하지 않은 값은 숫자 대신 `--`로 보인다. 후방 감지는 DOMAIN 허용과 상관없이 항상 켜져 있다(`INACTIVE`는 쓰지 않는다).
 - `--log-cis 파일`을 주면 모든 값(순번과 AGE 포함)을 CSV로 쌓는다.
 - 이 프레임은 **UART-C v1에 없는 메시지**다. Network 스택은 모르는 TYPE을 형식 오류로 버리므로, CIS 펌웨어는
   `CIS_USE_NETWORK_API`를 켜면 이 송신을 자동으로 끈다 (`CIS_BENCH_REPORT`). 제품 빌드에서는 쓰지 않는다.
