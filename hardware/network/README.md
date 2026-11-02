@@ -44,10 +44,10 @@ ESP32는 DOMAIN과 UART-M으로만, Pi는 CIS와 UART-C로만 잇는다. 둘 다
 | 링크 | 양 끝 | 설정 |
 |---|---|---|
 | UART-C | CIS(S32K144 LPUART1) ↔ Pi | 115200 bit/s 8N1, 흐름 제어 없음 |
-| UART-M | DOMAIN(S32K344 LPUART11, 초안) ↔ ESP32 | 115200 bit/s 8N1(시작값), 흐름 제어 없음 |
+| UART-M | DOMAIN(S32K344 LPUART0, 잠정) ↔ ESP32 | 115200 bit/s 8N1(시작값), 흐름 제어 없음 |
 
 - **드라이버 방식:** MCU 쪽은 인터럽트 방식이다(DMA 아님).
-- **실제 baud:** S32K144(LPUART 클럭 8 MHz)와 S32K344 LPUART11(40 MHz)은 115,942 bit/s(+0.64 %)다. CIS 시험에서 115,200 상대와 수신 오류 0이었다.
+- **실제 baud:** S32K144(LPUART 클럭 8 MHz)와 S32K344 LPUART11(40 MHz)은 115,942 bit/s(+0.64 %)다. CIS 시험에서 115,200 상대와 수신 오류 0이었다. S32K344 LPUART0은 생성 설정 기준 115,440 bit/s(+0.21 %)다.
 - **상대 쪽(Pi, ESP32):** 115200 8N1, 흐름 제어 없음, 3.3 V TTL로 맞춘다.
 
 ## 4. 보드마다 설정할 것
@@ -74,20 +74,21 @@ ESP32는 DOMAIN과 UART-M으로만, Pi는 CIS와 UART-C로만 잇는다. 둘 다
 | CAN 클럭 | 24 MHz | 24 MHz | 48 MHz | 48 MHz |
 | `max_num_mb` | 16 | 16 | 7(64 B에서 하드웨어 상한) | 7 |
 | MB 배치(Network 기본값) | RX 0~3, TX 8~11 | RX 0~3, TX 8~9 | RX 0~1, TX 2~5 | RX 0~1, TX 2~5 |
-| UART | UART-M: LPUART11, RX PTC11 / TX PTC10(초안) | 없음 | UART-C: LPUART1, RX PTC6 / TX PTC7 | 없음 |
-| UART define | `NET_BOARD_UART_M_INSTANCE=11U`, `NET_BOARD_UART_M_CONFIG=Lpuart_Uart_Ip_xHwConfigPB_11` | — | `NET_BOARD_UART_C_INSTANCE=1U`, `NET_BOARD_UART_C_CONFIG=Lpuart_Uart_Ip_xHwConfigPB_1` | — |
+| UART | UART-M: LPUART0, RX PTA28 / TX PTA27(잠정, 보드 USB-UART 브리지와 같은 UART) | 없음 | UART-C: LPUART1, RX PTC6 / TX PTC7 | 없음 |
+| UART define | 기본값(`NET_BOARD_UART_M_INSTANCE=0U`, `NET_BOARD_UART_M_CONFIG=Lpuart_Uart_Ip_xHwConfigPB_0`), 따로 주지 않는다 | — | `NET_BOARD_UART_C_INSTANCE=1U`, `NET_BOARD_UART_C_CONFIG=Lpuart_Uart_Ip_xHwConfigPB_1` | — |
 | 인터럽트 우선순위(지금) | 미정 | 오디오(PIT·DMA·SAI) 0, CAN 8 | LPUART 5, CAN 6 | CAN 6 |
 | 연동 문서 | [DOMAIN](../../firmware/network/nodes/domain/DOMAIN_NODE_INTEGRATION.md) | [VSS](../../firmware/network/nodes/vss/VSS_NODE_INTEGRATION.md) | [CIS](../../firmware/network/nodes/cis/CIS_NODE_INTEGRATION.md) | [BCM](../../firmware/network/nodes/bcm/BCM_NODE_INTEGRATION.md) |
 
-- **DOMAIN 핀:** S32K344 평가 보드에서 Network가 쓴 핀이다. UART-M LPUART11(PTC10/PTC11)은 그 보드에서 115200으로 실제 통신한 경로라 초안으로 정했다. DOMAIN 보드가 다른 모델이면 다시 정한다.
+- **DOMAIN 핀:** CAN·트랜시버 핀은 S32K344 평가 보드에서 Network가 쓴 값이다. DOMAIN 보드가 다른 모델이면 다시 정한다. UART-M은 LPUART0으로 잠정 결정했다. LPUART0은 평가 보드에서 USB-UART 브리지(CP210x)로 PC에 이어진 UART라, ESP32가 준비되기 전에는 노트북이 USB COM으로 ESP32 쪽을 맡는다(`firmware/network/tools/esp32_bench`). DOMAIN 프로젝트는 LPUART0을 콘솔로 쓰지 않는다. 콜백 연결은 DOMAIN 연동 문서를 따른다. LPUART11(PTC10/PTC11)은 S32K144 디버그 노드와 배선한 시험용 UART다(344 CIS 시험대의 UART-C).
 - **MB 배치:** `NET_BOARD_CAN_*` define으로 바꿀 수 있다. 바꾸면 Network가 컴파일할 때 겹침과 `max_num_mb` 초과를 검사한다.
 - **CIS 실제 보드:** 계획(`feat/cis-rtd-network`의 `firmware/CIS/board/README.md`)도 CAN0 PTE4/PTE5, LPUART1 PTC6/PTC7로 시험대와 같다.
 
 ## 6. 미정·확인 필요
 
 - [ ] **트랜시버 켜기 핀:** S32K344 PTG5(CAN0)·PTG10(CAN1로 보임)의 극성과 기능을 회로도로 확인한다. 지금은 초기 출력 Low에서 통신한다.
-- [ ] **DOMAIN 보드:** 실제 보드 모델, UART-M 핀(초안 LPUART11), 인터럽트 우선순위.
+- [ ] **DOMAIN 보드:** 실제 보드 모델, UART-M 핀(잠정 LPUART0), 인터럽트 우선순위.
 - [ ] **전압 레벨:** S32K144 보드 I/O 전압이 5 V면 Pi·ESP32(3.3 V)와 바로 잇지 않는다. 보드 전압 설정을 확인한다.
 - [ ] **CIS↔Pi 배선:** 지금 시험은 S32K144 평가 보드의 OpenSDA 가상 COM(LPUART1)을 쓴다. 실제 Pi를 PTC6/PTC7에 이을 때 OpenSDA UART 연결과 겹치지 않는지 확인한다.
+- [ ] **DOMAIN↔ESP32 배선:** 실제 ESP32를 LPUART0 핀에 이을 때 보드 USB-UART 브리지의 TX와 ESP32 TX가 MCU RX를 같이 구동하지 않는지 회로도로 확인한다. 겹치면 브리지를 떼거나(점퍼·배선) 다른 인스턴스로 옮긴다.
 - [ ] **버스 종단:** 노드가 늘 때 120 Ω을 어느 보드에 둘지 정한다.
 - [ ] **WINDOW:** MCU와 핀.
