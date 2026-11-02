@@ -283,6 +283,13 @@ typedef struct {
      * DOMAIN_IF_REJECTED for: dropped one by one, route kept (nd_rx_call,
      * saturating). */
     uint32_t rejected_frames;
+    /* CIS_OCCUPANT: the judgement DOMAIN holds, the Pi BOOT_ID and
+     * VISION_SEQUENCE of the last 0x310 frame it answered DOMAIN_IF_OK
+     * (occupant_held false: none yet), and the reports of that judgement it
+     * returned DOMAIN_IF_REJECTED for: dropped one by one, route kept
+     * (nd_rx_call_occupant, saturating). */
+    uint32_t occupant_pi_boot, occupant_sequence, occupant_rejected_frames;
+    bool occupant_held;
     /* C2 TX records retired without a local failure notice DOMAIN applied
      * (NetDomainC2RetiredCause), counted per cause (saturating), and the last
      * one of either cause. */

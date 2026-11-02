@@ -1062,6 +1062,13 @@ if(NETWORK_BUILD_RTD_MOCK)
         foreach(case IN ITEMS n37_occupant_quality_delivered n38_environment_quality_delivered)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # CIS_OCCUPANT across a CIS restart under one Pi BOOT.
+        add_test(NAME domain_node.n39_occupant_cis_restart COMMAND test_domain_node n39_occupant_cis_restart)
+        # A refused quality change of the judgement DOMAIN holds: that frame alone is dropped.
+        foreach(case IN ITEMS n40_occupant_rejected_change_dropped n41_occupant_held_failure_blocks
+                n42_occupant_new_judgement_rejected_blocks)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
+        endforeach()
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

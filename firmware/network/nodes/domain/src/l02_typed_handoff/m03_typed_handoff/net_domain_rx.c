@@ -310,7 +310,7 @@ return nd_rx_call(a,a->api.RxCisCabinEnvironment(&value.environment));
 case 0x310u: ND_TRY(nd_barrier(a,NET_DOMAIN_C2_OCCUPANT_BARRIER,m->data.cis_occupant.pi_boot_id));
 if(a->api.RxCisOccupant==NULL)return NET_HOLD;
 ND_TRY(nd_ingress_once(a,NET_WIRE_CAN,m->id,d->source_boot,d->capture.port_epoch,d->source_sequence));
-return nd_rx_call(a,a->api.RxCisOccupant(&value.occupant));
+return nd_rx_call_occupant(a,a->api.RxCisOccupant(&value.occupant),&m->data.cis_occupant);
 case 0x0a0u: if(a->api.RxCisRear==NULL)return NET_HOLD;
 ND_TRY(nd_ingress_once(a,NET_WIRE_CAN,m->id,d->source_boot,d->capture.port_epoch,d->source_sequence));
 return nd_rx_call(a,a->api.RxCisRear(&value.rear));

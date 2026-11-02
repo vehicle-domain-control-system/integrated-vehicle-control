@@ -598,6 +598,22 @@ if(r!=NULL){a->current_ingress=NULL;
 if(status==DOMAIN_IF_REJECTED&&r->link==NET_WIRE_CAN&&(r->id==0x140u||r->id==0x141u))net_upper_observe_increment(&a->rejected_frames);
 else if(status!=DOMAIN_IF_OK)r->blocked=true;}
 return nd_call(a,status);}
+/* CIS_OCCUPANT (0x310): DOMAIN_IF_REJECTED on a report of the judgement DOMAIN
+ * holds (the Pi BOOT_ID and VISION_SEQUENCE of the last frame it answered OK,
+ * so a quality change of it) drops that frame alone, as above, and counts it
+ * in occupant_rejected_frames. DOMAIN refuses such a change without changing
+ * what it stores (CisOccupantManager_ApplyQualityWithdrawal CONFLICT, for
+ * example an AGE under its bound when its clock is read after the pass time)
+ * and the service record changes only when the Owner answers OK, so the two
+ * stay equal; the next report of the judgement is offered again. Any other
+ * non-OK return blocks the route. */
+NetStatus nd_rx_call_occupant(NetDomainC2 *a,DomainIf_Status_t status,const NetWireCisOccupantRaw *o){
+NetDomainC2IngressRecord *r=a->current_ingress;
+if(r!=NULL&&status==DOMAIN_IF_OK){a->occupant_held=true;a->occupant_pi_boot=o->pi_boot_id;a->occupant_sequence=o->vision_sequence;}
+else if(r!=NULL&&status==DOMAIN_IF_REJECTED&&a->occupant_held&&a->occupant_pi_boot==o->pi_boot_id&&
+    a->occupant_sequence==o->vision_sequence){
+    a->current_ingress=NULL;net_upper_observe_increment(&a->occupant_rejected_frames);return nd_call(a,status);}
+return nd_rx_call(a,status);}
 
 NetStatus net_domain_c2_accept_ingress_epoch(NetDomainC2 *a,NetWireLink link,uint16_t id,uint64_t epoch,uint32_t boot,bool confirmed)
 {

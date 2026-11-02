@@ -2277,8 +2277,8 @@ static int n36_rear_sequence_and_age_held(void)
  * route for the run). Network delivers each such change, holds the rest and
  * takes a report that differs only in AGE without a call. The barrier stands
  * open for this Pi BOOT (an applied transition). This mock DOMAIN takes every
- * call; what the real one answers is the chat-side check against DOMAIN
- * develop (CisOccupantManager), outside this repository. */
+ * call; what the real one answers is checked against DOMAIN develop
+ * (CisOccupantManager), outside this repository. */
 #define PI_BOOT 0x50493031u
 #define OCC_AGE0 40u
 static NetUpperCanMessage occupant_at(uint32_t tx, uint8_t pv, uint8_t pr, uint8_t cv, uint8_t cr, uint32_t at)
@@ -2381,6 +2381,204 @@ static int n37_occupant_quality_delivered(void)
     run_to(now_ms + 3u);
     u = last_uart(0x35u);
     CHECK(uart_type_count[0x35u] == relays0 + 1u && u != NULL && u->data.m_cis_occupant.count_reason == 5u);
+    return 0;
+}
+
+/* A CIS restart under one Pi BOOT: the restarted CIS (another CAN BOOT_ID,
+ * TX_SEQUENCE from 1) forwards the Pi's repeated judgement, same Pi BOOT and
+ * VISION_SEQUENCE. DOMAIN keys the observation on those two only and keeps it
+ * across the restart, so Network compares the first frame of a new run with
+ * the record of the run before. Each check below is the first frame of another
+ * CIS run while the record is still the one of the first run: a promotion,
+ * another vision function status, an AGE under the bound and an older
+ * judgement are held (DOMAIN would refuse them); a drop to an unusable quality
+ * is delivered, then the same judgement from yet another run is taken without
+ * a call. An older judgement in one CIS run is held too, also exactly half the
+ * number range away. A late frame of an ended run is stale; a new judgement
+ * is delivered, and so is a lower number once the Pi BOOT changed. */
+static NetUpperCanMessage occupant_of_run(uint32_t run, uint32_t tx, uint8_t pv, uint8_t pr, uint8_t cv, uint8_t cr,
+    uint32_t at)
+{
+    NetUpperCanMessage m = occupant_at(tx, pv, pr, cv, cr, at);
+    m.data.cis_occupant.boot_id = CIS_BOOT + run;
+    return m;
+}
+static int n39_occupant_cis_restart(void)
+{
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisOccupantState_t held;
+    NetDomainC2 *a;
+    uint32_t generations, ended;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT;
+    m = occupant_at(1u, 1u, 0u, 1u, 0u, START_MS + 10u);
+    CHECK(cis_send_at(&m, START_MS + 10u) == 0 && occupant_calls == 1u);
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 60u); /* presence OK -> INVALID */
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    m = occupant_at(3u, 1u, 0u, 1u, 0u, START_MS + 70u);
+    m.data.cis_occupant.vision_sequence = 41u; /* an older judgement, same CIS run: held */
+    CHECK(cis_send_at(&m, START_MS + 70u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    generations = diag().upper.generation_changes;
+    m = occupant_of_run(1u, 1u, 1u, 0u, 1u, 0u, START_MS + 110u); /* run 1: presence promoted, held */
+    CHECK(cis_send_at(&m, START_MS + 110u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    m = occupant_of_run(2u, 1u, 0u, 3u, 1u, 0u, START_MS + 120u);
+    m.data.cis_occupant.vision_function_status = 2u; /* run 2: another vision function status, held */
+    CHECK(cis_send_at(&m, START_MS + 120u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    m = occupant_of_run(3u, 1u, 0u, 5u, 1u, 0u, START_MS + 130u);
+    m.data.cis_occupant.vision_age_ms = (uint16_t)(OCC_AGE0 + 130u - 1u); /* run 3: a change 1 ms under the AGE bound */
+    CHECK(cis_send_at(&m, START_MS + 130u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    m = occupant_of_run(4u, 1u, 0u, 3u, 1u, 0u, START_MS + 140u);
+    m.data.cis_occupant.vision_sequence = 41u; /* run 4: an older judgement, held */
+    CHECK(cis_send_at(&m, START_MS + 140u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    CHECK(diag().upper.generation_changes == generations);
+    m = occupant_of_run(5u, 1u, 0u, 3u, 0u, 5u, START_MS + 150u); /* run 5: count OK -> STALE, delivered */
+    CHECK(cis_send_at(&m, START_MS + 150u) == 0 && occupant_calls == 3u && record_tx(0x310u, 1u));
+    CHECK(diag().upper.generation_changes == generations + 1u);
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(last_occupant.sourceGeneration == PI_BOOT && last_occupant.presenceQuality.meta.updateSequence == 42u);
+    held = last_occupant; /* taken at START_MS + 151 */
+    ended = diag().upper.old_generation;
+    m = occupant_at(4u, 0u, 3u, 1u, 0u, START_MS + 160u); /* late frame of the ended first run: stale */
+    CHECK(cis_send_at(&m, START_MS + 160u) == 0 && occupant_calls == 3u && diag().upper.old_generation == ended + 1u);
+    m = occupant_of_run(6u, 1u, 0u, 3u, 0u, 5u, START_MS + 170u); /* run 6: the same judgement, no call */
+    CHECK(cis_send_at(&m, START_MS + 170u) == 0 && occupant_calls == 3u && record_tx(0x310u, 1u));
+    CHECK(diag().upper.generation_changes == generations + 2u);
+    held.presenceQuality.meta.ageMs += now_ms - (START_MS + 151u);
+    held.countQuality.meta.ageMs += now_ms - (START_MS + 151u);
+    CHECK(project_query(0x310u, &held, &out) == NET_OK); /* the record equals DOMAIN's state */
+    m = occupant_of_run(6u, 2u, 1u, 0u, 1u, 0u, START_MS + 200u);
+    m.data.cis_occupant.vision_sequence = 43u; /* a new judgement: delivered */
+    m.data.cis_occupant.vision_age_ms = OCC_AGE0;
+    CHECK(cis_send_at(&m, START_MS + 200u) == 0 && occupant_calls == 4u);
+    CHECK(last_occupant.presenceQuality.meta.updateSequence == 43u &&
+        quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_VALID, 0u, DATA_QUALITY_OK));
+    m = occupant_of_run(6u, 3u, 1u, 0u, 1u, 0u, START_MS + 220u);
+    m.data.cis_occupant.vision_sequence = 43u + 0x80000000u; /* exactly half the range away: older, held */
+    m.data.cis_occupant.vision_age_ms = OCC_AGE0;
+    CHECK(cis_send_at(&m, START_MS + 220u) == 0 && occupant_calls == 4u && record_tx(0x310u, 2u));
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT + 1u; /* the Pi restarted: an applied transition */
+    m = occupant_of_run(6u, 4u, 1u, 0u, 1u, 0u, START_MS + 230u);
+    m.data.cis_occupant.pi_boot_id = PI_BOOT + 1u;
+    m.data.cis_occupant.vision_sequence = 1u; /* a lower number under the new Pi BOOT: delivered */
+    m.data.cis_occupant.vision_age_ms = 5u;
+    CHECK(cis_send_at(&m, START_MS + 230u) == 0 && occupant_calls == 5u && last_occupant.sourceGeneration == PI_BOOT + 1u);
+    CHECK(failure_calls == 0u);
+    return 0;
+}
+
+/* DOMAIN refuses a quality change of the judgement it holds without changing
+ * what it stores (for example an AGE under its bound when its clock is read
+ * after the pass time Network used): DOMAIN_IF_REJECTED drops that frame
+ * alone, the route stays open, the record keeps the last frame DOMAIN took and
+ * the next report of the judgement is offered again; this holds after a CAN
+ * bus-off (new port epoch) and across a CIS restart. The Occupant entry of the
+ * C2 API is replaced here to give the answer; the barrier stands open as in
+ * n37. REJECTED on another Pi BOOT with the same number blocks the route. */
+static DomainIf_Status_t occupant_answer;
+static DomainIf_Status_t occupant_answering(const CisOccupantState_t *s)
+{
+    owner_call();
+    last_occupant = *s;
+    ++occupant_calls;
+    return occupant_answer;
+}
+static bool occupant_route_blocked(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    size_t i;
+    for (i = 0u; i < sizeof(a->ingress) / sizeof(a->ingress[0]); ++i)
+        if (a->ingress[i].used && a->ingress[i].link == NET_WIRE_CAN && a->ingress[i].id == 0x310u)
+            return a->ingress[i].blocked;
+    return false;
+}
+/* Start, an applied transition stand-in and the answering Occupant entry, then
+ * judgement 42 taken (OK). */
+static int occupant_answer_start(NetDomainC2 **out)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].open = true;
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT;
+    a->api.RxCisOccupant = occupant_answering;
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_at(1u, 1u, 0u, 1u, 0u, START_MS + 10u);
+    CHECK(cis_send_at(&m, START_MS + 10u) == 0 && occupant_calls == 1u);
+    *out = a;
+    return 0;
+}
+static int n40_occupant_rejected_change_dropped(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    uint32_t bcm_rejected;
+    CHECK(occupant_answer_start(&a) == 0);
+    bcm_rejected = a->rejected_frames;
+    MockRtd_CanRaiseBusOff(BUS); /* the CAN link closes and reopens with a new port epoch */
+    run_to(START_MS + 260u);
+    CHECK(diag().rtd.busoff_recoveries == 1u && diag().rtd.can_link_state == 0u);
+    occupant_answer = DOMAIN_IF_REJECTED;
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 270u); /* presence OK -> INVALID, refused */
+    CHECK(cis_send_at(&m, START_MS + 270u) == 0 && occupant_calls == 2u);
+    CHECK(a->occupant_rejected_frames == 1u && a->last_c2_status == DOMAIN_IF_REJECTED);
+    CHECK(!occupant_route_blocked());
+    m = occupant_of_run(1u, 1u, 0u, 3u, 1u, 0u, START_MS + 320u); /* the restarted CIS, the drop again: refused */
+    CHECK(cis_send_at(&m, START_MS + 320u) == 0 && occupant_calls == 3u);
+    CHECK(a->occupant_rejected_frames == 2u && !occupant_route_blocked());
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_of_run(1u, 2u, 0u, 3u, 1u, 0u, START_MS + 370u); /* the next report of the drop: taken */
+    CHECK(cis_send_at(&m, START_MS + 370u) == 0 && occupant_calls == 4u && record_tx(0x310u, 2u));
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(a->rejected_frames == bcm_rejected);
+    occupant_answer = DOMAIN_IF_REJECTED;
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT + 1u; /* the Pi restarted: an applied transition */
+    m = occupant_of_run(1u, 3u, 1u, 0u, 1u, 0u, START_MS + 420u);
+    m.data.cis_occupant.pi_boot_id = PI_BOOT + 1u; /* the same number under another Pi BOOT, refused: blocked */
+    CHECK(cis_send_at(&m, START_MS + 420u) == 0 && occupant_calls == 5u);
+    CHECK(occupant_route_blocked() && a->occupant_rejected_frames == 2u);
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_of_run(1u, 4u, 1u, 0u, 1u, 0u, START_MS + 470u);
+    m.data.cis_occupant.pi_boot_id = PI_BOOT + 1u;
+    m.data.cis_occupant.vision_sequence = 43u;
+    CHECK(cis_send_at(&m, START_MS + 470u) == 0 && occupant_calls == 5u);
+    CHECK(failure_calls == 0u);
+    return 0;
+}
+/* Only DOMAIN_IF_REJECTED is dropped for the judgement DOMAIN holds: another
+ * failure on a report of that judgement blocks the route as before. */
+static int n41_occupant_held_failure_blocks(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    CHECK(occupant_answer_start(&a) == 0);
+    occupant_answer = DOMAIN_IF_NOT_AVAILABLE;
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 60u); /* a drop of the held judgement, not taken */
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    CHECK(occupant_route_blocked() && a->occupant_rejected_frames == 0u && record_tx(0x310u, 1u));
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_at(3u, 0u, 3u, 1u, 0u, START_MS + 110u);
+    CHECK(cis_send_at(&m, START_MS + 110u) == 0 && occupant_calls == 2u);
+    return 0;
+}
+/* DOMAIN_IF_REJECTED on a new judgement of the same Pi BOOT blocks the route. */
+static int n42_occupant_new_judgement_rejected_blocks(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    CHECK(occupant_answer_start(&a) == 0);
+    occupant_answer = DOMAIN_IF_REJECTED;
+    m = occupant_at(2u, 1u, 0u, 1u, 0u, START_MS + 60u);
+    m.data.cis_occupant.vision_sequence = 43u;
+    m.data.cis_occupant.vision_age_ms = OCC_AGE0;
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    CHECK(occupant_route_blocked() && a->occupant_rejected_frames == 0u);
     return 0;
 }
 
@@ -2551,6 +2749,10 @@ int main(int argc, char **argv)
         { "n36_rear_sequence_and_age_held", n36_rear_sequence_and_age_held },
         { "n37_occupant_quality_delivered", n37_occupant_quality_delivered },
         { "n38_environment_quality_delivered", n38_environment_quality_delivered },
+        { "n39_occupant_cis_restart", n39_occupant_cis_restart },
+        { "n40_occupant_rejected_change_dropped", n40_occupant_rejected_change_dropped },
+        { "n41_occupant_held_failure_blocks", n41_occupant_held_failure_blocks },
+        { "n42_occupant_new_judgement_rejected_blocks", n42_occupant_new_judgement_rejected_blocks },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

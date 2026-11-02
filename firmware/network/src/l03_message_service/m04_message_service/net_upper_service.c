@@ -569,8 +569,9 @@ static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now
         r->direction,can_raw_equal(&record->raw.can,&event->can));
     if(status!=NET_OK)return status;
     status=delivery_time(s,idx,&event->capture,net_upper_can_max_age(&m),now,&d);if(status!=NET_OK)return status;
-    /* A new generation is compared with nothing of the run it replaces. */
-    if(record->seen && !new_generation) {
+    /* A new generation is compared with nothing of the run it replaces, but
+     * for an observation that outlives the sender run (a Pi judgement). */
+    if(record->seen && (!new_generation || net_upper_can_observation_spans_runs(&record->can,&m))) {
         const NetUpperAdmission *a=record;uint64_t elapsed;
         if(event->capture.captured_at_ms<a->delivery.capture.captured_at_ms)return NET_HOLD;
         elapsed=event->capture.captured_at_ms-a->delivery.capture.captured_at_ms;

@@ -67,6 +67,22 @@ static bool occupant_quality_same(const NetWireCisOccupantRaw *a, const NetWireC
     return a->presence_validity==b->presence_validity && a->presence_reason==b->presence_reason &&
         a->count_validity==b->count_validity && a->count_reason==b->count_reason;
 }
+/* CIS_OCCUPANT (0x310) carries a Pi judgement. Its original observation is the
+ * Pi BOOT_ID and VISION_SEQUENCE, not the CAN BOOT_ID of the CIS that forwards
+ * it: DOMAIN (CisOccupantManager) keys the stored observation on those two only
+ * and keeps it when the CIS restarts under the same Pi BOOT. */
+static bool occupant_same_judgement(const NetWireCisOccupantRaw *a, const NetWireCisOccupantRaw *b)
+{
+    return a->pi_boot_id==b->pi_boot_id && a->vision_sequence==b->vision_sequence;
+}
+/* An older judgement of the same Pi BOOT: VISION_SEQUENCE behind in serial
+ * order (half range, as DOMAIN's sequence check), which DOMAIN refuses as out
+ * of order. */
+static bool occupant_older_judgement(const NetWireCisOccupantRaw *a, const NetWireCisOccupantRaw *b)
+{
+    uint32_t ahead=b->vision_sequence-a->vision_sequence;
+    return a->pi_boot_id==b->pi_boot_id && ahead!=0u && ahead>=UINT32_C(0x80000000);
+}
 static bool permission_same(const NetWireDomainPermissionRaw *a, const NetWireDomainPermissionRaw *b)
 {
     return a->boot_id==b->boot_id && a->update_sequence==b->update_sequence;
@@ -273,12 +289,15 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence && younger(old->data.cis_environment.illuminance_age_ms,m->data.cis_environment.illuminance_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
     case 0x310u:
-        /* The original observation identity cannot carry another presence,
-         * count or vision function status, nor a promoted presence or count
-         * quality. A drop to an unusable quality, or a change between unusable
-         * ones, passes and is delivered: DOMAIN applies it field by field
-         * (CisOccupantManager_ApplyQualityWithdrawal). */
-        if (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence && (
+        /* The original observation is the Pi judgement (occupant_same_judgement),
+         * also across a restart of the CIS that forwards it. It cannot carry
+         * another presence, count or vision function status, nor a promoted
+         * presence or count quality. A drop to an unusable quality, or a change
+         * between unusable ones, passes and is delivered: DOMAIN applies it
+         * field by field (CisOccupantManager_ApplyQualityWithdrawal). An older
+         * judgement of the same Pi BOOT is held. */
+        if (occupant_older_judgement(&old->data.cis_occupant,&m->data.cis_occupant)) return NET_HOLD;
+        if (occupant_same_judgement(&old->data.cis_occupant,&m->data.cis_occupant) && (
             old->data.cis_occupant.occupant_presence!=m->data.cis_occupant.occupant_presence ||
             old->data.cis_occupant.occupant_count!=m->data.cis_occupant.occupant_count ||
             old->data.cis_occupant.vision_function_status!=m->data.cis_occupant.vision_function_status ||
@@ -286,7 +305,7 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
                 m->data.cis_occupant.presence_validity,m->data.cis_occupant.presence_reason) ||
             field_promoted(old->data.cis_occupant.count_validity,old->data.cis_occupant.count_reason,
                 m->data.cis_occupant.count_validity,m->data.cis_occupant.count_reason))) return NET_HOLD;
-        if (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence && younger(old->data.cis_occupant.vision_age_ms,m->data.cis_occupant.vision_age_ms,elapsed)) return NET_HOLD;
+        if (occupant_same_judgement(&old->data.cis_occupant,&m->data.cis_occupant) && younger(old->data.cis_occupant.vision_age_ms,m->data.cis_occupant.vision_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
     case 0x0A0u:
         /* The original observation identity cannot carry a different distance
@@ -723,9 +742,10 @@ bool net_upper_can_same_observation(const NetUpperCanMessage *old,const NetUpper
             (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence) &&
             environment_quality_same(&old->data.cis_environment,&m->data.cis_environment);
     case 0x310u:
-        /* A presence or count quality change under the sequence is new to
-         * deliver; a report that differs only in AGE is the same observation. */
-        return (old->data.cis_occupant.boot_id==m->data.cis_occupant.boot_id && old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id && old->data.cis_occupant.vision_sequence==m->data.cis_occupant.vision_sequence) &&
+        /* A presence or count quality change of the judgement is new to
+         * deliver; a report that differs only in AGE is the same observation,
+         * also from a restarted CIS. */
+        return occupant_same_judgement(&old->data.cis_occupant,&m->data.cis_occupant) &&
             occupant_quality_same(&old->data.cis_occupant,&m->data.cis_occupant);
     case 0x0A0u:
         /* The first drop from a usable to an unusable quality is new to
@@ -797,6 +817,14 @@ bool net_upper_can_keep_delivered_quality(const NetUpperCanMessage *old, NetUppe
     r->validity=old->data.cis_rear.validity;
     r->quality_reason=old->data.cis_rear.quality_reason;
     return true;
+}
+/* A new CAN run of the sender is compared with the record of the run it
+ * replaces only for an observation that is not the run's own: CIS_OCCUPANT
+ * (0x310) under the same Pi BOOT_ID (occupant_same_judgement). */
+bool net_upper_can_observation_spans_runs(const NetUpperCanMessage *old, const NetUpperCanMessage *m)
+{
+    return old!=NULL && m!=NULL && old->id==0x310u && m->id==0x310u &&
+        old->data.cis_occupant.pi_boot_id==m->data.cis_occupant.pi_boot_id;
 }
 NetStatus net_upper_can_repeat_age(const NetUpperCanMessage *old, NetUpperCanMessage *m, uint64_t elapsed,
     uint16_t slack, bool *raised)
