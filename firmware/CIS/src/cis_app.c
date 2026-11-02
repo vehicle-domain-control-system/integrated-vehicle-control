@@ -116,9 +116,9 @@ static void bench_report_step(uint32_t now_ms)
     }
     s_last_bench_ms = now_ms;
 
-    b.reported_status = (uint8_t)s_rear_out.status;
-    b.reported_valid = s_rear_out.valid ? 1u : 0u;
-    b.reported_reason = (uint8_t)s_rear_out.reason;
+    b.reported_status = (uint8_t)s_rear.status;
+    b.reported_valid = s_rear.value.valid ? 1u : 0u;
+    b.reported_reason = (uint8_t)s_rear.value.reason;
     b.sensor_status = (uint8_t)s_rear.status;
     bench_value(&b.distance, &s_rear.value, now_ms);
     b.distance.value = s_rear.value.value > 0 ? (uint32_t)s_rear.value.value : 0u;
