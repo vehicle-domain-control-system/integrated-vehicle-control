@@ -16,6 +16,7 @@
  * delivered (same values, validities, reasons, function state). The original is kept here. */
 static NetVisionResult s_pi_orig;
 static bool            s_pi_orig_valid;
+static NetSensorFunctionState s_pi_fn_status;   /* CIS vision state when this judgement was first delivered */
 
 static uint32_t s_t_rear, s_t_occ, s_t_env, s_t_stat;
 static bool     s_due_rear, s_due_occ, s_due_env, s_due_stat;
@@ -62,12 +63,19 @@ void CisApp_OnDomainPermission(const NetDomainPermission *message, const NetCanR
 void CisApp_OnPiVisionResult(const NetVisionResult *message, const NetUartRxMeta *meta)
 {
     pi_vision_result_t f;
+    bool new_judgement;
 
     if (message == 0 || meta == 0) {
         return;
     }
-    s_pi_orig = *message;
-    s_pi_orig_valid = true;
+    /* A repeat of the same judgement (same Pi BOOT and VISION_SEQUENCE) keeps the record and the
+     * CIS function state of its first delivery; only a new judgement replaces them. */
+    new_judgement = !s_pi_orig_valid || message->pi_boot_id != s_pi_orig.pi_boot_id ||
+                    message->vision_sequence != s_pi_orig.vision_sequence;
+    if (new_judgement) {
+        s_pi_orig = *message;
+        s_pi_orig_valid = true;
+    }
     f.pi_boot_id = message->pi_boot_id;
     f.vision_sequence = message->vision_sequence;
     f.vision_age_ms = message->vision_age_ms;
@@ -80,6 +88,9 @@ void CisApp_OnPiVisionResult(const NetVisionResult *message, const NetUartRxMeta
     f.vision_status = message->vision_status;
     f.fault_code = message->vision_fault_code;
     cis_app_on_vision_result(&f, meta->received_at_ms);
+    if (new_judgement) {
+        s_pi_fn_status = (NetSensorFunctionState)vision_function_status(cis_app_vision());
+    }
 }
 
 void CisApp_OnPiVisionStatus(const NetVisionStatus *message, const NetUartRxMeta *meta)
@@ -108,8 +119,7 @@ static void fill_rear(NetCisRear *m, uint32_t now_ms)
     m->update_sequence = r->value.sequence;
     m->source_age_ms = cis_value_age_ms(&r->value, now_ms);
     /* the measurement is in mm, which is the same number as 0.1 cm: no division */
-    m->rear_distance_deci_cm = (r->status == CIS_PROX_VALID_DISTANCE) ? sat16((uint32_t)r->value.value)
-                                                                      : (uint16_t)REAR_NO_VALUE;
+    m->rear_distance_deci_cm = sat16(rear_report_distance(r));
     m->validity = r->value.valid ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
     m->quality_reason = (NetQualityReason)r->value.reason;
     m->proximity_status = (NetProximityStatus)r->status;
@@ -162,7 +172,8 @@ static bool fill_occupant(NetCisOccupant *m, uint32_t now_ms)
     m->count_validity = cv;
     m->count_reason = (cv == NET_VALIDITY_VALID) ? s_pi_orig.count_reason
                                                  : (NetQualityReason)v->count.reason;
-    m->vision_function_status = (NetSensorFunctionState)vision_function_status(v);
+    m->vision_function_status = s_pi_fn_status;     /* as at the first delivery of this judgement; a Pi link
+                                                     * failure is reported in CIS_STATUS (PI_UART_STATUS) */
     return true;
 }
 
