@@ -5,6 +5,8 @@
  * Rules (CIS-SYS-FUN-026..028, SAF-002):
  *  - a failed measurement is never reported as NO_OBJECT (= safe)
  *  - NO_OBJECT only when the sensor answered and nothing is in range
+ *  - a change of the reported distance or state without a new echo (no answer, fault, recovery)
+ *    gets a new sequence number and restarts the age; a quality change alone keeps the sequence
  *  - after repeated failures the function goes to FAULT; it comes back only
  *    through RECOVERING and a new valid measurement
  *
@@ -36,6 +38,9 @@ void rear_on_echo(rear_state_t *s, uint32_t width_us, uint32_t now_ms);
 
 /* No (complete) echo was received. */
 void rear_on_no_echo(rear_state_t *s, uint32_t now_ms);
+
+/* The distance that is reported: the measurement for VALID_DISTANCE, REAR_NO_VALUE otherwise. */
+uint32_t rear_report_distance(const rear_state_t *s);
 
 /* Echo pulse width -> millimetres (sound: 58 us per cm for the round trip). */
 uint32_t rear_width_to_mm(uint32_t width_us);
