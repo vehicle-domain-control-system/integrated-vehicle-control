@@ -8,7 +8,7 @@ Network 담당자가 만든 S32K144 CIS 시험대(`nodes/cis/bench/s32k144_cis`,
 | 맡는 쪽 | 내용 |
 |---|---|
 | Network (담당자) | CAN FD(FlexCAN0)·UART-C(LPUART1)·시계(SysTick 1 kHz, 코어 FIRC 48 MHz)·`Board_*` hook·`BOOT_ID`. 복제본 프로젝트 `network_144_net_cis`의 RTD 설정 |
-| CIS (우리) | 센서 3종(HC-SR04, DHT22, VEML7700), Pi 판정(`vision_logic`), 후방 허용(`power_gate`), `CisNet_Publish*` 제출, `CisApp_On*` 수신 |
+| CIS (우리) | 센서 3종(HC-SR04, DHT22, VEML7700), Pi 판정(`vision_logic`), `CisNet_Publish*` 제출, `CisApp_On*` 수신 |
 
 우리 센서 드라이버는 레지스터를 직접 만진다(RTD API 없음). 핀 먹스는 RTD Port 초기화가 끝난 뒤 드라이버가 다시 설정한다.
 
