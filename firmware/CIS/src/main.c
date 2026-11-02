@@ -15,7 +15,6 @@
  *         Raspberry Pi: OpenSDA USB (J7) -> Pi USB port (LPUART1, 115200 8N1).
  * Debugger variables:
  *   rear : g_distance_mm, g_status, g_reason, g_sequence, g_age_ms (raw measurement)
- *          g_out_status, g_out_valid, g_out_reason (after the power gate)
  *   DHT22: g_temp_c01 (0.01 degC), g_hum_c01 (0.01 %RH), g_env_*_valid, g_env_*_seq,
  *          g_env_*_age_ms, g_env_*_reason, g_dht_ok / g_dht_no_response /
  *          g_dht_timeout / g_dht_checksum (read results), g_dht_raw[5]
@@ -68,9 +67,6 @@ volatile uint32_t g_status;
 volatile uint32_t g_reason;
 volatile uint32_t g_sequence;
 volatile uint32_t g_age_ms;
-volatile uint32_t g_out_status;     /* reported after the power gate (5 = INACTIVE) */
-volatile uint32_t g_out_valid;
-volatile uint32_t g_out_reason;
 
 volatile uint32_t g_occ_count;
 volatile uint32_t g_occ_presence;
@@ -162,7 +158,6 @@ static uint32_t answered_color(const rear_state_t *s, bool *answered)
 static void debug_mirror(uint32_t now_ms)
 {
     const rear_state_t *rear = cis_app_rear();
-    const rear_output_t *rout = cis_app_rear_output();
     const env_state_t *env = cis_app_env();
     const lux_state_t *lux = cis_app_lux();
     const vision_state_t *vis = cis_app_vision();
@@ -172,9 +167,6 @@ static void debug_mirror(uint32_t now_ms)
     g_reason = (uint32_t)rear->value.reason;
     g_sequence = rear->value.sequence;
     g_age_ms = cis_value_age_ms(&rear->value, now_ms);
-    g_out_status = (uint32_t)rout->status;
-    g_out_valid = rout->valid;
-    g_out_reason = (uint32_t)rout->reason;
 
     g_occ_count = (uint32_t)vis->count.value;
     g_occ_presence = (uint32_t)vis->presence.value;
