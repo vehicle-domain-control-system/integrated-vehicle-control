@@ -1078,6 +1078,12 @@ if(NETWORK_BUILD_RTD_MOCK)
         foreach(case IN ITEMS n43_permission_unknown_stream n44_rear_state_change_new_sequence)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # DOMAIN_PERMISSION resubmitted as the same content: an AGE below the accepted one
+        # grown by the time since is held, the frames of the number never go back in AGE.
+        foreach(case IN ITEMS n45_permission_unevaluated_resubmit_held n46_permission_allow_resubmit_held
+                n47_permission_resubmit_clock_short n48_permission_resubmit_after_forward_age)
+            add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
+        endforeach()
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

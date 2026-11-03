@@ -103,8 +103,13 @@ return nd_send_can(a,&m,&id);
  *   +1   : the first frame, a newer DOMAIN sequence (u32 serial order, 1..2^31-1
  *          ahead), or a value or quality change under the same DOMAIN sequence
  *          (a withdrawal or a quality drop is sent at once);
- *   kept : the same tuple, a repetition: same number, AGE only grows (a
- *          smaller AGE is HOLD);
+ *   kept : the same tuple, a repetition: same number, and its AGE is at least the
+ *          accepted AGE grown by the time since (the frames of that number already
+ *          carry it; a repetition never restarts the original AGE, 10_CAN_FD.md
+ *          DOMAIN_PERMISSION). A smaller AGE is HOLD whatever the values: Network
+ *          makes no new number without a newer DOMAIN sequence or a change
+ *          (10_DATA_AND_ID_RULES.md: no source sequence or time without a success),
+ *          and the frames already sent or waiting go on with their own AGE;
  *   HOLD : an older DOMAIN sequence; under the same DOMAIN sequence a change
  *          that lifts a restriction (power not 1 -> 1, operation 0 -> 1, a
  *          quality non-OK -> OK). Permission comes back only with a newer
@@ -121,7 +126,7 @@ static bool relaxes(const NetDomainC2PermissionSequence *p,const NetWireDomainPe
 return (p->power!=1u&&r->vehicle_power_permission==1u)||(p->operation_allowed==0u&&r->operation_allowed==1u)||
 (p->power_quality!=0u&&r->power_permission_quality==0u)||(p->operation_quality!=0u&&r->operation_quality==0u);
 }
-static NetStatus permission_sequence(NetDomainC2 *a,const DomainIf_CisPowerPermission_t *in,const NetWireDomainPermissionRaw *r,uint32_t *out,bool *advance){
+static NetStatus permission_sequence(NetDomainC2 *a,const DomainIf_CisPowerPermission_t *in,const NetWireDomainPermissionRaw *r,uint64_t now,uint32_t *out,bool *advance){
 NetDomainC2PermissionSequence *p=&a->permission;
 uint32_t ahead;
 bool values,qualities;
@@ -138,7 +143,7 @@ return NET_OK;
 }
 values=p->power!=r->vehicle_power_permission||p->operation_state!=r->power_operation_state||p->operation_allowed!=r->operation_allowed;
 qualities=p->power_quality!=r->power_permission_quality||p->operation_quality!=r->operation_quality;
-if(!values&&!qualities){if(in->meta.ageMs<p->age_ms){net_upper_observe_increment(&p->held_age);
+if(!values&&!qualities){if((uint64_t)in->meta.ageMs<(uint64_t)p->age_ms+(now-p->accepted_at_ms)){net_upper_observe_increment(&p->held_age);
 return NET_HOLD;
 }
 *advance=false;*out=p->sequence;
@@ -148,12 +153,13 @@ if(relaxes(p,r)){net_upper_observe_increment(&p->held_relax);return NET_HOLD;}
 *out=nd_permission_next(p->sequence);
 return NET_OK;
 }
-static void permission_commit(NetDomainC2 *a,const DomainIf_CisPowerPermission_t *in,const NetWireDomainPermissionRaw *r,bool advance){
+static void permission_commit(NetDomainC2 *a,const DomainIf_CisPowerPermission_t *in,const NetWireDomainPermissionRaw *r,uint64_t now,bool advance){
 NetDomainC2PermissionSequence *p=&a->permission;
 p->sent=true;
 p->sequence=r->update_sequence;
 p->domain_sequence=in->meta.updateSequence;
 p->age_ms=in->meta.ageMs;
+p->accepted_at_ms=now;
 p->power=r->vehicle_power_permission;
 p->power_quality=r->power_permission_quality;
 p->operation_state=r->power_operation_state;
@@ -167,6 +173,7 @@ uint8_t quality;
 uint32_t sequence;
 bool advance;
 NetStatus status;
+uint64_t now;
 if(in==NULL)return NET_INVALID_ARGUMENT;
 if(a->config.permission_bundle==NULL)return NET_HOLD;
 memset(&m,0,sizeof(m));
@@ -185,10 +192,11 @@ if(in->quality==DATA_QUALITY_OK){if(r->vehicle_power_permission!=(in->vehiclePow
 else{if(in->vehiclePowerAllowed||(r->vehicle_power_permission!=0u&&r->vehicle_power_permission!=255u))return NET_HOLD;
 r->vehicle_power_permission=255u;
 }
-ND_TRY(permission_sequence(a,in,r,&sequence,&advance));
+ND_TRY(net_upper_now(a->service,&now));
+ND_TRY(permission_sequence(a,in,r,now,&sequence,&advance));
 r->update_sequence=sequence;
 status=nd_send_state(a,&m);
-if(status==NET_OK)permission_commit(a,in,r,advance);
+if(status==NET_OK)permission_commit(a,in,r,now,advance);
 return status;
 }
 static NetStatus vss_event(NetDomainC2 *a,const DomainIf_VssOneShotEvent_t *in){NetUpperCanMessage m;

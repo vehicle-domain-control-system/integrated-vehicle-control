@@ -252,10 +252,12 @@ typedef struct {
     uint32_t sequence;        /* CAN UPDATE_SEQUENCE of that frame */
     uint32_t domain_sequence; /* its DOMAIN meta.updateSequence */
     uint32_t age_ms;          /* its DOMAIN meta.ageMs */
+    uint64_t accepted_at_ms;  /* service time it was accepted: the frames of the tuple carry
+                               * age_ms plus the time since */
     uint8_t power, power_quality, operation_state, operation_allowed, operation_quality; /* wire values */
     /* Saturating: +1, the same number again, and HOLD for an older DOMAIN
-     * sequence, a lifted restriction under the same DOMAIN sequence and a
-     * smaller AGE of the same tuple. */
+     * sequence, a lifted restriction under the same DOMAIN sequence and an
+     * AGE of the same tuple below age_ms grown by the time since. */
     uint32_t advanced, kept, held_older, held_relax, held_age;
 } NetDomainC2PermissionSequence;
 /* CAN messages whose TX_SEQUENCE the adapter numbers itself (one counter per

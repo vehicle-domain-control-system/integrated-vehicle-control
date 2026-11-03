@@ -2723,7 +2723,8 @@ static int n38_environment_quality_delivered(void)
  * 0x080 stops for good (the receivers report SOURCE_EXPIRED once the AGE of
  * the last frame reaches 500 ms: bcm_node.b15_permission_unknown_stream). A
  * submission of it past the life is refused (REJECTED), one with an AGE below
- * the last submitted one is held (NOT_AVAILABLE). A resubmission of the kept
+ * the accepted one grown by the time since is held (NOT_AVAILABLE). A
+ * resubmission of the kept
  * evaluation goes out at once (the M04 slot takes the newer submission). */
 #define UNKNOWN_EVALUATIONS 10u
 #define UNKNOWN_SEQUENCE0 100u
@@ -2843,6 +2844,119 @@ static int n44_rear_state_change_new_sequence(void)
     return 0;
 }
 
+/* DOMAIN_PERMISSION resubmitted as the same content (same DOMAIN sequence,
+ * values and qualities). The frames of one UPDATE_SEQUENCE never carry an AGE
+ * below the earlier frames' AGE grown by the time between them: a submission
+ * whose AGE is below the accepted AGE grown by the time since is held
+ * (DOMAIN_IF_NOT_AVAILABLE) and the frames already in the slot go on with
+ * their own AGE; Network makes no new number for it, whatever the values. One
+ * evaluation then lasts its 500 ms original life: every frame carries its time
+ * since the submission, at most 50 ms apart, the last one at `last` (AGE under
+ * 500), nothing after. A kept submission is sent at once and the 50 ms cadence
+ * restarts from it. */
+static int resubmitted_stream(uint8_t power, uint8_t quality, unsigned held, unsigned frames, uint32_t last)
+{
+    const CanSeen *s, *prev = NULL;
+    const NetDomainC2 *a = NetNode_DomainC2();
+    const NetWireDomainPermissionRaw *p;
+    unsigned k;
+    run_to(START_MS + 1000u);
+    CHECK(count_id(0x080u, 0u) == frames && consecutive(0x080u, 0u, 1u) && can_bad == 0u);
+    for (k = 0u; k < frames; ++k) {
+        s = nth_id(0x080u, 0u, k);
+        p = &s->m.data.domain_permission;
+        CHECK(p->update_sequence == 1u && p->source_age_ms == s->at - START_MS);   /* never restarted */
+        CHECK(p->vehicle_power_permission == power && p->power_permission_quality == quality);
+        if (prev != NULL) CHECK(s->at > prev->at && s->at - prev->at <= 50u);
+        prev = s;
+    }
+    CHECK(prev != NULL && prev->at == START_MS + last && last < 500u);
+    CHECK(a != NULL && a->permission.sequence == 1u && a->permission.advanced == 1u);
+    CHECK(a->permission.held_age == held && failure_calls == 0u);
+    return 0;
+}
+/* No success history: the DOMAIN permission manager reports UNKNOWN with
+ * sequence 0 and AGE 0 at every evaluation (no evaluator: NO_DATA each time). */
+static int n45_permission_unevaluated_resubmit_held(void)
+{
+    uint32_t e;
+    CHECK(start());
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 0u, 0u) == DOMAIN_IF_OK);
+    for (e = 1u; e <= 4u; ++e) {
+        run_to(START_MS + 200u * e);
+        CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 0u, 0u) == DOMAIN_IF_NOT_AVAILABLE);
+    }
+    CHECK(resubmitted_stream(255u, 3u, 4u, 10u, 451u) == 0);
+    CHECK(allows_from(0u) == 0u);
+    return 0;
+}
+/* An ALLOW resubmitted with a smaller AGE does not renew it; with its grown
+ * AGE it is kept (the same number), and it ends with its 500 ms life. */
+static int n46_permission_allow_resubmit_held(void)
+{
+    CHECK(start());
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 120u);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 0u) == DOMAIN_IF_NOT_AVAILABLE);
+    run_to(START_MS + 240u);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 239u) == DOMAIN_IF_NOT_AVAILABLE);  /* 1 ms short */
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 240u) == DOMAIN_IF_OK);             /* kept */
+    CHECK(resubmitted_stream(1u, 0u, 2u, 11u, 491u) == 0);   /* kept at +240: sent at +241 */
+    CHECK(allows_from(0u) == 11u && NetNode_DomainC2()->permission.kept == 1u);
+    return 0;
+}
+/* An evaluation kept as a failed one (same sequence, AGE grown), its AGE
+ * counted on a DOMAIN clock 10 ms behind: held, the frames keep their AGE;
+ * with its grown AGE kept (only the kept counter shows it: the frame at +401
+ * is the periodic one). */
+static int n47_permission_resubmit_clock_short(void)
+{
+    CHECK(start());
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 200u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 190u) == DOMAIN_IF_NOT_AVAILABLE);
+    run_to(START_MS + 400u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 390u) == DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 400u) == DOMAIN_IF_OK);
+    CHECK(resubmitted_stream(255u, 3u, 2u, 10u, 451u) == 0);
+    CHECK(NetNode_DomainC2()->permission.kept == 1u);
+    return 0;
+}
+
+/* A kept resubmission moves the floor: after an AGE ahead of the time (kept),
+ * a later resubmission between the old floor and the new one is held. Every
+ * frame of the number carries at least the AGE of the one before it grown by
+ * the time between them; the last one before the 500 ms life, nothing after. */
+static int n48_permission_resubmit_after_forward_age(void)
+{
+    const CanSeen *s, *prev = NULL;
+    const NetDomainC2 *a;
+    unsigned k, n;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    CHECK(a != NULL);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 100u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 150u) == DOMAIN_IF_OK);        /* 50 ms ahead: kept */
+    run_to(START_MS + 200u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 220u) == DOMAIN_IF_NOT_AVAILABLE); /* below 150 + 100 */
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 250u) == DOMAIN_IF_OK);
+    run_to(START_MS + 1000u);
+    n = count_id(0x080u, 0u);
+    CHECK(n >= 2u && consecutive(0x080u, 0u, 1u) && can_bad == 0u);
+    for (k = 0u; k < n; ++k) {
+        s = nth_id(0x080u, 0u, k);
+        CHECK(s->m.data.domain_permission.update_sequence == 1u);
+        if (prev != NULL)
+            CHECK(s->m.data.domain_permission.source_age_ms >=
+                  prev->m.data.domain_permission.source_age_ms + (s->at - prev->at));
+        prev = s;
+    }
+    CHECK(prev->at == START_MS + 401u && prev->m.data.domain_permission.source_age_ms == 451u);
+    CHECK(a->permission.kept == 2u && a->permission.held_age == 1u && a->permission.advanced == 1u);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static const struct { const char *name; int (*run)(void); } cases[] = {
@@ -2887,6 +3001,10 @@ int main(int argc, char **argv)
         { "n42_occupant_new_judgement_rejected_blocks", n42_occupant_new_judgement_rejected_blocks },
         { "n43_permission_unknown_stream", n43_permission_unknown_stream },
         { "n44_rear_state_change_new_sequence", n44_rear_state_change_new_sequence },
+        { "n45_permission_unevaluated_resubmit_held", n45_permission_unevaluated_resubmit_held },
+        { "n46_permission_allow_resubmit_held", n46_permission_allow_resubmit_held },
+        { "n47_permission_resubmit_clock_short", n47_permission_resubmit_clock_short },
+        { "n48_permission_resubmit_after_forward_age", n48_permission_resubmit_after_forward_age },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;
