@@ -338,6 +338,37 @@ endif()
 
 add_test(NAME permission_coordinator COMMAND test_permission_coordinator)
 
+add_executable(test_permission_unknown_evaluator
+    test_permission_unknown_evaluator.c
+    ../../src/application/permission_unknown_evaluator.c
+    ../../src/application/permission_coordinator.c
+    ../../src/application/permission_adapter.c
+    ../../src/application/permission_manager.c
+    ../../src/interface/domain_interface_core.c
+)
+
+target_include_directories(test_permission_unknown_evaluator PRIVATE
+    ../../src/application
+    ../../src/interface
+)
+
+set_target_properties(test_permission_unknown_evaluator PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO
+)
+
+if(MSVC)
+    target_compile_options(test_permission_unknown_evaluator PRIVATE /W4)
+else()
+    target_compile_options(test_permission_unknown_evaluator PRIVATE
+        -Wall -Wextra -Wpedantic -Werror
+    )
+endif()
+
+add_test(NAME permission_unknown_evaluator
+         COMMAND test_permission_unknown_evaluator)
+
 add_executable(test_cis_environment_manager
     test_cis_environment_manager.c
     ../../src/application/cis_environment_manager.c
