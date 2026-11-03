@@ -2,6 +2,7 @@
 #define DOMAIN_APPLICATION_ENTRY_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "domain_board_runtime.h"
 
@@ -48,6 +49,19 @@ DomainApplicationEntry_Status_t DomainApplicationEntry_Init(
 DomainApplicationEntry_Status_t DomainApplicationEntry_Poll(void);
 
 bool DomainApplicationEntry_IsReady(void);
+
+/*
+ * Serialized owner-only integration accessors.
+ *
+ * GetNowMs uses the same BoardTimebase instance that drives DomainRuntime.
+ * It is not ISR-safe and a failed call leaves outNowMs unchanged.
+ * GetRuntime returns the ApplicationEntry-owned runtime only while the whole
+ * entry is Ready. The pointer is borrowed and must not be retained or used by
+ * Network to mutate general Domain state; it exists solely for explicitly
+ * agreed private integration bindings.
+ */
+bool DomainApplicationEntry_GetNowMs(uint32_t *outNowMs);
+DomainRuntime_t *DomainApplicationEntry_GetRuntime(void);
 
 /* Read-only value copy; failure leaves outSnapshot unchanged. */
 DomainApplicationEntry_Status_t DomainApplicationEntry_GetSnapshot(

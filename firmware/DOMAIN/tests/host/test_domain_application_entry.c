@@ -7,6 +7,9 @@ static int g_failures;
 static int g_tests;
 static uint32_t g_initCalls;
 static uint32_t g_pollCalls;
+static uint32_t g_timeCalls;
+static uint32_t g_nowMs = 1234U;
+static bool g_timeAvailable = true;
 static DomainBoardRuntime_Status_t g_initStatus = DOMAIN_BOARD_RUNTIME_OK;
 static DomainBoardRuntime_Status_t g_pollStatus = DOMAIN_BOARD_RUNTIME_OK;
 static bool g_boardReady;
@@ -68,22 +71,72 @@ bool DomainBoardRuntime_IsReady(const DomainBoardRuntime_t *boardRuntime)
     return (boardRuntime != NULL) && g_boardReady;
 }
 
+DomainRuntime_t *DomainBoardRuntime_GetDomainRuntime(
+    DomainBoardRuntime_t *boardRuntime)
+{
+    return DomainBoardRuntime_IsReady(boardRuntime) ? &boardRuntime->runtime :
+                                                      NULL;
+}
+
+bool DomainBoardTimebase_GetNowMs(void *context, uint32_t *outNowMs)
+{
+    CHECK(context != NULL);
+    CHECK(outNowMs != NULL);
+    ++g_timeCalls;
+    if (!g_timeAvailable)
+    {
+        return false;
+    }
+    *outNowMs = g_nowMs;
+    return true;
+}
+
 static void Test_PreInitIsFailClosed(void)
 {
     DomainApplicationEntry_Snapshot_t snapshot;
     DomainApplicationEntry_Snapshot_t saved;
+    uint32_t nowMs = 0xA5A5A5A5U;
     int before = g_failures;
 
     BeginTest("Test_PreInitIsFailClosed");
     (void)memset(&snapshot, 0xA5, sizeof(snapshot));
     saved = snapshot;
     CHECK(!DomainApplicationEntry_IsReady());
+    CHECK(DomainApplicationEntry_GetRuntime() == NULL);
+    CHECK(!DomainApplicationEntry_GetNowMs(NULL));
+    CHECK(!DomainApplicationEntry_GetNowMs(&nowMs));
+    CHECK(nowMs == 0xA5A5A5A5U);
+    CHECK(g_timeCalls == 0U);
     CHECK(DomainApplicationEntry_Poll() ==
           DOMAIN_APPLICATION_ENTRY_NOT_INITIALIZED);
     CHECK(DomainApplicationEntry_GetSnapshot(&snapshot) ==
           DOMAIN_APPLICATION_ENTRY_NOT_INITIALIZED);
     CHECK(memcmp(&snapshot, &saved, sizeof(snapshot)) == 0);
     CHECK(g_pollCalls == 0U);
+    EndTest(before);
+}
+
+static void Test_ReadyIntegrationAccessors(void)
+{
+    DomainRuntime_t *runtime;
+    uint32_t nowMs = 0xA5A5A5A5U;
+    int before = g_failures;
+
+    BeginTest("Test_ReadyIntegrationAccessors");
+    runtime = DomainApplicationEntry_GetRuntime();
+    CHECK(runtime != NULL);
+    CHECK(!DomainApplicationEntry_GetNowMs(NULL));
+    CHECK(g_timeCalls == 0U);
+    CHECK(DomainApplicationEntry_GetNowMs(&nowMs));
+    CHECK(nowMs == g_nowMs);
+    CHECK(g_timeCalls == 1U);
+
+    g_timeAvailable = false;
+    nowMs = 0x5A5A5A5AU;
+    CHECK(!DomainApplicationEntry_GetNowMs(&nowMs));
+    CHECK(nowMs == 0x5A5A5A5AU);
+    CHECK(g_timeCalls == 2U);
+    g_timeAvailable = true;
     EndTest(before);
 }
 
@@ -161,6 +214,7 @@ static void Test_PollFailureIsStickyAndFailClosed(void)
           DOMAIN_APPLICATION_ENTRY_OK);
     CHECK(snapshot.faultBlocked);
     CHECK(!snapshot.ready);
+    CHECK(DomainApplicationEntry_GetRuntime() == NULL);
     CHECK(snapshot.lastBoardStatus ==
           DOMAIN_BOARD_RUNTIME_RUNTIME_POLL_FAILED);
     CHECK(DomainApplicationEntry_Poll() ==
@@ -213,6 +267,7 @@ int main(int argc, char **argv)
     Test_InvalidArgumentsDoNotStartRuntime();
     Test_InitOwnsAndStartsBoardRuntime();
     Test_DuplicateInitDoesNotRestartRuntime();
+    Test_ReadyIntegrationAccessors();
     Test_PollRunsOnlyWhenReady();
     Test_PollFailureIsStickyAndFailClosed();
 
