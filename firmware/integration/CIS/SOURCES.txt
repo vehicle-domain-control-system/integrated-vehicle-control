@@ -1,23 +1,23 @@
-# CIS 노드 통합 폴더의 출처 기록 (2026-10-29 생성)
+# CIS 노드 통합 폴더의 출처 기록 (2026-10-29 생성, 2026-11-03 갱신)
 # SHA-256은 CRLF를 LF로 읽은 값이다(체크아웃 줄 끝과 관계없이 같다). src/network/는 NETWORK_BUNDLE.txt에 따로 기록돼 있다.
 #
-# src/main.c, src/cis/   <- feat/cis-rtd-network 129ef584530c96182f4a7509129aee2fbd6a4e74 (clean): firmware/CIS/s32ds/main.c, firmware/CIS/src/
-# src/net_bench/         <- feat/vss-network-node 02051dba2b951422111b8de2973848276e43f510 (clean): firmware/network/nodes/cis/bench/s32k144_cis/
+# src/main.c, src/cis/   <- feat/cis-rtd-network 74e2abdda3c0dcf8ac2fe6f7d1dfd4a693ccaf55 (clean): firmware/CIS/s32ds/main.c, firmware/CIS/src/
+# src/net_bench/         <- feat/vss-network-node 336fd91cef0610ba291e948bebf332def388b613 (clean): firmware/network/nodes/cis/bench/s32k144_cis/
 # src/network/           <- 같은 커밋, sync_to_s32ds.py --node CIS (NETWORK_BUNDLE.txt)
 # s32ds/cis144_board_tested.mex <- 보드 확인한 S32DS 프로젝트 network_144_cis_app의 network_144_can_debuger.mex
 #
 a374136e463b12f6168353dc0fc0d32863f47ea994028af9b2d66cccd5ed5089  src/main.c
-6f6a583b274506bdabf475776bc4215d6c6a668adb30c6575f89b1262c7175d4  src/cis/cis_app.c
-11b2cefd6a40b7b21abaa51e9d12256b826ec77489e4dbd04c0a48e75512565a  src/cis/cis_app.h
+bcdd7470563171fe77b9043050839a16deb7125db1ffa435ed018a27feefa8e0  src/cis/cis_app.c
+d05b448d49474d2dc4dc3204194d4a5d6654ec55a86dfd0852a997a660874c24  src/cis/cis_app.h
 711e7473a8e20a66463a218a4a83035fab0d6c0ae41f408399101d96b107d25e  src/cis/cis_fault.c
 6e0bf6bf98d552ff3877f28def0721559214cc02eb55b00c7b249750b8cc709b  src/cis/cis_fault.h
-8511d37a44dc50a82010c06db530ca85f18e813dfd4892716fac0ca16e55cd0b  src/cis/cis_net_adapter.c
-5be33d645cfc4fe3950d2e9c9522dd3295a8281e73edd8d47e913b996b3995b1  src/cis/cis_net_adapter.h
+e96fa58f8ecc4a684dbf62f1f6ce47d537350725495a2118497f09c556e296e0  src/cis/cis_net_adapter.c
+4a778cd357be25b6e5f3394a8c8b67150b31b98771b483cac6314d43e72ba793  src/cis/cis_net_adapter.h
 f68c3a0676bdbca602551b629d4f92df534750eb362a2dc8dca6d66f238d1b41  src/cis/cis_node.c
 9363c2a63adc6056475a06a8f25816beaab8191d93c6fb9a4f74860faff59656  src/cis/cis_node.h
 0a117e16761380af1f7a7a08df2d99139d36fdbaf109e7aec51d445632a30be1  src/cis/cis_state.c
 7cd070e6c4e6f703219fc8b9c33646735501d16c23d8664eb0b1ac76ba9288b2  src/cis/cis_state.h
-35c85a3094dc2a5ff84b99935fd30f8e06852058f6a06ef5af657964ff2d9817  src/cis/cis_types.h
+00ba629f068ba529683c9c00f3c550f5cdc2cd506654cf097868cdb4fc87881c  src/cis/cis_types.h
 a58c06eeba881c07eb2aa074a774d924843738e5aeccf87e1e7521b754fbb534  src/cis/cis_value.c
 257774658c2d650e0ed2e84329f4f7cb7269f7d094b502472d478d23a4df2c75  src/cis/cis_value.h
 1bffe5ca66a558be15a13ce595d8200dedc0a1a907c4b89148d3bc97e306c793  src/cis/crc16.c
@@ -33,10 +33,8 @@ b2d0f0c91f4bfed01c7b22e2f10d16561c8d0a2db67cc66b56fe27ce11d3a562  src/cis/dht22.
 2d435c66acec73a5047f57f70170d6bbd1f4ef3351fe4ea462668d4423f71bd5  src/cis/pi_protocol.c
 a26787b5f30abbe4e75baab66d7da12360567266c0c6490b36a6a7d4f7a960cd  src/cis/pi_protocol.h
 c6b89b7846fd93b9bba93ad94a9467ca0ae5ce69d64a8112225ef6e2d845ced1  src/cis/pi_uart.h
-bf3b638159e8600328d0013d9c24d5943e1d37f30e636d371374246fdd003c0d  src/cis/power_gate.c
-8b786aab3373880a8bb3f9c898b93d6241dccaac9b4cdae614ff386708a1f2ca  src/cis/power_gate.h
-da23245677165b148490f57eed57df577c9d1734215cfd9ce3d86d984523f5c2  src/cis/rear_logic.c
-45532117f400cd4c021d7567f98a88780f4bb77c1cd9b9462029592f4e2c8cca  src/cis/rear_logic.h
+f5e8a26f50f8b8023840774dbdb383682416a965427e2db9606b7683a4d44db0  src/cis/rear_logic.c
+4ca0a65661ae942a5a8fa485ccc608c1e8c2cb9aaa51107ae4b6bc49f022ac27  src/cis/rear_logic.h
 e484773e818bf6781785382ea0cdf558c3f7638f19ff6ae63e4ad213f74e70fc  src/cis/regs_s32k144.h
 69dc4910a6f5207b4d8b682edad9954081ab2255df254f9c567761b3bc048d02  src/cis/timebase.c
 b41a2eca2a7e55c63d93da5b2ba21b1f7f9330e31cbd49595beccc41ee870efa  src/cis/timebase.h

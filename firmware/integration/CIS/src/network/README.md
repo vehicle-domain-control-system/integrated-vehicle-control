@@ -55,6 +55,7 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
   - 같은 DOMAIN 평가를 새 TX로 반복한 0x080(약 50 ms마다)은 `CisApp_OnDomainPermission`에만 전달한다(`NetNodeDiag.app.permission_repeats`). 그래서 P_PERMISSION은 CAN 프레임마다 나가지 않는다(`cis_node.f19_permission_repeat_no_flood`).
   - relay가 싣는 것(DOMAIN BOOT, UPDATE, 전원 값, 전원 품질)이 마지막 relay와 같은 0x080(예: operation 품질만 바뀜)도 보내지 않는다(`NetNodeDiag.app.relay_unchanged`).
 - **Network는 P_PERMISSION을 반복하지 않는다(주기 0).** 새 평가·세대 변경·품질 제한 때만 보낸다. Pi의 1500 ms 수신 감시는 DOMAIN의 약 200 ms 재평가(`10_CAN_FD.md` DOMAIN_PERMISSION)가 채운다. DOMAIN이 멈추면 Pi는 1500 ms 뒤 수신 중단으로 판단한다. 이전 ALLOW를 연장하지 않으며, 원 stamp로 다시 보내는 반복은 원 Power 사용 기한 500 ms(`10_DATA_AND_ID_RULES.md` 소비 시점 경계)도 넘길 수 없다(`cis_node.f03_permission_new_evaluations`, `f04_permission_same_evaluation`, `f22_relay_sequence_cis_owned`).
+- **장치에는 P_PERMISSION이 한 건만 있다.** 앞 relay가 선로에 있는 동안 온 새 평가는 발행기에서 기다렸다가 앞 relay가 정산된 뒤 나간다. 그래서 relay가 UART HAL 큐에서 기다리다 거절되는 일은 없고, 드라이버 시작 오류는 제출 때 바로 거절된다(보내지 않음, 그 LINK_SEQUENCE는 쓴 것으로 남고 다음 relay는 그다음 번호를 쓴다. `cis_node.f28_permission_relay_one_in_device`). 장치가 받은 뒤 거절한 프레임은 원인(만료, 시작 오류)과 상관없이 발행기가 `tx_failed`로 세고 번호를 쓴 것으로 둔다(`m04.m22_device_refusal_cause`).
 - DOMAIN 0x080이 150 ms 끊기면 `NetNodeDiag.permission.reason`이 `NET_PERMISSION_RX_TIMEOUT`이 된다.
 
 ## 재부팅과 같은 관측의 반복 (수신)
@@ -125,6 +126,6 @@ CIS 노드(profile 1, CAN + UART-C) 펌웨어에 Network를 붙일 때 지켜야
 
 - `.build-cis`(`-DNETWORK_NODE_PROFILE=CIS -DNETWORK_BUILD_RTD_MOCK=ON -DNETWORK_NODE_PLATFORM=144`)의 `cis_node.*`: `nodes/cis/tests/cis_node/test_cis_node_e2e.c`. CAN(DOMAIN)과 UART-C(Pi)를 mock SDK로 함께 구동한다. `cis_node.f13_entry`와 `*_entry`는 `Net_Init`/`Net_MainFunction` 경로다. 344도 명시하여 같은 API를 검증할 수 있으며 실제 보드 시험과 구분한다.
 - 반복 전달과 재부팅: `cis_node.f14_permission_repeat_delivered`, `f17_domain_reboot`, `f18_pi_reboot`, `f19_permission_repeat_no_flood`, `f20_permission_tx_zero`, `f23_vision_repeat_delivered`(Pi 판정 반복·늦은 반복 50 ms 여유·정확한 중복), `f25_vision_repeat_long_age`(2초 넘는 Pi 반복).
-- P_PERMISSION relay와 Occupant 품질: `cis_node.f21_permission_quality_drop_relayed`, `f22_relay_sequence_cis_owned`, `f24_occupant_restricted_quality`.
+- P_PERMISSION relay와 Occupant 품질: `cis_node.f21_permission_quality_drop_relayed`, `f22_relay_sequence_cis_owned`, `f24_occupant_restricted_quality`, `f28_permission_relay_one_in_device`.
 - 문서 통신량 부하: `cis_node.load_doc_traffic`. 10 s 동안 `10_CAN_FD.md` 주기 표의 버스 프레임(WINDOW 제외, 약 107개/s, 위상 0이라 1초마다 11개가 함께 시작한다. CIS가 받는 것은 다른 노드 몫 7개)과 Pi UART-C(P_VISION_RESULT 29 B / 100 ms, P_VISION_STATUS 26 B / 1 s, 바이트 간격 87 µs)를 넣는다. 앱 역할은 CIS_REAR·ENVIRONMENT·STATUS를 문서 주기마다, CIS_OCCUPANT를 Pi 판정마다 Network 한 바퀴(`NetNode_Step`) 뒤에 제출한다. main은 10 ms 주기이고 10바퀴마다 한 번 7 ms 늦는다(17 ms). 손실 0(링·큐·M04 슬롯, CIS 몫 수신 전부 전달), 자기 프레임 간격 ≤ 주기 + 17 ms, P_PERMISSION 간격 ≤ 500 ms + 17 ms, 최대 깊이 ≤ 용량을 확인하고 `LOAD CIS ...` 한 줄로 남긴다. `upper.tx_deferred`(한 바퀴 기다림)는 손실로 세지 않는다.
 - 1초 경계 겹침: `cis_node.load_second_boundary`. 같은 통신량에서 앱을 Network 한 바퀴 앞에 두고 Pi 판정을 1초 경계 12 ms 전에 맞춰, CAN 4종과 relay가 HAL TX 4칸보다 많이 한 바퀴에 몰리게 한다. `upper.tx_deferred` ≥ 1(겹침이 실제로 일어남), 손실 0, LINK_SEQUENCE·TX_SEQUENCE 건너뜀 0, 주기 위반 0을 확인하고 `LOAD-BOUNDARY CIS ...` 한 줄로 남긴다.

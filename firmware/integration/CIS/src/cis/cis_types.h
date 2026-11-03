@@ -53,7 +53,7 @@ typedef enum {
     CIS_PROX_UNAVAILABLE,
     CIS_PROX_FAULT,
     CIS_PROX_RECOVERING,
-    CIS_PROX_INACTIVE   /* 5: power permission denied or unknown (PR 81) */
+    CIS_PROX_INACTIVE   /* 5: code kept for the interface; the CIS does not use it (the rear detection is always active) */
 } cis_proximity_t;
 
 /* FAULT_MASK bits. fault code = bit number + 1, code 0 = no fault. */

@@ -16,6 +16,7 @@
  * delivered (same values, validities, reasons, function state). The original is kept here. */
 static NetVisionResult s_pi_orig;
 static bool            s_pi_orig_valid;
+static NetSensorFunctionState s_pi_fn_status;   /* CIS vision state when this judgement was first delivered */
 
 static uint32_t s_t_rear, s_t_occ, s_t_env, s_t_stat;
 static bool     s_due_rear, s_due_occ, s_due_env, s_due_stat;
@@ -51,26 +52,30 @@ static uint16_t sat16(uint32_t v)
 
 /* ---- receive side: copy into the CIS and return ---------------------------------------- */
 
+/* The rear detection is always active: the DOMAIN permission is no longer used by the CIS.
+ * The Network stack still delivers the frame (and relays it to the Pi); the symbol is required. */
 void CisApp_OnDomainPermission(const NetDomainPermission *message, const NetCanRxMeta *meta)
 {
-    if (message == 0 || meta == 0) {
-        return;
-    }
-    /* quality OK (0) is the only quality that may allow */
-    cis_app_on_permission(message->vehicle_power_permission,
-                          message->power_permission_quality == 0u,
-                          message->source_age_ms, meta->received_at_ms);
+    (void)message;
+    (void)meta;
 }
 
 void CisApp_OnPiVisionResult(const NetVisionResult *message, const NetUartRxMeta *meta)
 {
     pi_vision_result_t f;
+    bool new_judgement;
 
     if (message == 0 || meta == 0) {
         return;
     }
-    s_pi_orig = *message;
-    s_pi_orig_valid = true;
+    /* A repeat of the same judgement (same Pi BOOT and VISION_SEQUENCE) keeps the record and the
+     * CIS function state of its first delivery; only a new judgement replaces them. */
+    new_judgement = !s_pi_orig_valid || message->pi_boot_id != s_pi_orig.pi_boot_id ||
+                    message->vision_sequence != s_pi_orig.vision_sequence;
+    if (new_judgement) {
+        s_pi_orig = *message;
+        s_pi_orig_valid = true;
+    }
     f.pi_boot_id = message->pi_boot_id;
     f.vision_sequence = message->vision_sequence;
     f.vision_age_ms = message->vision_age_ms;
@@ -83,6 +88,9 @@ void CisApp_OnPiVisionResult(const NetVisionResult *message, const NetUartRxMeta
     f.vision_status = message->vision_status;
     f.fault_code = message->vision_fault_code;
     cis_app_on_vision_result(&f, meta->received_at_ms);
+    if (new_judgement) {
+        s_pi_fn_status = (NetSensorFunctionState)vision_function_status(cis_app_vision());
+    }
 }
 
 void CisApp_OnPiVisionStatus(const NetVisionStatus *message, const NetUartRxMeta *meta)
@@ -106,17 +114,15 @@ void CisApp_OnPiVisionStatus(const NetVisionStatus *message, const NetUartRxMeta
 
 static void fill_rear(NetCisRear *m, uint32_t now_ms)
 {
-    const rear_output_t *o = cis_app_rear_output();
     const rear_state_t *r = cis_app_rear();
 
-    m->update_sequence = o->sequence;
+    m->update_sequence = r->value.sequence;
     m->source_age_ms = cis_value_age_ms(&r->value, now_ms);
     /* the measurement is in mm, which is the same number as 0.1 cm: no division */
-    m->rear_distance_deci_cm = (o->status == CIS_PROX_VALID_DISTANCE) ? sat16(o->distance_mm)
-                                                                      : (uint16_t)REAR_NO_VALUE;
-    m->validity = o->valid ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
-    m->quality_reason = (NetQualityReason)o->reason;
-    m->proximity_status = (NetProximityStatus)o->status;
+    m->rear_distance_deci_cm = sat16(rear_report_distance(r));
+    m->validity = r->value.valid ? NET_VALIDITY_VALID : NET_VALIDITY_INVALID;
+    m->quality_reason = (NetQualityReason)r->value.reason;
+    m->proximity_status = (NetProximityStatus)r->status;
 }
 
 /* CIS_OCCUPANT (CIS 20_API.md, 10_DATA.md "Pi original observation and CIS evaluation"):
@@ -166,7 +172,8 @@ static bool fill_occupant(NetCisOccupant *m, uint32_t now_ms)
     m->count_validity = cv;
     m->count_reason = (cv == NET_VALIDITY_VALID) ? s_pi_orig.count_reason
                                                  : (NetQualityReason)v->count.reason;
-    m->vision_function_status = (NetSensorFunctionState)vision_function_status(v);
+    m->vision_function_status = s_pi_fn_status;     /* as at the first delivery of this judgement; a Pi link
+                                                     * failure is reported in CIS_STATUS (PI_UART_STATUS) */
     return true;
 }
 

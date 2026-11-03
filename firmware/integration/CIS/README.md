@@ -1,21 +1,25 @@
 # CIS 노드 통합 폴더 (S32K144, Network CIS 프로필)
 
-CIS 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구성은 Network 스택(CAN FD + UART-C), CIS 앱(센서 3종, Pi 판정, 후방 허가), 보드 시계·hook, `main()`이다.
+CIS 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구성은 Network 스택(CAN FD + UART-C), CIS 앱(센서 3종, Pi 판정, 후방 상시 측정), 보드 시계·hook, `main()`이다.
 
 `src/` 구조는 보드에서 확인한 S32DS 프로젝트(`network_144_cis_app`)의 `src/`와 같다. 그래서 다른 IDE에서는 이 `src/`를 프로젝트 소스로 넣고, 아래 4절의 설정을 옮기면 된다.
 
-- **보드 확인(2026-10-29):** S32K144 평가 보드에서 확인했다. 상대는 S32K344 디버그 노드(DOMAIN 역할)였다.
+- **이 판(CIS `74e2abd` + Network `336fd91`, 2026-11-03 갱신):** 보드에서 아직 확인하지 않았다(7절). 이전 판에서 바뀐 것:
+  - CIS: 후방 감지가 DOMAIN 허가(0x080)와 관계없이 늘 측정한다(`power_gate.c/.h` 삭제). 거리나 측정 상태가 바뀌면 새 관측 번호(UPDATE_SEQUENCE)와 새 AGE 기준으로 보낸다(무응답, FAULT, RECOVERING 포함). 같은 Pi 판정을 다시 보낼 때 기능 상태를 처음 받은 때의 값으로 고정한다.
+  - Network: UART 장치 큐 거절 원인 전달, CIS_REAR·CIS_OCCUPANT를 DOMAIN이 받을 때의 규칙 등 공통 코드다. CIS 프로필 사본에서 바뀐 파일은 10개다(`README.md` 포함).
+  - 컴파일 확인: ARM GCC와 Network의 mock RTD 헤더로 `src/main.c`를 뺀 C 파일을 컴파일했다. NXP 장치 헤더가 필요한 `src/net_bench/net_board_time144.c`(바뀌지 않음)를 빼고 모두 경고 없이 컴파일됐고, 앱과 Network 사이에 정의가 없는 함수나 겹치는 정의가 없었다. 실제 RTD 빌드는 7절에서 한다.
+- **이전 판 보드 확인(CIS `129ef58` + Network `02051db`, 2026-10-29):** S32K144 평가 보드에서 확인했다. 상대는 S32K344 디버그 노드(DOMAIN 역할)였다.
   - CAN 송신: CIS_REAR 50 ms, CIS_ENVIRONMENT 200 ms, CIS_STATUS 250 ms. 받은 수와 TX_SEQUENCE가 같아 빠진 프레임이 없었다.
-  - 0x080 허가: 받으면 후방 측정값이 VALID로 열리고, 끊기면 COMMUNICATION_FAULT로 닫혔다.
+  - 0x080 허가: 받으면 후방 측정값이 VALID로 열리고, 끊기면 COMMUNICATION_FAULT로 닫혔다(이 판에서는 없어진 동작).
   - Pi(UART-C): 노트북 Pi 도구(pi_bench, COM3)로 UART-C 송수신과 CAN 중계를 확인했다. 실제 Raspberry Pi와 pi_vision 스크립트는 확인하지 않았다(5절).
-- **빌드 확인:** 이 폴더의 소스를 보드 빌드와 같은 컴파일러·플래그로 빌드했다. 결과 flash 이미지가 보드에서 확인한 이미지와 바이트 단위로 같았다(컴파일 67개, 경고 0).
+  - 빌드: 그 판의 소스를 보드 빌드와 같은 컴파일러·플래그로 빌드했다. 결과 flash 이미지가 보드에서 확인한 이미지와 바이트 단위로 같았다(컴파일 67개, 경고 0).
 
 ## 1. 구성
 
 | 경로 | 내용 | 관리 | 출처 |
 |---|---|---|---|
 | `src/main.c` | Clock → Port → IntCtrl 초기화, `Board_TimeInit()` → `CisNode_Init()`, 루프 `CisNode_Service()` | CIS | `feat/cis-rtd-network` `firmware/CIS/s32ds/main.c` |
-| `src/cis/` (37개) | CIS 앱과 센서 드라이버. 레지스터를 직접 다루고 RTD API는 쓰지 않는다 | CIS | `feat/cis-rtd-network` `firmware/CIS/src/` |
+| `src/cis/` (35개) | CIS 앱과 센서 드라이버. 레지스터를 직접 다루고 RTD API는 쓰지 않는다 | CIS | `feat/cis-rtd-network` `firmware/CIS/src/` |
 | `src/net_bench/net_board_time144.c/.h` | SysTick 1 kHz 시계, `Board_*` hook, BOOT_ID | Network | `feat/vss-network-node` `firmware/network/nodes/cis/bench/s32k144_cis/` |
 | `src/network/` (95개) | Network 스택의 CIS 프로필 생성 사본(`sync_to_s32ds.py --node CIS`). `README.md`는 Network의 CIS 통합 메모, `NETWORK_BUNDLE.txt`는 출처와 해시 기록 | Network | `feat/vss-network-node` `firmware/network/` |
 | `s32ds/cis144_board_tested.mex` | 보드에서 확인한 S32DS 프로젝트의 ConfigTools 설정(핀, 클럭, FlexCAN, LPUART, IntCtrl). 원래 이름은 `network_144_can_debuger.mex` | 통합 | S32DS 프로젝트 |
@@ -23,8 +27,8 @@ CIS 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 | `ISSUES.md` | 보드 시험에서 찾은 결함 | 통합 | |
 
 출처 커밋은 다음과 같다.
-- CIS: `feat/cis-rtd-network` `129ef58`
-- Network: `feat/vss-network-node` `02051db`
+- CIS: `feat/cis-rtd-network` `74e2abd`
+- Network: `feat/vss-network-node` `336fd91`
 
 **이 폴더의 파일은 직접 고치지 않는다.** 원본에서 고친 뒤 다시 만든다(6절).
 
@@ -40,7 +44,7 @@ CIS 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 | 빌드 산출물(`Debug_FLASH/`), `.cproject`, `.project` | IDE 전용이다. 필요한 값은 4절에 적었다 |
 | CIS 도구(`sync_cis_to_s32ds.py`, `add_network_to_*.py`) | S32DS 프로젝트 전용이다. CIS 브랜치에 그대로 있다 |
 
-## 3. 빌드 결과(보드 확인 빌드 기준)
+## 3. 빌드 결과(이전 판의 보드 확인 빌드 기준, 이 판은 7절 빌드 뒤 갱신)
 
 - **Flash:** 약 125 KB(`.flash` 127,356 B, 벡터 784 B, 설정 16 B). 전체 512 KB.
 - **RAM(.data + .bss):** 26,732 B. int_sram 57,088 B의 약 47%다. 스택 4 KB와 heap 512 B는 따로 잡힌다.
@@ -165,7 +169,7 @@ CIS_USE_NETWORK_API
 - **BOOT_ID는 부팅마다 바뀐다.** 부팅 때 코어 사이클 카운터(DWT_CYCCNT)로 만든다. 리셋 버튼을 누를 때마다 바뀌지만, 전원을 뺐다 꽂으면 같은 값이 나올 수 있다.
   - 고정값이 필요하면 `NET_BOARD_BOOT_ID_FIXED`를 정의한다(0x43495331 "CIS1").
   - 제품용 출처는 아직 정하지 않았다.
-- **상대(DOMAIN)를 리셋해 같은 BOOT로 순번이 1부터 다시 오면 CIS는 그 0x080을 옛 프레임으로 버린다.** 이때 후방은 INACTIVE와 COMMUNICATION_FAULT에 머문다. S32K344 디버그 노드에서는 `tx boot new`를 먼저 친다.
+- **상대(DOMAIN)를 리셋해 같은 BOOT로 순번이 1부터 다시 오면 CIS는 그 0x080을 옛 프레임으로 버린다.** 이때 Pi로 가는 P_PERMISSION 중계가 멈춘다(후방 측정은 0x080과 관계없다). S32K344 디버그 노드에서는 `tx boot new`를 먼저 친다.
 
 ### 4.9 디버거에서 볼 값
 
@@ -182,6 +186,7 @@ CIS_USE_NETWORK_API
 
 ## 5. 확인하지 않은 것과 남은 점
 
+- **이 판의 보드 확인:** 7절. 아래 항목은 이전 판에서 본 것이다.
 - **결함:** `ISSUES.md`(CIS-1 DHT22 76 °C).
 - **Pi 연동:** 노트북 Pi 도구(pi_bench, COM3)로 UART-C 송수신과 CAN 중계 확인, 실제 Raspberry Pi와 pi_vision 스크립트는 미확인.
 - **DHT22 값:** 보드 확인 때 76.30 °C, 7.30 %RH가 VALID로 나왔다. 체크섬은 통과했으므로 센서 발열(배선)이나 센서 종류부터 확인한다(ISSUES.md CIS-1).
@@ -192,7 +197,7 @@ CIS_USE_NETWORK_API
 
 이 브랜치에는 원본이 없다. 원본을 따로 체크아웃하고, 도구는 원본 체크아웃의 것으로 실행하며, 대상만 이 브랜치의 체크아웃(`<통합 체크아웃>`)을 가리킨다.
 
-- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`02051db`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
+- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`336fd91`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
 
   ```
   python <Network 체크아웃>/firmware/network/tools/sync_to_s32ds.py --node CIS --check <통합 체크아웃>/firmware/integration/CIS/src/network
@@ -204,6 +209,19 @@ CIS_USE_NETWORK_API
     - `CHECK CIS STALE`: 원본이 바뀌었다. 다시 만든다
     - `CHECK CIS EDITED`: 누가 손으로 고쳤다. 원본에서 고치고 다시 만든다
   - `--apply`는 Network 체크아웃이 커밋된 상태(clean)에서만 되고, 그 커밋이 `NETWORK_BUNDLE.txt`에 기록된다.
-- **CIS 부분:** CIS 앱 원본은 `feat/cis-rtd-network` 브랜치의 `firmware/CIS`(`129ef58`)다. 그 체크아웃(`<CIS 체크아웃>`)에서 `<CIS 체크아웃>/firmware/CIS/src/`(`main.c`, `pi_uart.c`, `net_api_shim.h` 제외)를 `<통합 체크아웃>/firmware/integration/CIS/src/cis/`로, `<CIS 체크아웃>/firmware/CIS/s32ds/main.c`를 `.../CIS/src/main.c`로 복사한다.
+- **CIS 부분:** CIS 앱 원본은 `feat/cis-rtd-network` 브랜치의 `firmware/CIS`(`74e2abd`)다. 그 체크아웃(`<CIS 체크아웃>`)에서 `<CIS 체크아웃>/firmware/CIS/src/`(`main.c`, `pi_uart.c`, `net_api_shim.h` 제외)를 `<통합 체크아웃>/firmware/integration/CIS/src/cis/`로, `<CIS 체크아웃>/firmware/CIS/s32ds/main.c`를 `.../CIS/src/main.c`로 복사한다.
 - **시계 파일:** `<Network 체크아웃>/firmware/network/nodes/cis/bench/s32k144_cis/net_board_time144.c/.h`를 `<통합 체크아웃>/firmware/integration/CIS/src/net_bench/`로 복사한다.
 - **다시 만든 뒤:** `SOURCES.txt`의 커밋과 해시를 갱신한다.
+
+## 7. 이 판의 보드 확인
+
+이전 판을 확인한 S32DS 프로젝트(`network_144_cis_app`)에 이 판을 넣고 같은 상대(S32K344 디버그 노드, 노트북 Pi 도구)로 확인한다.
+
+1. **넣기:** 프로젝트의 `src/cis/`와 `src/network/`를 이 폴더의 것으로 바꾼다. `src/cis/power_gate.c/.h`는 지운다. `src/main.c`, `src/net_bench/`, 설정(`.mex`), define은 그대로다.
+2. **빌드:** Clean Build. 경고 0이고 RAM이 3절 표와 크게 다르지 않아야 한다(이번에 바뀐 것은 Network 공통 코드 일부와 CIS 앱이다).
+3. **보드에서 볼 것:**
+   - CAN 송신 세 종류의 주기와 TX_SEQUENCE(빠진 프레임 없음)
+   - 후방: 디버그 노드가 0x080을 보내지 않아도 거리값이 나온다(범위 안이면 VALID). 0x080을 보내다 끊어도 그대로다.
+   - 후방 무응답: 센서 신호선을 빼면 새 UPDATE_SEQUENCE로 UNAVAILABLE, 이어서 FAULT가 나가고, 다시 꽂으면 RECOVERING 뒤 VALID다. 상태가 바뀔 때마다 번호가 하나씩 오른다(디버그 노드 수신 로그).
+   - Pi: UART-C 송수신, P_VISION_RESULT를 받으면 CIS_OCCUPANT 중계. 디버그 노드가 0x080을 새 평가로 보내면 P_PERMISSION이 Pi로 간다.
+4. **끝나면:** 맨 위 "이 판" 줄과 1절 표(`../README.md`)의 보드 확인 칸에 날짜와 결과를 적고, 3절 빌드 수치를 갱신한다. 결함은 `ISSUES.md`에 적는다.

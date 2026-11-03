@@ -4,11 +4,21 @@
 #include "network/net_types.h"
 
 typedef enum { NET_PORT_RX, NET_PORT_TX, NET_PORT_ERROR } NetPortEventKind;
+/* NetTxEvent.refusal: why a device that held the borrow did not take the frame
+ * (admission_observed, accepted false), when the device knows it. NONE for every
+ * other event and for a refusal without a known cause (a cause on any other
+ * event is not used: an accepted admission is passed on as NONE). Build a NetTxEvent with
+ * memset or designated initializers: a positional initializer written before
+ * this member existed would put its outcome into refusal. */
+#define NET_TX_REFUSAL_NONE    0u
+#define NET_TX_REFUSAL_EXPIRED 1u   /* its use limit passed while it waited in the device */
+#define NET_TX_REFUSAL_DRIVER  2u   /* the driver refused to start it */
 typedef struct {
     NetTxKey key;
     bool admission_observed;
     bool accepted;
     bool release_observed;
+    uint8_t refusal;                /* NET_TX_REFUSAL_*: one byte, where padding was (size unchanged) */
     NetTxOutcome outcome;
 } NetTxEvent;
 typedef struct {

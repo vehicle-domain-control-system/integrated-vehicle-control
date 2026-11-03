@@ -171,8 +171,11 @@ static void emit_tx(NetHalAttempt *r,unsigned part,NetUpperEvent *e)
         net_wire_copy(&e->tx,&r->conflict,sizeof(e->tx)); r->conflict_pending=false;
     } else {
         net_wire_copy(&e->capture,&r->fact_capture[part],sizeof(e->capture));
-        if(part==0u) { e->tx.admission_observed=true; e->tx.accepted=r->accepted; r->sent_admission=true; }
-        if(part==1u) { e->tx.outcome=r->outcome; r->sent_outcome=r->outcome; }
+        if(part==0u) {
+            e->tx.admission_observed=true; e->tx.accepted=r->accepted; r->sent_admission=true;
+            e->tx.refusal=r->accepted ? (uint8_t)NET_TX_REFUSAL_NONE : r->refusal;
+        }
+        if(part==1u) { e->tx.outcome=(NetTxOutcome)r->outcome; r->sent_outcome=r->outcome; }
         if(part==2u) { e->tx.release_observed=true; r->sent_release=true; }
     }
     if(terminal(r) && !pending(r) && !r->held) net_wire_zero(r,sizeof(*r));
@@ -244,7 +247,7 @@ NetStatus net_hal_capture_tx(NetHalAdapter *a,NetWireLink link,const NetTxEvent 
 {
     NetHalAttempt *r; uintptr_t k; bool changed=false;
     if(!ready(a) || !link_valid(link) || overlap(a,event,sizeof(*event)) || overlap(a,capture,sizeof(*capture)) ||
-       (uint32_t)event->outcome>(uint32_t)NET_TX_FAILED ||
+       (uint32_t)event->outcome>(uint32_t)NET_TX_FAILED || event->refusal>NET_TX_REFUSAL_DRIVER ||
        (!event->admission_observed && !event->release_observed && event->outcome==NET_TX_UNKNOWN)) return NET_INVALID_ARGUMENT;
     k=lock(a); r=find(a,event->key);
     if(r==NULL || r->transfer.packet.link!=link || r->transfer.port_epoch!=capture->port_epoch) {
@@ -266,10 +269,13 @@ NetStatus net_hal_capture_tx(NetHalAdapter *a,NetWireLink link,const NetTxEvent 
     }
     if(event->admission_observed && !r->admission_known) {
         r->admission_known=true; r->accepted=event->accepted; changed=true;
+        /* The cause of a refusal is kept with it; it is not a fact of its own
+         * and plays no part in the conflict checks above. */
+        if(!event->accepted) r->refusal=event->refusal;
         r->fact_capture[0]=*capture; r->fact_order[0]=a->next_order++;
     }
     if(event->outcome!=NET_TX_UNKNOWN && r->outcome==NET_TX_UNKNOWN) {
-        r->outcome=event->outcome; changed=true;
+        r->outcome=(uint8_t)event->outcome; changed=true;   /* range checked above */
         r->fact_capture[1]=*capture; r->fact_order[1]=a->next_order++;
     }
     if(event->release_observed && !r->released) {

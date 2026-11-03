@@ -10,11 +10,9 @@
 #define BENCH_REPORT_MS     500u
 
 static rear_state_t    s_rear;
-static rear_output_t   s_rear_out;
 static env_state_t     s_env;
 static lux_state_t     s_lux;
 static vision_state_t  s_vision;
-static power_gate_t    s_gate;
 
 static uint32_t s_last_perm_ms;
 static uint32_t s_last_bench_ms;
@@ -32,16 +30,9 @@ void cis_app_init(void)
 #ifndef CIS_USE_NETWORK_API
     pi_uart_init();
 #endif
-    power_gate_init(&s_gate);
     s_last_perm_ms = 0u;
     s_last_bench_ms = 0u;
     s_link_seq = 0u;
-}
-
-void cis_app_on_permission(uint8_t permission, bool quality_ok, uint32_t source_age_ms,
-                           uint32_t now_ms)
-{
-    power_gate_on_permission(&s_gate, permission, quality_ok, source_age_ms, now_ms);
 }
 
 void cis_app_on_vision_result(const pi_vision_result_t *f, uint32_t now_ms)
@@ -125,9 +116,9 @@ static void bench_report_step(uint32_t now_ms)
     }
     s_last_bench_ms = now_ms;
 
-    b.reported_status = (uint8_t)s_rear_out.status;
-    b.reported_valid = s_rear_out.valid ? 1u : 0u;
-    b.reported_reason = (uint8_t)s_rear_out.reason;
+    b.reported_status = (uint8_t)s_rear.status;
+    b.reported_valid = s_rear.value.valid ? 1u : 0u;
+    b.reported_reason = (uint8_t)s_rear.value.reason;
     b.sensor_status = (uint8_t)s_rear.status;
     bench_value(&b.distance, &s_rear.value, now_ms);
     b.distance.value = s_rear.value.value > 0 ? (uint32_t)s_rear.value.value : 0u;
@@ -152,8 +143,7 @@ static void bench_report_step(uint32_t now_ms)
 
 static void rear_step(uint32_t now_ms)
 {
-    (void)hcsr04_step(&s_rear, now_ms);
-    power_gate_apply(&s_gate, &s_rear, now_ms, &s_rear_out);
+    (void)hcsr04_step(&s_rear, now_ms);      /* always measuring: no DOMAIN permission is needed */
 }
 
 /* The DHT22 read blocks for ~7 ms: only start it while no echo is pending. */
@@ -183,8 +173,6 @@ void cis_app_run(uint32_t now_ms)
 }
 
 const rear_state_t   *cis_app_rear(void)        { return &s_rear; }
-const rear_output_t  *cis_app_rear_output(void) { return &s_rear_out; }
 const env_state_t    *cis_app_env(void)         { return &s_env; }
 const lux_state_t    *cis_app_lux(void)         { return &s_lux; }
 const vision_state_t *cis_app_vision(void)      { return &s_vision; }
-const power_gate_t   *cis_app_gate(void)        { return &s_gate; }

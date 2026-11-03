@@ -1,11 +1,11 @@
-# BCM 노드 통합 폴더의 출처 기록 (2026-10-29 생성)
+# BCM 노드 통합 폴더의 출처 기록 (2026-10-29 생성, 2026-11-03 갱신)
 # SHA-256은 CRLF를 LF로 읽은 값이다(체크아웃 줄 끝과 관계없이 같다). src/network/는 NETWORK_BUNDLE.txt에 따로 기록돼 있다.
 #
 # src/main.c             <- 보드 확인한 S32DS 프로젝트 network_144_bcm_app의 src/main.c (144 디버그 노드 복제본의 main.c, NET_NODE_BUILD 경로 세 곳 변경)
 # src/bcm/bcm/           <- BCM 원본 폴더 src/bcm/ (git 저장소가 아니다. 커밋 대신 아래 해시로 판을 가린다)
 # src/bcm/port/          <- BCM 원본 폴더 src/port/bcm_sim.c|h
 # src/bcm/*.c|h          <- BCM 통합 작업 폴더 bcm_net/src/ (git 저장소가 아니다)
-# src/net_bench/         <- feat/vss-network-node 02051dba2b951422111b8de2973848276e43f510 (clean): firmware/network/nodes/bcm/bench/s32k144_bcm/
+# src/net_bench/         <- feat/vss-network-node 336fd91cef0610ba291e948bebf332def388b613 (clean): firmware/network/nodes/bcm/bench/s32k144_bcm/
 # src/network/           <- 같은 커밋, sync_to_s32ds.py --node BCM (NETWORK_BUNDLE.txt)
 # s32ds/bcm144_board_tested.mex <- 보드 확인한 S32DS 프로젝트 network_144_bcm_app의 network_144_can_debuger.mex
 #

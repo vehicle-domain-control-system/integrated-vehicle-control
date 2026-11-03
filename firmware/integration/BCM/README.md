@@ -4,7 +4,8 @@ BCM 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 
 `src/` 구조는 보드에서 확인한 S32DS 프로젝트(`network_144_bcm_app`)의 `src/`와 같다(디버그 노드 파일과 Network의 다른 노드 전용 파일만 뺐다, 2절). 다른 IDE에서는 이 `src/`를 프로젝트 소스로 넣고 4절의 설정을 옮기면 된다.
 
-- **보드 확인(2026-10-29):** S32K144 평가 보드에서 확인했다. 상대는 S32K344 디버그 노드(DOMAIN 역할)였다.
+- **이 판(Network `336fd91`, 2026-11-03 갱신):** 보드에서 아직 확인하지 않았다(7절). BCM 앱, `main.c`, 시계 파일은 이전 판과 같고 Network 사본만 바뀌었다(BCM 프로필 사본 파일 9개: UART 장치 큐 거절 원인 전달 등 공통 코드. BCM이 주고받는 메시지의 규칙은 바뀌지 않았다). ARM GCC와 Network의 mock RTD 헤더로 Network 사본을 경고 없이 컴파일했다(RTD FTM 헤더가 필요한 BCM 파일 2개와 NXP 장치 헤더가 필요한 시계 파일은 이 확인에서 빠졌다).
+- **이전 판 보드 확인(Network `02051db`, 2026-10-29):** S32K144 평가 보드에서 확인했다. 상대는 S32K344 디버그 노드(DOMAIN 역할)였다.
   - 기동: BCM_STATUS가 READY, 고장 없음으로 나왔다. BOOT_ID는 리셋할 때마다 바뀌었다.
   - 상태 송신: BCM_DOOR_STATE가 33.4초에 334개(100 ms)였다. UPDATE_SEQUENCE와 TX_SEQUENCE가 함께 올랐다.
   - 도어(모사): UNLOCK → DONE·UNLOCK_COMPLETED·발생 번호 1, 같은 명령 다시 → DONE·ALREADY_AT_TARGET·2, LOCK → DONE·LOCK_COMPLETED·3. BCM_DOOR_STATE의 잠금 상태가 명령대로 바뀌었다.
@@ -28,7 +29,7 @@ BCM 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 | `ISSUES.md` | 보드 시험에서 찾은 결함 | 통합 | |
 
 출처는 다음과 같다.
-- Network: `feat/vss-network-node` `02051db`
+- Network: `feat/vss-network-node` `336fd91`
 - BCM 원본과 `bcm_net`: git 저장소가 아니다. 판은 `SOURCES.txt`의 해시로 가린다.
 
 **이 폴더의 파일은 직접 고치지 않는다.** 원본에서 고친 뒤 다시 만든다(6절). 알려진 결함도 이 폴더에서 고치지 않고 `ISSUES.md`에 남긴다.
@@ -45,7 +46,7 @@ BCM 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 | 빌드 산출물(`Debug_FLASH/`), `.cproject`, `.project` | IDE 전용이다. 필요한 값은 4절에 적었다 |
 | 복사 도구 `sync_bcm_to_s32ds.py` | S32DS 프로젝트 전용이다. `bcm_net/tools/`에 있다 |
 
-## 3. 빌드 결과(보드 확인 빌드 기준)
+## 3. 빌드 결과(이전 판의 보드 확인 빌드 기준, 이 판은 7절 빌드 뒤 갱신)
 
 - **Flash:** text 136,852 B. 전체 512 KB.
 - **RAM:** `.sram_data` 368 B, `.sram_bss` 27,024 B. int_sram 57,088 B에서 벡터 사본 2,576 B와 heap 512 B까지 빼면 26,608 B가 남는다. 스택 4 KB는 따로 잡힌다.
@@ -174,7 +175,7 @@ SOSC는 `.mex`에서 켜져 있지만 BCM은 쓰지 않는다.
 
 이 브랜치에는 원본이 없다. 원본을 따로 체크아웃하고, 도구는 원본 체크아웃의 것으로 실행하며, 대상만 이 브랜치의 체크아웃(`<통합 체크아웃>`)을 가리킨다.
 
-- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`02051db`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
+- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`336fd91`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
 
   ```
   python <Network 체크아웃>/firmware/network/tools/sync_to_s32ds.py --node BCM --check <통합 체크아웃>/firmware/integration/BCM/src/network
@@ -190,3 +191,7 @@ SOSC는 `.mex`에서 켜져 있지만 BCM은 쓰지 않는다.
 - **시계 파일:** `<Network 체크아웃>/firmware/network/nodes/bcm/bench/s32k144_bcm/net_board_time144.c/.h`를 `<통합 체크아웃>/firmware/integration/BCM/src/net_bench/`로 복사한다.
 - **main.c:** 144 디버그 노드 복제본의 `src/main.c`에서 `NET_NODE_BUILD` 경로의 시험대 호출 세 곳을 바꾼 것이다(`bcm_bench_app.h` → `bcm_node.h`, `Net_Init(); BcmBench_Init();` → `BcmNode_Init();`, `Net_MainFunction(Board_NowMs32()); BcmBench_Service();` → `BcmNode_Service();`).
 - **다시 만든 뒤:** `SOURCES.txt`의 해시를 갱신한다.
+
+## 7. 이 판의 보드 확인
+
+이전 판을 확인한 S32DS 프로젝트(`network_144_bcm_app`)의 `src/network/`를 이 폴더의 것으로 바꾸고 Clean Build한다(나머지는 그대로). 같은 상대(S32K344 디버그 노드)로 맨 위의 이전 판 확인 항목(기동, 상태 송신, 도어·공조·조명 명령과 결과)을 다시 본다. 끝나면 맨 위 "이 판" 줄과 1절 표(`../README.md`)의 보드 확인 칸에 날짜와 결과를 적고, 3절 빌드 수치를 갱신한다. 결함은 `ISSUES.md`에 적는다.

@@ -1,13 +1,13 @@
 # 노드 통합 폴더 (firmware/integration)
 
-노드마다 보드에서 확인한 빌드 소스를 한 폴더에 모은 곳이다. 각 노드 폴더 하나로 그 노드를 빌드할 수 있다. 원본은 각 노드 브랜치와 Network 브랜치에 있고, 이 폴더는 그 사본이다.
+노드마다 빌드 소스를 한 폴더에 모은 곳이다. 각 노드 폴더 하나로 그 노드를 빌드할 수 있다. 원본은 각 노드 브랜치와 Network 브랜치에 있고, 이 폴더는 그 사본이다. 원본이 바뀌면 다시 만들고 보드에서 다시 확인한다. 지금 판의 보드 확인 여부는 1절 표에 적는다.
 
 ## 1. 노드 목록과 출처
 
 | 폴더 | 노드 | MCU | 출처 | 보드 확인 |
 |---|---|---|---|---|
-| `CIS/` | CIS (Network 프로필 1, CAN FD + UART-C) | S32K144 | CIS: `feat/cis-rtd-network` `129ef58` / Network: `feat/vss-network-node` `02051db` | 2026-10-29, S32DS 프로젝트 `network_144_cis_app` |
-| `BCM/` | BCM (Network 프로필 3, CAN FD) | S32K144 | BCM 원본(git 저장소가 아님, 판은 `SOURCES.txt` 해시) / BCM 통합 작업 폴더 `bcm_net`(git 저장소가 아님) / Network: `feat/vss-network-node` `02051db` | 2026-10-29, S32DS 프로젝트 `network_144_bcm_app` |
+| `CIS/` | CIS (Network 프로필 1, CAN FD + UART-C) | S32K144 | CIS: `feat/cis-rtd-network` `74e2abd` / Network: `feat/vss-network-node` `336fd91` | 이 판은 미확인(2026-11-03 갱신, `CIS/README.md` 7절). 이전 판(`129ef58` / `02051db`)은 2026-10-29, S32DS 프로젝트 `network_144_cis_app` |
+| `BCM/` | BCM (Network 프로필 3, CAN FD) | S32K144 | BCM 원본(git 저장소가 아님, 판은 `SOURCES.txt` 해시) / BCM 통합 작업 폴더 `bcm_net`(git 저장소가 아님) / Network: `feat/vss-network-node` `336fd91` | 이 판은 미확인(2026-11-03 갱신, `BCM/README.md` 7절). 이전 판(Network `02051db`)은 2026-10-29, S32DS 프로젝트 `network_144_bcm_app` |
 
 두 노드 모두 상대는 S32K344 디버그 노드(DOMAIN 역할)였다. VSS와 DOMAIN 노드의 통합 폴더는 아직 없다.
 
@@ -30,7 +30,7 @@ firmware/integration/<CIS|BCM>/
 
 - **Network 사본은 노드 폴더 안의 `src/network/` 하나뿐이다.** 노드 사이에 공유하는 Network 사본을 따로 두지 않는다. 노드마다 프로필이 달라 들어가는 파일이 다르다.
 - `src/network/`는 `sync_to_s32ds.py --node <노드>`로 만든 생성 사본이다. 손으로 고치지 않는다.
-- 결함은 코드를 고치지 않고 `ISSUES.md`에 남긴다. 코드는 보드에서 확인한 판 그대로 둔다.
+- 결함은 이 폴더의 코드를 고치지 않고 `ISSUES.md`에 남긴다. 코드는 원본의 판 그대로 두고, 고칠 때는 원본에서 고친 뒤 다시 만든다.
 
 ## 3. 다시 만드는 법
 
@@ -40,8 +40,8 @@ firmware/integration/<CIS|BCM>/
 
 | 원본 | 위치 |
 |---|---|
-| Network | `feat/vss-network-node` 브랜치의 `firmware/network`(`02051db`). 체크아웃 위치를 `<Network 체크아웃>`이라 한다 |
-| CIS 앱 | `feat/cis-rtd-network` 브랜치의 `firmware/CIS`(`129ef58`). 체크아웃 위치를 `<CIS 체크아웃>`이라 한다 |
+| Network | `feat/vss-network-node` 브랜치의 `firmware/network`(`336fd91`). 체크아웃 위치를 `<Network 체크아웃>`이라 한다 |
+| CIS 앱 | `feat/cis-rtd-network` 브랜치의 `firmware/CIS`(`74e2abd`). 체크아웃 위치를 `<CIS 체크아웃>`이라 한다 |
 | BCM 앱 | 받은 BCM 폴더(`<BCM 폴더>`, git 저장소가 아님)와 BCM 통합 작업 폴더(`<bcm_net>`, git 저장소가 아님). 판은 `BCM/SOURCES.txt` 해시로 가린다 |
 
 1. Network 사본(출력 폴더 이름은 `network`):

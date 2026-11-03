@@ -34,7 +34,11 @@ typedef struct {
 typedef struct {
     bool active, held, admission_known, accepted, released;
     bool sent_admission, sent_release, conflict_pending;
-    NetTxOutcome outcome, sent_outcome;
+    /* outcome, sent_outcome: NetTxOutcome values kept in one byte each (range
+     * checked when they come in, net_hal_capture_tx); refusal: the cause of a
+     * refused admission (NetTxEvent.refusal). The three bytes take the place
+     * the two enums had, so the attempt does not grow. */
+    uint8_t outcome, sent_outcome, refusal;
     NetTxEvent conflict;
     /* Facts retain their own capture and callback order; polling never moves
      * a post-reset completion in front of the reset that preceded it. */
