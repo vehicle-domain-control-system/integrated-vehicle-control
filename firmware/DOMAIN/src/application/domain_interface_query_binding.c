@@ -80,6 +80,7 @@ static DomainIf_Status_t DomainIfQueryBinding_MapStateManagerStatus(
             return DOMAIN_IF_NOT_AVAILABLE;
         case VEHICLE_STATE_MANAGER_DUPLICATE:
         case VEHICLE_STATE_MANAGER_OUT_OF_ORDER:
+        case VEHICLE_STATE_MANAGER_CONFLICT:
         default:
             return DOMAIN_IF_REJECTED;
     }

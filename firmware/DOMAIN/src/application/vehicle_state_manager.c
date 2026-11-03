@@ -189,6 +189,81 @@ VehicleStateManager_Status_t VehicleStateManager_Update(
     return VEHICLE_STATE_MANAGER_OK;
 }
 
+VehicleStateManager_Status_t VehicleStateManager_WithdrawSameSequence(
+    VehicleStateManager_t *manager,
+    VehicleStateManager_SlotId_t slotId,
+    const VehicleStateManager_Update_t *update)
+{
+    VehicleStateManager_Slot_t *slot;
+    uint32_t preservedAgeMs;
+
+    if (!VehicleStateManager_IsInitialized(manager))
+    {
+        return (manager == NULL) ? VEHICLE_STATE_MANAGER_INVALID_ARGUMENT
+                                 : VEHICLE_STATE_MANAGER_NOT_INITIALIZED;
+    }
+    if (update == NULL)
+    {
+        return VEHICLE_STATE_MANAGER_INVALID_ARGUMENT;
+    }
+    if (slotId >= manager->slotCount)
+    {
+        return VEHICLE_STATE_MANAGER_INVALID_SLOT;
+    }
+    if (!VehicleStateManager_IsQualityValid(update->quality) ||
+        (update->quality == VEHICLE_STATE_QUALITY_OK))
+    {
+        return VEHICLE_STATE_MANAGER_INVALID_ARGUMENT;
+    }
+    if (update->quality == VEHICLE_STATE_QUALITY_NO_DATA)
+    {
+        if ((update->value != NULL) || (update->valueSize != 0U))
+        {
+            return VEHICLE_STATE_MANAGER_INVALID_ARGUMENT;
+        }
+    }
+    else if ((update->value == NULL) || (update->valueSize == 0U))
+    {
+        return VEHICLE_STATE_MANAGER_INVALID_ARGUMENT;
+    }
+
+    slot = &manager->slots[slotId];
+    if (update->valueSize > slot->valueCapacity)
+    {
+        return VEHICLE_STATE_MANAGER_CAPACITY_EXCEEDED;
+    }
+    if (!slot->hasObservation ||
+        (slot->sourceGeneration != update->sourceGeneration) ||
+        (slot->updateSequence != update->updateSequence) ||
+        (slot->quality != VEHICLE_STATE_QUALITY_OK))
+    {
+        return VEHICLE_STATE_MANAGER_CONFLICT;
+    }
+
+    preservedAgeMs = VehicleStateManager_SaturatingAddU32(
+        slot->sourceAgeMs, update->receivedAtMs - slot->receivedAtMs);
+    if (update->sourceAgeMs > preservedAgeMs)
+    {
+        preservedAgeMs = update->sourceAgeMs;
+    }
+
+    if (update->valueSize > 0U)
+    {
+        (void)memcpy(slot->valueStorage, update->value, update->valueSize);
+        slot->hasValue = true;
+    }
+    else
+    {
+        slot->hasValue = false;
+    }
+    slot->valueSize = update->valueSize;
+    slot->quality = update->quality;
+    slot->sourceAgeMs = preservedAgeMs;
+    slot->receivedAtMs = update->receivedAtMs;
+    slot->sourceGenerationChanged = false;
+    return VEHICLE_STATE_MANAGER_OK;
+}
+
 VehicleStateManager_Status_t VehicleStateManager_GetSnapshot(
     const VehicleStateManager_t *manager,
     VehicleStateManager_SlotId_t slotId,

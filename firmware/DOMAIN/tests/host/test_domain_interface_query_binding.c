@@ -355,6 +355,64 @@ static int TestAllOwnedStateGetters(void)
     return 0;
 }
 
+static int TestCisRearQualityTtlAndRecovery(void)
+{
+    Fixture_t fixture;
+    CisRearState_t rear = CisRear();
+    CisRearState_t output;
+    CisRearState_t before;
+
+    ASSERT_EQ(0, ConfigureFixture(&fixture));
+    fixture.clock.nowMs = UINT32_MAX - 10U;
+    rear.distanceQuality.meta.ageMs = 8U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&rear));
+    ASSERT_EQ(DOMAIN_IF_OK,
+              DomainIf_QueryGetCisRear(80U, &output));
+    ASSERT_EQ(DATA_QUALITY_OK, output.distanceQuality.meta.quality);
+    ASSERT_EQ(99U, output.distanceQuality.meta.ageMs);
+    ASSERT_EQ(DOMAIN_IF_OK,
+              DomainIf_QueryGetCisRear(81U, &output));
+    ASSERT_EQ(DATA_QUALITY_STALE, output.distanceQuality.meta.quality);
+    ASSERT_EQ(100U, output.distanceQuality.meta.ageMs);
+
+    rear.distanceQuality.validity = VALUE_VALIDITY_INVALID;
+    rear.distanceQuality.reason = QUALITY_REASON_SENSOR_FAULT;
+    rear.distanceQuality.meta.quality = DATA_QUALITY_INVALID;
+    rear.distanceQuality.meta.updateSequence = 4U;
+    fixture.clock.nowMs = 82U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&rear));
+    ASSERT_EQ(DOMAIN_IF_OK,
+              DomainIf_QueryGetCisRear(82U, &output));
+    ASSERT_EQ(DATA_QUALITY_INVALID, output.distanceQuality.meta.quality);
+    ASSERT_EQ(REAR_MEASUREMENT_VALID_DISTANCE, output.measurementState);
+
+    rear.distanceQuality.validity = VALUE_VALIDITY_VALID;
+    rear.distanceQuality.reason = QUALITY_REASON_NONE;
+    rear.distanceQuality.meta.quality = DATA_QUALITY_OK;
+    rear.distanceQuality.meta.updateSequence = 5U;
+    rear.measurementState = REAR_MEASUREMENT_NO_OBJECT;
+    rear.rearDistanceMm = 0U;
+    fixture.clock.nowMs = 83U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&rear));
+    ASSERT_EQ(DOMAIN_IF_OK,
+              DomainIf_QueryGetCisRear(83U, &output));
+    ASSERT_EQ(REAR_MEASUREMENT_NO_OBJECT, output.measurementState);
+    ASSERT_EQ(DATA_QUALITY_OK, output.distanceQuality.meta.quality);
+
+    rear.distanceQuality.validity = VALUE_VALIDITY_INVALID;
+    rear.distanceQuality.reason = QUALITY_REASON_NO_DATA;
+    rear.distanceQuality.meta.quality = DATA_QUALITY_NO_DATA;
+    rear.distanceQuality.meta.updateSequence = 6U;
+    fixture.clock.nowMs = 84U;
+    ASSERT_EQ(DOMAIN_IF_OK, DomainIf_RxCisRear(&rear));
+    (void)memset(&output, 0xA5, sizeof(output));
+    before = output;
+    ASSERT_EQ(DOMAIN_IF_NOT_AVAILABLE,
+              DomainIf_QueryGetCisRear(84U, &output));
+    ASSERT_TRUE(memcmp(&before, &output, sizeof(output)) == 0);
+    return 0;
+}
+
 static int TestDuplicateAndOldInputDoNotChangeGetter(void)
 {
     Fixture_t fixture;
@@ -682,6 +740,7 @@ int main(void)
     failures += TestNoStateLeavesOutputUnchanged();
     failures += TestDoorCopyAgeQualityAndPointerIsolation();
     failures += TestAllOwnedStateGetters();
+    failures += TestCisRearQualityTtlAndRecovery();
     failures += TestDuplicateAndOldInputDoNotChangeGetter();
     failures += TestGetterDoesNotMutateOrNotify();
     failures += TestNoDataObservationIsNotFabricated();
@@ -695,7 +754,7 @@ int main(void)
 
     if (failures == 0)
     {
-        printf("domain_interface_query_binding: 14 tests passed\n");
+        printf("domain_interface_query_binding: 15 tests passed\n");
     }
     return failures;
 }

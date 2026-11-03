@@ -393,6 +393,52 @@ static void Test_CapacityAndInvalidQuality(void)
           VEHICLE_STATE_MANAGER_CAPACITY_EXCEEDED);
 }
 
+static void Test_SameSequenceWithdrawalPreservesAge(void)
+{
+    TestFixture_t fixture;
+    const TestValue_t input = { 1U, 2U, 3U };
+    const TestValue_t withdrawn = { 1U, 2U, 3U };
+    TestValue_t output;
+    VehicleStateManager_Update_t update;
+    VehicleStateManager_Snapshot_t snapshot;
+
+    Fixture_Init(&fixture);
+    CHECK(VehicleStateManager_WithdrawSameSequence(
+              &fixture.manager, 0U, NULL) ==
+          VEHICLE_STATE_MANAGER_INVALID_ARGUMENT);
+    update = MakeUpdate(&input, VEHICLE_STATE_QUALITY_INVALID,
+                        1U, 7U, 9U, 110U);
+    CHECK(VehicleStateManager_WithdrawSameSequence(
+              &fixture.manager, TEST_SLOT_COUNT, &update) ==
+          VEHICLE_STATE_MANAGER_INVALID_SLOT);
+    update = MakeUpdate(&input, VEHICLE_STATE_QUALITY_OK,
+                        8U, 7U, 9U, 100U);
+    CHECK(VehicleStateManager_Update(&fixture.manager, 0U, &update) ==
+          VEHICLE_STATE_MANAGER_OK);
+    update = MakeUpdate(&withdrawn, VEHICLE_STATE_QUALITY_INVALID,
+                        1U, 7U, 9U, 110U);
+    CHECK(VehicleStateManager_WithdrawSameSequence(
+              &fixture.manager, 0U, &update) == VEHICLE_STATE_MANAGER_OK);
+    CHECK(VehicleStateManager_GetSnapshot(
+              &fixture.manager, 0U, 110U, 100U,
+              &output, sizeof(output), &snapshot) == VEHICLE_STATE_MANAGER_OK);
+    CHECK(snapshot.quality == VEHICLE_STATE_QUALITY_INVALID);
+    CHECK(snapshot.sourceAgeMs == 18U);
+    CHECK(snapshot.effectiveAgeMs == 18U);
+    CHECK(snapshot.updateSequence == 7U);
+
+    update = MakeUpdate(&input, VEHICLE_STATE_QUALITY_OK,
+                        20U, 7U, 9U, 111U);
+    CHECK(VehicleStateManager_WithdrawSameSequence(
+              &fixture.manager, 0U, &update) ==
+          VEHICLE_STATE_MANAGER_INVALID_ARGUMENT);
+    update = MakeUpdate(&input, VEHICLE_STATE_QUALITY_STALE,
+                        20U, 7U, 9U, 111U);
+    CHECK(VehicleStateManager_WithdrawSameSequence(
+              &fixture.manager, 0U, &update) ==
+          VEHICLE_STATE_MANAGER_CONFLICT);
+}
+
 int main(void)
 {
     RUN_TEST(Test_InitialNoData);
@@ -407,6 +453,7 @@ int main(void)
     RUN_TEST(Test_SourceGenerationChange);
     RUN_TEST(Test_GetterDoesNotMutateState);
     RUN_TEST(Test_CapacityAndInvalidQuality);
+    RUN_TEST(Test_SameSequenceWithdrawalPreservesAge);
 
     (void)printf("Executed %u tests, %u failed checks.\n",
                  g_executedTests, g_failedChecks);
