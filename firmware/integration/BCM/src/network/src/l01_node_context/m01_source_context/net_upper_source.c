@@ -56,6 +56,16 @@ static bool field_promoted(uint8_t old_validity, uint8_t old_reason, uint8_t val
 {
     return field_usable(validity,reason) && (!field_usable(old_validity,old_reason) || old_reason!=reason);
 }
+/* Value of one field under its sequence: compared unless the field has just
+ * become unusable or changed between unusable qualities. An unusable field
+ * carries the invalid encoding of its value (CIS 10_DATA.md), so its value is
+ * only meaningful as far as it stays the same while the quality stays the
+ * same; a report with the same sequences and qualities is taken without an
+ * Owner call and must not carry another value into the receive record. */
+static bool field_value_compared(uint8_t old_validity, uint8_t old_reason, uint8_t validity, uint8_t reason)
+{
+    return field_usable(validity,reason) || (old_validity==validity && old_reason==reason);
+}
 static bool environment_quality_same(const NetWireCisEnvironmentRaw *a, const NetWireCisEnvironmentRaw *b)
 {
     return a->temperature_validity==b->temperature_validity && a->temperature_reason==b->temperature_reason &&
@@ -260,30 +270,42 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
         if (old->data.bcm_status.boot_id==m->data.bcm_status.boot_id && old->data.bcm_status.update_sequence==m->data.bcm_status.update_sequence && younger(old->data.bcm_status.source_age_ms,m->data.bcm_status.source_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
     case 0x300u:
-        /* The original observation of this sensor cannot carry another value or a
-         * promoted quality; a drop to an unusable quality, or a change between
-         * unusable ones, passes and is delivered (DOMAIN stores every field it
-         * is given). */
+        /* The original observation of this sensor cannot carry another value
+         * or a promoted quality; a drop to an unusable quality, or a change
+         * between unusable ones, passes and is delivered (DOMAIN stores every
+         * field it is given) with whatever value it carries, the invalid
+         * encoding of an unusable field (field_value_compared). Under the same
+         * quality the value is compared, usable or not. */
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.temperature_sequence==m->data.cis_environment.temperature_sequence && (
-            old->data.cis_environment.temperature_centi_c!=m->data.cis_environment.temperature_centi_c ||
+            (field_value_compared(old->data.cis_environment.temperature_validity,old->data.cis_environment.temperature_reason,
+                m->data.cis_environment.temperature_validity,m->data.cis_environment.temperature_reason) &&
+                old->data.cis_environment.temperature_centi_c!=m->data.cis_environment.temperature_centi_c) ||
             field_promoted(old->data.cis_environment.temperature_validity,old->data.cis_environment.temperature_reason,
                 m->data.cis_environment.temperature_validity,m->data.cis_environment.temperature_reason))) return NET_HOLD;
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.temperature_sequence==m->data.cis_environment.temperature_sequence && younger(old->data.cis_environment.temperature_age_ms,m->data.cis_environment.temperature_age_ms,elapsed)) return NET_HOLD;
-        /* The original observation of this sensor cannot carry another value or a
-         * promoted quality; a drop to an unusable quality, or a change between
-         * unusable ones, passes and is delivered (DOMAIN stores every field it
-         * is given). */
+        /* The original observation of this sensor cannot carry another value
+         * or a promoted quality; a drop to an unusable quality, or a change
+         * between unusable ones, passes and is delivered (DOMAIN stores every
+         * field it is given) with whatever value it carries, the invalid
+         * encoding of an unusable field (field_value_compared). Under the same
+         * quality the value is compared, usable or not. */
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.humidity_sequence==m->data.cis_environment.humidity_sequence && (
-            old->data.cis_environment.humidity_centi_percent!=m->data.cis_environment.humidity_centi_percent ||
+            (field_value_compared(old->data.cis_environment.humidity_validity,old->data.cis_environment.humidity_reason,
+                m->data.cis_environment.humidity_validity,m->data.cis_environment.humidity_reason) &&
+                old->data.cis_environment.humidity_centi_percent!=m->data.cis_environment.humidity_centi_percent) ||
             field_promoted(old->data.cis_environment.humidity_validity,old->data.cis_environment.humidity_reason,
                 m->data.cis_environment.humidity_validity,m->data.cis_environment.humidity_reason))) return NET_HOLD;
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.humidity_sequence==m->data.cis_environment.humidity_sequence && younger(old->data.cis_environment.humidity_age_ms,m->data.cis_environment.humidity_age_ms,elapsed)) return NET_HOLD;
-        /* The original observation of this sensor cannot carry another value or a
-         * promoted quality; a drop to an unusable quality, or a change between
-         * unusable ones, passes and is delivered (DOMAIN stores every field it
-         * is given). */
+        /* The original observation of this sensor cannot carry another value
+         * or a promoted quality; a drop to an unusable quality, or a change
+         * between unusable ones, passes and is delivered (DOMAIN stores every
+         * field it is given) with whatever value it carries, the invalid
+         * encoding of an unusable field (field_value_compared). Under the same
+         * quality the value is compared, usable or not. */
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence && (
-            old->data.cis_environment.illuminance_lux!=m->data.cis_environment.illuminance_lux ||
+            (field_value_compared(old->data.cis_environment.illuminance_validity,old->data.cis_environment.illuminance_reason,
+                m->data.cis_environment.illuminance_validity,m->data.cis_environment.illuminance_reason) &&
+                old->data.cis_environment.illuminance_lux!=m->data.cis_environment.illuminance_lux) ||
             field_promoted(old->data.cis_environment.illuminance_validity,old->data.cis_environment.illuminance_reason,
                 m->data.cis_environment.illuminance_validity,m->data.cis_environment.illuminance_reason))) return NET_HOLD;
         if (old->data.cis_environment.boot_id==m->data.cis_environment.boot_id && old->data.cis_environment.illuminance_sequence==m->data.cis_environment.illuminance_sequence && younger(old->data.cis_environment.illuminance_age_ms,m->data.cis_environment.illuminance_age_ms,elapsed)) return NET_HOLD;
@@ -384,30 +406,32 @@ NetStatus net_upper_can_original_age(const NetUpperCanMessage *old, const NetUpp
         return NET_OK;
     case 0x0C0u: {
         /* Each lane is judged on its own identity and fields only. Under the
-         * same lane identity the value (state, availability) cannot change and
-         * the quality may only be restricted (quality_conflict), so a lane that
-         * lost its quality and keeps its last source sequence with a growing
-         * AGE does not hold the frame that carries a new evaluation of another
-         * lane. A lane that does change its value or promote its quality holds
-         * the whole frame: one frame is committed or refused as one result. */
+         * same lane identity the quality may only be restricted
+         * (quality_conflict) and a lane with an OK quality cannot change its
+         * value (state, availability). A lane with a restricted quality carries
+         * no usable value: the A1 limited projection (04_COMMON/
+         * 30_ENUM_WIRE_MAPPING.md, VSS_WARNING_STATE) puts the state 0
+         * placeholder and may put availability 2 there, so its value is not
+         * compared. A lane that lost its quality and keeps its last source
+         * sequence with a growing AGE therefore does not hold the frame that
+         * carries a new evaluation of another lane. A lane that does change its
+         * OK value or promote its quality holds the whole frame: one frame is
+         * committed or refused as one result. */
         const NetWireVssWarningStateRaw *a=&old->data.vss_warning_state,*b=&m->data.vss_warning_state;
         if (warning_lane_same(a,b,0u) && (
-            a->antipinch_state!=b->antipinch_state ||
-            a->antipinch_availability!=b->antipinch_availability ||
+            (b->antipinch_quality==0u && (a->antipinch_state!=b->antipinch_state || a->antipinch_availability!=b->antipinch_availability)) ||
             quality_conflict(a->antipinch_quality,a->antipinch_reason,b->antipinch_quality,b->antipinch_reason))) return NET_HOLD;
         if (warning_lane_same(a,b,0u) && younger(a->antipinch_original_age_ms,b->antipinch_original_age_ms,elapsed)) return NET_HOLD;
         if (warning_lane_same(a,b,1u) && (
-            a->occupant_hazard_state!=b->occupant_hazard_state ||
-            a->occupant_hazard_availability!=b->occupant_hazard_availability ||
+            (b->occupant_hazard_quality==0u && (a->occupant_hazard_state!=b->occupant_hazard_state || a->occupant_hazard_availability!=b->occupant_hazard_availability)) ||
             quality_conflict(a->occupant_hazard_quality,a->occupant_hazard_reason,b->occupant_hazard_quality,b->occupant_hazard_reason))) return NET_HOLD;
         if (warning_lane_same(a,b,1u) && younger(a->occupant_hazard_original_age_ms,b->occupant_hazard_original_age_ms,elapsed)) return NET_HOLD;
         if (warning_lane_same(a,b,2u) && (
-            a->rear_obstacle_state!=b->rear_obstacle_state ||
-            a->rear_obstacle_availability!=b->rear_obstacle_availability ||
+            (b->rear_obstacle_quality==0u && (a->rear_obstacle_state!=b->rear_obstacle_state || a->rear_obstacle_availability!=b->rear_obstacle_availability)) ||
             quality_conflict(a->rear_obstacle_quality,a->rear_obstacle_reason,b->rear_obstacle_quality,b->rear_obstacle_reason))) return NET_HOLD;
         if (warning_lane_same(a,b,2u) && younger(a->rear_obstacle_original_age_ms,b->rear_obstacle_original_age_ms,elapsed)) return NET_HOLD;
         if (warning_lane_same(a,b,3u) && (
-            a->rear_detection_activation!=b->rear_detection_activation ||
+            (b->rear_activation_quality==0u && a->rear_detection_activation!=b->rear_detection_activation) ||
             quality_conflict(a->rear_activation_quality,a->rear_activation_reason,b->rear_activation_quality,b->rear_activation_reason))) return NET_HOLD;
         if (warning_lane_same(a,b,3u) && younger(a->rear_activation_age_ms,b->rear_activation_age_ms,elapsed)) return NET_HOLD;
         return NET_OK;
@@ -788,7 +812,10 @@ bool net_upper_can_same_observation(const NetUpperCanMessage *old,const NetUpper
  * that arrives later than the sender's period (arbitration, queueing, ms
  * rounding; that wait is in no AGE) is short of the bound old AGE + elapsed
  * by that much. Within `slack` (the candidate hop allowance) its AGE is
- * raised to the bound, never lowered; further short stays HOLD. */
+ * raised to the bound, never lowered; further short stays HOLD. The same
+ * holds for every part of a frame that keeps its original identity while
+ * another part is new or its quality is restricted (net_upper_can_repeat_age
+ * raises only the parts with the same identity). */
 static NetStatus raise_age(uint16_t old_age, uint16_t *age, uint64_t elapsed, uint16_t slack, bool *raised)
 {
     uint16_t floor=elapsed >= (uint64_t)(UINT16_MAX-old_age) ? UINT16_MAX : (uint16_t)(old_age+elapsed);

@@ -19,11 +19,13 @@
  * 10_DATA_AND_ID_RULES.md (generation): an accepted change of the sending run
  * invalidates that sender's earlier context. */
 #define NET_UPPER_ENDED_BOOTS 4u
-/* Delivery slack of a repetition of the same original observation on a route
- * whose node passes repetitions to its receive callback (rx_repeat_delivery):
- * an AGE short of the accumulated lower bound by at most this many ms (late
+/* Delivery slack of the same original observation on a route whose node
+ * passes repetitions to its receive callback (rx_repeat_delivery): an AGE
+ * short of the accumulated lower bound by at most this many ms (late
  * arrival: bus arbitration, UART queueing, ms rounding) is raised to that
- * bound instead of being held. Candidate hop allowances, PROPOSED, not
+ * bound instead of being held. It applies to a repetition and to every part
+ * of a frame that keeps its original identity (a warning lane, an evaluation
+ * reported again with a restricted quality). Candidate hop allowances, PROPOSED, not
  * measured bounds (10_DATA_AND_ID_RULES.md quality and AGE: CAN 5 ms /
  * UART 50 ms). */
 #define NET_UPPER_CAN_REPEAT_SLACK_MS 5u
@@ -208,7 +210,9 @@ typedef struct {
     /* Repetitions passed to the Owner (rx_repeat_delivery): not new
      * observations, not in rx_delivered and not in duplicates. */
     uint32_t repeat_delivered;
-    uint32_t repeat_age_raised; /* of them: AGE raised to the lower bound within the slack */
+    /* Frames taken with an AGE raised to the lower bound within the slack:
+     * repetitions, or the unchanged parts of a frame that is otherwise new. */
+    uint32_t repeat_age_raised;
     uint32_t generation_changes; /* receive keys moved to a new sender BOOT */
     uint32_t old_generation; /* frames of an ended BOOT refused (also counted in stale) */
     /* Same-observation reports taken without an Owner call whose quality the

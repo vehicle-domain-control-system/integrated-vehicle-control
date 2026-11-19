@@ -1,8 +1,8 @@
-# CIS 노드 통합 폴더의 출처 기록 (2026-10-29 생성, 2026-11-03 갱신)
+# CIS 노드 통합 폴더의 출처 기록 (2026-10-29 생성, 2026-11-19 갱신)
 # SHA-256은 CRLF를 LF로 읽은 값이다(체크아웃 줄 끝과 관계없이 같다). src/network/는 NETWORK_BUNDLE.txt에 따로 기록돼 있다.
 #
 # src/main.c, src/cis/   <- feat/cis-rtd-network 74e2abdda3c0dcf8ac2fe6f7d1dfd4a693ccaf55 (clean): firmware/CIS/s32ds/main.c, firmware/CIS/src/
-# src/net_bench/         <- feat/vss-network-node 336fd91cef0610ba291e948bebf332def388b613 (clean): firmware/network/nodes/cis/bench/s32k144_cis/
+# src/net_bench/         <- feat/vss-network-node 388269eee3683373701fec8578863ab1a8f3e8ff (clean): firmware/network/nodes/cis/bench/s32k144_cis/
 # src/network/           <- 같은 커밋, sync_to_s32ds.py --node CIS (NETWORK_BUNDLE.txt)
 # s32ds/cis144_board_tested.mex <- 보드 확인한 S32DS 프로젝트 network_144_cis_app의 network_144_can_debuger.mex
 #

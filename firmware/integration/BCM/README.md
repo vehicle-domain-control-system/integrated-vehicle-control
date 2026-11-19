@@ -4,7 +4,10 @@ BCM 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 
 `src/` 구조는 보드에서 확인한 S32DS 프로젝트(`network_144_bcm_app`)의 `src/`와 같다(디버그 노드 파일과 Network의 다른 노드 전용 파일만 뺐다, 2절). 다른 IDE에서는 이 `src/`를 프로젝트 소스로 넣고 4절의 설정을 옮기면 된다.
 
-- **이 판(Network `336fd91`, 2026-11-03 갱신):** 보드에서 아직 확인하지 않았다(7절). BCM 앱, `main.c`, 시계 파일은 이전 판과 같고 Network 사본만 바뀌었다(BCM 프로필 사본 파일 9개: UART 장치 큐 거절 원인 전달 등 공통 코드. BCM이 주고받는 메시지의 규칙은 바뀌지 않았다). ARM GCC와 Network의 mock RTD 헤더로 Network 사본을 경고 없이 컴파일했다(RTD FTM 헤더가 필요한 BCM 파일 2개와 NXP 장치 헤더가 필요한 시계 파일은 이 확인에서 빠졌다).
+- **이 판(Network `388269e`, 2026-11-19 갱신):** 보드에서 아직 확인하지 않았다(7절). BCM 앱, `main.c`, 시계 파일은 보드에서 확인한 이전 판과 같고 Network 사본만 바뀌었다.
+  - Network(`336fd91`, 2026-11-03 갱신): BCM 프로필 사본 파일 9개. UART 장치 큐 거절 원인 전달 등 공통 코드이고, BCM이 주고받는 메시지의 규칙은 바뀌지 않았다.
+  - Network(`388269e`, 2026-11-19 갱신): BCM 프로필 사본 파일 3개(`net_upper_source.c`, `net_upper_service.c`, `net_upper.h` 주석). 공용 수신 규칙이다(DOMAIN이 받는 CIS_ENVIRONMENT, VSS가 받는 VSS_WARNING_STATE, 반복 전달 경로의 늦은 도착 허용). BCM이 받는 0x080도 반복 전달 경로지만, DOMAIN 쪽 Network은 허가 값이나 품질이 바뀌면 새 번호로 보내므로(`firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c` `permission_sequence`) 같은 번호의 프레임은 늘 같은 내용이고 BCM이 받는 결과는 같다.
+  - 컴파일 확인(2026-11-19): ARM GCC와 Network의 mock RTD 헤더로 Network 사본을 경고 없이 컴파일했다(RTD FTM 헤더가 필요한 BCM 파일 2개와 NXP 장치 헤더가 필요한 시계 파일은 이 확인에서 빠졌다).
 - **이전 판 보드 확인(Network `02051db`, 2026-10-29):** S32K144 평가 보드에서 확인했다. 상대는 S32K344 디버그 노드(DOMAIN 역할)였다.
   - 기동: BCM_STATUS가 READY, 고장 없음으로 나왔다. BOOT_ID는 리셋할 때마다 바뀌었다.
   - 상태 송신: BCM_DOOR_STATE가 33.4초에 334개(100 ms)였다. UPDATE_SEQUENCE와 TX_SEQUENCE가 함께 올랐다.
@@ -29,7 +32,7 @@ BCM 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 | `ISSUES.md` | 보드 시험에서 찾은 결함 | 통합 | |
 
 출처는 다음과 같다.
-- Network: `feat/vss-network-node` `336fd91`
+- Network: `feat/vss-network-node` `388269e`
 - BCM 원본과 `bcm_net`: git 저장소가 아니다. 판은 `SOURCES.txt`의 해시로 가린다.
 
 **이 폴더의 파일은 직접 고치지 않는다.** 원본에서 고친 뒤 다시 만든다(6절). 알려진 결함도 이 폴더에서 고치지 않고 `ISSUES.md`에 남긴다.
@@ -175,7 +178,7 @@ SOSC는 `.mex`에서 켜져 있지만 BCM은 쓰지 않는다.
 
 이 브랜치에는 원본이 없다. 원본을 따로 체크아웃하고, 도구는 원본 체크아웃의 것으로 실행하며, 대상만 이 브랜치의 체크아웃(`<통합 체크아웃>`)을 가리킨다.
 
-- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`336fd91`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
+- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`388269e`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
 
   ```
   python <Network 체크아웃>/firmware/network/tools/sync_to_s32ds.py --node BCM --check <통합 체크아웃>/firmware/integration/BCM/src/network

@@ -541,7 +541,7 @@ static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now
 {
     size_t idx=route_index(NET_WIRE_CAN,(uint16_t)event->can.standard_id);
     const NetWireRegistryEntry *r;NetUpperCanMessage m;NetUpperDelivery d;NetStatus status;NetUpperAdmission *record;
-    uint32_t boot,sequence;bool same_observation=false,repeat=false,raised=false,new_generation=false;
+    uint32_t boot,sequence;bool same_observation=false,repeat=false,late=false,raised=false,new_generation=false;
     *repeat_delivered=false;
     if(event->link!=NET_WIRE_CAN || idx>=NET_UPPER_ROUTE_COUNT)return NET_REJECTED;
     r=net_wire_registry_at(idx);
@@ -576,11 +576,17 @@ static NetStatus receive_can(NetUpper *s,const NetUpperEvent *event,uint64_t now
         if(event->capture.captured_at_ms<a->delivery.capture.captured_at_ms)return NET_HOLD;
         elapsed=event->capture.captured_at_ms-a->delivery.capture.captured_at_ms;
         same_observation=net_upper_can_same_observation(&a->can,&m);
-        repeat=same_observation && repeat_route(s,idx) && !disabled(r,s->config.node);
+        late=repeat_route(s,idx) && !disabled(r,s->config.node);
+        repeat=same_observation && late;
         status=net_upper_can_original_age(&a->can,&m,elapsed);
-        if(status==NET_HOLD && repeat) {
-            /* Late repetition: AGE raised to the bound within the slack, then
-             * every other rule of the same observation still applies. */
+        if(status==NET_HOLD && late) {
+            /* Late frame on a repetition route: the AGE of every part that keeps
+             * its original identity (the whole frame of a repetition, the
+             * unchanged lanes of a warning state that carries a new lane, an
+             * evaluation reported again with a restricted quality) is raised to
+             * the bound within the slack, as the UART path does by source; a
+             * part with a new identity is not touched. Then every other rule of
+             * the original observation still applies. */
             status=net_upper_can_repeat_age(&a->can,&m,elapsed,NET_UPPER_CAN_REPEAT_SLACK_MS,&raised);
             if(status==NET_OK)status=net_upper_can_original_age(&a->can,&m,elapsed);
             if(status==NET_OK)status=delivery_time(s,idx,&event->capture,net_upper_can_max_age(&m),now,&d);

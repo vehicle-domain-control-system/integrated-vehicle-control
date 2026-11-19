@@ -4,10 +4,11 @@ CIS 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 
 `src/` 구조는 보드에서 확인한 S32DS 프로젝트(`network_144_cis_app`)의 `src/`와 같다. 그래서 다른 IDE에서는 이 `src/`를 프로젝트 소스로 넣고, 아래 4절의 설정을 옮기면 된다.
 
-- **이 판(CIS `74e2abd` + Network `336fd91`, 2026-11-03 갱신):** 보드에서 아직 확인하지 않았다(7절). 이전 판에서 바뀐 것:
+- **이 판(CIS `74e2abd` + Network `388269e`, 2026-11-19 갱신):** 보드에서 아직 확인하지 않았다(7절). 보드에서 확인한 이전 판에서 바뀐 것:
   - CIS: 후방 감지가 DOMAIN 허가(0x080)와 관계없이 늘 측정한다(`power_gate.c/.h` 삭제). 거리나 측정 상태가 바뀌면 새 관측 번호(UPDATE_SEQUENCE)와 새 AGE 기준으로 보낸다(무응답, FAULT, RECOVERING 포함). 같은 Pi 판정을 다시 보낼 때 기능 상태를 처음 받은 때의 값으로 고정한다.
-  - Network: UART 장치 큐 거절 원인 전달, CIS_REAR·CIS_OCCUPANT를 DOMAIN이 받을 때의 규칙 등 공통 코드다. CIS 프로필 사본에서 바뀐 파일은 10개다(`README.md` 포함).
-  - 컴파일 확인: ARM GCC와 Network의 mock RTD 헤더로 `src/main.c`를 뺀 C 파일을 컴파일했다. NXP 장치 헤더가 필요한 `src/net_bench/net_board_time144.c`(바뀌지 않음)를 빼고 모두 경고 없이 컴파일됐고, 앱과 Network 사이에 정의가 없는 함수나 겹치는 정의가 없었다. 실제 RTD 빌드는 7절에서 한다.
+  - Network(`336fd91`, 2026-11-03 갱신): UART 장치 큐 거절 원인 전달, CIS_REAR·CIS_OCCUPANT를 DOMAIN이 받을 때의 규칙 등 공통 코드다. CIS 프로필 사본에서 바뀐 파일은 10개다(`README.md` 포함).
+  - Network(`388269e`, 2026-11-19 갱신): 공용 수신 규칙이다. DOMAIN이 받는 CIS_ENVIRONMENT는 사용 불가로 떨어진 센서 값을 비교하지 않고, VSS가 받는 VSS_WARNING_STATE는 품질이 OK인 lane 값만 비교하며, 반복 전달 경로는 일부만 같은 관측인 프레임에도 늦은 도착 허용을 둔다. CIS 프로필 사본에서 바뀐 파일은 3개다(`net_upper_source.c`, `net_upper_service.c`, `net_upper.h` 주석). CIS가 받는 0x080도 반복 전달 경로지만, DOMAIN 쪽 Network은 허가 값이나 품질이 바뀌면 새 번호로 보내므로(`firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c` `permission_sequence`) 같은 번호의 프레임은 늘 같은 내용이고 CIS가 받는 결과는 같다.
+  - 컴파일 확인(2026-11-19): ARM GCC와 Network의 mock RTD 헤더로 `src/main.c`를 뺀 C 파일을 컴파일했다. NXP 장치 헤더가 필요한 `src/net_bench/net_board_time144.c`(바뀌지 않음)를 빼고 모두 경고 없이 컴파일됐고, 앱과 Network 사이에 정의가 없는 함수나 겹치는 정의가 없었다. 실제 RTD 빌드는 7절에서 한다.
 - **이전 판 보드 확인(CIS `129ef58` + Network `02051db`, 2026-10-29):** S32K144 평가 보드에서 확인했다. 상대는 S32K344 디버그 노드(DOMAIN 역할)였다.
   - CAN 송신: CIS_REAR 50 ms, CIS_ENVIRONMENT 200 ms, CIS_STATUS 250 ms. 받은 수와 TX_SEQUENCE가 같아 빠진 프레임이 없었다.
   - 0x080 허가: 받으면 후방 측정값이 VALID로 열리고, 끊기면 COMMUNICATION_FAULT로 닫혔다(이 판에서는 없어진 동작).
@@ -28,7 +29,7 @@ CIS 노드 하나를 빌드하는 데 필요한 소스를 모은 폴더다. 구�
 
 출처 커밋은 다음과 같다.
 - CIS: `feat/cis-rtd-network` `74e2abd`
-- Network: `feat/vss-network-node` `336fd91`
+- Network: `feat/vss-network-node` `388269e`
 
 **이 폴더의 파일은 직접 고치지 않는다.** 원본에서 고친 뒤 다시 만든다(6절).
 
@@ -197,7 +198,7 @@ CIS_USE_NETWORK_API
 
 이 브랜치에는 원본이 없다. 원본을 따로 체크아웃하고, 도구는 원본 체크아웃의 것으로 실행하며, 대상만 이 브랜치의 체크아웃(`<통합 체크아웃>`)을 가리킨다.
 
-- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`336fd91`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
+- **Network 부분:** Network 원본은 `feat/vss-network-node` 브랜치의 `firmware/network`(`388269e`)다. 그 체크아웃(`<Network 체크아웃>`)의 도구로 실행한다. 출력 폴더 이름은 `network`여야 한다.
 
   ```
   python <Network 체크아웃>/firmware/network/tools/sync_to_s32ds.py --node CIS --check <통합 체크아웃>/firmware/integration/CIS/src/network

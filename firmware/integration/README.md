@@ -6,8 +6,8 @@
 
 | 폴더 | 노드 | MCU | 출처 | 보드 확인 |
 |---|---|---|---|---|
-| `CIS/` | CIS (Network 프로필 1, CAN FD + UART-C) | S32K144 | CIS: `feat/cis-rtd-network` `74e2abd` / Network: `feat/vss-network-node` `336fd91` | 이 판은 미확인(2026-11-03 갱신, `CIS/README.md` 7절). 이전 판(`129ef58` / `02051db`)은 2026-10-29, S32DS 프로젝트 `network_144_cis_app` |
-| `BCM/` | BCM (Network 프로필 3, CAN FD) | S32K144 | BCM 원본(git 저장소가 아님, 판은 `SOURCES.txt` 해시) / BCM 통합 작업 폴더 `bcm_net`(git 저장소가 아님) / Network: `feat/vss-network-node` `336fd91` | 이 판은 미확인(2026-11-03 갱신, `BCM/README.md` 7절). 이전 판(Network `02051db`)은 2026-10-29, S32DS 프로젝트 `network_144_bcm_app` |
+| `CIS/` | CIS (Network 프로필 1, CAN FD + UART-C) | S32K144 | CIS: `feat/cis-rtd-network` `74e2abd` / Network: `feat/vss-network-node` `388269e` | 이 판은 미확인(2026-11-19 갱신, `CIS/README.md` 7절). 이전 판(`129ef58` / `02051db`)은 2026-10-29, S32DS 프로젝트 `network_144_cis_app` |
+| `BCM/` | BCM (Network 프로필 3, CAN FD) | S32K144 | BCM 원본(git 저장소가 아님, 판은 `SOURCES.txt` 해시) / BCM 통합 작업 폴더 `bcm_net`(git 저장소가 아님) / Network: `feat/vss-network-node` `388269e` | 이 판은 미확인(2026-11-19 갱신, `BCM/README.md` 7절). 이전 판(Network `02051db`)은 2026-10-29, S32DS 프로젝트 `network_144_bcm_app` |
 
 두 노드 모두 상대는 S32K344 디버그 노드(DOMAIN 역할)였다. VSS와 DOMAIN 노드의 통합 폴더는 아직 없다.
 
@@ -40,7 +40,7 @@ firmware/integration/<CIS|BCM>/
 
 | 원본 | 위치 |
 |---|---|
-| Network | `feat/vss-network-node` 브랜치의 `firmware/network`(`336fd91`). 체크아웃 위치를 `<Network 체크아웃>`이라 한다 |
+| Network | `feat/vss-network-node` 브랜치의 `firmware/network`(`388269e`). 체크아웃 위치를 `<Network 체크아웃>`이라 한다 |
 | CIS 앱 | `feat/cis-rtd-network` 브랜치의 `firmware/CIS`(`74e2abd`). 체크아웃 위치를 `<CIS 체크아웃>`이라 한다 |
 | BCM 앱 | 받은 BCM 폴더(`<BCM 폴더>`, git 저장소가 아님)와 BCM 통합 작업 폴더(`<bcm_net>`, git 저장소가 아님). 판은 `BCM/SOURCES.txt` 해시로 가린다 |
 
