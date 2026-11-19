@@ -2772,6 +2772,107 @@ static int n49_environment_drop_invalid_encoding(void)
     return 0;
 }
 
+/* AGE on send (u32 -> u16): an AGE past 65535 goes out as the saturated 65535,
+ * whatever the quality (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md
+ * AGE; sw_detail/functions/CAN_TRANSFER_CONTROL.md "u16 saturates"); the other
+ * fields of the frame go out as submitted. A warning lane whose AGE DOMAIN does
+ * not know (UINT32_MAX, here a disabled occupant warning) does not hold the
+ * rear warning of the same VSS_WARNING_STATE, nor does a lane that kept its
+ * evaluation past 65535 under a restricted or OK quality (the rear activation
+ * AGE too). Events and commands past 65535 go out saturated too (before, the
+ * TxPort call was DOMAIN_IF_NOT_AVAILABLE); the receiving Network drops them on
+ * its delivery AGE bound. */
+static int n50_age_saturated_on_send(void)
+{
+    DomainIf_VssWarningState_t w;
+    DomainIf_VssOneShotEvent_t e;
+    DomainIf_BcmDoorCommand_t c;
+    NetUpperCanMessage m;
+    const CanSeen *f;
+    unsigned from;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    from = can_count;
+    memset(&w, 0, sizeof(w));
+    w.antiPinchEvidence.availability = FUNCTION_AVAILABILITY_UNSUPPORTED;
+    w.occupantHazardState = OCCUPANT_HAZARD_UNCONFIRMED;
+    w.occupantEvidence.quality = DATA_QUALITY_NO_DATA;
+    w.occupantEvidence.reason = QUALITY_REASON_NO_DATA;
+    w.occupantEvidence.availability = FUNCTION_AVAILABILITY_UNAVAILABLE;
+    w.occupantEvidence.source.ageMs = UINT32_MAX;
+    w.rearObstacleState = REAR_OBSTACLE_STATE_EMERGENCY;
+    w.rearEvidence = evidence(CIS_BOOT, 33u, 40u);
+    w.rearDetectionActivation = REAR_DETECTION_ACTIVE;
+    w.rearActivationMeta.quality = DATA_QUALITY_OK;
+    w.rearActivationMeta.updateSequence = 44u;
+    w.rearActivationMeta.ageMs = 55u;
+    w.rearActivationReason = QUALITY_REASON_NONE;
+    CHECK(port.txVssWarningState(&w) == DOMAIN_IF_OK);
+    run_to(now_ms + 120u);
+    CHECK(count_id(0x0C0u, from) >= 3u);
+    f = nth_id(0x0C0u, from, 0u);
+    CHECK(f != NULL);
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_original_age_ms == UINT16_MAX);
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_quality == 3u /* NO_DATA */ &&
+          f->m.data.vss_warning_state.occupant_hazard_reason == 6u /* NO_DATA */ &&
+          f->m.data.vss_warning_state.occupant_hazard_availability == 2u /* UNAVAILABLE */);
+    CHECK(f->m.data.vss_warning_state.rear_obstacle_state == 2u /* EMERGENCY */ &&
+          f->m.data.vss_warning_state.rear_obstacle_quality == 0u /* OK */ &&
+          f->m.data.vss_warning_state.rear_obstacle_source_sequence == 33u &&
+          f->m.data.vss_warning_state.rear_obstacle_original_age_ms >= 40u &&
+          f->m.data.vss_warning_state.rear_obstacle_original_age_ms < 60u);
+    f = nth_id(0x0C0u, from, count_id(0x0C0u, from) - 1u); /* a repetition: the lane stays saturated */
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_original_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.rear_obstacle_original_age_ms >= 140u);
+    /* a STALE lane and an OK lane that kept their evaluation past 65535 */
+    from = can_count;
+    w.occupantHazardState = OCCUPANT_HAZARD_CLEAR;
+    w.occupantEvidence = evidence(CIS_BOOT, 22u, 70000u);
+    w.occupantEvidence.quality = DATA_QUALITY_STALE;
+    w.occupantEvidence.reason = QUALITY_REASON_STALE;
+    w.rearEvidence = evidence(CIS_BOOT, 34u, 66000u);
+    w.rearActivationMeta.updateSequence = 45u;
+    w.rearActivationMeta.ageMs = 70000u;
+    CHECK(port.txVssWarningState(&w) == DOMAIN_IF_OK);
+    run_to(now_ms + 10u);
+    f = nth_id(0x0C0u, from, 0u);
+    CHECK(f != NULL);
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_original_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.occupant_hazard_quality == 1u /* STALE */ &&
+          f->m.data.vss_warning_state.occupant_hazard_source_sequence == 22u);
+    CHECK(f->m.data.vss_warning_state.rear_obstacle_original_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.rear_obstacle_quality == 0u /* OK */ &&
+          f->m.data.vss_warning_state.rear_obstacle_source_sequence == 34u);
+    CHECK(f->m.data.vss_warning_state.rear_activation_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.rear_activation_sequence == 45u);
+    /* an event and a command past 65535 */
+    from = can_count;
+    memset(&e, 0, sizeof(e));
+    e.event = VSS_EVENT_VEHICLE_WELCOME;
+    e.occurrenceId = 9u;
+    e.meta.quality = DATA_QUALITY_OK;
+    e.meta.ageMs = 70000u;
+    e.availability = FUNCTION_AVAILABILITY_AVAILABLE;
+    CHECK(port.txVssOneShotEvent(&e) == DOMAIN_IF_OK);
+    memset(&c, 0, sizeof(c));
+    c.context.commandId = 91u;
+    c.context.origin = COMMAND_ORIGIN_MOBILE_REQUEST;
+    c.context.commandAgeMs = UINT32_MAX;
+    c.target = DOOR_TARGET_UNLOCK;
+    CHECK(port.txBcmDoorCommand(&c) == DOMAIN_IF_OK);
+    run_to(now_ms + 10u);
+    f = nth_id(0x160u, from, 0u);
+    CHECK(f != NULL && f->m.data.vss_event.occurrence_id == 9u && f->m.data.vss_event.original_age_ms == UINT16_MAX);
+    f = nth_id(0x100u, from, 0u);
+    CHECK(f != NULL && f->m.data.bcm_door_command.command_id == 91u &&
+          f->m.data.bcm_door_command.command_age_ms == UINT16_MAX);
+    CHECK(can_bad == 0u);
+    return 0;
+}
+
 /* DOMAIN_PERMISSION with no power basis: the DOMAIN application submits
  * UNKNOWN (false, NO_DATA) about every 200 ms. (a) Each submission a new
  * evaluation (a newer DOMAIN sequence, here 101..110; AGE from that
@@ -3067,6 +3168,7 @@ int main(int argc, char **argv)
         { "n47_permission_resubmit_clock_short", n47_permission_resubmit_clock_short },
         { "n48_permission_resubmit_after_forward_age", n48_permission_resubmit_after_forward_age },
         { "n49_environment_drop_invalid_encoding", n49_environment_drop_invalid_encoding },
+        { "n50_age_saturated_on_send", n50_age_saturated_on_send },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

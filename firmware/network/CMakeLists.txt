@@ -1092,6 +1092,8 @@ if(NETWORK_BUILD_RTD_MOCK)
         # CIS_ENVIRONMENT drop with the invalid encoding of the value under the same sequence: delivered.
         add_test(NAME domain_node.n49_environment_drop_invalid_encoding
                  COMMAND test_domain_node n49_environment_drop_invalid_encoding)
+        # An AGE past 65535 on send (warning lane, event, command) goes out as 65535.
+        add_test(NAME domain_node.n50_age_saturated_on_send COMMAND test_domain_node n50_age_saturated_on_send)
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

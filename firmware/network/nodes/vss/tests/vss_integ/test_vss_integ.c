@@ -225,6 +225,8 @@ typedef struct {
     /* The lost occupant lane carries the state 0 placeholder of the A1 limited
      * projection (04_COMMON/30_ENUM_WIRE_MAPPING.md, VSS_WARNING_STATE). */
     bool lostPlaceholder;
+    bool occupantAgeUnknown;
+    bool occupantAgeSaturated;
     /* Every lane has its own cadence: occupant new on even frames, rear on odd
      * frames, activation on every fourth; a lane that is not new keeps its
      * source sequence with the AGE grown to the frame's nominal time, and the
@@ -292,6 +294,22 @@ static IntegWarning NextWarning(void)
     {
         s_dom.occupantKeptSequence = seq;
         s_dom.occupantValidTick = s_tick;
+    }
+    if (s_dom.occupantAgeUnknown)
+    {
+        /* occupant warning not in use: no evidence, AGE unknown (DOMAIN UINT32_MAX
+         * goes out saturated) */
+        w.occupant = Lane(0u, 0u, NET_FLAG_NO);
+        w.occupant.original_age_ms = UINT16_MAX;
+        w.occupant.quality = NET_QUALITY_NO_DATA;
+        w.occupant.reason = NET_QUALITY_REASON_NO_DATA;
+        w.occupant.availability = NET_AVAILABILITY_UNAVAILABLE;
+    }
+    if (s_dom.occupantAgeSaturated)
+    {
+        /* an OK, ACTIVE occupant evaluation whose AGE went past 65535 (sent as 65535) */
+        w.occupant = Lane(CIS_BOOT, 9000u, NET_FLAG_YES);
+        w.occupant.original_age_ms = UINT16_MAX;
     }
     w.rear = Lane(CIS_BOOT, seq, s_dom.rear);
     w.rear_detection_activation = NET_FLAG_YES;
@@ -1417,6 +1435,46 @@ static int vi14_warning_lane_cadence_late(void)
     return Invariants();
 }
 
+/* vi15: the occupant lane carries no evidence and the saturated AGE 65535 (a
+ * warning DOMAIN does not use; its UINT32_MAX AGE goes out as 65535) in every
+ * frame, then an OK, ACTIVE occupant evaluation at AGE 65535. Each frame is
+ * delivered, the rear EMERGENCY of the same frames keeps playing and the
+ * occupant lane at 65535 (not known to be fresh) never plays. */
+static int vi15_warning_unknown_lane_age(void)
+{
+    VssWarningObservation obs;
+    IntegNetDiag d0, d;
+    uint32_t first, sent;
+
+    CHECK(Boot());
+    s_dom.occupantAgeUnknown = true;
+    s_dom.warnings = true;
+    RunMs(300u);
+    d0 = Net();
+    first = s_wrCount;
+    sent = s_dom.warningTx;
+    s_dom.rear = NET_REAR_WARNING_EMERGENCY;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_REAR_RISK, VSS_VALUE_EMERGENCY, 300u));
+    RunMs(2000u);
+    d = Net();
+    CHECK(s_dom.warningTx - sent >= 40u);
+    CHECK(s_wrCount - first == s_dom.warningTx - sent);
+    CHECK(d.rx_held == d0.rx_held);
+    CHECK(Playing(VSS_SIGNAL_REAR_RISK, VSS_VALUE_EMERGENCY));
+    CHECK(!Playing(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE));
+    CHECK(Store_ReadWarning(VSS_PRODUCT, VSS_SIGNAL_REAR_RISK, &obs) && !obs.firstLossPresent);
+    s_dom.occupantAgeUnknown = false;
+    s_dom.occupantAgeSaturated = true;
+    RunMs(1000u);
+    d = Net();
+    CHECK(s_wrCount - first == s_dom.warningTx - sent);
+    CHECK(d.rx_held == d0.rx_held);
+    CHECK(Playing(VSS_SIGNAL_REAR_RISK, VSS_VALUE_EMERGENCY));
+    CHECK(!Playing(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE));
+    printf("%s: %lu frames, all delivered\n", s_case, (unsigned long)(s_dom.warningTx - sent));
+    return Invariants();
+}
+
 /* vi0: the two header model. VSS compiles with vss_net_api.h, the Network
  * with network/app/net_if_*.h; the same list (vss_integ_layout.h) expanded on
  * both sides must give the same sizes, field offsets / sizes and codes. */
@@ -1480,6 +1538,7 @@ int main(int argc, char **argv)
         { "vi11_warning_quality_drop", vi11_warning_quality_drop },
         { "vi13_warning_lost_lane_placeholder", vi13_warning_lost_lane_placeholder },
         { "vi14_warning_lane_cadence_late", vi14_warning_lane_cadence_late },
+        { "vi15_warning_unknown_lane_age", vi15_warning_unknown_lane_age },
         { "vi12_warning_repeat_keeps_vss", vi12_warning_repeat_keeps_vss }
     };
     size_t i;

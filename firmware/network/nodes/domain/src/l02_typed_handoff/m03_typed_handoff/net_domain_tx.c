@@ -1,6 +1,7 @@
 #include "net_domain_private.h"
-static NetStatus age16(uint32_t age,uint16_t *out){if(age>UINT16_MAX)return NET_HOLD;
-*out=(uint16_t)age;
+/* u32 AGE to the wire u16: past 65535 it goes out as the saturated 65535, whatever the quality
+ * (04_COMMON/10_DATA_AND_ID_RULES.md AGE). UINT32_MAX is the unknown AGE, as nd_age gives it. */
+static NetStatus age16(uint32_t age,uint16_t *out){*out=age>UINT16_MAX?UINT16_MAX:(uint16_t)age;
 return NET_OK;
 }
 static NetStatus origin(CommandOrigin_t origin,uint8_t *out){switch(origin){
