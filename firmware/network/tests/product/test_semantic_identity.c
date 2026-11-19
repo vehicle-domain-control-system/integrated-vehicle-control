@@ -75,6 +75,19 @@ static int can_independent_lanes(void)
     cb.data.cis_environment.humidity_sequence=2u;cb.data.cis_environment.humidity_centi_percent=125u;
     cb.data.cis_environment.humidity_age_ms=0u;CHECK(net_upper_can_original_age(&ca,&cb,5u)==NET_OK);
     CHECK(!net_upper_can_same_observation(&ca,&cb));
+    {
+        /* Another value is held under the same quality, usable or not. A drop of a usable field to an
+         * unusable quality with the invalid encoding of its value passes, and so does a change between
+         * unusable qualities. */
+        NetUpperCanMessage ua=ca,ub=cb;
+        ua.data.cis_environment.temperature_validity=1u;ub.data.cis_environment.temperature_validity=1u;
+        ub.data.cis_environment.temperature_centi_c=100;CHECK(net_upper_can_original_age(&ua,&ub,5u)==NET_HOLD);
+        ub.data.cis_environment.temperature_validity=0u;ub.data.cis_environment.temperature_reason=5u;
+        ub.data.cis_environment.temperature_centi_c=(int16_t)-32768;CHECK(net_upper_can_original_age(&ua,&ub,5u)==NET_OK);
+        ua=ub;CHECK(net_upper_can_add_age(&ub,5u)==NET_WIRE_OK);
+        ub.data.cis_environment.temperature_reason=3u;ub.data.cis_environment.temperature_centi_c=7;
+        CHECK(net_upper_can_original_age(&ua,&ub,5u)==NET_OK);
+    }
     cb.data.cis_environment.temperature_centi_c=100;CHECK(net_upper_can_original_age(&ca,&cb,5u)==NET_HOLD);return 0;
 }
 static int can_vss_lanes(void)

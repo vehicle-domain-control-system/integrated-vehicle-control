@@ -654,6 +654,8 @@ if(NETWORK_BUILD_VIRTUAL_NODE)
             "${_domain_owner}/application/command_manager.c"
             "${_domain_owner}/application/result_manager.c"
             "${_domain_owner}/application/permission_manager.c"
+            "${_domain_owner}/application/permission_coordinator.c"
+            "${_domain_owner}/application/permission_adapter.c"
             "${_domain_owner}/application/cis_occupant_manager.c"
             "${_domain_owner}/application/domain_cis_occupant_private.c"
             "${_domain_owner}/application/cis_environment_manager.c"
@@ -989,6 +991,9 @@ if(NETWORK_BUILD_RTD_MOCK)
         add_test(NAME vss_node.h22_permission_unknown_stream COMMAND test_vss_node_e2e_ostimer h22_permission_unknown_stream)
         add_test(NAME vss_node.h22_permission_unknown_stream_hook
                  COMMAND test_vss_node_e2e_hook h22_permission_unknown_stream)
+        # Warning state late with one new lane: the unchanged lanes raised within the allowance.
+        add_test(NAME vss_node.h23_warning_partial_late COMMAND test_vss_node_e2e_ostimer h23_warning_partial_late)
+        add_test(NAME vss_node.h23_warning_partial_late_hook COMMAND test_vss_node_e2e_hook h23_warning_partial_late)
         # Load of the documented traffic, named the same way.
         add_test(NAME vss_node.load_doc_traffic COMMAND test_vss_node_e2e_ostimer load_doc_traffic)
         add_test(NAME vss_node.load_doc_traffic_hook COMMAND test_vss_node_e2e_hook load_doc_traffic)
@@ -1084,6 +1089,9 @@ if(NETWORK_BUILD_RTD_MOCK)
                 n47_permission_resubmit_clock_short n48_permission_resubmit_after_forward_age)
             add_test(NAME domain_node.${case} COMMAND test_domain_node ${case})
         endforeach()
+        # CIS_ENVIRONMENT drop with the invalid encoding of the value under the same sequence: delivered.
+        add_test(NAME domain_node.n49_environment_drop_invalid_encoding
+                 COMMAND test_domain_node n49_environment_drop_invalid_encoding)
     endif()
 
     # LPUART backend end-to-end (UART-C of the CIS profile; UART-M of the

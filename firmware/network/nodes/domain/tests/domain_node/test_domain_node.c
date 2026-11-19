@@ -2584,11 +2584,12 @@ static int n42_occupant_new_judgement_rejected_blocks(void)
 
 /* CIS_ENVIRONMENT quality per sensor (each with its sequence): DOMAIN develop
  * (CisEnvironmentManager_Store) overwrites every field it is given, so Network
- * keeps the guard: under a sensor's sequence another value, a promoted quality
- * and an AGE under the bound are held; a drop to an unusable quality and a
- * change between unusable ones are delivered, also in a frame where another
- * sensor has a new sequence. A report with every sequence and quality the same
- * is taken without a call. Sensor s: 0 temperature, 1 humidity, 2
+ * keeps the guard: under a sensor's sequence another value under the same
+ * quality, a promoted quality and an AGE under the bound are held; a drop to
+ * an unusable quality and a change between unusable ones are delivered with
+ * the value they carry, also in a frame where another sensor has a new
+ * sequence. A report with every sequence and quality the same is taken
+ * without a call. Sensor s: 0 temperature, 1 humidity, 2
  * illuminance; each AGE grows exactly with the time since its observation. */
 static uint8_t env_validity[3], env_reason[3];
 static uint32_t env_sequence[3], env_since[3];
@@ -2678,7 +2679,7 @@ static int n38_environment_quality_delivered(void)
         env_field(&m.data.cis_environment, s, 1u, 0u, env_value[s], env_age(s, at));
         CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
         at += 10u;
-        m = environment_now(tx + 2u, at); /* another value: held */
+        m = environment_now(tx + 2u, at); /* another value under the same quality: held */
         env_field(&m.data.cis_environment, s, 0u, 6u, env_value[s] + 1, env_age(s, at));
         CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
         at += 10u;
@@ -2708,6 +2709,66 @@ static int n38_environment_quality_delivered(void)
     run_to(now_ms + 3u);
     u = last_uart(0x34u);
     CHECK(uart_type_count[0x34u] == relays0 + 1u && u != NULL && u->data.m_cis_environment.humidity_reason == 6u);
+    return 0;
+}
+
+/* CIS_ENVIRONMENT drop as the CIS sends it: an unusable field keeps its
+ * sequence and carries the invalid encoding of its value (CIS 10_DATA.md:
+ * temperature -32768, humidity 65535, illuminance 0xFFFFFFFF; CIS
+ * fill_environment). The drop is delivered with that value, which is not
+ * compared with the last usable one. Under the same unusable quality another
+ * value is held (the receive record keeps what DOMAIN holds, the query
+ * answers), and a usable value back under the same sequence (a promotion)
+ * stays held. */
+static int n49_environment_drop_invalid_encoding(void)
+{
+    static const int32_t invalid[3] = { -32768, 65535, -1 };
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisCabinEnvironmentState_t held;
+    uint32_t tx = 1u, at = START_MS + 10u, kept, taken, grown;
+    unsigned s, calls;
+    NetDomainC2 *a;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].id = CIS_BOOT;
+    for (s = 0u; s < 3u; ++s) {
+        env_validity[s] = 1u; env_reason[s] = 0u; env_sequence[s] = 10u * (s + 1u); env_since[s] = START_MS;
+    }
+    env_value[0] = 2150; env_value[1] = 4500; env_value[2] = 300;
+    m = environment_now(tx, at);
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == 1u);
+    calls = 1u;
+    for (s = 0u; s < 3u; ++s) {
+        at += 200u; ++tx;
+        env_validity[s] = 0u; env_reason[s] = 5u; env_value[s] = invalid[s]; /* STALE */
+        m = environment_now(tx, at);
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == ++calls && record_tx(0x300u, tx));
+        taken = at + 1u;
+        CHECK(quality_is(env_quality(&last_env, s), VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+        CHECK(env_quality(&last_env, s)->meta.updateSequence == env_sequence[s]);
+    }
+    CHECK(last_env.cabinTemperature == (int16_t)-32768 && last_env.cabinHumidity == 65535u &&
+        last_env.cabinIlluminance == UINT32_C(0xFFFFFFFF));
+    kept = tx;
+    at += 200u;
+    m = environment_now(tx + 1u, at); /* another value under the same unusable quality: held */
+    env_field(&m.data.cis_environment, 0u, 0u, 5u, 2150, env_age(0u, at));
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+    held = last_env;
+    grown = now_ms - taken;
+    held.temperatureQuality.meta.ageMs += grown;
+    held.humidityQuality.meta.ageMs += grown;
+    held.illuminanceQuality.meta.ageMs += grown;
+    CHECK(project_query(0x300u, &held, &out) == NET_OK); /* the record still matches DOMAIN */
+    at += 200u;
+    m = environment_now(tx + 2u, at); /* usable again under the same sequence: held */
+    env_field(&m.data.cis_environment, 0u, 1u, 0u, 2150, env_age(0u, at));
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+    CHECK(failure_calls == 0u);
     return 0;
 }
 
@@ -3005,6 +3066,7 @@ int main(int argc, char **argv)
         { "n46_permission_allow_resubmit_held", n46_permission_allow_resubmit_held },
         { "n47_permission_resubmit_clock_short", n47_permission_resubmit_clock_short },
         { "n48_permission_resubmit_after_forward_age", n48_permission_resubmit_after_forward_age },
+        { "n49_environment_drop_invalid_encoding", n49_environment_drop_invalid_encoding },
         { "n15_board_c2_hook", n15_board_c2_hook }
     };
     size_t i;

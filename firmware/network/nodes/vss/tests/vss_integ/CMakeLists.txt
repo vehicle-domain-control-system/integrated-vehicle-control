@@ -113,6 +113,7 @@ target_link_options(test_vss_integ PRIVATE
 foreach(case IN ITEMS vi0_api_layout vi1_boot_order vi2_clock_axis vi3_tx_per_message vi4_domain_reboot
         vi5_same_occurrence vi6_structure_rejected vi7_warning_rx_loss vi8_status_period
         vi9_link_locked_resubmit vi10_rx_flood_budget vi11_warning_quality_drop
+        vi13_warning_lost_lane_placeholder vi14_warning_lane_cadence_late
         vi12_warning_repeat_keeps_vss)
     add_test(NAME vss_integ.${case} COMMAND test_vss_integ ${case})
 endforeach()

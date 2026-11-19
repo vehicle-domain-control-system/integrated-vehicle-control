@@ -222,6 +222,15 @@ typedef struct {
      * time; the frame itself reaches the bus 0..2 ticks later (arbitration). */
     bool repeatEvaluation;
     uint32_t evaluationTick, nominalTick, repeats;
+    /* The lost occupant lane carries the state 0 placeholder of the A1 limited
+     * projection (04_COMMON/30_ENUM_WIRE_MAPPING.md, VSS_WARNING_STATE). */
+    bool lostPlaceholder;
+    /* Every lane has its own cadence: occupant new on even frames, rear on odd
+     * frames, activation on every fourth; a lane that is not new keeps its
+     * source sequence with the AGE grown to the frame's nominal time, and the
+     * frame reaches the bus 0..2 ticks late. */
+    bool laneCadence;
+    uint32_t cadenceFrame, rearKeptSequence, rearKeptTick, activationKeptSequence, activationKeptTick;
     IntegEvent lastEvent;
 } Domain;
 
@@ -263,6 +272,21 @@ static IntegWarning NextWarning(void)
             (uint16_t)(VssTime_TicksToMs(s_tick) - VssTime_TicksToMs(s_dom.occupantValidTick));
         w.occupant.quality = NET_QUALITY_STALE;
         w.occupant.reason = NET_QUALITY_REASON_STALE;
+        if (s_dom.lostPlaceholder)
+        {
+            w.occupant.state = NET_FLAG_NO;
+        }
+    }
+    else if (s_dom.laneCadence)
+    {
+        if ((s_dom.cadenceFrame % 2u) == 0u)
+        {
+            s_dom.occupantKeptSequence = seq;
+            s_dom.occupantValidTick = s_dom.nominalTick;
+        }
+        w.occupant.source_sequence = s_dom.occupantKeptSequence;
+        w.occupant.original_age_ms =
+            (uint16_t)(VssTime_TicksToMs(s_dom.nominalTick) - VssTime_TicksToMs(s_dom.occupantValidTick));
     }
     else
     {
@@ -276,6 +300,26 @@ static IntegWarning NextWarning(void)
     w.rear_activation_reason = NET_QUALITY_REASON_NONE;
     w.rear_activation_sequence = seq;
     w.rear_activation_age_ms = 0u;
+    if (s_dom.laneCadence)
+    {
+        if (((s_dom.cadenceFrame % 2u) == 1u) || (s_dom.rearKeptSequence == 0u))
+        {
+            s_dom.rearKeptSequence = seq;
+            s_dom.rearKeptTick = s_dom.nominalTick;
+        }
+        if (((s_dom.cadenceFrame % 4u) == 0u) || (s_dom.activationKeptSequence == 0u))
+        {
+            s_dom.activationKeptSequence = seq;
+            s_dom.activationKeptTick = s_dom.nominalTick;
+        }
+        w.rear.source_sequence = s_dom.rearKeptSequence;
+        w.rear.original_age_ms =
+            (uint16_t)(VssTime_TicksToMs(s_dom.nominalTick) - VssTime_TicksToMs(s_dom.rearKeptTick));
+        w.rear_activation_sequence = s_dom.activationKeptSequence;
+        w.rear_activation_age_ms =
+            (uint16_t)(VssTime_TicksToMs(s_dom.nominalTick) - VssTime_TicksToMs(s_dom.activationKeptTick));
+        ++s_dom.cadenceFrame;
+    }
     if (s_dom.repeatEvaluation)
     {
         uint16_t age = (uint16_t)(VssTime_TicksToMs(s_dom.nominalTick) - VssTime_TicksToMs(s_dom.evaluationTick));
@@ -332,6 +376,10 @@ static void DomainService(void)
     {
         due += s_jitter[s_dom.repeats % (sizeof s_jitter / sizeof s_jitter[0])];
     }
+    if (s_dom.laneCadence)
+    {
+        due += s_jitter[s_dom.repeats % (sizeof s_jitter / sizeof s_jitter[0])];
+    }
     if (s_dom.warnings && (s_tick >= due))
     {
         s_dom.nominalTick = s_dom.nextWarningTick;
@@ -341,6 +389,10 @@ static void DomainService(void)
         }
         s_dom.nextWarningTick += WARNING_PERIOD_TICKS;
         if (s_dom.repeatEvaluation)
+        {
+            ++s_dom.repeats;
+        }
+        if (s_dom.laneCadence)
         {
             ++s_dom.repeats;
         }
@@ -1284,6 +1336,87 @@ static int vi12_warning_repeat_keeps_vss(void)
     return Invariants();
 }
 
+/* vi13: the occupant lane is lost while ACTIVE and DOMAIN sends it with the
+ * state 0 placeholder under its last valid source sequence (A1 limited
+ * projection, VSS contract C12), while the rear lane brings new EMERGENCY
+ * evaluations. Network does not compare the value of a restricted lane, so
+ * every frame reaches VSS: the occupant lane goes into loss on its own and
+ * the rear warning plays. */
+static int vi13_warning_lost_lane_placeholder(void)
+{
+    VssWarningObservation obs;
+    IntegNetDiag d0, d;
+    uint32_t first, sent;
+
+    CHECK(Boot());
+    s_dom.warnings = true;
+    RunMs(300u);
+    s_dom.occupant = NET_FLAG_YES;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE, 300u));
+    RunMs(100u);
+    d0 = Net();
+    first = s_wrCount;
+    sent = s_dom.warningTx;
+    s_dom.occupantLost = true;
+    s_dom.lostPlaceholder = true;
+    s_dom.rear = NET_REAR_WARNING_EMERGENCY;
+    RunMs(900u);
+    d = Net();
+    CHECK(s_dom.warningTx - sent >= 17u);
+    CHECK(s_wrCount - first == s_dom.warningTx - sent);
+    CHECK(d.rx_held == d0.rx_held);
+    CHECK(Playing(VSS_SIGNAL_REAR_RISK, VSS_VALUE_EMERGENCY));
+    CHECK(Store_ReadWarning(VSS_PRODUCT, VSS_SIGNAL_OCCUPANT_HAZARD, &obs) && obs.firstLossPresent);
+    CHECK(Store_ReadWarning(VSS_PRODUCT, VSS_SIGNAL_REAR_RISK, &obs) && !obs.firstLossPresent);
+    printf("%s: %lu frames, all delivered\n", s_case, (unsigned long)(s_dom.warningTx - sent));
+    return Invariants();
+}
+
+/* vi14: lanes with their own cadence (one or two lanes new per frame, the
+ * others the same observation with the AGE grown) and frames reaching the bus
+ * up to 2.5 ms late. The unchanged lanes of a late frame are raised to the
+ * bound within the CAN hop allowance, so no frame is held and the occupant
+ * warning keeps playing. */
+static int vi14_warning_lane_cadence_late(void)
+{
+    VssWarningObservation obs;
+    IntegNetDiag d0, d;
+    uint64_t end, session;
+    uint32_t first, sent;
+
+    CHECK(Boot());
+    s_dom.warnings = true;
+    RunMs(300u);
+    s_dom.occupant = NET_FLAG_YES;
+    CHECK(RunUntilPlaying(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE, 300u));
+    do
+    {
+        Step();
+    } while (s_dom.lastWarningTick != s_tick);
+    s_dom.laneCadence = true;
+    View();
+    session = s_view.session;
+    d0 = Net();
+    first = s_wrCount;
+    sent = s_dom.warningTx;
+    end = NowMs() + 3000u;
+    while (NowMs() < end)
+    {
+        Step();
+        CHECK(Playing(VSS_SIGNAL_OCCUPANT_HAZARD, VSS_VALUE_ACTIVE));
+        CHECK(s_view.session == session && !s_view.stopRequested);
+        CHECK(Store_ReadWarning(VSS_PRODUCT, VSS_SIGNAL_OCCUPANT_HAZARD, &obs) && !obs.firstLossPresent);
+    }
+    d = Net();
+    CHECK(s_dom.warningTx - sent >= 59u);
+    CHECK(s_wrCount - first == s_dom.warningTx - sent);
+    CHECK(d.rx_held == d0.rx_held);
+    CHECK(d.repeat_age_raised > d0.repeat_age_raised);
+    printf("%s: %lu frames, %lu raised\n", s_case, (unsigned long)(s_dom.warningTx - sent),
+           (unsigned long)(d.repeat_age_raised - d0.repeat_age_raised));
+    return Invariants();
+}
+
 /* vi0: the two header model. VSS compiles with vss_net_api.h, the Network
  * with network/app/net_if_*.h; the same list (vss_integ_layout.h) expanded on
  * both sides must give the same sizes, field offsets / sizes and codes. */
@@ -1345,6 +1478,8 @@ int main(int argc, char **argv)
         { "vi9_link_locked_resubmit", vi9_link_locked_resubmit },
         { "vi10_rx_flood_budget", vi10_rx_flood_budget },
         { "vi11_warning_quality_drop", vi11_warning_quality_drop },
+        { "vi13_warning_lost_lane_placeholder", vi13_warning_lost_lane_placeholder },
+        { "vi14_warning_lane_cadence_late", vi14_warning_lane_cadence_late },
         { "vi12_warning_repeat_keeps_vss", vi12_warning_repeat_keeps_vss }
     };
     size_t i;

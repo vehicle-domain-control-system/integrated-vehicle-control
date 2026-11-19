@@ -1102,12 +1102,21 @@ static int h15_warning_quality_drop(void)
     step_ms(1u);
     d = diag();
     CHECK(warning_count == 3 && d.upper.rx_held == d0.upper.rx_held + 1u);
-    /* TX5: the same source sequence with another value: held. */
+    /* TX5: the lost lane under the same source sequence with another value
+     * and availability, and the activation lane losing its quality with
+     * another value: a restricted lane carries no usable value (the A1
+     * limited projection puts the state 0 placeholder there and may put
+     * availability 2, 04_COMMON/30_ENUM_WIRE_MAPPING.md), so its value is not
+     * compared and the frame is delivered. */
     step_ms(49u);
     w.tx_sequence = 5u;
     w.occupant_hazard_quality = NET_QUALITY_INVALID;
     w.occupant_hazard_reason = NET_QUALITY_REASON_COMMUNICATION_FAULT;
     w.occupant_hazard_state = NET_FLAG_YES;
+    w.occupant_hazard_availability = NET_AVAILABILITY_UNAVAILABLE;
+    w.rear_activation_quality = NET_QUALITY_STALE;
+    w.rear_activation_reason = NET_QUALITY_REASON_STALE;
+    w.rear_detection_activation = NET_FLAG_NO;
     w.occupant_hazard_original_age_ms = 550u;
     w.rear_obstacle_source_sequence = 37u;
     w.antipinch_original_age_ms = 320u;
@@ -1115,20 +1124,37 @@ static int h15_warning_quality_drop(void)
     CHECK(send_warning(&w) == 0);
     step_ms(1u);
     d = diag();
-    CHECK(warning_count == 3 && d.upper.rx_held == d0.upper.rx_held + 2u);
-    /* TX6: a new occupant evaluation (new source sequence, OK, fresh AGE). */
+    CHECK(warning_count == 4 && last_warning_meta.source.tx_sequence == 5u);
+    CHECK(last_warning.occupant_hazard_quality == NET_QUALITY_INVALID);
+    CHECK(last_warning.occupant_hazard_source_sequence == 22u && last_warning.rear_obstacle_source_sequence == 37u);
+    CHECK(last_warning.occupant_hazard_availability == NET_AVAILABILITY_UNAVAILABLE && last_warning.rear_activation_quality == NET_QUALITY_STALE);
+    CHECK(d.upper.rx_held == d0.upper.rx_held + 1u);
+    /* TX6: a lane with an OK quality changes its value under the same source
+     * sequence (rear 37: EMERGENCY -> CAUTION, AGE grown): held. */
     step_ms(49u);
     w.tx_sequence = 6u;
+    w.occupant_hazard_original_age_ms = 600u;
+    w.rear_obstacle_state = NET_REAR_WARNING_CAUTION;
+    w.rear_obstacle_original_age_ms = 54u;
+    w.antipinch_original_age_ms = 370u;
+    w.rear_activation_age_ms = 305u;
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(warning_count == 4 && d.upper.rx_held == d0.upper.rx_held + 2u);
+    /* TX7: a new occupant evaluation (new source sequence, OK, fresh AGE). */
+    step_ms(49u);
+    w.tx_sequence = 7u;
     w.occupant_hazard_source_sequence = 23u;
     w.occupant_hazard_quality = NET_QUALITY_OK;
     w.occupant_hazard_reason = NET_QUALITY_REASON_NONE;
     w.occupant_hazard_original_age_ms = 3u;
     w.rear_obstacle_source_sequence = 38u;
-    w.antipinch_original_age_ms = 370u;
-    w.rear_activation_age_ms = 305u;
+    w.antipinch_original_age_ms = 420u;
+    w.rear_activation_age_ms = 355u;
     CHECK(send_warning(&w) == 0);
     step_ms(1u);
-    CHECK(warning_count == 4 && last_warning_meta.source.tx_sequence == 6u);
+    CHECK(warning_count == 5 && last_warning_meta.source.tx_sequence == 7u);
     CHECK(last_warning.occupant_hazard_source_sequence == 23u && last_warning.occupant_hazard_state == NET_FLAG_YES);
     CHECK(last_warning.occupant_hazard_quality == NET_QUALITY_OK);
     return 0;
@@ -1238,6 +1264,103 @@ static int h16_warning_repeat_delivered(void)
     step_ms(1u);
     CHECK(warning_count == 5 && last_warning_meta.source.tx_sequence == 6u);
     RUN_CHECK(warning_ages_are(&last_warning, &first, 250u));
+    return 0;
+}
+
+/* A warning state that carries a new evaluation of one lane while the other
+ * lanes keep their original observation is not a repetition, but its
+ * unchanged lanes are. Arriving a little late (their AGE short of the bound by
+ * up to the CAN hop allowance, 5 ms candidate) it is delivered with the AGE of
+ * those lanes raised to the bound and the new lane as sent (VSS/10_DATA.md:
+ * every lane keeps its own AGE; same allowance as a repetition); further
+ * short is held. The same allowance holds when every lane keeps its identity
+ * and one loses its quality, and the allowance never lets a content change of
+ * an OK lane through. */
+static int h23_warning_partial_late(void)
+{
+    NetWireVssWarningStateRaw first = warning_raw(1u), w;
+    NetNodeDiag d0, d;
+    uint32_t t1;
+    CHECK(start_node() == NET_OK);
+    step_ms(3u);
+    t1 = now_ms();
+    CHECK(send_warning(&first) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 1);
+    d0 = diag();
+    /* TX2 at +50 ms, on time: a new rear evaluation, the other lanes +50. */
+    step_ms(49u);
+    w = first; w.tx_sequence = 2u; warning_age_add(&w, 50u);
+    w.rear_obstacle_source_sequence = first.rear_obstacle_source_sequence + 1u; w.rear_obstacle_original_age_ms = 1u;
+    CHECK(now_ms() == t1 + 50u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 2 && last_warning.rear_obstacle_source_sequence == first.rear_obstacle_source_sequence + 1u);
+    /* TX3: AGE as of +100 ms, another new rear evaluation, the frame 2 ms
+     * late: the unchanged lanes are 2 ms short and are raised to +102, the
+     * rear lane keeps the AGE it was sent with. */
+    step_ms(51u);
+    w = first; w.tx_sequence = 3u; warning_age_add(&w, 100u);
+    w.rear_obstacle_source_sequence = first.rear_obstacle_source_sequence + 2u; w.rear_obstacle_original_age_ms = 1u;
+    CHECK(now_ms() == t1 + 102u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 3 && last_warning_meta.source.tx_sequence == 3u);
+    CHECK(last_warning.antipinch_original_age_ms == (uint16_t)(first.antipinch_original_age_ms + 102u));
+    CHECK(last_warning.occupant_hazard_original_age_ms == (uint16_t)(first.occupant_hazard_original_age_ms + 102u));
+    CHECK(last_warning.rear_activation_age_ms == (uint16_t)(first.rear_activation_age_ms + 102u));
+    CHECK(last_warning.rear_obstacle_source_sequence == first.rear_obstacle_source_sequence + 2u);
+    CHECK(last_warning.rear_obstacle_original_age_ms == 1u);
+    d = diag();
+    CHECK(d.upper.repeat_age_raised == d0.upper.repeat_age_raised + 1u);
+    CHECK(d.upper.rx_delivered == d0.upper.rx_delivered + 2u && d.upper.rx_held == d0.upper.rx_held);
+    /* TX4 at +150 ms: the unchanged lanes 10 ms short (beyond the allowance): held. */
+    step_ms(47u);
+    w = first; w.tx_sequence = 4u; warning_age_add(&w, 140u);
+    w.rear_obstacle_source_sequence = first.rear_obstacle_source_sequence + 3u; w.rear_obstacle_original_age_ms = 1u;
+    CHECK(now_ms() == t1 + 150u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(warning_count == 3 && d.upper.rx_held == d0.upper.rx_held + 1u);
+    /* TX5 at +200 ms with the AGE grown exactly: delivered. */
+    step_ms(49u);
+    w = first; w.tx_sequence = 5u; warning_age_add(&w, 200u);
+    w.rear_obstacle_source_sequence = first.rear_obstacle_source_sequence + 4u; w.rear_obstacle_original_age_ms = 1u;
+    CHECK(now_ms() == t1 + 200u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    CHECK(warning_count == 4 && last_warning_meta.source.tx_sequence == 5u);
+    d0 = diag();
+    /* TX6: every lane keeps its identity and the occupant lane loses its
+     * quality (not a repetition); AGE as of +250 ms, the frame 3 ms late:
+     * delivered, every lane raised to the bound (+253). */
+    step_ms(52u);
+    w = first; w.tx_sequence = 6u; warning_age_add(&w, 250u);
+    w.rear_obstacle_source_sequence = first.rear_obstacle_source_sequence + 4u; w.rear_obstacle_original_age_ms = 51u;
+    w.occupant_hazard_quality = NET_QUALITY_STALE;
+    w.occupant_hazard_reason = NET_QUALITY_REASON_STALE;
+    CHECK(now_ms() == t1 + 253u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(warning_count == 5 && last_warning_meta.source.tx_sequence == 6u);
+    CHECK(last_warning.occupant_hazard_quality == NET_QUALITY_STALE);
+    CHECK(last_warning.occupant_hazard_original_age_ms == (uint16_t)(first.occupant_hazard_original_age_ms + 253u));
+    CHECK(last_warning.antipinch_original_age_ms == (uint16_t)(first.antipinch_original_age_ms + 253u));
+    CHECK(last_warning.rear_obstacle_original_age_ms == 54u);
+    CHECK(d.upper.repeat_age_raised == d0.upper.repeat_age_raised + 1u && d.upper.rx_held == d0.upper.rx_held);
+    /* TX7: 2 ms late within the allowance, but the rear lane (OK) changes its
+     * state under the same source sequence: held as one result. */
+    step_ms(48u);
+    w.tx_sequence = 7u; warning_age_add(&w, 50u);
+    w.rear_obstacle_state = (uint8_t)(first.rear_obstacle_state == NET_REAR_WARNING_CAUTION ?
+                                      NET_REAR_WARNING_EMERGENCY : NET_REAR_WARNING_CAUTION);
+    CHECK(now_ms() == t1 + 302u);
+    CHECK(send_warning(&w) == 0);
+    step_ms(1u);
+    d = diag();
+    CHECK(warning_count == 5 && d.upper.rx_held == d0.upper.rx_held + 1u);
     return 0;
 }
 
@@ -1820,6 +1943,7 @@ int main(int argc, char **argv)
         { "h19_rx_rearm_retry", h19_rx_rearm_retry }, { "h20_quarantine_flag_lost", h20_quarantine_flag_lost },
         { "h21_send_error_refused", h21_send_error_refused },
         { "h22_permission_unknown_stream", h22_permission_unknown_stream },
+        { "h23_warning_partial_late", h23_warning_partial_late },
         { "load_doc_traffic", load_doc_traffic },
         { "h18_abort_result", h18_abort_result }
     };

@@ -37,6 +37,8 @@ if(NETWORK_DOMAIN_C2_OWNER_SOURCE_DIR AND BUILD_TESTING AND NETWORK_NODE_PROFILE
         "${_domain_owner}/application/command_manager.c"
         "${_domain_owner}/application/result_manager.c"
         "${_domain_owner}/application/permission_manager.c"
+        "${_domain_owner}/application/permission_coordinator.c"
+        "${_domain_owner}/application/permission_adapter.c"
         "${_domain_owner}/application/cis_occupant_manager.c"
         "${_domain_owner}/application/domain_cis_occupant_private.c"
         "${_domain_owner}/application/cis_environment_manager.c"
