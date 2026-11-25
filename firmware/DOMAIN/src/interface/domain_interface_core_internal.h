@@ -29,6 +29,8 @@ bool DomainIfCore_IsCisRearValid(const CisRearState_t *state);
 bool DomainIfCore_IsCisOccupantValid(const CisOccupantState_t *state);
 bool DomainIfCore_IsCisStatusValid(
     const DomainIf_CisStatusReport_t *state);
+bool DomainIfCore_IsVssStatusValid(
+    const DomainIf_VssStateReport_t *state);
 
 /* Optional post-commit notifications for callbacks present in C2 v0.5. */
 DomainIf_Status_t DomainIfCore_NotifyBcmStatus(

@@ -19,6 +19,10 @@ static int g_tests;
 static uint32_t g_permissionEvaluationCalls;
 static uint32_t g_permissionTxCalls;
 static DomainIf_Status_t g_permissionTxStatus;
+static uint32_t g_doorCommandTxCalls;
+static uint32_t g_mobileResultTxCalls;
+static DomainIf_BcmDoorCommand_t g_lastDoorCommand;
+static DomainIf_MobileRequestResult_t g_lastMobileResult;
 
 #define CHECK(condition)                                                       \
     do                                                                         \
@@ -80,6 +84,106 @@ static DomainIf_Status_t TestPermission_Transmit(
     return g_permissionTxStatus;
 }
 
+static bool TestRequest_Authorize(
+    void *context,
+    const DomainIf_MobileRequest_t *request,
+    RequestManager_AuthContext_t *outAuth,
+    RequestManager_FunctionGate_t *outDoorGate)
+{
+    (void)context;
+    (void)memset(outAuth, 0, sizeof(*outAuth));
+    (void)memset(outDoorGate, 0, sizeof(*outDoorGate));
+    outAuth->registrationVerified = true;
+    outAuth->registered = true;
+    outAuth->connectionVerified = true;
+    outAuth->connected = true;
+    outAuth->sessionVerified = true;
+    outAuth->currentDeviceContextId = request->deviceContextId;
+    outAuth->currentSessionId = request->context.sessionId;
+    outDoorGate->supportKnown = true;
+    outDoorGate->supported = true;
+    outDoorGate->permissionKnown = true;
+    outDoorGate->operationAllowed = true;
+    return true;
+}
+
+static bool TestRequest_RejectRegistration(
+    void *context,
+    const DomainIf_MobileRequest_t *request,
+    RequestManager_AuthContext_t *outAuth,
+    RequestManager_FunctionGate_t *outDoorGate)
+{
+    (void)context;
+    (void)memset(outAuth, 0, sizeof(*outAuth));
+    (void)memset(outDoorGate, 0, sizeof(*outDoorGate));
+    outAuth->registrationVerified = true;
+    outAuth->registered = false;
+    outAuth->connectionVerified = true;
+    outAuth->connected = true;
+    outAuth->sessionVerified = true;
+    outAuth->currentDeviceContextId = request->deviceContextId;
+    outAuth->currentSessionId = request->context.sessionId;
+    outDoorGate->supportKnown = true;
+    outDoorGate->supported = true;
+    outDoorGate->permissionKnown = true;
+    outDoorGate->operationAllowed = true;
+    return true;
+}
+
+static DomainIf_Status_t TestRequest_TxDoor(
+    const DomainIf_BcmDoorCommand_t *command)
+{
+    ++g_doorCommandTxCalls;
+    g_lastDoorCommand = *command;
+    return DOMAIN_IF_OK;
+}
+
+static DomainIf_Status_t TestRequest_TxDoorUnavailable(
+    const DomainIf_BcmDoorCommand_t *command)
+{
+    ++g_doorCommandTxCalls;
+    g_lastDoorCommand = *command;
+    return DOMAIN_IF_NOT_AVAILABLE;
+}
+
+static DomainIf_Status_t TestRequest_TxMobileResult(
+    const DomainIf_MobileRequestResult_t *result)
+{
+    ++g_mobileResultTxCalls;
+    g_lastMobileResult = *result;
+    return DOMAIN_IF_OK;
+}
+
+static DoorState_t TestRequest_DoorState(DataQuality_t quality)
+{
+    DoorState_t state;
+    (void)memset(&state, 0, sizeof(state));
+    state.lockState = DOOR_LOCK_STATE_UNLOCKED;
+    state.openState = DOOR_OPEN_STATE_CLOSED;
+    state.compositeState = DOOR_COMPOSITE_STATE_NORMAL;
+    state.lockQuality = quality;
+    state.openQuality = quality;
+    state.compositeQuality = quality;
+    state.sourceGeneration = 1U;
+    state.meta.quality = quality;
+    state.meta.updateSequence = 1U;
+    return state;
+}
+
+static DomainIf_MobileRequest_t TestRequest_DoorRequest(RequestId_t requestId)
+{
+    DomainIf_MobileRequest_t request;
+    (void)memset(&request, 0, sizeof(request));
+    request.deviceContextId = 10U;
+    request.context.sessionId = 20U;
+    request.context.requestId = requestId;
+    request.type = MOBILE_REQUEST_DOOR_LOCK;
+    request.payload.doorTarget = DOOR_TARGET_LOCK;
+    request.meta.quality = DATA_QUALITY_OK;
+    request.meta.updateSequence = requestId;
+    return request;
+}
+
 static DomainRuntime_Config_t NormalConfig(void)
 {
     DomainRuntime_Config_t config;
@@ -96,6 +200,7 @@ static DomainRuntime_Config_t NormalConfig(void)
     config.resultPolicy.doorEvidenceTtlMs = 500U;
     config.permissionPolicy.reevaluationPeriodMs = 200U;
     config.permissionPolicy.sourceValidityMs = 500U;
+    config.mobileRequestSourceValidityMs = 500U;
     config.cisOccupantEnabled = true;
     config.cisOccupantPolicy.presenceTtlMs = 500U;
     config.cisOccupantPolicy.countTtlMs = 500U;
@@ -689,6 +794,355 @@ static void Test_DisabledPermissionCoordinatorPreservesRuntimeReady(void)
     EndTest(before);
 }
 
+static void Test_RequestCoordinatorDisabledAndZeroTtl(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_MobileRequest_t request = TestRequest_DoorRequest(1U);
+    int before = g_failures;
+
+    BeginTest("Test_RequestCoordinatorDisabledAndZeroTtl");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    g_clock.available = true;
+    g_clock.nowMs = 0U;
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainRuntime_IsReady(&runtime));
+    CHECK(DomainRuntime_GetRequestCoordinator(&runtime) == NULL);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_NOT_AVAILABLE);
+
+    (void)memset(&runtime, 0, sizeof(runtime));
+    config.requestCoordinatorEnabled = true;
+    config.bcmDoorStateTtlMs = 0U;
+    CHECK(DomainRuntime_Init(&runtime, &config) ==
+          DOMAIN_RUNTIME_INVALID_ARGUMENT);
+    CHECK(!DomainRuntime_IsReady(&runtime));
+    EndTest(before);
+}
+
+static void Test_RequestCoordinatorMissingAuthorizationFailsClosed(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_TxPort_t port;
+    DomainIf_MobileRequest_t request = TestRequest_DoorRequest(2U);
+    ResultManager_RequestKey_t key;
+    ResultManager_Snapshot_t resultSnapshot;
+    int before = g_failures;
+
+    BeginTest("Test_RequestCoordinatorMissingAuthorizationFailsClosed");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    (void)memset(&port, 0, sizeof(port));
+    config.requestCoordinatorEnabled = true;
+    config.bcmDoorStateTtlMs = 500U;
+    config.requestAuthorizationProvider = NULL;
+    g_clock.available = true;
+    g_clock.nowMs = 0U;
+    g_doorCommandTxCalls = 0U;
+    g_mobileResultTxCalls = 0U;
+    port.txBcmDoorCommand = TestRequest_TxDoor;
+    port.txMobileRequestResult = TestRequest_TxMobileResult;
+
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(g_mobileResultTxCalls == 0U);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    key.deviceContextId = request.deviceContextId;
+    key.context = request.context;
+    CHECK(ResultManager_GetSnapshot(&runtime.resultManager, &key,
+                                    &resultSnapshot) == RESULT_MANAGER_OK);
+    CHECK(resultSnapshot.result == REQUEST_RESULT_REJECTED);
+    CHECK(resultSnapshot.reason == RESULT_REASON_NOT_READY);
+    CHECK(runtime.requestCoordinator.lastPublishStatus ==
+          DOMAIN_IF_INVALID_ARGUMENT);
+    EndTest(before);
+}
+
+static void Test_RequestCoordinatorRuntimeEndToEnd(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_TxPort_t port;
+    DomainIf_MobileRequest_t request = TestRequest_DoorRequest(3U);
+    DoorState_t door = TestRequest_DoorState(DATA_QUALITY_OK);
+    DomainIf_BcmCommandResult_t result;
+    int before = g_failures;
+
+    BeginTest("Test_RequestCoordinatorRuntimeEndToEnd");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    (void)memset(&port, 0, sizeof(port));
+    (void)memset(&result, 0, sizeof(result));
+    config.requestCoordinatorEnabled = true;
+    config.bcmDoorStateTtlMs = 500U;
+    config.requestAuthorizationProvider = TestRequest_Authorize;
+    g_clock.available = true;
+    g_clock.nowMs = 100U;
+    g_doorCommandTxCalls = 0U;
+    g_mobileResultTxCalls = 0U;
+    port.txBcmDoorCommand = TestRequest_TxDoor;
+    port.txMobileRequestResult = TestRequest_TxMobileResult;
+
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(runtime.requestCoordinator.commandManager == &runtime.commandManager);
+    CHECK(runtime.requestCoordinator.resultManager == &runtime.resultManager);
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxBcmDoorState(&door) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(g_mobileResultTxCalls == 0U);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_doorCommandTxCalls == 1U);
+    CHECK(g_mobileResultTxCalls == 1U);
+    CHECK(g_lastMobileResult.resultInfo.result == REQUEST_RESULT_ACCEPTED);
+
+    result.commandId = g_lastDoorCommand.context.commandId;
+    result.kind = BCM_COMMAND_KIND_DOOR;
+    result.result = REQUEST_RESULT_DONE;
+    result.reason = RESULT_REASON_NONE;
+    result.confirmation = RESULT_CONFIRMATION_CONFIRMED;
+    result.hasDoorEvidence = true;
+    result.doorEvidence.type = BCM_DOOR_EVIDENCE_LOCK_COMPLETED;
+    result.doorEvidence.occurrenceId = 1U;
+    result.doorEvidence.target = DOOR_TARGET_LOCK;
+    result.doorEvidence.quality = DATA_QUALITY_OK;
+    result.doorEvidence.ageMs = 1U;
+    g_clock.nowMs = 120U;
+    CHECK(DomainIf_RxBcmCommandResult(&result) == DOMAIN_IF_OK);
+    CHECK(g_mobileResultTxCalls == 2U);
+    CHECK(g_lastMobileResult.hasVehicleResult);
+    CHECK(g_lastMobileResult.resultInfo.result == REQUEST_RESULT_DONE);
+    EndTest(before);
+}
+
+static void Test_RequestCoordinatorUnlockEndToEnd(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_TxPort_t port;
+    DomainIf_MobileRequest_t request = TestRequest_DoorRequest(30U);
+    DoorState_t door = TestRequest_DoorState(DATA_QUALITY_OK);
+    DomainIf_BcmCommandResult_t result;
+    int before = g_failures;
+
+    BeginTest("Test_RequestCoordinatorUnlockEndToEnd");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    (void)memset(&port, 0, sizeof(port));
+    (void)memset(&result, 0, sizeof(result));
+    config.requestCoordinatorEnabled = true;
+    config.bcmDoorStateTtlMs = 500U;
+    config.requestAuthorizationProvider = TestRequest_Authorize;
+    request.payload.doorTarget = DOOR_TARGET_UNLOCK;
+    door.lockState = DOOR_LOCK_STATE_LOCKED;
+    g_clock.available = true;
+    g_clock.nowMs = 200U;
+    g_doorCommandTxCalls = 0U;
+    g_mobileResultTxCalls = 0U;
+    port.txBcmDoorCommand = TestRequest_TxDoor;
+    port.txMobileRequestResult = TestRequest_TxMobileResult;
+
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxBcmDoorState(&door) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_doorCommandTxCalls == 1U);
+    CHECK(g_lastDoorCommand.target == DOOR_TARGET_UNLOCK);
+
+    result.commandId = g_lastDoorCommand.context.commandId;
+    result.kind = BCM_COMMAND_KIND_DOOR;
+    result.result = REQUEST_RESULT_DONE;
+    result.reason = RESULT_REASON_NONE;
+    result.confirmation = RESULT_CONFIRMATION_CONFIRMED;
+    result.hasDoorEvidence = true;
+    result.doorEvidence.type = BCM_DOOR_EVIDENCE_UNLOCK_COMPLETED;
+    result.doorEvidence.occurrenceId = 1U;
+    result.doorEvidence.target = DOOR_TARGET_UNLOCK;
+    result.doorEvidence.quality = DATA_QUALITY_OK;
+    g_clock.nowMs = 220U;
+    CHECK(DomainIf_RxBcmCommandResult(&result) == DOMAIN_IF_OK);
+    CHECK(g_mobileResultTxCalls == 2U);
+    CHECK(g_lastMobileResult.resultInfo.result == REQUEST_RESULT_DONE);
+    CHECK(g_lastMobileResult.commandId == result.commandId);
+    EndTest(before);
+}
+
+static void Test_RequestCoordinatorAuthAndNetworkFailClosed(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_TxPort_t port;
+    DomainIf_MobileRequest_t request = TestRequest_DoorRequest(31U);
+    DoorState_t door = TestRequest_DoorState(DATA_QUALITY_OK);
+    ResultManager_RequestKey_t key;
+    ResultManager_Snapshot_t resultSnapshot;
+    int before = g_failures;
+
+    BeginTest("Test_RequestCoordinatorAuthAndNetworkFailClosed");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    (void)memset(&port, 0, sizeof(port));
+    config.requestCoordinatorEnabled = true;
+    config.bcmDoorStateTtlMs = 500U;
+    config.requestAuthorizationProvider = TestRequest_RejectRegistration;
+    g_clock.available = true;
+    g_clock.nowMs = 300U;
+    g_doorCommandTxCalls = 0U;
+    g_mobileResultTxCalls = 0U;
+    port.txBcmDoorCommand = TestRequest_TxDoor;
+    port.txMobileRequestResult = TestRequest_TxMobileResult;
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxBcmDoorState(&door) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(g_mobileResultTxCalls == 0U);
+    key.deviceContextId = request.deviceContextId;
+    key.context = request.context;
+    CHECK(ResultManager_GetSnapshot(&runtime.resultManager, &key,
+                                    &resultSnapshot) == RESULT_MANAGER_OK);
+    CHECK(resultSnapshot.result == REQUEST_RESULT_REJECTED);
+    CHECK(resultSnapshot.reason == RESULT_REASON_NOT_REGISTERED);
+
+    (void)memset(&runtime, 0, sizeof(runtime));
+    request = TestRequest_DoorRequest(32U);
+    config.requestAuthorizationProvider = TestRequest_Authorize;
+    g_clock.nowMs = 400U;
+    g_doorCommandTxCalls = 0U;
+    g_mobileResultTxCalls = 0U;
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    port.txBcmDoorCommand = TestRequest_TxDoorUnavailable;
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    door.meta.updateSequence = 2U;
+    CHECK(DomainIf_RxBcmDoorState(&door) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_doorCommandTxCalls == 1U);
+    CHECK(runtime.requestCoordinator.lastSubmissionStatus ==
+          DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(runtime.requestCoordinator.submissionFailureCount == 1U);
+    EndTest(before);
+}
+
+static void Test_RequestCoordinatorDuplicateAndDelayedResults(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_TxPort_t port;
+    DomainIf_MobileRequest_t request = TestRequest_DoorRequest(33U);
+    DoorState_t door = TestRequest_DoorState(DATA_QUALITY_OK);
+    DomainIf_BcmCommandResult_t result;
+    unsigned publishesAfterResult;
+    int before = g_failures;
+
+    BeginTest("Test_RequestCoordinatorDuplicateAndDelayedResults");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    (void)memset(&port, 0, sizeof(port));
+    (void)memset(&result, 0, sizeof(result));
+    config.requestCoordinatorEnabled = true;
+    config.bcmDoorStateTtlMs = 500U;
+    config.requestAuthorizationProvider = TestRequest_Authorize;
+    g_clock.available = true;
+    g_clock.nowMs = 500U;
+    g_doorCommandTxCalls = 0U;
+    g_mobileResultTxCalls = 0U;
+    port.txBcmDoorCommand = TestRequest_TxDoor;
+    port.txMobileRequestResult = TestRequest_TxMobileResult;
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxBcmDoorState(&door) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&request) == DOMAIN_IF_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(runtime.requestCoordinator.inboxCount == 1U);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_doorCommandTxCalls == 1U);
+
+    result.commandId = g_lastDoorCommand.context.commandId;
+    result.kind = BCM_COMMAND_KIND_DOOR;
+    result.result = REQUEST_RESULT_DONE;
+    result.reason = RESULT_REASON_NONE;
+    result.confirmation = RESULT_CONFIRMATION_CONFIRMED;
+    result.hasDoorEvidence = true;
+    result.doorEvidence.type = BCM_DOOR_EVIDENCE_LOCK_COMPLETED;
+    result.doorEvidence.occurrenceId = 1U;
+    result.doorEvidence.target = DOOR_TARGET_LOCK;
+    result.doorEvidence.quality = DATA_QUALITY_OK;
+    g_clock.nowMs = 520U;
+    CHECK(DomainIf_RxBcmCommandResult(&result) == DOMAIN_IF_OK);
+    publishesAfterResult = g_mobileResultTxCalls;
+    CHECK(DomainIf_RxBcmCommandResult(&result) == DOMAIN_IF_OK);
+    CHECK(g_mobileResultTxCalls == publishesAfterResult);
+
+    result.commandId += 1000U;
+    result.doorEvidence.occurrenceId = 2U;
+    CHECK(DomainIf_RxBcmCommandResult(&result) == DOMAIN_IF_REJECTED);
+    CHECK(g_mobileResultTxCalls == publishesAfterResult);
+    EndTest(before);
+}
+
+static void Test_RequestCoordinatorDoorTtlAndPollTimeout(void)
+{
+    DomainRuntime_t runtime;
+    DomainRuntime_Config_t config = NormalConfig();
+    DomainIf_TxPort_t port;
+    DomainIf_MobileRequest_t staleRequest = TestRequest_DoorRequest(4U);
+    DomainIf_MobileRequest_t timeoutRequest = TestRequest_DoorRequest(5U);
+    DoorState_t door = TestRequest_DoorState(DATA_QUALITY_OK);
+    DomainRuntime_Snapshot_t snapshot;
+    ResultManager_RequestKey_t key;
+    ResultManager_Snapshot_t resultSnapshot;
+    int before = g_failures;
+
+    BeginTest("Test_RequestCoordinatorDoorTtlAndPollTimeout");
+    (void)memset(&runtime, 0, sizeof(runtime));
+    (void)memset(&port, 0, sizeof(port));
+    config.requestCoordinatorEnabled = true;
+    config.bcmDoorStateTtlMs = 50U;
+    config.requestAuthorizationProvider = TestRequest_Authorize;
+    config.resultPolicy.finalResultTimeoutMs = 100U;
+    g_clock.available = true;
+    g_clock.nowMs = 0U;
+    g_doorCommandTxCalls = 0U;
+    g_mobileResultTxCalls = 0U;
+    port.txBcmDoorCommand = TestRequest_TxDoor;
+    port.txMobileRequestResult = TestRequest_TxMobileResult;
+
+    CHECK(DomainRuntime_Init(&runtime, &config) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainIf_SetTxPort(&port) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxBcmDoorState(&door) == DOMAIN_IF_OK);
+    g_clock.nowMs = 50U;
+    CHECK(DomainIf_RxMobileRequest(&staleRequest) == DOMAIN_IF_OK);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    key.deviceContextId = staleRequest.deviceContextId;
+    key.context = staleRequest.context;
+    CHECK(ResultManager_GetSnapshot(&runtime.resultManager, &key,
+                                    &resultSnapshot) == RESULT_MANAGER_OK);
+    CHECK(resultSnapshot.reason == RESULT_REASON_STALE);
+
+    door.meta.updateSequence = 2U;
+    g_clock.nowMs = 60U;
+    CHECK(DomainIf_RxBcmDoorState(&door) == DOMAIN_IF_OK);
+    CHECK(DomainIf_RxMobileRequest(&timeoutRequest) == DOMAIN_IF_OK);
+    CHECK(g_doorCommandTxCalls == 0U);
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(g_doorCommandTxCalls == 1U);
+    g_clock.nowMs = 160U;
+    CHECK(DomainRuntime_Poll(&runtime) == DOMAIN_RUNTIME_OK);
+    CHECK(DomainRuntime_GetSnapshot(&runtime, &snapshot) == DOMAIN_RUNTIME_OK);
+    CHECK(snapshot.lastRequestCoordinatorStatus ==
+          DOMAIN_REQUEST_COORDINATOR_OK);
+    CHECK(snapshot.lastRequestTimeoutCount == 1U);
+    CHECK(!g_lastMobileResult.hasVehicleResult);
+    CHECK(g_lastMobileResult.resultInfo.confirmation ==
+          RESULT_CONFIRMATION_UNCONFIRMED);
+    EndTest(before);
+}
+
 int main(void)
 {
     Test_NullAndPreInitialization();
@@ -710,6 +1164,13 @@ int main(void)
     Test_PermissionCoordinatorRunsFromPoll();
     Test_InvalidPermissionScheduleFailsAndCanRetry();
     Test_DisabledPermissionCoordinatorPreservesRuntimeReady();
+    Test_RequestCoordinatorDisabledAndZeroTtl();
+    Test_RequestCoordinatorMissingAuthorizationFailsClosed();
+    Test_RequestCoordinatorRuntimeEndToEnd();
+    Test_RequestCoordinatorUnlockEndToEnd();
+    Test_RequestCoordinatorAuthAndNetworkFailClosed();
+    Test_RequestCoordinatorDuplicateAndDelayedResults();
+    Test_RequestCoordinatorDoorTtlAndPollTimeout();
 
     (void)printf("%d tests, %d failures\n", g_tests, g_failures);
     return (g_failures == 0) ? 0 : 1;

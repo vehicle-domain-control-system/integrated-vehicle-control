@@ -1,4 +1,5 @@
 #include "domain_interface_cis_environment_binding.h"
+#include "domain_snapshot_commit_private.h"
 
 typedef struct
 {
@@ -136,6 +137,8 @@ DomainIf_Status_t DomainIf_RxCisCabinEnvironment(
      */
     managerStatus = CisEnvironmentManager_Store(
         g_cisEnvironmentBinding.environmentManager, state, nowMs);
+    if (managerStatus == CIS_ENVIRONMENT_MANAGER_OK)
+        DomainSnapshotCommit_Notify(0x300U, state, sizeof(*state));
     return DomainIfCisEnvironmentBinding_MapManagerStatus(managerStatus);
 }
 

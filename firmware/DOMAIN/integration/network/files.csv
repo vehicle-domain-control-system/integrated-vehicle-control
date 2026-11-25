@@ -1,0 +1,15 @@
+Logical,Canonical,Status
+board\s32k344_domain\net_domain_board.c,nodes/domain/board/s32k344_domain/net_domain_board.c,modified
+include\network\app\net_if_entry.h,include\network\app\net_if_entry.h,modified
+include\network\app\net_uart_alive_diagnostic.h,nodes/domain/include/network/app/net_uart_alive_diagnostic.h,added
+src\l02_typed_handoff\m03_typed_handoff\net_domain_owner_binding.c,nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_owner_binding.c,modified
+src\l02_typed_handoff\m03_typed_handoff\net_domain_rx.c,nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_rx.c,modified
+src\l02_typed_handoff\m03_typed_handoff\net_domain_snapshot_private.h,nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_snapshot_private.h,added
+src\l02_typed_handoff\m03_typed_handoff\net_domain_tx.c,nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c,modified
+src\node\net_entry.c,src\node\net_entry.c,modified
+src\node\net_node_domain.c,nodes/domain/src/node/net_node_domain.c,modified
+src\platform\rtd\net_hal_rtd.c,src\platform\rtd\net_hal_rtd.c,modified
+src\platform\rtd\net_hal_rtd_can.c,src\platform\rtd\net_hal_rtd_can.c,modified
+src\platform\rtd\net_hal_rtd_internal.h,src\platform\rtd\net_hal_rtd_internal.h,modified
+src\platform\rtd\net_hal_rtd_uart.c,src\platform\rtd\net_hal_rtd_uart.c,modified
+src\platform\rtd\net_uart_alive_diagnostic.c,nodes/domain/src/platform/rtd/net_uart_alive_diagnostic.c,added

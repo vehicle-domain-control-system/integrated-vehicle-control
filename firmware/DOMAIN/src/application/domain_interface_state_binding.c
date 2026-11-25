@@ -1,6 +1,7 @@
 #include "domain_interface_state_binding.h"
 
 #include "domain_interface_core_internal.h"
+#include "domain_snapshot_commit_private.h"
 
 typedef struct
 {
@@ -19,9 +20,13 @@ static bool DomainIfStateBinding_AreSlotsDistinct(
     return (slots->bcmDoorState != slots->bcmStatus) &&
            (slots->bcmDoorState != slots->cisRearState) &&
            (slots->bcmDoorState != slots->cisStatus) &&
+           (slots->bcmDoorState != slots->vssStatus) &&
            (slots->bcmStatus != slots->cisRearState) &&
            (slots->bcmStatus != slots->cisStatus) &&
-           (slots->cisRearState != slots->cisStatus);
+           (slots->bcmStatus != slots->vssStatus) &&
+           (slots->cisRearState != slots->cisStatus) &&
+           (slots->cisRearState != slots->vssStatus) &&
+           (slots->cisStatus != slots->vssStatus);
 }
 
 static bool DomainIfStateBinding_IsSlotUsable(
@@ -163,6 +168,8 @@ static DomainIf_Status_t DomainIfStateBinding_StoreCisRear(
         &update);
     if (managerStatus != VEHICLE_STATE_MANAGER_DUPLICATE)
     {
+        if (managerStatus == VEHICLE_STATE_MANAGER_OK)
+            DomainSnapshotCommit_Notify(0x0a0U, update.value, update.valueSize);
         return DomainIfStateBinding_MapManagerStatus(managerStatus, &committed);
     }
 
@@ -191,6 +198,8 @@ static DomainIf_Status_t DomainIfStateBinding_StoreCisRear(
     managerStatus = VehicleStateManager_WithdrawSameSequence(
         g_stateBinding.stateManager, g_stateBinding.slots.cisRearState,
         &update);
+    if (managerStatus == VEHICLE_STATE_MANAGER_OK)
+        DomainSnapshotCommit_Notify(0x0a0U, update.value, update.valueSize);
     return DomainIfStateBinding_MapManagerStatus(managerStatus, &committed);
 }
 
@@ -234,6 +243,15 @@ static DomainIf_Status_t DomainIfStateBinding_Store(
 
     managerStatus = VehicleStateManager_Update(
         g_stateBinding.stateManager, slotId, &update);
+    if (managerStatus == VEHICLE_STATE_MANAGER_OK)
+    {
+        uint16_t id = (slotId == g_stateBinding.slots.bcmDoorState) ? 0x200U :
+                      (slotId == g_stateBinding.slots.bcmStatus) ? 0x230U :
+                      (slotId == g_stateBinding.slots.cisStatus) ? 0x320U :
+                      (slotId == g_stateBinding.slots.vssStatus) ? 0x340U : 0U;
+        if (id != 0U)
+            DomainSnapshotCommit_Notify(id, update.value, update.valueSize);
+    }
     return DomainIfStateBinding_MapManagerStatus(managerStatus, outCommitted);
 }
 
@@ -262,7 +280,10 @@ DomainIf_Status_t DomainIfStateBinding_Configure(
             stateManager, slotMap->cisRearState, sizeof(CisRearState_t)) ||
         !DomainIfStateBinding_IsSlotUsable(
             stateManager, slotMap->cisStatus,
-            sizeof(DomainIf_CisStatusReport_t)))
+            sizeof(DomainIf_CisStatusReport_t)) ||
+        !DomainIfStateBinding_IsSlotUsable(
+            stateManager, slotMap->vssStatus,
+            sizeof(DomainIf_VssStateReport_t)))
     {
         return DOMAIN_IF_NOT_AVAILABLE;
     }
@@ -272,6 +293,7 @@ DomainIf_Status_t DomainIfStateBinding_Configure(
     g_stateBinding.timeProvider = timeProvider;
     g_stateBinding.timeProviderContext = timeProviderContext;
     g_stateBinding.configured = true;
+    DomainSnapshotCommit_Bind(NULL, NULL);
     return DOMAIN_IF_OK;
 }
 
@@ -373,4 +395,28 @@ DomainIf_Status_t DomainIf_RxCisStatus(
         return status;
     }
     return DomainIfCore_NotifyCisStatus(statusReport);
+}
+
+DomainIf_Status_t DomainIf_RxVssState(
+    const DomainIf_VssStateReport_t *stateReport)
+{
+    bool committed;
+
+    if (stateReport == NULL)
+    {
+        return DOMAIN_IF_INVALID_ARGUMENT;
+    }
+    if (!DomainIfCore_IsVssStatusValid(stateReport))
+    {
+        return DOMAIN_IF_INVALID_ARGUMENT;
+    }
+    if (!DomainIf_IsInitialized())
+    {
+        return DOMAIN_IF_NOT_INITIALIZED;
+    }
+
+    return DomainIfStateBinding_Store(
+        g_stateBinding.slots.vssStatus, stateReport, sizeof(*stateReport),
+        &stateReport->service.meta, stateReport->sourceGeneration,
+        &committed);
 }

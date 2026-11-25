@@ -6,6 +6,7 @@
 
 #include "Domain_Interface_v0.5_C2_target.h"
 #include "result_manager.h"
+#include "vss_event_manager.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +30,9 @@ DomainIf_Status_t DomainIfResultBinding_Configure(
     ResultManager_t *resultManager,
     DomainIfResultBinding_TimeProvider_t timeProvider,
     void *timeProviderContext);
+
+DomainIf_Status_t DomainIfResultBinding_ConfigureVssEvents(
+    VssEventManager_t *eventManager);
 
 #ifdef __cplusplus
 }

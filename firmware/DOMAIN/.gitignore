@@ -1,0 +1,67 @@
+
+# S32DS build outputs
+/Debug_FLASH/
+/Release_FLASH/
+/Debug_RAM/
+/Release_RAM/
+
+# Eclipse local workspace metadata
+/.metadata/
+/.settings/org.eclipse.core.resources.prefs
+
+# Compiled objects
+*.o
+*.obj
+*.elf
+*.map
+*.hex
+*.srec
+*.bin
+*.d
+*.su
+*.gcda
+*.gcno
+
+# Host tests
+/tests/host/build/
+/build/
+/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+CTestTestfile.cmake
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+__pycache__/
+*.exe
+/_build/
+/_worktrees/
+/_team_worktrees/
+/.codex_tmp_*/
+.vs/
+
+# Local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Vendor RTD sources
+/RTD/
+/board/
+/generate/
+/Project_Settings/
+/.project
+/.cproject
+/.settings/
+/*.mex
+/src/main.c
+
+# Do NOT ignore:
+# .project, .cproject, *.mex
+# src/, tests/, docs/
