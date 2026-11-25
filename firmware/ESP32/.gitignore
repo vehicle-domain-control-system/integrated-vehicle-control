@@ -1,0 +1,202 @@
+
+# ============================================================
+# ESP32 Gateway - .gitignore
+# ESP-IDF v5.5.5 / C / FreeRTOS / NimBLE / UART-M
+# ============================================================
+
+
+# ============================================================
+# 1. ESP-IDF build outputs
+# ============================================================
+
+build/
+build_*/
+managed_components/
+
+# Generated local configuration
+sdkconfig
+sdkconfig.old
+sdkconfig.backup
+sdkconfig.backup.*
+
+# Keep shared configuration templates
+!sdkconfig.defaults
+!sdkconfig.defaults.*
+
+
+# ============================================================
+# 2. Host Unit Test / CMake build outputs
+# ============================================================
+
+build-host/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+CTestTestfile.cmake
+Testing/
+cmake_install.cmake
+compile_commands.json
+.ninja_deps
+.ninja_log
+
+# Visual Studio generated build files
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.obj
+*.pdb
+*.ilk
+*.tlog
+*.lastbuildstate
+*.recipe
+
+
+# ============================================================
+# 3. ESP32 firmware binaries / generated files
+# ============================================================
+
+*.elf
+*.bin
+*.map
+*.hex
+*.uf2
+*.o
+*.a
+*.d
+*.su
+
+
+# ============================================================
+# 4. Python environments / cache
+# ============================================================
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+
+
+# ============================================================
+# 5. IDE / Editor local settings
+# ============================================================
+
+.vscode/
+.idea/
+.cursor/
+*.code-workspace
+
+# Eclipse / S32DS metadata
+.metadata/
+.settings/
+
+
+# ============================================================
+# 6. Operating system / temporary files
+# ============================================================
+
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+*~
+*.swp
+*.swo
+*.tmp
+*.temp
+*.bak
+
+
+# ============================================================
+# 7. Logs / test results
+# ============================================================
+
+*.log
+logs/
+test_results/
+coverage/
+
+*.gcda
+*.gcno
+*.gcov
+
+
+# ============================================================
+# 8. Secrets / credentials
+# ============================================================
+
+.env
+.env.*
+!.env.example
+!.env.sample
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+credentials.json
+secrets.json
+secrets/
+private_keys/
+
+
+# ============================================================
+# 9. Local archives / backups
+# ============================================================
+
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+
+
+# ============================================================
+# 10. Local-only reference projects
+# ============================================================
+
+# Full Android application source copied for BLE reference
+# Keep locally but do not upload to ESP32 repository
+/docs/references/mobile/mobile/mobile/
+
+
+# ============================================================
+# 11. Files intended to be committed
+# ============================================================
+
+# ESP32 application source:
+# main/
+# components/
+#
+# Hardware test source:
+# hardware_tests/
+#
+# Host unit test source:
+# tests/
+#
+# Architecture and interface documents:
+# docs/
+#
+# Project and collaboration settings:
+# AGENTS.md
+# README.md
+# CMakeLists.txt
+# sdkconfig.defaults
+# partitions.csv
+# idf_component.yml
+#
+# GitHub workflow configuration:
+# .github/
+#
+# Do not ignore these source and configuration files.
+# ============================================================
