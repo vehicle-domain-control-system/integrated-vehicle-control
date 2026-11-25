@@ -30,6 +30,7 @@ import com.vdcs.mobile.domain.repository.QueryScope
 import com.vdcs.mobile.domain.repository.RequestBlocked
 import com.vdcs.mobile.domain.repository.RequestNotSent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
@@ -72,6 +73,7 @@ class VehicleRepositoryImplTest {
         var gatewayValue: ByteArray? = null
         var commandResult: (Int) -> WriteResult = { WriteResult.Ok }
         var appStateResult: WriteResult = WriteResult.Ok
+        var appStateWrite: (suspend () -> WriteResult)? = null
         var connectError: Exception? = null
         var commandAttempts = 0
         private val upCodec = BleFrameCodec()
@@ -100,7 +102,7 @@ class VehicleRepositoryImplTest {
         override suspend fun writeAppState(payload: ByteArray): WriteResult {
             val r = ByteReader(payload)
             events += Event.AppState(r.u8(0) == 1, r.u32(1), clock())
-            return appStateResult
+            return appStateWrite?.invoke() ?: appStateResult
         }
 
         fun commands(type: Int) = events.filterIsInstance<Event.Command>().filter { it.type == type }
@@ -257,6 +259,9 @@ class VehicleRepositoryImplTest {
         assertEquals(ConnectionState.CONNECTED, rig.connection)
         rig.respond(sync, emptyList(), itemCount = 1)
         assertEquals(ConnectionState.CONNECTED, rig.connection)
+        assertEquals(LockState.LOCKED, rig.doorLock!!.value)
+        expectThrows<RequestBlocked> { rig.repo.send(UserRequest.Door(lock = false)) }
+        assertTrue(t.requestIds().isEmpty())
         rig.gatewayNotify(gateway(ready = 1))
         assertEquals(ConnectionState.AUTHENTICATED, rig.connection)
         assertNull(rig.detail)
@@ -289,14 +294,14 @@ class VehicleRepositoryImplTest {
         assertTrue(rig.transport.requestIds().isEmpty())
     }
 
-    @Test fun `foreground 동안 ACTIVE 1초 heartbeat, background 진입 시 INACTIVE 후 중단`() = runTest {
+    @Test fun `foreground 동안 ACTIVE 500ms heartbeat, background 진입 시 INACTIVE 후 중단`() = runTest {
         val rig = Rig(this)
         val t = rig.transport
         runCurrent()
         t.link.value = LinkState.Linked
         runCurrent()
-        advanceTimeBy(4_000); runCurrent()
-        assertEquals(listOf(0L, 1_000L, 2_000L, 3_000L, 4_000L), t.appStates().filter { it.active }.map { it.at })
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals(listOf(0L, 500L, 1_000L, 1_500L, 2_000L), t.appStates().filter { it.active }.map { it.at })
         assertTrue(t.appStates().all { it.appInstanceId != 0L })
 
         rig.repo.setForeground(false)
@@ -310,9 +315,9 @@ class VehicleRepositoryImplTest {
         advanceTimeBy(200); runCurrent()
         val resumed = t.appStates().last()
         assertTrue(resumed.active)
-        advanceTimeBy(1_000); runCurrent()
+        advanceTimeBy(rig.config.heartbeatMs); runCurrent()
         val again = t.appStates().filter { it.active }.takeLast(2)
-        assertEquals(1_000L, again[1].at - again[0].at)
+        assertEquals(rig.config.heartbeatMs, again[1].at - again[0].at)
     }
 
     @Test fun `링크가 없으면 heartbeat 를 쓰지 않는다`() = runTest {
@@ -813,15 +818,15 @@ class VehicleRepositoryImplTest {
         for (i in 0 until 9) u8(20 + i * 4, i + 1).u8(21 + i * 4, 0).u16(22 + i * 4, 0)
     }
 
-    @Test fun `App State 실패가 계속되면 재시도는 1초에 1회`() = runTest {
+    @Test fun `App State 실패가 계속되면 재시도는 500ms에 1회`() = runTest {
         val rig = Rig(this)
         val t = rig.transport
         t.appStateResult = WriteResult.NotConnected
         t.link.value = LinkState.Linked
         runCurrent()
-        advanceTimeBy(5_000); runCurrent()
+        advanceTimeBy(2_500); runCurrent()
         val times = t.appStates().map { it.at }
-        assertEquals(listOf(0L, 1_000L, 2_000L, 3_000L, 4_000L, 5_000L), times)
+        assertEquals(listOf(0L, 500L, 1_000L, 1_500L, 2_000L, 2_500L), times)
     }
 
     @Test fun `도어 무결성·후방 상태 품질 - 600 ms 수신 중단이면 STALE, 문맥 변경이면 바로 STALE`() = runTest {
@@ -1001,8 +1006,101 @@ class VehicleRepositoryImplTest {
         assertTrue(rig.repo.registered.value)
     }
 
-    private fun rearPayload(valid: Int) = downstream(MessageType.M_CIS_REAR) {
-        u16(34, 1234).u8(36, valid).u8(37, 0).u8(38, 0)
+    private fun rearPayload(valid: Int, reason: Int = 0, distance: Int = 1234) = downstream(MessageType.M_CIS_REAR) {
+        u16(34, distance).u8(36, valid).u8(37, reason).u8(38, 0)
+    }
+
+    @Test fun `CIS QUALITY_REASON은 STALE NO_DATA INVALID를 구분한다`() = runTest {
+        val rig = Rig(this)
+        rig.goReady()
+
+        rig.emit(MessageType.M_CIS_REAR, rearPayload(valid = 0, reason = 5))
+        assertEquals(Quality.STALE, rig.repo.vehicleState.value.rear!!.distanceCm.quality)
+        assertEquals(Quality.STALE, rig.repo.vehicleState.value.rear!!.status.quality)
+
+        rig.emit(MessageType.M_CIS_REAR, rearPayload(valid = 0, reason = 6))
+        assertEquals(Quality.NO_DATA, rig.repo.vehicleState.value.rear!!.distanceCm.quality)
+        assertNull(rig.repo.vehicleState.value.rear!!.distanceCm.value)
+
+        rig.emit(MessageType.M_CIS_REAR, rearPayload(valid = 0, reason = 9))
+        assertEquals(Quality.INVALID, rig.repo.vehicleState.value.rear!!.distanceCm.quality)
+        assertNull(rig.repo.vehicleState.value.rear!!.distanceCm.value)
+
+        rig.emit(MessageType.M_CIS_ENVIRONMENT, downstream(MessageType.M_CIS_ENVIRONMENT) {
+            i16(28, 2150).u8(36, 0).u8(37, 5)
+            u16(38, 65535).u8(46, 0).u8(47, 6)
+            u32(48, 100).u8(58, 0).u8(59, 3)
+        })
+        val environment = rig.repo.vehicleState.value.environment!!
+        assertEquals(Quality.STALE, environment.temperatureC.quality)
+        assertEquals(21.5, environment.temperatureC.value!!, 0.01)
+        assertEquals(Quality.NO_DATA, environment.humidityPercent.quality)
+        assertEquals(Quality.INVALID, environment.illuminanceLux.quality)
+
+        rig.emit(MessageType.M_CIS_OCCUPANT, downstream(MessageType.M_CIS_OCCUPANT) {
+            u8(38, 1).u8(39, 0).u8(40, 5).u8(41, 255).u8(42, 0).u8(43, 6)
+        })
+        assertEquals(Quality.STALE, rig.repo.vehicleState.value.occupant!!.present.quality)
+        assertEquals(Quality.NO_DATA, rig.repo.vehicleState.value.occupant!!.count.quality)
+    }
+
+    @Test fun `후방 원본 나이는 새 BLE 수신으로 초기화되지 않고 500ms에서 만료된다`() = runTest {
+        val rig = Rig(this)
+        rig.goReady()
+        val payload = downstream(MessageType.M_CIS_REAR) {
+            u16(32, 400).u16(34, 1234).u8(36, 1).u8(38, 0)
+        }
+        rig.emit(MessageType.M_CIS_REAR, payload)
+        assertEquals(Quality.OK, rig.repo.vehicleState.value.rear!!.distanceCm.quality)
+        advanceTimeBy(100); runCurrent()
+        assertEquals(Quality.STALE, rig.repo.vehicleState.value.rear!!.distanceCm.quality)
+        // An already expired observation is stale immediately, even when just received.
+        rig.emit(MessageType.M_CIS_REAR, downstream(MessageType.M_CIS_REAR) {
+            u16(32, 500).u16(34, 1234).u8(36, 1).u8(38, 0)
+        })
+        assertEquals(Quality.STALE, rig.repo.vehicleState.value.rear!!.status.quality)
+    }
+
+    @Test fun `이전 세션에서 지연된 heartbeat 실패는 새 세션을 차단하지 않는다`() = runTest {
+        val rig = Rig(this)
+        rig.goReady()
+        val pending = CompletableDeferred<WriteResult>()
+        rig.transport.appStateWrite = { pending.await() }
+        advanceTimeBy(rig.config.heartbeatMs); runCurrent()
+        rig.gatewayNotify(gateway(session = S2))
+        rig.respond(rig.transport.queries().last(), emptyList(), session = S2)
+        assertEquals(ConnectionState.AUTHENTICATED, rig.connection)
+        rig.transport.appStateWrite = null
+        pending.complete(WriteResult.NotConnected)
+        runCurrent()
+        assertEquals(ConnectionState.AUTHENTICATED, rig.connection)
+    }
+
+    @Test fun `같은 문맥이어도 인증 거부 후 Notify로 정상값을 갱신하지 않는다`() = runTest {
+        val rig = Rig(this)
+        rig.goReady()
+        rig.gatewayNotify(gateway(registration = 0))
+        rig.emit(MessageType.M_BCM_DOOR_STATE, door(lock = 1))
+        assertEquals(LockState.LOCKED, rig.doorLock!!.value)
+    }
+
+    @Test fun `수신과 같은 밀리초에 단절돼도 즉시 STALE이며 같은 시각 새 세션 값은 정상`() = runTest {
+        val rig = Rig(this)
+        rig.goReady()
+        rig.transport.link.value = LinkState.Disconnected(DisconnectCause.LINK_LOST)
+        runCurrent()
+        assertEquals(Quality.STALE, rig.doorLock!!.quality)
+        val writes = rig.transport.appStates().size
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(writes, rig.transport.appStates().size)
+
+        rig.goReady()
+        rig.gatewayNotify(gateway(session = S2, ready = 0))
+        assertEquals(Quality.STALE, rig.doorLock!!.quality)
+        rig.emit(MessageType.M_BCM_DOOR_STATE, door(lock = 1, session = S2))
+        assertEquals(Quality.OK, rig.doorLock!!.quality)
+        assertEquals(LockState.UNLOCKED, rig.doorLock!!.value)
+        expectThrows<RequestBlocked> { rig.repo.send(UserRequest.Door(lock = true)) }
     }
 
     private fun warningPayload(type: Int, occurrence: Long, active: Int = 1, read: Int = 0, session: Long = S1) =
@@ -1129,7 +1227,7 @@ class VehicleRepositoryImplTest {
         val aged = downstream(MessageType.M_BCM_DOOR_STATE) { u8(28, 0).u16(38, 500) }
         rig.emit(MessageType.M_BCM_DOOR_STATE, aged)
         assertEquals(Quality.OK, rig.doorLock!!.quality)
-        advanceTimeBy(rig.config.tickMs); runCurrent()
+        advanceTimeBy(rig.config.fastStaleMs - 500 + rig.config.tickMs); runCurrent()
         assertEquals(Quality.STALE, rig.doorLock!!.quality)
     }
 

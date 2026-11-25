@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -43,6 +44,7 @@ internal class SessionOrchestrator(
     private val notify: (String) -> Unit,
 ) {
     private var current = SessionState()
+    private var appStateRevision = 0L
 
     private val _state = MutableStateFlow(current)
     val state: StateFlow<SessionState> = _state.asStateFlow()
@@ -61,7 +63,7 @@ internal class SessionOrchestrator(
     val isLinked: Boolean get() = current.phase.isLinked
 
     fun start(scope: CoroutineScope) {
-        scope.launch { transport.link.collect { onLink(it) } }
+        scope.launch { transport.link.collectLatest { onLink(it) } }
         scope.launch { transport.gatewayStatus.collect { onGatewayBytes(it) } }
         scope.launch { transport.incomingFrames.collect { onFrame(it) } }
         scope.launch {
@@ -86,18 +88,31 @@ internal class SessionOrchestrator(
     }
 
     suspend fun setForeground(foreground: Boolean) {
+        if (transport.foreground != foreground) invalidateAppState()
         transport.setForeground(foreground)
         if (!isLinked) return
         if (foreground) heartbeat.activeNow() else writeAppState(active = false)
     }
 
     suspend fun writeAppState(active: Boolean) {
-        dispatch(SessionEvent.AppStateWritten(heartbeat.write(active)))
+        if (!isLinked || (active && !transport.foreground)) return
+        val revision = appStateRevision
+        val ok = heartbeat.write(active)
+        if (revision == appStateRevision && isLinked && transport.link.value == LinkState.Linked) {
+            dispatch(SessionEvent.AppStateWritten(ok))
+        }
+    }
+
+    private fun invalidateAppState() {
+        appStateRevision++
+        heartbeat.activeNow()
     }
 
     fun renewAppInstance() {
         session.newAppInstance()
-        heartbeat.activeNow()
+        invalidateAppState()
+        store.markPreviousContext(clock())
+        store.publish(clock())
         dispatch(SessionEvent.AppInstanceRenewed)
     }
 
@@ -130,6 +145,7 @@ internal class SessionOrchestrator(
     }
 
     private fun linkDown(now: Long) {
+        invalidateAppState()
         if (isLinked) store.markPreviousContext(now)
         pipeline.clear()
         queries.clear()
@@ -151,6 +167,7 @@ internal class SessionOrchestrator(
         )
         val changed = change == ContextChange.CHANGED
         if (changed) {
+            invalidateAppState()
             requestTracker.resetForNewSession(status.sessionId, now)
             queries.clear()
             pipeline.clear()
@@ -171,6 +188,7 @@ internal class SessionOrchestrator(
     }
 
     private suspend fun onFrame(bytes: ByteArray) {
+        if (!isLinked || current.blocked || !session.registered || !session.domainLinkUp) return
         val message = pipeline.accept(bytes, clock()) ?: return
         if (message is VehicleMessage.QueryEnd) onQueryEnd(message) else onMessage(message)
     }

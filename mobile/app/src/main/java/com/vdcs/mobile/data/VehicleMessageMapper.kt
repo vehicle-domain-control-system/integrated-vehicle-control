@@ -169,27 +169,33 @@ internal object VehicleMessageMapper {
         )
     }
 
-    private fun <T> measured(value: T?, valid: Boolean, now: Long, age: Int): Qualified<T> =
-        qualified(value, if (!valid) Quality.INVALID else if (value == null) Quality.NO_DATA else Quality.OK, now, age)
+    private fun <T> measured(value: T?, valid: Boolean, reason: Int, now: Long, age: Int): Qualified<T> =
+        qualified(
+            value,
+            when (reason) {
+                QUALITY_REASON_STALE -> Quality.STALE
+                QUALITY_REASON_NO_DATA -> Quality.NO_DATA
+                else -> if (!valid) Quality.INVALID else if (value == null) Quality.NO_DATA else Quality.OK
+            },
+            now,
+            age,
+        )
 
     private fun environment(m: VehicleMessage.CisEnvironment, now: Long) = CabinEnvironment(
-        temperatureC = measured(m.temperature.raw.takeIf { it != I16_INVALID.toLong() }?.let { it / 100.0 }, m.temperature.valid, now, m.temperature.ageMs),
-        humidityPercent = measured(m.humidity.raw.takeIf { it != U16_INVALID.toLong() }?.let { it / 100.0 }, m.humidity.valid, now, m.humidity.ageMs),
-        illuminanceLux = measured(m.illuminance.raw.takeIf { it != U32_INVALID }, m.illuminance.valid, now, m.illuminance.ageMs),
+        temperatureC = measured(m.temperature.raw.takeIf { it != I16_INVALID.toLong() }?.let { it / 100.0 }, m.temperature.valid, m.temperature.reason, now, m.temperature.ageMs),
+        humidityPercent = measured(m.humidity.raw.takeIf { it != U16_INVALID.toLong() }?.let { it / 100.0 }, m.humidity.valid, m.humidity.reason, now, m.humidity.ageMs),
+        illuminanceLux = measured(m.illuminance.raw.takeIf { it != U32_INVALID }, m.illuminance.valid, m.illuminance.reason, now, m.illuminance.ageMs),
     )
 
     private fun occupant(m: VehicleMessage.CisOccupant, now: Long) = OccupantState(
-        present = measured(when (m.presence) { 0 -> false; 1 -> true; else -> null }, m.presenceValid, now, m.visionAgeMs),
-        count = measured(m.count.takeIf { it in 0..5 }, m.countValid, now, m.visionAgeMs),
+        present = measured(when (m.presence) { 0 -> false; 1 -> true; else -> null }, m.presenceValid, m.presenceReason, now, m.visionAgeMs),
+        count = measured(m.count.takeIf { it in 0..5 }, m.countValid, m.countReason, now, m.visionAgeMs),
     )
 
     private fun rear(m: VehicleMessage.CisRear, now: Long) = RearState(
-        distanceCm = measured(m.distanceRaw.takeIf { it != U16_INVALID }?.let { it / 10.0 }, m.valid, now, m.sourceAgeMs),
-        status = rearStatus(RearProximity.fromRaw(m.proximityStatus), m.valid, now, m.sourceAgeMs),
+        distanceCm = measured(m.distanceRaw.takeIf { it != U16_INVALID }?.let { it / 10.0 }, m.valid, m.qualityReason, now, m.sourceAgeMs),
+        status = measured(RearProximity.fromRaw(m.proximityStatus), m.valid, m.qualityReason, now, m.sourceAgeMs),
     )
-
-    private fun rearStatus(status: RearProximity, valid: Boolean, now: Long, ageMs: Int) =
-        qualified(status, if (valid || status == RearProximity.INACTIVE) Quality.OK else Quality.INVALID, now, ageMs)
 
     private fun availability(raw: Int) = when (raw) {
         0 -> Availability.AVAILABLE; 1 -> Availability.LIMITED; 2 -> Availability.UNAVAILABLE; else -> Availability.UNKNOWN
@@ -221,6 +227,8 @@ internal object VehicleMessageMapper {
     private const val I16_INVALID = -32768
     private const val U16_INVALID = 65535
     private const val U32_INVALID = 0xFFFF_FFFFL
+    private const val QUALITY_REASON_STALE = 5
+    private const val QUALITY_REASON_NO_DATA = 6
 
     private val BCM_FAULTS = listOf(
         "도어 센서", "팬 센서", "온도 센서", "과열", "팬", "잠금 구동기", "조명 적용", "통신 시간 초과",

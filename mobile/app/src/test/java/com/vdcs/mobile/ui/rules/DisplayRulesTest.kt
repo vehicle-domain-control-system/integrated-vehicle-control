@@ -194,7 +194,7 @@ class DisplayRulesTest {
             assertNotNull(reason)
             assertTrue(reason!!.contains("동기화 중"))
         }
-        assertNull(ControlRules.controlBlockReason(ConnectionState.AUTHENTICATED, null, null))
+        assertNotNull(ControlRules.controlBlockReason(ConnectionState.AUTHENTICATED, null, null))
     }
 
     @Test fun `UNAVAILABLE 기능은 버튼을 막고 사유 표시`() {
