@@ -41,7 +41,7 @@ object ControlRules {
         }
 
     private fun availabilityBlockReason(function: FunctionStatus?): String? = when {
-        function == null -> null
+        function == null -> AVAILABILITY_UNCONFIRMED
         !function.quality.isTrusted -> AVAILABILITY_STALE
         else -> when (function.availability) {
             Availability.AVAILABLE, Availability.LIMITED -> null

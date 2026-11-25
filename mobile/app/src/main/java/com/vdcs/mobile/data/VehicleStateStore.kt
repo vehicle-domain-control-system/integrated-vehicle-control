@@ -60,7 +60,9 @@ internal class VehicleStateStore(
         requestTracker.onResult(m.requestSession, m.requestId, state, ResultReason.fromRaw(m.reason), m.confirmed, now)
     }
 
-    fun markPreviousContext(now: Long) = projector.markPreviousContext(now)
+    fun markPreviousContext(now: Long) {
+        raw = projector.project(raw, now, previousContext = true)
+    }
 
     fun forgetAll() {
         raw = VehicleSnapshot()

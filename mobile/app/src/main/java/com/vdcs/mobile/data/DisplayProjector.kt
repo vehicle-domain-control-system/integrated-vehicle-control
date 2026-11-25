@@ -10,15 +10,11 @@ internal class DisplayProjector(
     private val fastStaleMs: Long,
     private val slowStaleMs: Long,
 ) {
-    private var staleBefore = 0L
-
-    fun markPreviousContext(now: Long) {
-        staleBefore = now
-    }
-
-    fun project(s: VehicleSnapshot, now: Long): VehicleSnapshot {
-        fun <T> Qualified<T>.fast() = degrade(this, fastStaleMs, now)
-        fun <T> Qualified<T>.slow() = degrade(this, slowStaleMs, now)
+    fun project(s: VehicleSnapshot, now: Long, previousContext: Boolean = false): VehicleSnapshot {
+        fun <T> Qualified<T>.fast() = degrade(this, fastStaleMs, now, previousContext)
+        fun <T> Qualified<T>.slow() = degrade(this, slowStaleMs, now, previousContext)
+        // Rear observations must be younger than 500 ms, including SOURCE_AGE.
+        fun <T> Qualified<T>.rear() = degrade(this, minOf(fastStaleMs, 499L), now, previousContext)
         return s.copy(
             door = s.door?.let { it.copy(lock = it.lock.fast(), open = it.open.fast(), integrity = it.integrity.fast()) },
             climate = s.climate?.let {
@@ -50,7 +46,7 @@ internal class DisplayProjector(
                 )
             },
             occupant = s.occupant?.let { it.copy(present = it.present.fast(), count = it.count.fast()) },
-            rear = s.rear?.let { it.copy(distanceCm = it.distanceCm.fast(), status = it.status.fast()) },
+            rear = s.rear?.let { it.copy(distanceCm = it.distanceCm.rear(), status = it.status.rear()) },
             window = s.window?.let {
                 it.copy(
                     motion = it.motion.fast(), ecuState = it.ecuState.fast(),
@@ -59,20 +55,20 @@ internal class DisplayProjector(
                 )
             },
             windowFault = s.windowFault?.let { it.copy(category = it.category.slow(), code = it.code.slow(), status = it.status.slow()) },
-            warnings = s.warnings.map { it.copy(quality = slowQuality(it.quality, it.receivedAtMs, it.ageMs, now)) },
-            availability = s.availability.mapValues { (_, f) -> f.copy(quality = slowQuality(f.quality, f.receivedAtMs, f.ageMs, now)) },
-            ecus = s.ecus.map { it.copy(quality = slowQuality(it.quality, it.receivedAtMs, it.ageMs, now)) },
+            warnings = s.warnings.map { it.copy(quality = slowQuality(it.quality, it.receivedAtMs, it.ageMs, now, previousContext)) },
+            availability = s.availability.mapValues { (_, f) -> f.copy(quality = slowQuality(f.quality, f.receivedAtMs, f.ageMs, now, previousContext)) },
+            ecus = s.ecus.map { it.copy(quality = slowQuality(it.quality, it.receivedAtMs, it.ageMs, now, previousContext)) },
         )
     }
 
-    private fun <T> degrade(q: Qualified<T>, limitMs: Long, now: Long): Qualified<T> {
-        val quality = if (q.quality == Quality.OK && q.receivedAtMs < staleBefore) Quality.STALE
+    private fun <T> degrade(q: Qualified<T>, limitMs: Long, now: Long, previousContext: Boolean): Qualified<T> {
+        val quality = if (q.quality == Quality.OK && previousContext) Quality.STALE
         else freshness.evaluate(q.quality, q.receivedAtMs, q.ageMs, limitMs, now)
         return if (quality == q.quality) q else q.copy(quality = quality)
     }
 
-    private fun slowQuality(q: Quality, receivedAtMs: Long, ageMs: Long, now: Long): Quality =
+    private fun slowQuality(q: Quality, receivedAtMs: Long, ageMs: Long, now: Long, previousContext: Boolean): Quality =
         if (q == Quality.OK &&
-            (receivedAtMs < staleBefore || freshness.isReceptionLost(receivedAtMs, ageMs, slowStaleMs, now))
+            (previousContext || freshness.isReceptionLost(receivedAtMs, ageMs, slowStaleMs, now))
         ) Quality.STALE else q
 }

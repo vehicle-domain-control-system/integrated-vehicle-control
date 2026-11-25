@@ -57,7 +57,7 @@ class ControlRulesTest {
         val stale = available.copy(quality = Quality.STALE)
         assertEquals(ControlRules.AVAILABILITY_STALE, ControlRules.resendBlockReason(ConnectionState.AUTHENTICATED, stale))
         assertNull(ControlRules.resendBlockReason(ConnectionState.AUTHENTICATED, available))
-        assertNull(ControlRules.resendBlockReason(ConnectionState.AUTHENTICATED, null))
+        assertNotNull(ControlRules.resendBlockReason(ConnectionState.AUTHENTICATED, null))
     }
 
     @Test fun `인증 뒤 가용성 사유는 제어와 다시 보내기가 같다`() {
@@ -95,7 +95,7 @@ class ControlRulesTest {
         )
         fun unknown(r: UserRequest) = TrackedRequest(1, 9, r, RequestState.UNKNOWN, null, confirmed = false, sentAtMs = now)
         assertEquals("사용 불가 — 도어가 열려 있음", state.resendBlockReason(unknown(UserRequest.Door(lock = false))))
-        assertNull(state.resendBlockReason(unknown(UserRequest.ClimateAuto(true))))
+        assertNotNull(state.resendBlockReason(unknown(UserRequest.ClimateAuto(true))))
         assertEquals("사용 불가 — 도어가 열려 있음", state.controlBlockReason(VehicleFunction.DOOR))
         assertNull(state.ackBlockReason)
     }
