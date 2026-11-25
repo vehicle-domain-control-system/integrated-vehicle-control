@@ -24,3 +24,7 @@ not installed NXP RTD code. They must never enter an S32DS target source list.
 Other preserved tests include VSS Warning/Event, Network Adapter E2E and UART
 rollback/diagnostic cases. Use their matching pinned Network build/profile when
 rerunning them; do not mix Host mocks with a real board build.
+Their original RTD-mock target matrix/source-list is preserved under
+`tests/network/build_reference/` for reconstruction against the canonical pinned
+Network layout. It is reference material, not an executable CMake entry point
+for the flattened bundle and not a claim of a newly run RTD-mock regression.
