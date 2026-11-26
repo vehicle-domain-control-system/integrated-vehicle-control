@@ -97,7 +97,7 @@ if (/* 입력별 source 사본·완성 DTO·원 연결을 원자 게시할 공�
 | CAN 합성 UPDATE_SEQUENCE | Network 합성 경계의 검증 원 tuple 또는 실제 전달 의미·현재 품질 제한 변경 후보 | 원 성공17이 같아도 확인된 제한 변화는 새 합성 후보. 단순50ms 송신은 변경 없음 |
 | CAN TX_SEQUENCE | Network의 메시지별 실제 프레임 전송 | 원 성공/합성 갱신 근거가 아님 |
 | UART LINK_SEQUENCE | UART 방향별 프레임 전송 | 원 성공/relay 평가와 별개 |
-| P_PERMISSION relay UPDATE_SEQUENCE | CIS private relay의 새 원 평가·수용 세대·실제 제한 변경 후보 | 단순500ms 반복은 유지. 원 성공번호나 CAN 합성번호의 무손실 전달 필드가 아님 |
+| P_PERMISSION relay UPDATE_SEQUENCE | CIS private relay 소유. CIS 기동마다 1부터, 새 원 평가·수용 세대·실제 제한 변경마다 +1 | 반복 없음. 원 성공번호나 CAN 합성번호의 무손실 전달 필드가 아님 |
 
 **FAILED/NO_DATA 시 기존 ALLOW 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고(OWNER_REPORTED_IMPLEMENTED)**다. UNKNOWN의 원인별 C2 Quality 투영은 권장안·DOMAIN Adapter 수용 대기이며 Network 합성·CIS relay·Pi 전달은 BINDING_NOT_VERIFIED다. 실제 DOMAIN 실패·제한 원인이 확인되고 정책이 채택된 경우 원 성공17·마지막 성공 시각을 유지한 제한을 다음 성공이나500ms 만료까지 미루지 않고 기존 합성/relay에 요청한다. 같은 원 성공 Sequence만으로 제한을 중복 폐기하지 않는다. 최초 실패라 성공 기록이 없으면 정상 source Sequence·시각·AGE0을 발명하지 않으며 기존 NO_DATA/포화 규칙과 대조할 시간·Wire 표현은 HOLD다. 합성번호의 갱신 자체가 원 시간을 새로 시작하지 않는다.
 
@@ -122,7 +122,7 @@ if (/* 구 ALLOW가 현재 원 기한을 넘었거나 같은 원 성공의 실�
 // terminal/release/원 identity를 각각 끝까지 보존하고 새 제출 전에 다시 제한을 확인한다.
 ```
 
-이미 전송 중인 구 frame의 원격 도착을 취소하거나 CIS/Pi가 동시에 제한을 받았다고 보장하지 않는다. 실제 전송 불능·지연은 그대로 기록한다. 후방 Power 원500ms/약200ms 실제 재평가와 CAN50/150, UART500/1500, 후방 거리150 후보 및 USE_LIMIT1500 후보/500조건부는 각각 유지한다.
+이미 전송 중인 구 frame의 원격 도착을 취소하거나 CIS/Pi가 동시에 제한을 받았다고 보장하지 않는다. 실제 전송 불능·지연은 그대로 기록한다. 후방 Power 원500ms/약200ms 실제 재평가와 CAN50/150, UART-C 수신 중단1500(P_PERMISSION 반복 없음), 후방 거리150 후보 및 USE_LIMIT1500 후보/500조건부는 각각 유지한다.
 
 ## 명령·결과·상태의 독립 진행
 

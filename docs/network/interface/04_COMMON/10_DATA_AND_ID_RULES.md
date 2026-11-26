@@ -90,7 +90,7 @@ Frame receive timeout은 마지막 **검증·수용한 새 전송 프레임** �
 <a id="section-permission-synthesis"></a>
 ## DOMAIN_PERMISSION 합성과 4수신
 
-후방 활성 Power는 약 200ms 실제 재평가/원 500ms, CAN 50ms 송신/150ms 수신 감시, UART-C 500ms 반복/1500ms 수신 감시를 적용한다. 독립 C2 입력의 합성과 POWER_OPERATION_STATE 생성원은 미결이다. 후방 거리 150ms 후보와 조도 1000ms 후보는 별도 정책이다. [Permission 합성](#section-permission-synthesis)
+후방 활성 Power는 약 200ms 실제 재평가/원 500ms, CAN 50ms 송신/150ms 수신 감시, UART-C 반복 없음/1500ms 수신 감시를 적용한다. 독립 C2 입력의 합성과 POWER_OPERATION_STATE 생성원은 미결이다. 후방 거리 150ms 후보와 조도 1000ms 후보는 별도 정책이다. [Permission 합성](#section-permission-synthesis)
 
 C2의 `DomainIf_CisPowerPermission_t`, `DomainIf_WindowOperationPermission_t`, `DomainIf_WindowDomainAlive_t`는 독립 판단·SignalMeta를 가진다. Wire는 한 메시지에 power quality와 operation quality를 나눠 싣지만 공통 UPDATE_SEQUENCE/AGE만 가진다.
 
@@ -114,9 +114,9 @@ DOMAIN 원 평가 Sequence는 실제 평가 성공에서만 증가하며 반복 
 | CAN 합성 UPDATE_SEQUENCE | Network 합성 경계, 검증 원 tuple 또는 실제 전달 의미·품질 제한 변경 후보 | DOMAIN 원 성공 평가와 다른 번호 공간 |
 | CAN TX_SEQUENCE | Network 송신, 메시지별 실제 프레임 전송 | 합성·원 평가 신규성 아님 |
 | UART LINK_SEQUENCE | UART 방향별 프레임 전송 | 원 평가·relay 갱신 아님 |
-| P_PERMISSION relay UPDATE_SEQUENCE | CIS private relay, 새 원 평가·수용 세대·실제 품질 제한 변경의 기존 후보 | DOMAIN 원 번호나 CAN 합성 번호의 무손실 전달 필드 아님 |
+| P_PERMISSION relay UPDATE_SEQUENCE | CIS private relay 소유. CIS 기동마다 1부터, 새 원 평가·수용한 DOMAIN 세대 변경·실제 품질 제한 변경마다 +1, 같은 relay 기록을 다시 보낼 때는 유지 | DOMAIN 원 번호나 CAN 합성 번호의 무손실 전달 필드 아님 |
 
-각 번호의 수치가 우연히 같아도 생성 의미·동일성은 다르다. FAILED/NO_DATA 시 기존 ALLOW의 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. [UNKNOWN의 원인별 C2 Quality 투영](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)은 수용 대기이고 Network→CIS/Pi 전달은 검증 대기다. 검증된 제한이 전달될 때 성공17 뒤 실패는 원 성공17과 원 시각을 보존한 품질 하향으로 처리한다. 원 성공 Sequence 중복만으로 이 보고를 버리지 않는다. 새 성공/AGE0으로 위조하거나 정상 성공 이력이 없는데 source Sequence·시간을 만들지 않는다. 합성 품질 하향과 기존 relay 전달 요청은 다음 성공 평가·500ms 만료까지 미루지 않는 안이며 원격 동시 적용 보장은 아니다. 적체/송신 실패 뒤 구 ALLOW 재전달 방지는 연결 검증 대기다.
+각 번호의 수치가 우연히 같아도 생성 의미·동일성은 다르다. FAILED/NO_DATA 시 기존 ALLOW의 즉시 철회는 DOMAIN Core 담당자 구현 완료 보고다. [UNKNOWN의 원인별 C2 Quality 투영](../07_CROSS_NODE_INTERFACE_RULES.md#permission-delta)은 수용 대기이고 Network→CIS/Pi 전달은 검증 대기다. 검증된 제한이 전달될 때 성공17 뒤 실패는 원 성공17과 원 시각을 보존한 품질 하향으로 처리한다. 원 성공 Sequence 중복만으로 이 보고를 버리지 않는다. 새 성공/AGE0으로 위조하거나 정상 성공 이력이 없는데 source Sequence·시간을 만들지 않는다. 합성 품질 하향은 다음 성공 평가·500ms 만료까지 미루지 않는 안이고, CIS relay는 받은 품질 하향을 즉시 전달한다. 원격 동시 적용 보장은 아니다. 적체/송신 실패 뒤 구 ALLOW 재전달 방지는 연결 검증 대기다.
 
 <a id="section-timing"></a>
 ## 원 사용 기한과 통신 시간표
@@ -129,14 +129,14 @@ DOMAIN 원 평가 Sequence는 실제 평가 성공에서만 증가하며 반복 
 | 대상 | 실제 생성·평가 | 송신·보고 | 정상 프레임 수신 중단 | 원 사용 기한과 지위 |
 |---|---|---|---|---|
 | 후방 활성 Power Permission | DOMAIN 약 200ms 실제 재평가 | CAN 50ms 유지. 변경 또는 같은 값의 새 평가 완료 시 전달 | CAN 150ms 유지 | 500ms. 다른 Permission 전체에 확대하지 않음 |
-| CIS→Pi P_PERMISSION | 검증된 원 DOMAIN 평가·세대 변경·실제 품질 제한을 중계 | 새 평가·제한 시 가능한 즉시, 500ms 반복 유지 | UART-C 1500ms 유지 | 검증된 원본 사용 기한 이하. USE_LIMIT 1500ms는 기존 후보, 같은 후방 Power 원본일 때 500ms는 조건부 권장 프로필 |
+| CIS→Pi P_PERMISSION | 검증된 원 DOMAIN 평가·세대 변경·실제 품질 제한을 중계 | 새 평가·세대 변경·제한 시 즉시. 반복 없음 | UART-C 1500ms 유지 | 검증된 원본 사용 기한 이하. USE_LIMIT 1500ms는 기존 후보, 같은 후방 Power 원본일 때 500ms는 조건부 권장 프로필 |
 | CIS 온도·습도 | 각 센서의 실제 측정. 약 2000ms는 센서 측정 조건 참고값 | CAN 200ms 후보 | CAN 600ms 후보 | 각 2500ms. 센서별 품질·Sequence·AGE 독립 |
 | CIS 실내 조도 | 해당 센서 실제 측정 | 환경 CAN 200ms 후보 | CAN 600ms 후보 | 1000ms 후보 미확정. 온습도 규칙에 포함하지 않음 |
 | CIS 후방 거리 | 실제 새 거리 관측 | CAN 50ms 후보 | CAN 150ms 후보 | 원 150ms 기존 후보를 검증용으로 유지. SysRS 최대 500ms 잠정 및 Permission 500ms와 별개 |
 | Pi 비전 판정 | 실제 새 판정에서 VISION_SEQUENCE 증가 | UART-C 100ms / CIS CAN 100ms 후보 | 각 300ms 후보 | 원 판정 1000ms 기존 후보 |
 | Pi 기능 상태 | 실제 상태 평가에서 STATUS_SEQUENCE 증가 | UART-C 1000ms 후보 | UART-C 3000ms 후보 | 판정과 상태의 수명은 독립. READY로 이전 판정의 AGE를 갱신하지 않음 |
 
-Permission은 값이 같아도 실제 새 평가가 성공하면 원 평가 번호와 시각을 갱신해 전달한다. CAN 50ms 반복과 UART-C 500ms 반복 자체는 새 평가가 아니다. 원본 미확인·만료·재기동 뒤에는 이전 ALLOW를 유효하게 복원하지 않는다. 연속 유효 허용이 필요한 경우 500ms 반복만으로 충분하다고 보장하지 않으며 실제 새 평가 중계와 지연을 검증해야 한다.
+Permission은 값이 같아도 실제 새 평가가 성공하면 원 평가 번호와 시각을 갱신해 전달한다. CAN 50ms 반복은 새 평가가 아니며 UART-C P_PERMISSION은 반복하지 않는다. 원본 미확인·만료·재기동 뒤에는 이전 ALLOW를 유효하게 복원하지 않는다. 연속 유효 허용은 실제 새 평가 중계로만 유지되며 그 지연을 검증해야 한다.
 
 USE_LIMIT 500ms 적용에는 같은 후방 Power 원 판단이라는 근거와 양단 바이트·AGE·만료 해석 검증이 필요하다. 그 전에는 기존 1500ms 후보를 배포 확정값으로 바꾸지 않는다. 어떤 USE_LIMIT도 검증된 원 수명을 연장하지 않는다. Pi에서 이를 카메라 정지나 비전 기능 제한에 사용할지는 CIS·Pi 기능 모듈이 정한다.
 

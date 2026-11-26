@@ -43,7 +43,7 @@ ITEM_COUNT를 실제 로컬 UART 송신 완료 건수로 집계하는 것과 종
 <a id="permission"></a>
 ## 3. Permission
 
-DOMAIN은 후방 활성 Power를 약 200ms마다 실제 재평가하며 원본 판단의 사용 기한은 500ms다. 값 변경은 즉시 전달하고 동일 값이라도 실제 새 평가가 성공하면 그 평가 순번·시각을 전달한다. CAN 50ms 송신/150ms 수신 중단과 UART-C 500ms 반복/1500ms 수신 중단을 적용한다. 단순 반복으로 원 AGE를 0으로 만들거나 기한을 연장하지 않는다. 미확인·만료·재기동 이후 이전 ALLOW를 유효한 값으로 복원하지 않는다.
+DOMAIN은 후방 활성 Power를 약 200ms마다 실제 재평가하며 원본 판단의 사용 기한은 500ms다. 값 변경은 즉시 전달하고 동일 값이라도 실제 새 평가가 성공하면 그 평가 순번·시각을 전달한다. CAN 50ms 송신/150ms 수신 중단과 UART-C 1500ms 수신 중단(P_PERMISSION 반복 없음)을 적용한다. 단순 반복으로 원 AGE를 0으로 만들거나 기한을 연장하지 않는다. 미확인·만료·재기동 이후 이전 ALLOW를 유효한 값으로 복원하지 않는다.
 
 CIS는 같은 검증된 NetDomainPermission과 수신 메타를 기존 App Callback과 private Pi relay에 전달한다. App은 후방 기능을, Network relay는 검증·제한·중계를 담당한다. 별도 App용 허용 생성 API를 만들지 않는다.
 
@@ -69,7 +69,7 @@ Power/Operation/Alive의 전체 입력 합성과 공통 UPDATE_SEQUENCE/SOURCE_A
 | 대상 | 보고/송신 | 수신 중단 | 원 사용 기한·현재 지위 |
 |---|---|---|---|
 | 후방 활성 Permission | CAN 50ms; 실제 DOMAIN 평가 약 200ms | CAN 150ms | 원본 평가 기준 500ms |
-| CIS→Pi Permission | 새 평가·제한 시 가능한 즉시, 반복 500ms | UART 1500ms | 확인된 원본 사용 기한 이내. USE_LIMIT 1500 후보/500 조건부 |
+| CIS→Pi Permission | 새 평가·세대 변경·제한 시 즉시, 반복 없음 | UART 1500ms | 확인된 원본 사용 기한 이내. USE_LIMIT 1500 후보/500 조건부 |
 | 온도·습도 | CAN 200ms 후보, 센서 약 2000ms 참고 | CAN 600ms 후보 | 원본 관측 기준 각각 2500ms |
 | 실내 조도 | 환경 CAN 200ms 후보 | CAN 600ms 후보 | 1000ms 후보 미확정; 로컬 코드 1000과 구분 |
 | 후방 거리 | CAN 50ms 후보 | CAN 150ms 후보 | Network 원본 사용 기한 150ms 후보; SysRS 원본 500ms 잠정안과 구분 |
@@ -166,7 +166,7 @@ DOMAIN Production Private Core는 최초 Epoch 1, 완료된 Epoch 이후 정확�
 | <a id="plan-ncp-t08"></a>Pi STATUS 고장이 일부 기능에만 영향 | only indicated affected function invalidated |
 | <a id="plan-ncp-t09"></a>Pi Permission 원본 AGE 499/500/501 | validity at <500 only if same accepted source |
 | <a id="plan-ncp-t10"></a>CAN 50ms 반복 송신과 200ms 새 평가 구분 | no fake seq/age0 on periodic transmit |
-| <a id="plan-ncp-t11"></a>UART 새 입력 중계와 500ms 주기 송신 구분 | immediate on actual new valid eval, repeated retains revision |
+| <a id="plan-ncp-t11"></a>UART 새 평가·세대 변경·품질 제한 중계와 단순 반복 구분 | 새 원 평가·수용 세대 변경·실제 품질 제한 시 즉시 relay, 단순 반복은 중계하지 않음 |
 | <a id="plan-ncp-t12"></a>DOMAIN/CIS 재시작 시 Permission | old ALLOW cannot be reanimated by stale Frame |
 | <a id="plan-ncp-t13"></a>Power 원본은 유효하지만 Operation 원본은 UNKNOWN | power not fabricated/blanket DENIED; shared AGE conservative |
 | <a id="plan-ncp-t14"></a>온도·습도 원본 AGE 2499/2500/2501 | 2500 and beyond unusable at Domain consumer |

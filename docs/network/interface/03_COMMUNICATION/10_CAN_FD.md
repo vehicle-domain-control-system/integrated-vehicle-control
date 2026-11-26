@@ -29,7 +29,7 @@ DLC 코드와 실제 전송 바이트 수를 구별한다. CIS_REAR/DOMAIN_PERMI
 | payload byte | 필드 | Raw 타입 | 생산·소비 |
 | --- | --- | --- | --- |
 | B0~3 | BOOT_ID | u32LE | 송신 Network의 기동 owner. 0 예약 |
-| B4~7 | TX_SEQUENCE | u32LE | 메시지별 송신 프레임 순서. 최초 1, 프레임마다 증가하며 같은 원본의 재전송도 증가 |
+| B4~7 | TX_SEQUENCE | u32LE | 메시지별 송신 프레임 순서. 0은 예약값(수신은 구조 오류로 거절하고 세대를 바꾸지 않음). 최초 1, 프레임마다 증가하며 같은 원본의 재전송도 증가 |
 | B8~11(명령만) | TARGET_BOOT_ID | u32LE | DOMAIN Network가 마지막 정상 대상 상태에서 확인 |
 | B12~15(명령만) | COMMAND_ID | u32LE | **C2 최종 결정의 commandId 그대로**. Network 재발급 금지 |
 | B16~17(명령만) | COMMAND_AGE | u16LE | 명령 최초 생성부터 누적. 원 판단의 meta.age와 별개 |

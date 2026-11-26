@@ -55,7 +55,7 @@ Interface v2 · r1 · [노드 간 공통 규칙](07_CROSS_NODE_INTERFACE_RULES.m
 
 **POLICY_OPEN / BINDING_OPEN.** 후방 Power 시간 규칙은 아래와 같으며, 공유 합성과 기능 정책·실제 연결은 미확정이다. 책임: DOMAIN 기능, Network 전달, CIS 소비. WINDOW 구현은 보류한다.
 
-적용할 시간 규칙은 후방 활성 Power의 약 200ms 실제 재평가·원 사용 기한 500ms, 새 평가/값 변경 전달, CAN50/150ms 및 UART-C500/1500ms 유지, 반복 송신의 AGE 초기화 금지다.
+적용할 시간 규칙은 후방 활성 Power의 약 200ms 실제 재평가·원 사용 기한 500ms, 새 원 평가/값 변경·수용한 세대 변경·실제 품질 제한 시 P_PERMISSION 즉시 전달(반복 없음), CAN50/150ms 및 UART-C 수신 중단1500ms 유지, 반복 송신의 AGE 초기화 금지다.
 
 남은 범위는 `POWER_OPERATION_STATE` 생성원, Power/Operation/Alive의 필수 입력과 공통 `UPDATE_SEQUENCE/SOURCE_AGE` 합성이다. 기존 [CAN 합성안](03_COMMUNICATION/10_CAN_FD.md#message-domain-permission)은 후보로 유지한다. 독립 Power를 WINDOW 부재만으로 불허로 바꾸지 않고, 공통 AGE를 입증하지 못한 경우 허용을 꾸미지 않는다. 정상 ALLOW 사용에는 해당 합성 조건의 입증이 필요하다.
 

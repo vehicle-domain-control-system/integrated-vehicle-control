@@ -40,7 +40,7 @@ flowchart LR
 
 Result는 PiBoot/VisionSequence/AGE와 Presence·Count의 독립 validity/reason을 보존한다. Status는 별도 StatusSequence/AGE와 현재·최근 고장이고, READY만으로 과거 Result를 VALID/fresh로 만들지 않는다. CIS_OCCUPANT도 값별 품질을 각각 갖는다. 다만 **각 값별 한 벌**의 Wire 사유로 Pi 원 사유와 CIS 추가 사유를 동시에 완전하게 표현할 수 없다는 IF-O13/19 HOLD가 있다. 부분 품질 저하를 정상 0명이나 비탑승 판정으로 바꾸지 않는다.
 
-Permission은 원 DOMAIN→CAN→CIS→UART-C→Pi 경로다. CISBoot/relayUpdate는 원 DOMAIN Boot/원 판단을 대체하지 않으며, 원 DOMAIN identity는 payload에 직접 없다. NetDomainPermission에 quality_reason은 없다. 없는 사유나 기한을 NONE/0/1500으로 채우지 않는다. 후방 활성 Power는 DOMAIN의 실제 재평가 약200ms·원 사용기한500ms 합의를 따른다. 500ms 도달부터 비사용이며 새 평가 없이 원 수명을 연장하지 않는다. CAN50ms 송신/150ms 수신 중단, UART-C500ms 반복/1500ms 수신 중단은 별개다. relay USE_LIMIT1500ms 후보와 같은 후방 원 판단을 전달할 때의 조건부500ms를 구별하고 양단 근거 없이 송신값을 변경하지 않는다. AGE 포화·반복·재기동·수신은 새 허용을 만들지 않는다.
+Permission은 원 DOMAIN→CAN→CIS→UART-C→Pi 경로다. CISBoot/relayUpdate는 원 DOMAIN Boot/원 판단을 대체하지 않으며, 원 DOMAIN identity는 payload에 직접 없다. NetDomainPermission에 quality_reason은 없다. P_PERMISSION 사유는 전원 품질의 고정 대응표(OK→NONE, STALE→STALE, INVALID→DATA_INVALID, NO_DATA→NO_DATA)로 정하고, 그 밖의 없는 사유나 기한을 NONE/0/1500으로 채우지 않는다. 후방 활성 Power는 DOMAIN의 실제 재평가 약200ms·원 사용기한500ms 합의를 따른다. 500ms 도달부터 비사용이며 새 평가 없이 원 수명을 연장하지 않는다. CAN50ms 송신/150ms 수신 중단, UART-C 1500ms 수신 중단(P_PERMISSION 반복 없음)은 별개다. relay USE_LIMIT1500ms 후보와 같은 후방 원 판단을 전달할 때의 조건부500ms를 구별하고 양단 근거 없이 송신값을 변경하지 않는다. AGE 포화·반복·재기동·수신은 새 허용을 만들지 않는다.
 
 ## Frame·오류·수명
 

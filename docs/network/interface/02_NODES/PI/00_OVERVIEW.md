@@ -31,7 +31,7 @@ Raspberry Pi의 카메라 서비스가 원본 탑승자 판정과 비전 기능�
 
 - 관측값·판정 품질·VISION_SEQUENCE는 Pi 비전 owner, Pi Boot는 runtime 단일 owner, UART LINK_SEQUENCE는 Network 전송 owner다.
 - 현재 검토에 사용한 Pi 참고 구현은 Python이다. 인터페이스는 언어 중립 record와 호출 의미를 규정하며, C 원형과 같은 이름의 함수를 Python에 중복 설치하도록 요구하지 않는다.
-- [P_PERMISSION 소비](10_DATA.md#허용-소비와-원본-age)는 원 DOMAIN 허용의 CIS relay를 제한해서 사용한다. 값1만으로 허용하지 않고 원 품질·누적 Age·use_limit·수신 중단/세대 변경을 확인한다. 후방 활성 원 사용 한도 500ms를 적용한다. 같은 Power 원본의 중계라는 근거가 있으면 그 기한을 적용하고, 전달된 `use_limit_ms`가 더 짧으면 그 한도도 지킨다. 1500ms 수신 중단은 1500ms 동안 ALLOW를 사용해도 된다는 뜻이 아니며, 500ms 반복만으로 연속 허용을 보증하지 않는다.
+- [P_PERMISSION 소비](10_DATA.md#허용-소비와-원본-age)는 원 DOMAIN 허용의 CIS relay를 제한해서 사용한다. 값1만으로 허용하지 않고 원 품질·누적 Age·use_limit·수신 중단/세대 변경을 확인한다. 후방 활성 원 사용 한도 500ms를 적용한다. 같은 Power 원본의 중계라는 근거가 있으면 그 기한을 적용하고, 전달된 `use_limit_ms`가 더 짧으면 그 한도도 지킨다. 1500ms 수신 중단은 1500ms 동안 ALLOW를 사용해도 된다는 뜻이 아니며, P_PERMISSION은 반복되지 않으며 연속 허용은 DOMAIN 새 평가 relay(약 200ms)로만 유지된다.
 - 실제 BOOT 생성·수용, 품질 변환, Permission 수신·만료 처리는 양단 연결 검증이 필요하다. `USE_LIMIT=1500ms` 기존 후보와 `500ms` 조건부 변경안을 구분한다. 비전 기능 적용을 선택하지 않아도 통신 시험은 진행할 수 있다. Pi↔DOMAIN 직결/원격 Query는 없다.
 
 [팀 미결](../../06_TECHNICAL_CONSTRAINTS.md) · [48 메시지 색인](../../05_MESSAGE_INDEX.md). 실제 SDK/Firmware/Codec/Board/무선/카메라 통합 시험은 **NOT_EXECUTED**다.

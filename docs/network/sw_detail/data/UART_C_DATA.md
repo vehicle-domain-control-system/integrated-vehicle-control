@@ -101,7 +101,7 @@ typedef struct NetVisionStatus
 typedef struct NetPiPermission
 {
     uint32_t cis_boot_id; /**< CIS_BOOT_ID: CIS runtime이 채우는 중계 세대 */
-    uint32_t update_sequence; /**< UPDATE_SEQUENCE: CIS 허용 중계의 새 의미 평가 번호; 반복 프레임에서는 유지 */
+    uint32_t update_sequence; /**< UPDATE_SEQUENCE: CIS 소유 relay 번호; CIS 기동마다 1부터, relay 사유마다 +1 */
     NetTriState vehicle_power_permission; /**< VEHICLE_POWER_PERMISSION: 0=불허; 1=허용; 255=확인 불가 */
     NetValueQuality value_quality; /**< VALUE_QUALITY: 허용 상태 품질 */
     NetQualityReason quality_reason; /**< QUALITY_REASON: 품질 사유 */
@@ -115,7 +115,7 @@ typedef struct NetPiPermission
 | 필드 | C 타입·폭 | 값·단위·유효 조건 | 생성·관리 주체 |
 |---|---|---|---|
 | `cis_boot_id` | `uint32_t`; 32비트 부호 없음 | CIS 실행 환경이 채우는 중계 세대 | CIS 실행 환경. 원 DOMAIN Boot가 아니며 Pi는 수용된 CIS 세대 기준으로 stale relay를 배제. |
-| `update_sequence` | `uint32_t`; 32비트 부호 없음 | CIS 허용 중계의 새 의미 평가 번호; 반복 프레임에서는 유지 | CIS private relay의 별도 의미·제한 revision 후보. DOMAIN 원 성공 Sequence 및 CAN 합성 UPDATE와 구별; 실제 새 원 평가/수용 세대/제한 변화 반영, 단순500ms 반복 유지. |
+| `update_sequence` | `uint32_t`; 32비트 부호 없음 | CIS 소유 relay 번호 | CIS private relay가 소유하는 번호. DOMAIN 원 성공 Sequence 및 CAN 합성 UPDATE와 구별; CIS 기동마다 1부터, 실제 새 원 평가/수용 세대/제한 변화마다 +1, 반복 없음. |
 | `vehicle_power_permission` | [`NetTriState`](CAN_COMMON_DATA.md#type-NetTriState); 8비트 부호 없음 | 0=불허; 1=허용; 255=확인 불가 | DOMAIN 원 판단에서 파생. CIS가 확인하지 않은 허용을 새로 생성하지 않음. |
 | `value_quality` | [`NetValueQuality`](CAN_COMMON_DATA.md#type-NetValueQuality); 8비트 부호 없음 | 허용 상태 품질 | 원 DOMAIN power 품질 + CIS 수신/만료 검사. 전송 가능한 보수 평가만; 품질 제한/사유 우선순위 TEAM_DECISION_REQUIRED. |
 | `quality_reason` | [`NetQualityReason`](CIS_REAR_DATA.md#type-NetQualityReason); 8비트 부호 없음 | 품질 사유 | 원 DOMAIN power 품질 + CIS 수신/만료 검사. 전송 가능한 보수 평가만; 품질 제한/사유 우선순위 TEAM_DECISION_REQUIRED. |
