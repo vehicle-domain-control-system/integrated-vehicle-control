@@ -662,6 +662,12 @@ if(NETWORK_BUILD_VIRTUAL_NODE)
             "${_domain_owner}/application/domain_cis_environment_private.c"
             "${_domain_owner}/application/domain_interface_state_binding.c"
             "${_domain_owner}/application/domain_interface_result_binding.c"
+            "${_domain_owner}/application/vss_event_manager.c"
+            "${_domain_owner}/application/domain_request_coordinator.c"
+            "${_domain_owner}/application/request_manager.c"
+            "${_domain_owner}/application/domain_network_admission_bridge_private.c"
+            "${_domain_owner}/application/permission_unknown_evaluator.c"
+            "${_domain_owner}/application/vss_warning_manager.c"
             "${_domain_owner}/application/domain_interface_query_binding.c"
             "${_domain_owner}/application/domain_interface_cis_occupant_binding.c"
             "${_domain_owner}/application/domain_interface_cis_environment_binding.c")

@@ -9,11 +9,12 @@
 static NetUpper network;
 static NetDomainC2 adapter;
 static VehicleStateManager_t manager;
-static VehicleStateManager_Slot_t slots[4];
+static VehicleStateManager_Slot_t slots[5];
 static DoorState_t door;
 static DomainIf_BcmStatusReport_t bcm;
 static CisRearState_t rear;
 static DomainIf_CisStatusReport_t cis;
+static DomainIf_VssStateReport_t vss;
 static uint64_t now=1000u;
 static NetStatus clock_read(void *c,uint64_t *out){(void)c;*out=now;return NET_OK;}
 static bool owner_clock(void *c,uint32_t *out){(void)c;*out=(uint32_t)now;return true;}
@@ -22,12 +23,12 @@ static NetStatus poll(void *c,NetUpperEvent *out){(void)c;(void)out;return NET_N
 static const NetUpperPortOps ops={clock_read,submit,poll};
 int main(void)
 {
-    VehicleStateManager_SlotConfig_t storage[4];DomainIfStateBinding_SlotMap_t map={0u,1u,2u,3u};
+    VehicleStateManager_SlotConfig_t storage[5];DomainIfStateBinding_SlotMap_t map={0u,1u,2u,3u,4u};
     DomainIfQueryBinding_StatePolicy_t policy;NetDomainC2Api api;NetDomainC2Config binding={0};NetUpperConfig cfg={0};
     NetUpperCanMessage message={0};NetUpperEvent event={0};CisRearState_t readback;size_t i;
     memset(storage,0,sizeof(storage));storage[0].valueStorage=&door;storage[0].valueCapacity=sizeof(door);
-    storage[1].valueStorage=&bcm;storage[1].valueCapacity=sizeof(bcm);storage[2].valueStorage=&rear;storage[2].valueCapacity=sizeof(rear);storage[3].valueStorage=&cis;storage[3].valueCapacity=sizeof(cis);
-    CHECK(VehicleStateManager_Init(&manager,slots,storage,4u)==VEHICLE_STATE_MANAGER_OK);
+    storage[1].valueStorage=&bcm;storage[1].valueCapacity=sizeof(bcm);storage[2].valueStorage=&rear;storage[2].valueCapacity=sizeof(rear);storage[3].valueStorage=&cis;storage[3].valueCapacity=sizeof(cis);storage[4].valueStorage=&vss;storage[4].valueCapacity=sizeof(vss);
+    CHECK(VehicleStateManager_Init(&manager,slots,storage,5u)==VEHICLE_STATE_MANAGER_OK);
     CHECK(DomainIf_Init()==DOMAIN_IF_OK);
     CHECK(DomainIfStateBinding_Configure(&manager,&map,owner_clock,NULL)==DOMAIN_IF_OK);
     memset(&policy,0,sizeof(policy));policy.bcmDoorTtlMs=1000u;policy.bcmStatusTtlMs=1000u;policy.cisRearTtlMs=1000u;policy.cisStatusTtlMs=1000u;
