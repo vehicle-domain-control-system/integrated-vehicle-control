@@ -1,0 +1,57 @@
+menu "P6 developer verification"
+
+config P6_READ_ONLY_MONITORING
+    bool "Enable verified P6 Context for read-only BLE monitoring"
+    default n
+    depends on !P6_NVS_DEV_TEST && !P6_DEV_REGISTRATION_APPROVAL
+    help
+        Connect an already authorized Session Manager snapshot to GatewayCore
+        and publish its DeviceContextID/SessionID through existing Gateway
+        Status. Exact Registration/Bond reconciliation, current encrypted BLE
+        connection and Domain Boot/Link checks remain mandatory. This does not
+        issue authorization or approve Registration. The developer p6_regdev
+        approval firmware cannot use this option. SessionReady stays false;
+        BLE commands, UART Request/Query TX and auto Unlock stay held.
+        Enable only with an explicitly approved existing Registration/Session
+        policy. The adopted low-voltage demo Domain private Provider contract
+        permits M_CONTEXT only, using 200ms refresh, 600ms registration/connection
+        and 1000ms APP_STATE freshness. No P6 proof is added to wire. Live peer
+        re-observation runs on the NimBLE Host; Timer/TX cannot renew sources.
+
+config P6_NVS_DEV_TEST
+    bool "Enable isolated P6 Registration Store reboot test"
+    default n
+    help
+        Build and run a destructive-only-to-test-namespace NVS verification
+        sequence. The test writes only namespace p6_nvstest, verifies an
+        immediate read and a same-boot handle reopen, performs one software
+        restart, verifies the record on the next boot, and removes its own
+        record and phase key. It never writes p6_reg, touches NimBLE bonds, or
+        enables P6 production authorization. Do not enable in production.
+
+config P6_DEV_REGISTRATION_APPROVAL
+    bool "Enable UART0 developer Registration approval console"
+    default n
+    depends on !P6_NVS_DEV_TEST
+    help
+        Build a development-only UART0 console that accepts separate
+        p6-reg-request and p6-reg-approve commands. Both inputs are copied to
+        GatewayTask and are rejected unless they refer to the same current,
+        encrypted and bonded BLE identity/generation/epoch. This can create an
+        ACTIVE Registration in the isolated p6_regdev namespace and therefore
+        must be enabled only for an explicitly supervised development test.
+        The default build continues to use only p6_reg; neither namespace
+        operation deletes or modifies NimBLE Bond data.
+        It does not enable Production UART routing or Digital Key auto Unlock.
+
+config P6_UART_RX_DIAGNOSTICS
+    bool "Enable low-rate UART-M RX diagnostic summaries"
+    default n
+    help
+        Poll the existing UART Transport and Gateway Adapter read-only
+        counters and print a summary every five seconds. The summary keeps
+        frame validity, Alive supervisor admission and Domain link state
+        separate. It never dumps raw frames or security/session identifiers,
+        injects messages, or enables UART TX. Keep disabled in production.
+
+endmenu

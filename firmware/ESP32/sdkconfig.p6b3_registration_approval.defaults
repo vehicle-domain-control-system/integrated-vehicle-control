@@ -1,0 +1,6 @@
+# Development-only P6 Registration request/approval over the UART0 console.
+# ACTIVE records are isolated in p6_regdev; the default firmware uses p6_reg.
+# The isolated NVS reboot test and Registration approval must not run together.
+CONFIG_P6_NVS_DEV_TEST=n
+CONFIG_P6_DEV_REGISTRATION_APPROVAL=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y

@@ -1,0 +1,4 @@
+# Development-only P6 NVS persistence/reboot verification profile.
+# Uses the existing single-app partition table and a separate p6_nvstest namespace.
+CONFIG_P6_NVS_DEV_TEST=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y

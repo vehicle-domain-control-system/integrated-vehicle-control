@@ -1,0 +1,5 @@
+# Explicit read-only monitoring build; requires approved existing P6 evidence.
+# Does not approve Registration or enable Production vehicle-control routing.
+CONFIG_P6_READ_ONLY_MONITORING=y
+CONFIG_P6_NVS_DEV_TEST=n
+CONFIG_P6_DEV_REGISTRATION_APPROVAL=n
