@@ -1,0 +1,20 @@
+{
+  "source_archive": "NETWORK_I1_PROVISIONAL_HOST_RESULT.zip",
+  "archive_sha256": "4b65228c4fbd3f9ca909d9f069e58b5fbbd3dfa9e276e94e6349a17e3dbdc2ab",
+  "version": "I1 R4_PROPOSED_HOST pinned by archive and member SHA256",
+  "owner": "Network Host Codec user handoff; no third-party license text supplied",
+  "license_status": "No separate LICENSE in original 14-file archive; ownership/legal terms not inferred",
+  "copy_reason": "I1 is not tracked at G2; exactly two unchanged C/H files allow standalone U3 rebuild. Existing UART functions are incidental contents of indivisible original codec, not new UART implementation. i1_m_request files are excluded.",
+  "files": [
+    {
+      "path": "i1/i1_host_codec.c",
+      "archive_member": "NETWORK_I1_PROVISIONAL_HOST_RESULT/src/i1_host_codec.c",
+      "sha256": "07a9dd07bbac485067f2478870941fe56858b40ddb5a660892108de6d0f4263a"
+    },
+    {
+      "path": "i1/i1_host_codec.h",
+      "archive_member": "NETWORK_I1_PROVISIONAL_HOST_RESULT/src/i1_host_codec.h",
+      "sha256": "803d44cd09784168aae68a00a99eef59f70a260ac3149f1f94e222ad1969cd20"
+    }
+  ]
+}

@@ -1,0 +1,3184 @@
+/* DOMAIN node on the host: real product sources (public entry -> DOMAIN
+ * composition root -> NetUpper + C2 adapter + M04 + Query -> NetHalAdapter ->
+ * RTD backend) linked with the independently written RTD mock SDK, which plays
+ * the CAN bus and the UART-M line to the ESP32 and calls the FlexCAN / LPUART
+ * callbacks like the IRQ. The DOMAIN C2 boundary is a fake: the DomainIf_*
+ * functions below record what Network hands to DOMAIN, and the C2 TxPort the
+ * node registers is called the way the DOMAIN application would.
+ *
+ * Expected values come from the contracts (docs/network/interface):
+ *   - 03_COMMUNICATION/10_CAN_FD.md common header: BOOT_ID is the sending
+ *     Network's, TX_SEQUENCE is kept per message, first 1, +1 per frame (a
+ *     repetition included); TARGET_BOOT_ID is checked by DOMAIN Network on the
+ *     last normal target state. DOMAIN_PERMISSION and VSS_WARNING_STATE:
+ *     50 ms period / 150 ms receive timeout.
+ *   - 04_COMMON/10_DATA_AND_ID_RULES.md: a repetition keeps the original
+ *     observation and its AGE keeps growing; the DOMAIN_PERMISSION original
+ *     Power life is 500 ms; a restriction is never deferred behind an older
+ *     permission; the environment route is held until its transition is
+ *     confirmed.
+ *   - 03_COMMUNICATION/20_UART_M.md: M_DOMAIN_ALIVE 250 ms / 750 ms, its
+ *     DOMAIN_STATE is the actual DOMAIN state; LINK_SEQUENCE per direction,
+ *     50 ms frame assembly bound.
+ * Board time (net_domain_board.h): the DOMAIN main loop has one ms function;
+ * the ISR stamps a capture with the nowMs of the previous pass.
+ * One case per process: Net_Init acts once per process. */
+#include "network/net_node.h"
+#include "network/app/net_if_entry.h"
+#include "network/net_domain_c2.h"
+#include "network/net_upper_can.h"
+#include "network/net_upper_uart.h"
+#include "network/net_hal_rtd.h"
+#include "net_upper_private.h"
+#include "net_domain_board.h"
+#include "mock_rtd.h"
+#include "net_load_traffic.h"
+#include <stdio.h>
+#include <string.h>
+
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", case_name, __LINE__, #x); return 1; } } while (0)
+
+static const char *case_name;
+
+enum { BUS = 0, UART_M = 0 };
+#define NODE_BOOT 0x444F4D31u
+#define CIS_BOOT  0x43495331u
+#define START_MS  1000u
+#define WARN_BOOT 0x56535331u
+
+/* ------------------------------------------------- fake DOMAIN boundary - */
+static bool domain_initialized = true;
+static DomainIf_TxPort_t port;
+static unsigned set_port_calls;
+static unsigned rear_calls, env_calls, cis_status_calls, bcm_status_calls, door_state_calls;
+static unsigned result_calls, failure_calls, connection_calls, proximity_calls;
+static CisRearState_t last_rear;
+static CisCabinEnvironmentState_t last_env;
+static DomainIf_CisStatusReport_t last_cis_status;
+static DigitalKeyConnectionState_t last_connection;
+static DeviceContextId_t last_connection_device;
+static bool in_flush;
+static unsigned calls_in_flush;
+
+static void owner_call(void) { if (in_flush) ++calls_in_flush; }
+
+bool DomainIf_IsInitialized(void) { return domain_initialized; }
+DomainIf_Status_t DomainIf_SetRxObserver(const DomainIf_RxObserver_t *observer) { (void)observer; return DOMAIN_IF_OK; }
+DomainIf_Status_t DomainIf_SetTxPort(const DomainIf_TxPort_t *p)
+{
+    ++set_port_calls;
+    if (p != NULL) port = *p; else memset(&port, 0, sizeof(port));
+    return DOMAIN_IF_OK;
+}
+DomainIf_Status_t DomainIf_RxBcmDoorState(const DoorState_t *s) { (void)s; owner_call(); ++door_state_calls; return DOMAIN_IF_OK; }
+DomainIf_Status_t DomainIf_RxBcmStatus(const DomainIf_BcmStatusReport_t *s) { (void)s; owner_call(); ++bcm_status_calls; return DOMAIN_IF_OK; }
+DomainIf_Status_t DomainIf_RxBcmCommandResult(const DomainIf_BcmCommandResult_t *r) { (void)r; owner_call(); ++result_calls; return DOMAIN_IF_OK; }
+/* BCM result with a return value the case chooses (n18), bound by the test
+ * hook below in place of the pinned function. */
+static DomainIf_Status_t result_return = DOMAIN_IF_OK;
+static DomainIf_Status_t result_rx(const DomainIf_BcmCommandResult_t *r) { (void)r; owner_call(); ++result_calls; return result_return; }
+/* Not implemented by DOMAIN develop (no pinned function): bound by the test
+ * hook below so that the per-field AGE of 0x210 / 0x220 is seen at C2. */
+static unsigned climate_calls, light_calls;
+static ClimateState_t last_climate;
+static InteriorLightState_t last_light;
+static DomainIf_Status_t climate_rx(const ClimateState_t *s) { owner_call(); last_climate = *s; ++climate_calls; return DOMAIN_IF_OK; }
+static DomainIf_Status_t light_rx(const InteriorLightState_t *s) { owner_call(); last_light = *s; ++light_calls; return DOMAIN_IF_OK; }
+DomainIf_Status_t DomainIf_RxCisRear(const CisRearState_t *s) { owner_call(); last_rear = *s; ++rear_calls; return DOMAIN_IF_OK; }
+DomainIf_Status_t DomainIf_RxCisStatus(const DomainIf_CisStatusReport_t *s) { owner_call(); last_cis_status = *s; ++cis_status_calls; return DOMAIN_IF_OK; }
+DomainIf_Status_t DomainIf_RxCisCabinEnvironment(const CisCabinEnvironmentState_t *s) { owner_call(); last_env = *s; ++env_calls; return DOMAIN_IF_OK; }
+static unsigned occupant_calls;
+static CisOccupantState_t last_occupant;
+DomainIf_Status_t DomainIf_RxCisOccupant(const CisOccupantState_t *s) { owner_call(); last_occupant = *s; ++occupant_calls; return DOMAIN_IF_OK; }
+/* Local failure notices: the last one, and the answers the case chooses, one
+ * for an occurrence (DOMAIN develop answers DOMAIN_IF_UNSUPPORTED there) and
+ * one for the other kinds. */
+static NetworkLocalFailure_t last_failure;
+static DomainIf_Status_t failure_return = DOMAIN_IF_OK, occurrence_failure_return = DOMAIN_IF_OK;
+DomainIf_Status_t DomainIf_RxNetworkLocalFailure(const NetworkLocalFailure_t *f)
+{
+    owner_call();
+    ++failure_calls;
+    last_failure = *f;
+    return f->itemKind == NETWORK_LOCAL_ITEM_OCCURRENCE ? occurrence_failure_return : failure_return;
+}
+DomainIf_Status_t DomainIf_RxDigitalKeyConnection(DeviceContextId_t device, const DigitalKeyConnectionState_t *c)
+{
+    owner_call();
+    last_connection_device = device;
+    last_connection = *c;
+    ++connection_calls;
+    return DOMAIN_IF_OK;
+}
+DomainIf_Status_t DomainIf_RxProximity(DeviceContextId_t device, const ProximityInput_t *p) { (void)device; (void)p; owner_call(); ++proximity_calls; return DOMAIN_IF_OK; }
+/* Query getters: this fake keeps no DOMAIN state. */
+DomainIf_Status_t DomainIf_QueryGetBcmDoorState(uint32_t at, DoorState_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetBcmStatus(uint32_t at, DomainIf_BcmStatusReport_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetCisRear(uint32_t at, CisRearState_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetCisStatus(uint32_t at, DomainIf_CisStatusReport_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetCisEnvironment(uint32_t at, CisCabinEnvironmentState_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetCisOccupant(uint32_t at, CisOccupantState_t *o) { (void)at; (void)o; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetRequestResult(DeviceContextId_t device, const RequestContext_t *target, uint32_t at,
+    DomainIf_MobileRequestResult_t *o, bool *has)
+{ (void)device; (void)target; (void)at; (void)o; (void)has; return DOMAIN_IF_NOT_AVAILABLE; }
+DomainIf_Status_t DomainIf_QueryGetRecentRequestResults(DeviceContextId_t device, uint32_t at,
+    DomainIf_MobileRequestResult_t *o, size_t capacity, size_t *count)
+{ (void)device; (void)at; (void)o; (void)capacity; (void)count; return DOMAIN_IF_NOT_AVAILABLE; }
+
+/* ------------------------------------------------------- board hooks ---- */
+bool MockBoard_NodeConfig(NetNodeConfig *out);
+bool MockBoard_DomainC2(NetDomainC2Api *api, NetDomainC2Config *config);
+static unsigned node_config_calls, c2_hook_calls;
+static bool use_board_hook, alive_hook;
+static NetDomainC2AliveState alive_now;
+static NetStatus alive_return = NET_OK;
+/* confirm_snapshot (a DOMAIN team decision, NULL on the board: state relays
+ * held): the relay case binds one that confirms every snapshot. */
+static bool snapshot_hook;
+static bool confirm_every_snapshot(void *context, uint16_t id, uint64_t receipt, uint32_t boot, uint32_t sequence)
+{
+    (void)context; (void)id; (void)receipt; (void)boot; (void)sequence;
+    return true;
+}
+
+static NetStatus alive_source(void *context, NetDomainC2AliveState *out)
+{
+    (void)context;
+    if (alive_return != NET_OK) return alive_return;
+    *out = alive_now;
+    return NET_OK;
+}
+/* The status quality rule is a DOMAIN team decision (HOLD on the board); the
+ * test binds one so that the status routes reach C2. */
+static NetStatus status_quality(void *context, uint16_t id, const NetUpperCanMessage *m, DataQuality_t *q)
+{
+    (void)context; (void)id; (void)m;
+    *q = DATA_QUALITY_OK;
+    return NET_OK;
+}
+
+bool MockBoard_NodeConfig(NetNodeConfig *out)
+{
+    ++node_config_calls;
+    out->boot_id = NODE_BOOT;
+    return true;
+}
+
+bool MockBoard_DomainC2(NetDomainC2Api *api, NetDomainC2Config *config)
+{
+    ++c2_hook_calls;
+    if (use_board_hook) return NetDomainBoard_C2Config(api, config);
+    net_domain_c2_pinned_owner_api(api);
+    api->RxDigitalKeyConnection = DomainIf_RxDigitalKeyConnection;
+    api->RxProximity = DomainIf_RxProximity;
+    api->RxBcmCommandResult = result_rx;
+    api->RxBcmClimateState = climate_rx;
+    api->RxBcmInteriorLightState = light_rx;
+    config->value_quality = net_domain_c2_value_quality_provisional;
+    config->permission_bundle = net_domain_c2_permission_bundle_provisional;
+    config->status_quality = status_quality;
+    config->command_accept_limit_ms = 200u;
+    config->event_use_limit_ms = 500u;
+    config->transmit_policy.bound = true;
+    config->transmit_policy.maximum_age_ms = 65535u + 1000u;
+    config->transmit_policy.expires_at_equality = true;
+    config->failure_sink_ready = true;
+    /* The provisional local failure reason, as on the board. */
+    config->local_failure_reason = net_domain_c2_local_failure_reason_provisional;
+    /* Values the node replaces: its own BOOT_ID, the received BCM BOOT_ID. */
+    config->domain_boot = 0x0BADu;
+    config->bcm_boot = 0x0BADu;
+    if (alive_hook) config->alive_state = alive_source;
+    if (snapshot_hook) config->confirm_snapshot = confirm_every_snapshot;
+    /* cis_transition_barriers stays off here: the node turns the barriers on. */
+    return true;
+}
+
+/* ------------------------------------------------- bus and main loop ---- */
+#define CAN_LOG 512u
+#define UART_LOG 64u
+typedef struct { uint32_t at; NetUpperCanMessage m; } CanSeen;
+typedef struct { uint32_t at; NetUpperUartMessage m; } UartSeen;
+static CanSeen can_seen[CAN_LOG];
+static UartSeen uart_seen[UART_LOG];
+static unsigned can_count, can_bad, uart_count, uart_bad;
+/* UART-M downlink: frames per MESSAGE_TYPE and LINK_SEQUENCE steps that are
+ * not +1 (the direction's counter, every type). */
+static unsigned uart_type_count[256], uart_seq_gaps;
+static bool uart_seq_seen;
+static uint16_t uart_seq_last;
+/* M_USER_SETTINGS (0x25) by update sequence: the time of each submission;
+ * the longest wait until the line took one, and the most its wire AGE fell
+ * behind the real age (the AGE is set when the frame goes to the device). */
+#define SETTINGS_LOG 512u
+static uint32_t settings_at[SETTINGS_LOG];
+static long settings_wait_max, settings_age_lag_max;
+static uint32_t now_ms; /* the DOMAIN main-loop ms function */
+
+/* The ESP32 end of UART-M stops reading (n24): the active transfer stays on
+ * the line until the TX timeout abort. */
+static bool uart_line_held;
+
+/* The bus takes every frame the node offered (TX_COMPLETE from the IRQ); the
+ * ESP32 end of UART-M takes the active transfer (TX complete from the IRQ). */
+static void collect(void)
+{
+    MockCanFrame f;
+    for (;;) {
+        NetWireCanEnvelope e;
+        NetUpperCanMessage m;
+        if (MockRtd_CanTransmitNext(BUS, &f) < 0) break;
+        memset(&e, 0, sizeof(e));
+        e.standard_id = f.id;
+        e.fdf = f.fd;
+        e.brs = f.brs;
+        e.dlc = f.dlc;
+        e.length = f.length;
+        memcpy(e.bytes, f.data, f.length);
+        if (net_upper_can_decode(NET_WIRE_CANDIDATE_ONLY, &e, &m) != NET_WIRE_OK) { ++can_bad; continue; }
+        if (can_count < CAN_LOG) { can_seen[can_count].at = now_ms; can_seen[can_count].m = m; }
+        ++can_count;
+    }
+    for (;;) {
+        NetWireUartFrame fr;
+        NetUpperUartMessage u;
+        uint32 left = MockRtd_UartTxRemaining(UART_M);
+        if (uart_line_held) break;
+        if (left == 0u) break;
+        memset(&fr, 0, sizeof(fr));
+        if (left > sizeof(fr.bytes)) { ++uart_bad; (void)MockRtd_UartTransmitTake(UART_M, fr.bytes, (uint32)sizeof(fr.bytes)); continue; }
+        fr.length = MockRtd_UartTransmitTake(UART_M, fr.bytes, (uint32)sizeof(fr.bytes));
+        if (net_upper_uart_decode(NET_WIRE_CANDIDATE_ONLY, NET_WIRE_UART_M, NET_WIRE_DOWNLINK, &fr, &u) != NET_WIRE_OK) {
+            ++uart_bad;
+            continue;
+        }
+        if (uart_count < UART_LOG) { uart_seen[uart_count].at = now_ms; uart_seen[uart_count].m = u; }
+        ++uart_count;
+        ++uart_type_count[u.type];
+        if (u.type == 0x25u && u.data.m_user_settings.update_sequence < SETTINGS_LOG) {
+            long wait = (long)(now_ms - settings_at[u.data.m_user_settings.update_sequence]);
+            long lag = wait + 5 - (long)u.data.m_user_settings.source_age_ms;
+            if (wait > settings_wait_max) settings_wait_max = wait;
+            if (lag > settings_age_lag_max) settings_age_lag_max = lag;
+        }
+        if (uart_seq_seen && (uint16_t)(uart_seq_last + 1u) != u.sequence) ++uart_seq_gaps;
+        uart_seq_seen = true;
+        uart_seq_last = u.sequence;
+    }
+}
+
+/* One super-loop pass: Net_MainFunction(ms) once, then the line ends. */
+static void pass(void) { Net_MainFunction(now_ms); collect(); }
+/* The application ran after Net_MainFunction: send-only pass, same nowMs. */
+static void flush(void) { in_flush = true; Net_TxFlush(now_ms); in_flush = false; collect(); }
+/* Passes every millisecond up to and including until. */
+static void run_to(uint32_t until) { while ((int32_t)(until - now_ms) > 0) { ++now_ms; pass(); } }
+
+static NetNodeDiag diag(void)
+{
+    NetNodeDiag d;
+    (void)NetNode_GetDiag(&d);
+    return d;
+}
+
+static void board_reset(uint32_t ms)
+{
+    MockRtd_Reset();
+    MockRtd_SetSystemTimerEnabled(false); /* the DOMAIN board time is the main-loop ms */
+    now_ms = ms;
+}
+
+/* DOMAIN initialized its interface, then Net_Init, then the first pass. */
+static bool start_at(uint32_t ms)
+{
+    board_reset(ms);
+    Net_Init();
+    if (diag().stage != NET_NODE_STAGE_READY) return false;
+    pass();
+    return true;
+}
+static bool start(void) { return start_at(START_MS); }
+
+/* The bus delivers a frame: the mock calls the FlexCAN callback like the IRQ. */
+static int inject(const NetUpperCanMessage *m)
+{
+    NetWireCanEnvelope e;
+    MockCanFrame f;
+    if (net_upper_can_encode(NET_WIRE_CANDIDATE_ONLY, m, &e) != NET_WIRE_OK) return -2;
+    memset(&f, 0, sizeof(f));
+    f.id = e.standard_id;
+    f.fd = e.fdf;
+    f.brs = e.brs;
+    f.dlc = e.dlc;
+    f.length = (uint8)e.length;
+    memcpy(f.data, e.bytes, e.length);
+    return MockRtd_CanInject(BUS, &f);
+}
+
+/* ------------------------------------------------------------ frames ---- */
+static NetUpperCanMessage rear(uint32_t tx, uint32_t update, uint16_t age)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x0A0u;
+    m.data.cis_rear.boot_id = CIS_BOOT;
+    m.data.cis_rear.tx_sequence = tx;
+    m.data.cis_rear.update_sequence = update;
+    m.data.cis_rear.source_age_ms = age;
+    m.data.cis_rear.rear_distance_deci_cm = 1234u;
+    m.data.cis_rear.validity = 1u;
+    return m;
+}
+
+static NetUpperCanMessage bcm_status(uint32_t boot, uint32_t tx)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x230u;
+    m.data.bcm_status.boot_id = boot;
+    m.data.bcm_status.tx_sequence = tx;
+    m.data.bcm_status.update_sequence = tx;
+    m.data.bcm_status.source_age_ms = 10u;
+    return m;
+}
+
+static NetUpperCanMessage door_state(uint32_t boot, uint32_t tx)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x200u;
+    m.data.bcm_door_state.boot_id = boot;
+    m.data.bcm_door_state.tx_sequence = tx;
+    m.data.bcm_door_state.update_sequence = tx;
+    return m;
+}
+
+#define BCM_BOOT 0x42434D31u
+static NetUpperCanMessage climate_state(uint32_t tx, uint16_t age)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x210u;
+    m.data.bcm_climate_state.boot_id = BCM_BOOT;
+    m.data.bcm_climate_state.tx_sequence = tx;
+    m.data.bcm_climate_state.update_sequence = 7u;
+    m.data.bcm_climate_state.source_age_ms = age;
+    return m;
+}
+
+static NetUpperCanMessage light_state(uint32_t tx, uint16_t age)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x220u;
+    m.data.bcm_light_state.boot_id = BCM_BOOT;
+    m.data.bcm_light_state.tx_sequence = tx;
+    m.data.bcm_light_state.update_sequence = 8u;
+    m.data.bcm_light_state.source_age_ms = age;
+    return m;
+}
+
+/* BCM_COMMAND_RESULT of a DOMAIN command (this node's BOOT_ID). */
+static NetUpperCanMessage bcm_result(uint32_t tx, uint32_t command)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x140u;
+    m.data.bcm_result.boot_id = BCM_BOOT;
+    m.data.bcm_result.tx_sequence = tx;
+    m.data.bcm_result.command_domain_boot = NODE_BOOT;
+    m.data.bcm_result.command_id = command;
+    m.data.bcm_result.command_kind = 1u;
+    m.data.bcm_result.result = 2u;
+    m.data.bcm_result.result_reason = 9u;
+    return m;
+}
+
+/* CIS_ENVIRONMENT: temperature AGE 2200 (still inside the DOMAIN 2500 ms
+ * TTL), humidity 100, illuminance NO_DATA with the saturated AGE. */
+static NetUpperCanMessage environment(uint32_t tx)
+{
+    NetUpperCanMessage m;
+    NetWireCisEnvironmentRaw *r = &m.data.cis_environment;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x300u;
+    r->boot_id = CIS_BOOT;
+    r->tx_sequence = tx;
+    r->temperature_centi_c = 2150;
+    r->temperature_sequence = 5u + tx;
+    r->temperature_age_ms = 2200u;
+    r->temperature_validity = 1u;
+    r->humidity_centi_percent = 4500u;
+    r->humidity_sequence = 6u + tx;
+    r->humidity_age_ms = 100u;
+    r->humidity_validity = 1u;
+    r->illuminance_lux = 0u;
+    r->illuminance_sequence = 0u;
+    r->illuminance_age_ms = 0xFFFFu;
+    r->illuminance_validity = 0u;
+    r->illuminance_reason = 6u; /* NO_DATA */
+    return m;
+}
+
+static NetUpperCanMessage cis_status(uint32_t tx, uint16_t age)
+{
+    NetUpperCanMessage m;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x320u;
+    m.data.cis_status.boot_id = CIS_BOOT;
+    m.data.cis_status.tx_sequence = tx;
+    m.data.cis_status.update_sequence = 3u;
+    m.data.cis_status.source_age_ms = age;
+    return m;
+}
+
+static bool context_frame(uint16_t sequence, uint64_t session, NetWireUartFrame *out)
+{
+    NetUpperUartMessage m;
+    memset(&m, 0, sizeof(m));
+    m.link = NET_WIRE_UART_M;
+    m.type = 0x01u;
+    m.sequence = sequence;
+    m.data.m_context.device_context_id = 7u;
+    m.data.m_context.session_id = session;
+    m.data.m_context.device_registration_state = 1u;
+    m.data.m_context.bt_connection_state = 1u;
+    m.data.m_context.app_active_state = 1u;
+    m.data.m_context.proximity_validity = 1u;
+    return net_upper_uart_encode(NET_WIRE_CANDIDATE_ONLY, &m, out) == NET_WIRE_OK;
+}
+
+static uint32 line_in(const uint8_t *bytes, size_t n) { return MockRtd_UartInject(UART_M, bytes, (uint32)n); }
+
+/* -------------------------------------------------- C2 TxPort inputs ---- */
+static DomainIf_CisPowerPermission_t power(bool allowed, DataQuality_t q, uint32_t evaluation, uint32_t age)
+{
+    DomainIf_CisPowerPermission_t p;
+    memset(&p, 0, sizeof(p));
+    p.vehiclePowerAllowed = allowed;
+    p.quality = q;
+    p.meta.quality = q;
+    p.meta.updateSequence = evaluation;
+    p.meta.ageMs = age;
+    return p;
+}
+static DomainIf_Status_t tx_power(bool allowed, DataQuality_t q, uint32_t evaluation, uint32_t age)
+{
+    DomainIf_CisPowerPermission_t p = power(allowed, q, evaluation, age);
+    return port.txCisPowerPermission(&p);
+}
+
+static DomainIf_WarningInputEvidence_t evidence(uint32_t boot, uint32_t sequence, uint32_t age)
+{
+    DomainIf_WarningInputEvidence_t e;
+    memset(&e, 0, sizeof(e));
+    e.quality = DATA_QUALITY_OK;
+    e.reason = QUALITY_REASON_NONE;
+    e.availability = FUNCTION_AVAILABILITY_AVAILABLE;
+    e.source.generation = boot;
+    e.source.sequence = sequence;
+    e.source.ageMs = age;
+    return e;
+}
+static DomainIf_Status_t tx_warning(void)
+{
+    DomainIf_VssWarningState_t w;
+    memset(&w, 0, sizeof(w));
+    w.windowAntiPinchState = ANTIPINCH_STATE_CLEAR;
+    w.antiPinchEvidence = evidence(WARN_BOOT, 11u, 120u);
+    w.occupantHazardState = OCCUPANT_HAZARD_CLEAR;
+    w.occupantEvidence = evidence(CIS_BOOT, 22u, 230u);
+    w.rearObstacleState = REAR_OBSTACLE_STATE_CLEAR;
+    w.rearEvidence = evidence(CIS_BOOT, 33u, 340u);
+    w.rearDetectionActivation = REAR_DETECTION_ACTIVE;
+    w.rearActivationMeta.quality = DATA_QUALITY_OK;
+    w.rearActivationMeta.updateSequence = 44u;
+    w.rearActivationMeta.ageMs = 55u;
+    w.rearActivationReason = QUALITY_REASON_NONE;
+    return port.txVssWarningState(&w);
+}
+
+static DomainIf_Status_t tx_door(uint32_t command)
+{
+    DomainIf_BcmDoorCommand_t c;
+    memset(&c, 0, sizeof(c));
+    c.context.commandId = command;
+    c.context.origin = COMMAND_ORIGIN_MOBILE_REQUEST;
+    c.target = DOOR_TARGET_UNLOCK;
+    return port.txBcmDoorCommand(&c);
+}
+
+static DomainIf_Status_t tx_climate(uint32_t command)
+{
+    DomainIf_BcmClimateCommand_t c;
+    memset(&c, 0, sizeof(c));
+    c.context.commandId = command;
+    c.context.origin = COMMAND_ORIGIN_CLIMATE_POLICY;
+    c.fanTarget = FAN_LEVEL_LOW;
+    c.thermalDirection = THERMAL_DIRECTION_COOL;
+    c.thermalTargetLevelPercent = 50u;
+    return port.txBcmClimateCommand(&c);
+}
+
+static DomainIf_Status_t tx_event(uint32_t occurrence)
+{
+    DomainIf_VssOneShotEvent_t e;
+    memset(&e, 0, sizeof(e));
+    e.event = VSS_EVENT_VEHICLE_WELCOME;
+    e.occurrenceId = occurrence;
+    e.meta.quality = DATA_QUALITY_OK;
+    e.meta.ageMs = 10u;
+    e.availability = FUNCTION_AVAILABILITY_AVAILABLE;
+    return port.txVssOneShotEvent(&e);
+}
+
+/* ----------------------------------------------------- frame queries ---- */
+static unsigned count_id(uint16_t id, unsigned from)
+{
+    unsigned i, n = 0u;
+    for (i = from; i < can_count && i < CAN_LOG; ++i) if (can_seen[i].m.id == id) ++n;
+    return n;
+}
+/* k-th frame of id at or after index from, NULL when there is none. */
+static const CanSeen *nth_id(uint16_t id, unsigned from, unsigned k)
+{
+    unsigned i;
+    for (i = from; i < can_count && i < CAN_LOG; ++i)
+        if (can_seen[i].m.id == id && k-- == 0u) return &can_seen[i];
+    return NULL;
+}
+static unsigned allows_from(unsigned from)
+{
+    unsigned i, n = 0u;
+    for (i = from; i < can_count && i < CAN_LOG; ++i)
+        if (can_seen[i].m.id == 0x080u && can_seen[i].m.data.domain_permission.vehicle_power_permission == 1u) ++n;
+    return n;
+}
+static uint32_t tx_of(const CanSeen *s)
+{
+    uint32_t boot = 0u, sequence = 0u;
+    (void)net_upper_can_identity(&s->m, &boot, &sequence);
+    return sequence;
+}
+static uint32_t boot_of(const CanSeen *s)
+{
+    uint32_t boot = 0u, sequence = 0u;
+    (void)net_upper_can_identity(&s->m, &boot, &sequence);
+    return boot;
+}
+/* Every frame of id from index from on: TX_SEQUENCE first, first+1, ... */
+static bool consecutive(uint16_t id, unsigned from, uint32_t first)
+{
+    unsigned k;
+    const CanSeen *s;
+    for (k = 0u; (s = nth_id(id, from, k)) != NULL; ++k)
+        if (tx_of(s) != first + k || boot_of(s) != NODE_BOOT) return false;
+    return k > 0u;
+}
+
+/* -------------------------------------------------------------- cases ---- */
+/* Net_Init -> READY with the C2 TxPort registered. Before Net_Init nothing
+ * runs; a second Net_Init changes nothing. The node sets the BOOT_ID, the
+ * TX_SEQUENCE start, the M04 slots, the command target and the closed CIS
+ * transition barriers whatever the hook wrote. No CAN frame before the DOMAIN
+ * application submits one. */
+static int n01_init(void)
+{
+    NetNodeDiag d;
+    NetDomainC2 *a;
+    board_reset(START_MS);
+    Net_MainFunction(now_ms);
+    d = diag();
+    CHECK(d.stage == NET_NODE_STAGE_NONE && d.entry_init_result == NET_ENTRY_INIT_NONE && d.entry_main_calls == 1u);
+    CHECK(set_port_calls == 0u && c2_hook_calls == 0u && NetNode_DomainC2() == NULL && Net_GetBootId() == 0u);
+
+    Net_Init();
+    d = diag();
+    CHECK(d.entry_init_result == NET_ENTRY_INIT_OK && d.stage == NET_NODE_STAGE_READY && d.stage_status == NET_OK);
+    CHECK(node_config_calls == 1u && c2_hook_calls == 1u && d.rtd.started);
+    CHECK(set_port_calls == 1u && port.txCisPowerPermission != NULL && port.txBcmDoorCommand != NULL);
+    CHECK(Net_GetBootId() == NODE_BOOT && NetNode_GetBootId() == NODE_BOOT);
+    a = NetNode_DomainC2();
+    CHECK(a != NULL && a->registered && a->config.domain_boot == NODE_BOOT && a->config.first_can_sequence == 1u);
+    CHECK(a->config.cis_transition_barriers && a->config.bcm_target_from_rx && a->config.publisher != NULL);
+    CHECK(!d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open && !d.barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].open);
+    CHECK(d.permission_tx.period_ms == 50u && d.warning_tx.period_ms == 50u && d.alive_tx.period_ms == 250u);
+    CHECK(d.permission_tx.boot_id == NODE_BOOT && d.warning_tx.boot_id == NODE_BOOT);
+    CHECK(d.permission_tx.next_sequence == 1u && d.warning_tx.next_sequence == 1u && !d.permission_tx.has_source);
+    CHECK(d.bcm_target_boot == 0u && !d.permission_valid);
+
+    Net_Init();
+    d = diag();
+    CHECK(d.entry_init_calls == 2u && node_config_calls == 1u && c2_hook_calls == 1u && set_port_calls == 1u);
+    pass();
+    run_to(START_MS + 300u);
+    CHECK(can_count == 0u && can_bad == 0u && uart_bad == 0u);
+    CHECK(diag().steps == 301u);
+    return 0;
+}
+
+/* DOMAIN interface not initialized before Net_Init: the C2 TxPort cannot be
+ * registered, the node stops at the App Port stage and sends nothing. */
+static int n02_init_order(void)
+{
+    NetNodeDiag d;
+    domain_initialized = false;
+    board_reset(START_MS);
+    Net_Init();
+    d = diag();
+    CHECK(d.entry_init_result == NET_ENTRY_INIT_NODE_FAILED);
+    CHECK(d.stage == NET_NODE_STAGE_APP_PORT && d.stage_status == NET_NOT_CONFIGURED);
+    CHECK(c2_hook_calls == 1u && set_port_calls == 0u && port.txCisPowerPermission == NULL);
+    CHECK(Net_GetBootId() == 0u && !d.rtd.started);
+    pass();
+    run_to(START_MS + 300u);
+    flush();
+    CHECK(can_count == 0u && uart_count == 0u && MockRtd_UartSends(UART_M) == 0u && diag().steps == 0u);
+    /* Once per power cycle: initializing DOMAIN later does not revive it. */
+    domain_initialized = true;
+    Net_Init();
+    d = diag();
+    CHECK(d.stage == NET_NODE_STAGE_APP_PORT && set_port_calls == 0u && c2_hook_calls == 1u);
+    return 0;
+}
+
+/* Received CAN frames reach the C2 Rx functions in the pass after the ISR
+ * stored them; an exact duplicate does not; CIS_ENVIRONMENT and CIS_OCCUPANT
+ * wait behind their closed transition barriers. */
+static int n03_can_rx_to_c2(void)
+{
+    NetUpperCanMessage m;
+    NetNodeDiag d;
+    CHECK(start());
+    m = rear(1u, 17u, 23u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(rear_calls == 1u && last_rear.rearDistanceMm == 1234u && last_rear.sourceGeneration == CIS_BOOT);
+    CHECK(last_rear.distanceQuality.meta.updateSequence == 17u && last_rear.distanceQuality.meta.quality == DATA_QUALITY_OK);
+    /* Stamped with the previous pass (1000), delivered at 1001. */
+    CHECK(last_rear.distanceQuality.meta.ageMs == 23u + 1u);
+    CHECK(inject(&m) >= 0); /* the same frame again */
+    run_to(START_MS + 5u);
+    CHECK(rear_calls == 1u);
+    m = door_state(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 10u);
+    CHECK(door_state_calls == 1u);
+    m = environment(1u);
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 15u);
+    d = diag();
+    CHECK(env_calls == 0u && d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].held == 1u);
+    return 0;
+}
+
+/* M_CONTEXT from the ESP32 reaches the C2 connection / proximity functions
+ * and becomes the Query context. */
+static int n04_uart_m_context(void)
+{
+    NetWireUartFrame fr;
+    NetDomainC2 *a;
+    CHECK(start());
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u && proximity_calls == 1u);
+    CHECK(last_connection_device == 7u && last_connection.sessionId == 11u);
+    a = NetNode_DomainC2();
+    CHECK(a->service->context_seen && a->service->context.device_context_id == 7u && a->service->context.session_id == 11u);
+    CHECK(a->query->context_known);
+    return 0;
+}
+
+/* One ALLOW evaluation is sent every 50 ms with the same synthesized
+ * UPDATE_SEQUENCE, TX_SEQUENCE +1 and its AGE growing, until the 500 ms
+ * original Power life ends it. The first frame of the next evaluation takes
+ * the next TX_SEQUENCE (the refused repetitions took none). */
+static int n05_permission_50ms(void)
+{
+    const CanSeen *s;
+    unsigned k;
+    NetNodeDiag d;
+    CHECK(start());
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK); /* evaluated now (1000) */
+    run_to(START_MS + 600u);
+    CHECK(count_id(0x080u, 0u) == 10u && can_bad == 0u);
+    for (k = 0u; k < 10u; ++k) {
+        const NetWireDomainPermissionRaw *r;
+        s = nth_id(0x080u, 0u, k);
+        CHECK(s != NULL);
+        r = &s->m.data.domain_permission;
+        CHECK(s->at == START_MS + 1u + 50u * k);
+        CHECK(r->boot_id == NODE_BOOT && r->tx_sequence == k + 1u);
+        CHECK(r->update_sequence == 1u && r->vehicle_power_permission == 1u && r->power_permission_quality == 0u);
+        CHECK(r->source_age_ms == 1u + 50u * k && r->source_age_ms < 500u);
+    }
+    d = diag();
+    CHECK(d.permission_tx.counters.periodic_sent == 9u && d.permission_tx.counters.not_sent >= 1u);
+    CHECK(d.permission_tx.next_sequence == 11u);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 18u, 0u) == DOMAIN_IF_OK); /* new evaluation at 1600 */
+    run_to(START_MS + 610u);
+    s = nth_id(0x080u, 0u, 10u);
+    CHECK(s != NULL && s->at == START_MS + 601u);
+    CHECK(s->m.data.domain_permission.tx_sequence == 11u && s->m.data.domain_permission.update_sequence == 2u);
+    CHECK(s->m.data.domain_permission.source_age_ms == 1u);
+    return 0;
+}
+
+/* An ALLOW the bus has not taken yet is replaced by the withdrawal submitted
+ * after it: the bus never carries that ALLOW. */
+static int n06_permission_withdraw_replaces(void)
+{
+    const CanSeen *s;
+    unsigned k;
+    CHECK(start());
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 17u, 0u) == DOMAIN_IF_OK); /* same pass, before any send */
+    run_to(START_MS + 200u);
+    CHECK(allows_from(0u) == 0u && count_id(0x080u, 0u) == 4u);
+    for (k = 0u; k < 4u; ++k) {
+        s = nth_id(0x080u, 0u, k);
+        CHECK(s->at == START_MS + 1u + 50u * k && s->m.data.domain_permission.tx_sequence == k + 1u);
+        CHECK(s->m.data.domain_permission.vehicle_power_permission == 255u);
+        CHECK(s->m.data.domain_permission.power_permission_quality == 3u);
+        CHECK(s->m.data.domain_permission.update_sequence == 2u); /* the ALLOW took 1, the withdrawal 2 */
+    }
+    CHECK(diag().permission_tx.counters.replaced == 1u && diag().permission_tx.counters.submitted == 2u);
+    return 0;
+}
+
+/* ALLOW evaluated 100 ms ago. (a) Its withdrawal on the same evaluation basis
+ * 100 ms later (AGE 200) is sent at once and no ALLOW follows. (b) A next
+ * ALLOW, and its withdrawal only after 520 ms of AGE: the withdrawal is
+ * refused (beyond the 500 ms life), and the ALLOW does not come back either:
+ * the life ended it already. */
+static int n06b_withdraw_aged_no_allow(void)
+{
+    const CanSeen *s;
+    unsigned mark;
+    CHECK(start());
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 100u) == DOMAIN_IF_OK);
+    run_to(START_MS + 100u);
+    CHECK(allows_from(0u) == 2u); /* 1001 (AGE 101), 1051 (151) */
+    mark = can_count;
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 17u, 200u) == DOMAIN_IF_OK);
+    run_to(START_MS + 700u);
+    CHECK(allows_from(mark) == 0u);
+    s = nth_id(0x080u, mark, 0u);
+    CHECK(s != NULL && s->at == START_MS + 101u);
+    CHECK(s->m.data.domain_permission.vehicle_power_permission == 255u && s->m.data.domain_permission.source_age_ms == 201u);
+    CHECK(s->m.data.domain_permission.update_sequence == 2u);
+
+    run_to(START_MS + 1000u);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 18u, 100u) == DOMAIN_IF_OK); /* at 2000 */
+    run_to(START_MS + 1420u);
+    mark = can_count;
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 18u, 520u) == DOMAIN_IF_REJECTED);
+    CHECK(diag().permission_sequence.sequence == 3u); /* the refused withdrawal used no number */
+    run_to(START_MS + 2000u);
+    CHECK(allows_from(mark) == 0u && count_id(0x080u, mark) == 0u);
+    return 0;
+}
+
+/* VSS_WARNING_STATE is sent every 50 ms with TX_SEQUENCE +1, the same lanes and
+ * every lane AGE growing. */
+static int n07_warning_50ms(void)
+{
+    unsigned k;
+    CHECK(start());
+    CHECK(tx_warning() == DOMAIN_IF_OK);
+    run_to(START_MS + 300u);
+    CHECK(count_id(0x0C0u, 0u) == 6u && can_bad == 0u);
+    for (k = 0u; k < 6u; ++k) {
+        const CanSeen *s = nth_id(0x0C0u, 0u, k);
+        const NetWireVssWarningStateRaw *w = &s->m.data.vss_warning_state;
+        uint16_t waited = (uint16_t)(1u + 50u * k);
+        CHECK(s->at == START_MS + 1u + 50u * k && w->boot_id == NODE_BOOT && w->tx_sequence == k + 1u);
+        CHECK(w->antipinch_source_sequence == 11u && w->occupant_hazard_source_sequence == 22u &&
+              w->rear_obstacle_source_sequence == 33u && w->rear_activation_sequence == 44u);
+        CHECK(w->antipinch_original_age_ms == 120u + waited && w->occupant_hazard_original_age_ms == 230u + waited);
+        CHECK(w->rear_obstacle_original_age_ms == 340u + waited && w->rear_activation_age_ms == 55u + waited);
+    }
+    return 0;
+}
+
+/* TARGET_BOOT_ID: no BCM frame received yet -> no command (NOT_AVAILABLE);
+ * BCM_STATUS of BOOT 201 -> 201; after the BCM restarts as 202 -> 202. */
+static int n08_bcm_target_boot(void)
+{
+    NetUpperCanMessage m;
+    const CanSeen *s;
+    CHECK(start());
+    CHECK(tx_door(77u) == DOMAIN_IF_NOT_AVAILABLE);
+    run_to(START_MS + 10u);
+    CHECK(count_id(0x100u, 0u) == 0u);
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 20u);
+    CHECK(bcm_status_calls == 1u && diag().bcm_target_boot == 201u);
+    CHECK(tx_door(78u) == DOMAIN_IF_OK);
+    run_to(START_MS + 30u);
+    s = nth_id(0x100u, 0u, 0u);
+    CHECK(s != NULL && s->m.data.bcm_door_command.target_boot_id == 201u && s->m.data.bcm_door_command.command_id == 78u);
+    CHECK(s->m.data.bcm_door_command.boot_id == NODE_BOOT && s->m.data.bcm_door_command.tx_sequence == 1u);
+    m = bcm_status(202u, 1u); /* the BCM restarted */
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 40u);
+    CHECK(diag().bcm_target_boot == 202u);
+    CHECK(tx_door(79u) == DOMAIN_IF_OK);
+    run_to(START_MS + 50u);
+    s = nth_id(0x100u, 0u, 1u);
+    CHECK(s != NULL && s->m.data.bcm_door_command.target_boot_id == 202u && s->m.data.bcm_door_command.tx_sequence == 2u);
+    CHECK(count_id(0x100u, 0u) == 2u);
+    return 0;
+}
+
+/* M_DOMAIN_ALIVE without a DOMAIN source: INIT / NO_DATA / 0 / 0xFFFF and the
+ * node BOOT_ID, from the first pass of the READY node, every 250 ms with
+ * LINK_SEQUENCE +1. */
+static int n09_alive_250ms(void)
+{
+    unsigned k;
+    CHECK(start());
+    run_to(START_MS + 1100u);
+    CHECK(uart_count == 5u && uart_bad == 0u);
+    for (k = 0u; k < 5u; ++k) {
+        const NetWireMDomainAliveRaw *v = &uart_seen[k].m.data.m_domain_alive;
+        CHECK(uart_seen[k].m.type == 0x02u && uart_seen[k].at == START_MS + 250u * k);
+        CHECK(uart_seen[k].m.sequence == k + 1u);
+        CHECK(v->domain_boot_id == NODE_BOOT && v->domain_state == 0u && v->value_quality == 3u);
+        CHECK(v->update_sequence == 0u && v->source_age_ms == 0xFFFFu);
+    }
+    CHECK(diag().alive_submitted == 1u && diag().alive_tx.counters.periodic_sent == 4u);
+    return 0;
+}
+
+/* With a DOMAIN source: the evaluation is sent as given and its AGE grows on
+ * repetition; a changed state or evaluation number is sent in the pass it is
+ * seen and restarts the period; an AGE that only grew is not a change; a
+ * source that fails falls back to INIT / NO_DATA / 0 / 0xFFFF. */
+static int n09b_alive_change(void)
+{
+    alive_hook = true;
+    alive_now.domain_state = 1u; /* READY */
+    alive_now.value_quality = 0u;
+    alive_now.update_sequence = 5u;
+    alive_now.source_age_ms = 10u;
+    CHECK(start());
+    CHECK(uart_count == 1u && uart_seen[0].at == START_MS);
+    CHECK(uart_seen[0].m.data.m_domain_alive.domain_state == 1u && uart_seen[0].m.data.m_domain_alive.update_sequence == 5u);
+    CHECK(uart_seen[0].m.data.m_domain_alive.source_age_ms == 10u);
+    run_to(START_MS + 300u);
+    CHECK(uart_count == 2u && uart_seen[1].at == START_MS + 250u && uart_seen[1].m.data.m_domain_alive.source_age_ms == 260u);
+    run_to(START_MS + 309u);
+    alive_now.domain_state = 2u; /* DEGRADED, new evaluation */
+    alive_now.update_sequence = 6u;
+    alive_now.source_age_ms = 0u;
+    run_to(START_MS + 310u);
+    CHECK(uart_count == 3u && uart_seen[2].at == START_MS + 310u);
+    CHECK(uart_seen[2].m.data.m_domain_alive.domain_state == 2u && uart_seen[2].m.data.m_domain_alive.update_sequence == 6u);
+    CHECK(uart_seen[2].m.data.m_domain_alive.source_age_ms == 0u && uart_seen[2].m.sequence == 3u);
+    run_to(START_MS + 400u);
+    alive_now.source_age_ms = 90u; /* only older */
+    run_to(START_MS + 559u);
+    CHECK(uart_count == 3u);
+    run_to(START_MS + 560u);
+    CHECK(uart_count == 4u && uart_seen[3].m.data.m_domain_alive.update_sequence == 6u);
+    CHECK(uart_seen[3].m.data.m_domain_alive.source_age_ms == 250u);
+    alive_return = NET_HOLD; /* the DOMAIN source fails */
+    run_to(START_MS + 600u);
+    CHECK(uart_count == 5u && uart_seen[4].at == START_MS + 561u);
+    CHECK(uart_seen[4].m.data.m_domain_alive.domain_state == 0u && uart_seen[4].m.data.m_domain_alive.value_quality == 3u);
+    CHECK(uart_seen[4].m.data.m_domain_alive.update_sequence == 0u && uart_seen[4].m.data.m_domain_alive.source_age_ms == 0xFFFFu);
+    CHECK(uart_bad == 0u);
+    return 0;
+}
+
+/* The application submits after Net_MainFunction; Net_TxFlush with the same
+ * nowMs puts DOMAIN_PERMISSION (M04) and VSS_EVENT (C2 queue) on the bus in
+ * that pass, calls no C2 Rx function although a frame waits, and the next
+ * Net_MainFunction delivers it. */
+static int n10_tx_flush_same_pass(void)
+{
+    NetUpperCanMessage m;
+    unsigned before;
+    CHECK(start());
+    ++now_ms;
+    pass(); /* 1001 */
+    m = rear(1u, 17u, 23u);
+    CHECK(inject(&m) >= 0);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    CHECK(tx_event(5u) == DOMAIN_IF_OK);
+    before = can_count;
+    flush();
+    CHECK(calls_in_flush == 0u && rear_calls == 0u);
+    CHECK(count_id(0x080u, before) == 1u && count_id(0x160u, before) == 1u);
+    CHECK(nth_id(0x080u, before, 0u)->at == START_MS + 1u && nth_id(0x160u, before, 0u)->at == START_MS + 1u);
+    CHECK(nth_id(0x080u, before, 0u)->m.data.domain_permission.source_age_ms == 0u);
+    ++now_ms;
+    pass();
+    CHECK(rear_calls == 1u);
+    return 0;
+}
+
+/* Every CAN message of the DOMAIN node keeps its own TX_SEQUENCE from 1: the
+ * M04 messages (0x080, 0x0C0) and the C2 commands and events (0x100, 0x110,
+ * 0x160) side by side. */
+static int n11_tx_sequence_per_message(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    CHECK(tx_warning() == DOMAIN_IF_OK);
+    CHECK(tx_door(77u) == DOMAIN_IF_OK);
+    CHECK(tx_climate(78u) == DOMAIN_IF_OK);
+    CHECK(tx_event(5u) == DOMAIN_IF_OK);
+    run_to(START_MS + 60u);
+    CHECK(tx_door(79u) == DOMAIN_IF_OK);
+    CHECK(tx_event(6u) == DOMAIN_IF_OK);
+    run_to(START_MS + 120u);
+    CHECK(count_id(0x080u, 0u) == 3u && count_id(0x0C0u, 0u) == 3u);
+    CHECK(count_id(0x100u, 0u) == 2u && count_id(0x110u, 0u) == 1u && count_id(0x160u, 0u) == 2u);
+    CHECK(consecutive(0x080u, 0u, 1u) && consecutive(0x0C0u, 0u, 1u));
+    CHECK(consecutive(0x100u, 0u, 1u) && consecutive(0x110u, 0u, 1u) && consecutive(0x160u, 0u, 1u));
+    CHECK(can_bad == 0u);
+    return 0;
+}
+
+/* One ms function on the board: the ISR stamps a capture with the nowMs of the
+ * previous pass, so the delivered AGE adds the whole time since that pass,
+ * never less than the real wait; across the 32-bit wrap of nowMs the axis
+ * goes on. */
+static int n12_entry_clock_axis(void)
+{
+    unsigned i;
+    NetNodeDiag d;
+    board_reset(0xFFFFFF00u);
+    Net_Init();
+    CHECK(diag().stage == NET_NODE_STAGE_READY);
+    pass();
+    for (i = 0u; i < 40u; ++i) {
+        NetUpperCanMessage m = rear(i + 1u, 17u + i, 10u);
+        uint32_t stamp = now_ms;
+        CHECK(net_hal_rtd_last_now_ms32() == stamp);
+        CHECK(inject(&m) >= 0); /* arrives about 2 ms after the pass at stamp */
+        now_ms += 7u;
+        pass();
+        CHECK(rear_calls == i + 1u);
+        /* 10 + (pass - stamp) = 17; the real wait was about 5 ms */
+        CHECK(last_rear.distanceQuality.meta.ageMs == 17u && last_rear.distanceQuality.meta.ageMs >= 10u + 5u);
+        now_ms += 3u;
+        pass();
+    }
+    d = diag();
+    CHECK((uint32_t)now_ms == 0xFFFFFF00u + 400u); /* wrapped */
+    CHECK(d.entry_now_ms == (uint64_t)0xFFFFFF00u + 400u && d.entry_now_backward == 0u);
+    CHECK(d.rtd.tick_future_clamped == 0u && net_hal_rtd_last_now_ms32() == now_ms);
+    return 0;
+}
+
+/* Composite observations keep every field AGE: CIS_ENVIRONMENT with a
+ * temperature AGE of 2200 ms (beyond the common 2000 ms bound) and a NO_DATA
+ * illuminance, CIS_STATUS kept for 5000 ms, reach C2 with those AGEs; the
+ * whole-message CIS_REAR with AGE 2100 does not. The environment barrier is
+ * opened by the test for that CIS BOOT_ID: no transition is bound to the node
+ * yet, so it stays closed otherwise. */
+static int n13_composite_field_age(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    CHECK(start());
+    m = environment(1u);
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 5u);
+    CHECK(env_calls == 0u && diag().barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].held == 1u);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].id = CIS_BOOT;
+    m = environment(2u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(env_calls == 1u && last_env.cabinTemperature == 2150 && last_env.cabinHumidity == 4500u);
+    CHECK(last_env.temperatureQuality.meta.ageMs == 2201u && last_env.temperatureQuality.meta.quality == DATA_QUALITY_OK);
+    CHECK(last_env.humidityQuality.meta.ageMs == 101u && last_env.humidityQuality.meta.quality == DATA_QUALITY_OK);
+    CHECK(last_env.illuminanceQuality.meta.ageMs == UINT32_MAX && last_env.illuminanceQuality.meta.quality == DATA_QUALITY_NO_DATA);
+    m = cis_status(1u, 5000u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(cis_status_calls == 1u && last_cis_status.meta.ageMs == 5001u && last_cis_status.sourceGeneration == CIS_BOOT);
+    m = rear(1u, 17u, 2100u);
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 20u);
+    CHECK(rear_calls == 0u);
+    m = rear(2u, 18u, 30u); /* the route itself works */
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 25u);
+    CHECK(rear_calls == 1u);
+    return 0;
+}
+
+/* UART-M receive policy: an M_CONTEXT in two pieces 40 ms apart is taken, one
+ * in two pieces 60 ms apart is dropped (50 ms assembly bound), and the line
+ * takes the next whole frame. */
+static int n14_uart_m_receive_policy(void)
+{
+    NetWireUartFrame fr;
+    const NetWireUartStream *line;
+    size_t half;
+    CHECK(start());
+    line = &net_upper_receiver(NetNode_DomainC2()->service, NET_WIRE_UART_M - 1u)->stream;
+    CHECK(context_frame(1u, 11u, &fr));
+    half = fr.length / 2u;
+    CHECK(line_in(fr.bytes, half) == half);
+    run_to(START_MS + 40u);
+    CHECK(connection_calls == 0u);
+    CHECK(line_in(fr.bytes + half, fr.length - half) == fr.length - half);
+    run_to(START_MS + 45u);
+    CHECK(connection_calls == 1u && last_connection.sessionId == 11u && line->assembly_timeouts == 0u);
+
+    CHECK(context_frame(2u, 12u, &fr));
+    CHECK(line_in(fr.bytes, half) == half);
+    run_to(START_MS + 105u);
+    CHECK(line_in(fr.bytes + half, fr.length - half) == fr.length - half);
+    run_to(START_MS + 110u);
+    CHECK(connection_calls == 1u && line->assembly_timeouts == 1u);
+
+    CHECK(context_frame(3u, 12u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 115u);
+    CHECK(connection_calls == 2u && last_connection.sessionId == 12u);
+    return 0;
+}
+
+/* The DOMAIN board hook: the pinned DOMAIN functions, the four provisional
+ * rules (value quality, DOMAIN_PERMISSION bundle, status report quality, local
+ * failure reason), the other five semantic callbacks NULL, the CIS transition
+ * barriers on. In the
+ * node: CIS_REAR and CIS_STATUS reach C2, and an ALLOW goes out as 1 / OK with
+ * the Operation fields UNKNOWN (255 / 0 / NO_DATA). */
+static int n15_board_c2_hook(void)
+{
+    NetDomainC2Api api, pinned;
+    NetDomainC2Config cfg;
+    NetNodeConfig node;
+    NetUpperCanMessage m;
+    const CanSeen *s;
+    memset(&api, 0xA5, sizeof(api));
+    memset(&cfg, 0xA5, sizeof(cfg));
+    CHECK(NetDomainBoard_C2Config(&api, &cfg));
+    net_domain_c2_pinned_owner_api(&pinned);
+    CHECK(memcmp(&api, &pinned, sizeof(api)) == 0);
+    CHECK(cfg.value_quality == net_domain_c2_value_quality_provisional);
+    CHECK(cfg.permission_bundle == net_domain_c2_permission_bundle_provisional);
+    CHECK(cfg.status_quality == net_domain_c2_status_quality_provisional);
+    CHECK(cfg.window_permission_bundle == NULL && cfg.window_alive_bundle == NULL);
+    CHECK(cfg.window_event_projection == NULL);
+    CHECK(cfg.local_failure_reason == net_domain_c2_local_failure_reason_provisional);
+    CHECK(cfg.select_query_plan == NULL && cfg.confirm_snapshot == NULL);
+    CHECK(cfg.cis_transition_barriers && !cfg.window_transport_enabled && cfg.alive_state == NULL && cfg.publisher == NULL);
+    CHECK(cfg.failure_sink_ready && cfg.command_accept_limit_ms == 200u && cfg.event_use_limit_ms == 500u);
+    CHECK(!NetDomainBoard_C2Config(NULL, &cfg) && !NetDomainBoard_C2Config(&api, NULL));
+    memset(&node, 0, sizeof(node));
+    CHECK(NetDomainBoard_NodeConfig(&node) && node.boot_id != 0u && !NetDomainBoard_NodeConfig(NULL));
+    CHECK(NetDomainBoard_TickToMs(0u) == 0u && NetDomainBoard_TickToMs(1234u) == 1234u &&
+          NetDomainBoard_TickToMs(0xFFFFFFFFu) == 0xFFFFFFFFu);
+
+    use_board_hook = true;
+    CHECK(start());
+    CHECK(c2_hook_calls == 1u && NetNode_DomainC2()->config.value_quality == net_domain_c2_value_quality_provisional);
+    m = rear(1u, 17u, 23u);
+    CHECK(inject(&m) >= 0);
+    m = cis_status(1u, 100u);
+    CHECK(inject(&m) >= 0);
+    run_to(START_MS + 5u);
+    CHECK(rear_calls == 1u && cis_status_calls == 1u && last_cis_status.meta.quality == DATA_QUALITY_OK);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 10u);
+    s = nth_id(0x080u, 0u, 0u);
+    CHECK(s != NULL && s->m.data.domain_permission.vehicle_power_permission == 1u);
+    CHECK(s->m.data.domain_permission.power_permission_quality == 0u && s->m.data.domain_permission.power_operation_state == 255u);
+    CHECK(s->m.data.domain_permission.operation_allowed == 0u && s->m.data.domain_permission.operation_quality == 3u);
+    return 0;
+}
+
+/* BCM door, climate and light states repeat an unchanged evaluation with its
+ * original sequence and accumulated AGE (02_NODES/BCM/20_API.md: a repeat
+ * keeps the original sequence and AGE). The DOMAIN node takes them with
+ * per-field AGE: a frame whose AGE is past the common 2000 ms bound still
+ * reaches C2 with meta.ageMs = wire AGE + local wait, and DOMAIN judges
+ * freshness. */
+static int n17_bcm_state_field_age(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = door_state(BCM_BOOT, 1u);
+    m.data.bcm_door_state.source_age_ms = 2500u;
+    CHECK(inject(&m) >= 0);
+    m = climate_state(1u, 3000u);
+    CHECK(inject(&m) >= 0);
+    m = light_state(1u, 60000u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(door_state_calls == 1u && climate_calls == 1u && light_calls == 1u);
+    CHECK(last_climate.meta.ageMs == 3001u && last_climate.meta.updateSequence == 7u);
+    CHECK(last_light.meta.ageMs == 60001u && last_light.meta.updateSequence == 8u);
+    m = cis_status(1u, 2600u); /* the earlier per-field routes are unchanged */
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(cis_status_calls == 1u && last_cis_status.meta.ageMs == 2601u);
+    return 0;
+}
+
+/* DOMAIN returns DOMAIN_IF_REJECTED for the late result of a command it has
+ * no record of (ResultManager NOT_FOUND). The node drops that frame, counts it
+ * in the adapter (rejected_frames), and the next BCM result still reaches
+ * C2. */
+static int n18_bcm_result_rejected(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    result_return = DOMAIN_IF_REJECTED;
+    m = bcm_result(1u, 901u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(result_calls == 1u && NetNode_DomainC2()->rejected_frames == 1u);
+    result_return = DOMAIN_IF_OK;
+    m = bcm_result(2u, 902u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(result_calls == 2u && NetNode_DomainC2()->rejected_frames == 1u);
+    return 0;
+}
+
+/* The CIS transition binding DOMAIN hands to the board file reaches the
+ * adapter through the board C2 hook. The node calls it in the main-loop pass
+ * (adapter step, after the receive delivery), never in Net_TxFlush: the first
+ * CIS_ENVIRONMENT of a CIS BOOT is held, epoch 1 is applied, the next frame
+ * reaches C2. A binding without an Occupant function keeps CIS_OCCUPANT held. */
+static unsigned transition_calls, transitions_in_flush;
+static uint32_t transition_id;
+static uint64_t transition_epoch;
+static NetDomainC2TransitionStatus transition_result = NET_DOMAIN_C2_TRANSITION_NOT_INITIALIZED;
+static NetDomainC2TransitionStatus env_transition(void *context, uint32_t id, uint64_t epoch, NetDomainC2TransitionReceipt *out)
+{
+    (void)context;
+    ++transition_calls;
+    if (in_flush) ++transitions_in_flush;
+    transition_id = id;
+    transition_epoch = epoch;
+    if (transition_result == NET_DOMAIN_C2_TRANSITION_APPLIED) {
+        out->id = id;
+        out->epoch = epoch;
+        out->revision = (uint32_t)epoch;
+    }
+    return transition_result;
+}
+
+static int n16_board_transition_binding(void)
+{
+    NetDomainC2TransitionBinding tb;
+    NetDomainC2Config cfg;
+    NetDomainC2Api api;
+    NetUpperCanMessage m;
+    NetNodeDiag d;
+    memset(&tb, 0, sizeof(tb));
+    tb.environment = env_transition;
+    NetDomainBoard_SetTransitionBinding(&tb);
+    CHECK(NetDomainBoard_C2Config(&api, &cfg) && cfg.transition.environment == env_transition && cfg.transition.occupant == NULL);
+    NetDomainBoard_SetTransitionBinding(NULL);
+    CHECK(NetDomainBoard_C2Config(&api, &cfg) && cfg.transition.environment == NULL);
+    NetDomainBoard_SetTransitionBinding(&tb);
+    use_board_hook = true;
+    CHECK(start());
+    CHECK(NetNode_DomainC2()->config.transition.environment == env_transition && NetNode_DomainC2()->config.cis_transition_barriers);
+    m = environment(1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    d = diag();
+    CHECK(env_calls == 0u && transition_calls == 1u && transition_id == CIS_BOOT && transition_epoch == 1u);
+    CHECK(d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].state == NET_DOMAIN_C2_BARRIER_PENDING);
+    flush();
+    CHECK(transition_calls == 1u && transitions_in_flush == 0u);
+    transition_result = NET_DOMAIN_C2_TRANSITION_APPLIED;
+    ++now_ms;
+    pass();
+    d = diag();
+    CHECK(transition_calls == 2u && transition_epoch == 1u && transitions_in_flush == 0u);
+    CHECK(d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].state == NET_DOMAIN_C2_BARRIER_OPEN);
+    CHECK(d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open && d.barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].next_epoch == 2u);
+    m = environment(2u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(env_calls == 1u && last_env.cabinTemperature == 2150 && transition_calls == 2u);
+    /* No Occupant function: CIS_OCCUPANT is held and nothing is called. */
+    memset(&m, 0, sizeof(m));
+    m.id = 0x310u;
+    m.data.cis_occupant.boot_id = CIS_BOOT;
+    m.data.cis_occupant.tx_sequence = 1u;
+    m.data.cis_occupant.pi_boot_id = 0x50493031u;
+    m.data.cis_occupant.vision_sequence = 1u;
+    m.data.cis_occupant.presence_validity = 1u;
+    m.data.cis_occupant.count_validity = 1u;
+    CHECK(inject(&m) >= 0);
+    run_to(now_ms + 5u);
+    d = diag();
+    CHECK(occupant_calls == 0u && transition_calls == 2u && d.barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].held == 1u);
+    CHECK(d.barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].state == NET_DOMAIN_C2_BARRIER_CLOSED);
+    return 0;
+}
+
+/* CAN bus-off on the DOMAIN node (net_hal_rtd_can.c bus-off recovery):
+ * DOMAIN_PERMISSION stops while the link is closed and resumes after the hold
+ * under the new port epoch with the same evaluation and the next TX_SEQUENCE
+ * (the skipped repetitions took no number); received frames reach C2 again. */
+static int n19_busoff_recovery(void)
+{
+    const CanSeen *s;
+    NetUpperCanMessage m;
+    unsigned before;
+    NetNodeDiag d;
+    CHECK(start());
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 120u);
+    CHECK(count_id(0x080u, 0u) == 3u);
+    MockRtd_CanRaiseBusOff(BUS);
+    before = can_count;
+    run_to(START_MS + 200u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 1u && d.rtd.busoff_events == 1u && can_count == before);
+    run_to(START_MS + 260u);
+    d = diag();
+    CHECK(d.rtd.can_link_state == 0u && d.rtd.busoff_recoveries == 1u);
+    CHECK(count_id(0x080u, before) == 1u);
+    s = nth_id(0x080u, before, 0u);
+    CHECK(s != NULL && s->m.data.domain_permission.tx_sequence == 4u);
+    CHECK(s->m.data.domain_permission.update_sequence == 1u && s->m.data.domain_permission.boot_id == NODE_BOOT);
+    m = rear(1u, 17u, 23u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    CHECK(rear_calls == 1u);
+    return 0;
+}
+
+/* C2 TxPort input of M_USER_SETTINGS (0x25, a core UART-M message that needs
+ * only a current M_CONTEXT), value n. */
+static DomainIf_Status_t tx_settings(uint32_t n)
+{
+    DomainIf_UserSettingsState_t v;
+    memset(&v, 0, sizeof(v));
+    v.hasTargetTemperature = true;
+    v.targetTemperatureCentiC = 2200;
+    v.hasClimateAutoSetting = true;
+    v.climateAutoEnabled = true;
+    v.hasUserFanLevel = true;
+    v.userFanLevel = FAN_LEVEL_LOW;
+    v.hasInteriorLightEnableSetting = true;
+    v.interiorLightEnabled = true;
+    v.hasNormalLightLevel = true;
+    v.normalLightLevelPercent = 40u;
+    v.hasNormalLightColor = true;
+    v.normalLightColor.red = 10u;
+    v.normalLightColor.green = 20u;
+    v.normalLightColor.blue = 30u;
+    v.meta.quality = DATA_QUALITY_OK;
+    v.meta.updateSequence = n;
+    v.meta.ageMs = 5u;
+    if (n < SETTINGS_LOG) settings_at[n] = now_ms;
+    return port.txMobileUserSettings(&v);
+}
+
+/* C2 TxPort input of M_RESULT (0x20, carries a failure identity). */
+static DomainIf_Status_t tx_result(uint32_t request)
+{
+    DomainIf_MobileRequestResult_t v;
+    memset(&v, 0, sizeof(v));
+    v.deviceContextId = 7u;
+    v.resultInfo.context.sessionId = 11u;
+    v.resultInfo.context.requestId = request;
+    v.resultInfo.reason = RESULT_REASON_NONE;
+    v.resultInfo.confirmation = RESULT_CONFIRMATION_UNCONFIRMED;
+    v.hasVehicleResult = false;
+    v.target = MOBILE_RESULT_TARGET_DOMAIN_SETTING;
+    v.commandId = 0u;
+    v.origin = COMMAND_ORIGIN_MOBILE_REQUEST;
+    v.resultAgeMs = 3u;
+    return port.txMobileRequestResult(&v);
+}
+
+static unsigned c2_records_used(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    unsigned i, n = 0u;
+    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i) if (a->tx[i].used) ++n;
+    return n;
+}
+
+/* A burst of UART-M messages through the C2 TxPort in one pass (an
+ * application that submits its 200 ms and 1 s state groups together, 13
+ * frames): the device (HAL TX 4) has no room for all of them, so the rest
+ * wait in the service queue (upper.tx_deferred) and go out in the next
+ * passes, in submission order, LINK_SEQUENCE without a gap, none lost. The
+ * same with M_RESULT, which carries a failure identity: no failure is
+ * reported and no C2 record is left. */
+static int n20_uart_m_burst(void)
+{
+    NetWireUartFrame fr;
+    unsigned k, settings0, results0;
+    NetNodeDiag d;
+    CHECK(start());
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    settings0 = uart_type_count[0x25u];
+    for (k = 0u; k < 13u; ++k) CHECK(tx_settings(k + 1u) == DOMAIN_IF_OK);
+    flush();
+    CHECK(uart_type_count[0x25u] - settings0 <= NET_HAL_TX_CAPACITY);
+    d = diag();
+    CHECK(d.upper.tx_deferred >= 1u);
+    run_to(now_ms + 30u);
+    CHECK(uart_type_count[0x25u] - settings0 == 13u);
+    for (k = 0u; k < uart_count && k < UART_LOG; ++k) {
+        if (uart_seen[k].m.type != 0x25u) continue;
+        CHECK(uart_seen[k].m.data.m_user_settings.update_sequence == ++settings0 - uart_type_count[0x25u] + 13u);
+    }
+    CHECK(uart_seq_gaps == 0u && uart_bad == 0u);
+    results0 = uart_type_count[0x20u];
+    for (k = 0u; k < 13u; ++k) CHECK(tx_result(100u + k) == DOMAIN_IF_OK);
+    flush();
+    run_to(now_ms + 30u);
+    CHECK(uart_type_count[0x20u] - results0 == 13u);
+    CHECK(uart_seq_gaps == 0u && failure_calls == 0u);
+    run_to(now_ms + 3u);
+    CHECK(c2_records_used() == 0u);
+    d = diag();
+    CHECK(d.upper.tx_failed == 0u && d.upper.tx_max_depth <= NET_UPPER_TX_CAPACITY);
+    return 0;
+}
+
+/* Documented traffic for 10 s (net_load_traffic.h; 10_CAN_FD.md and
+ * 20_UART_M.md message lists, WINDOW excluded):
+ *   bus:  the periodic frames of CIS, BCM and VSS (67 frames/s, 9 of them
+ *         start together every second), all received by DOMAIN;
+ *   ESP32: M_CONTEXT 48 B every 100 ms;
+ *   application (after each Network pass): a new DOMAIN_PERMISSION
+ *         evaluation every 200 ms (sent every 50 ms by M04), and the UART-M
+ *         state relays of 20_UART_M.md as their frame count: 6 frames every
+ *         200 ms and 7 more every 1 s, all at the same instant. The relays
+ *         need received CAN sources and the DOMAIN snapshot confirmation
+ *         (held on this board), so the load is carried by M_USER_SETTINGS
+ *         frames of the same count and similar length (46 B).
+ * The main loop runs every 10 ms; the ESP32 end takes one UART-M frame per
+ * pass (slower than the 115200 bit/s line). Nothing may be lost (rings,
+ * queues, C2 deliveries of CIS_REAR / BCM_DOOR_STATE / BCM_STATUS /
+ * CIS_STATUS, UART-M frames), DOMAIN_PERMISSION leaves within 50 ms plus one
+ * pass, LINK_SEQUENCE has no gap, and no queue goes past its capacity. */
+#define LOAD_PASS_MS 10u
+static int load_doc_traffic(void)
+{
+    uint32_t sent[NET_LOAD_MESSAGE_COUNT], due[NET_LOAD_MESSAGE_COUNT];
+    uint32_t t, end = START_MS + NET_LOAD_DURATION_MS, next_pass = START_MS + LOAD_PASS_MS;
+    uint32_t next_ctx = START_MS, next_eval = START_MS, next_200 = START_MS + 20u, next_1s = START_MS + 20u;
+    uint32_t injected = 0u, ctx_sent = 0u, evaluations = 0u, relays = 0u, refused = 0u, lost_inject = 0u;
+    uint32_t rear_in = 0u, door_in = 0u, bcm_status_in = 0u, cis_status_in = 0u;
+    uint32_t perm_last = 0u, perm_gap_max = 0u, perm_frames = 0u, lost, i, settings0;
+    unsigned can0;
+    size_t k;
+    uint16_t ctx_seq = 1u;
+    NetNodeDiag d;
+    NetWireUartFrame fr;
+    CHECK(start());
+    can0 = can_count;
+    settings0 = uart_type_count[0x25u];
+    for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) { sent[k] = 0u; due[k] = START_MS + 1u; }
+    for (;;) {
+        t = next_pass;
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k)
+            if (net_load_messages[k].sender != NET_LOAD_DOMAIN && due[k] < t) t = due[k];
+        if (next_ctx < t) t = next_ctx;
+        if (t >= end) break;
+        now_ms = t;
+        for (k = 0u; k < NET_LOAD_MESSAGE_COUNT; ++k) {
+            NetWireCanEnvelope e;
+            MockCanFrame f;
+            if (net_load_messages[k].sender == NET_LOAD_DOMAIN || due[k] != t) continue;
+            CHECK(net_load_frame(k, sent[k]++, &e));
+            memset(&f, 0, sizeof(f));
+            f.id = e.standard_id; f.fd = e.fdf; f.brs = e.brs; f.dlc = e.dlc; f.length = (uint8)e.length;
+            memcpy(f.data, e.bytes, e.length);
+            if (MockRtd_CanInject(BUS, &f) < 0) ++lost_inject;
+            ++injected;
+            if (e.standard_id == 0x0A0u) ++rear_in;
+            if (e.standard_id == 0x200u) ++door_in;
+            if (e.standard_id == 0x230u) ++bcm_status_in;
+            if (e.standard_id == 0x320u) ++cis_status_in;
+            due[k] += net_load_messages[k].period_ms;
+        }
+        if (next_ctx == t) {
+            CHECK(context_frame(ctx_seq++, 11u, &fr));
+            if (line_in(fr.bytes, fr.length) != fr.length) ++lost_inject;
+            ++ctx_sent;
+            next_ctx += 100u;
+        }
+        if (next_pass == t) {
+            pass();
+            if (now_ms >= next_eval) {
+                if (tx_power(true, DATA_QUALITY_OK, ++evaluations, 0u) != DOMAIN_IF_OK) ++refused;
+                next_eval += 200u;
+            }
+            if (connection_calls != 0u && now_ms >= next_200) {
+                unsigned n = 6u;
+                if (now_ms >= next_1s) { n += 7u; next_1s += 1000u; }
+                for (i = 0u; i < n; ++i) {
+                    ++relays;
+                    if (tx_settings(relays) != DOMAIN_IF_OK) ++refused;
+                }
+                next_200 += 200u;
+            }
+            flush();
+            next_pass += LOAD_PASS_MS;
+        }
+    }
+    for (i = 0u; i < 30u; ++i) { now_ms += LOAD_PASS_MS; pass(); }
+    for (i = can0; i < can_count && i < CAN_LOG; ++i) {
+        if (can_seen[i].m.id != 0x080u) continue;
+        if (perm_frames != 0u && can_seen[i].at - perm_last > perm_gap_max) perm_gap_max = can_seen[i].at - perm_last;
+        perm_last = can_seen[i].at;
+        ++perm_frames;
+    }
+    d = diag();
+    {
+        const NetLoadCount loss[] = {
+            { "upper.rx_dropped", d.upper.rx_dropped },
+            { "hal.rx_dropped", d.hal.rx_dropped },
+            { "rtd.isr_ring_overflow", d.rtd.isr_ring_overflow },
+            { "rtd.rx_queue_rejected", d.rtd.rx_queue_rejected },
+            { "rtd.uart_isr_ring_overflow", d.rtd.uart[0].uart_isr_ring_overflow },
+            { "rtd.uart_rx_queue_rejected", d.rtd.uart[0].uart_rx_queue_rejected },
+            { "line_not_taken", lost_inject },
+            { "app_refused", refused },
+            { "relays_not_sent", relays - (uart_type_count[0x25u] - settings0) },
+            { "upper.tx_failed", d.upper.tx_failed },
+            { "uart_link_sequence_gaps", uart_seq_gaps },
+            { "uart_bad", uart_bad },
+            { "rear_not_delivered", rear_in - rear_calls },
+            { "door_state_not_delivered", door_in - door_state_calls },
+            { "bcm_status_not_delivered", bcm_status_in - bcm_status_calls },
+            { "cis_status_not_delivered", cis_status_in - cis_status_calls },
+            { "permission_tx_not_sent", d.permission_tx.counters.not_sent }
+        };
+        lost = net_load_report("load lost", loss, sizeof(loss) / sizeof(loss[0]));
+    }
+    printf("LOAD DOMAIN rx_frames=%lu uart_m_out=%u relays=%lu lost=%lu permission_gap_max_ms=%lu can_ring_max=%lu/%lu "
+           "hal_rx_max=%lu/%lu upper_rx_max=%lu/%lu upper_tx_max=%lu/%lu uart_ring_max=%lu/%lu tx_deferred=%lu\n",
+           (unsigned long)d.rtd.rx_frames, uart_count, (unsigned long)relays, (unsigned long)lost,
+           (unsigned long)perm_gap_max, (unsigned long)d.rtd.isr_ring_max_depth, (unsigned long)NET_BOARD_CAN_ISR_RING,
+           (unsigned long)d.hal.rx_max_depth, (unsigned long)NET_HAL_RX_CAPACITY,
+           (unsigned long)d.upper.rx_max_depth, (unsigned long)NET_UPPER_RX_CAPACITY,
+           (unsigned long)d.upper.tx_max_depth, (unsigned long)NET_UPPER_TX_CAPACITY,
+           (unsigned long)d.rtd.uart[0].uart_isr_ring_max_depth, (unsigned long)NET_BOARD_UART_ISR_RING,
+           (unsigned long)d.upper.tx_deferred);
+    printf("load detail: injected=%lu context=%lu evaluations=%lu permission_frames=%lu rear=%u/%lu door=%u/%lu "
+           "bcm_status=%u/%lu cis_status=%u/%lu drained_max=%lu/%lu alive=%u\n",
+           (unsigned long)injected, (unsigned long)ctx_sent, (unsigned long)evaluations, (unsigned long)perm_frames,
+           rear_calls, (unsigned long)rear_in, door_state_calls, (unsigned long)door_in, bcm_status_calls,
+           (unsigned long)bcm_status_in, cis_status_calls, (unsigned long)cis_status_in,
+           (unsigned long)d.rtd.main_drained_max, (unsigned long)d.rtd.isr_drain_budget, uart_type_count[0x02u]);
+    printf("load uart: settings_wait_max_ms=%ld settings_age_lag_max_ms=%ld\n", settings_wait_max, settings_age_lag_max);
+    fflush(stdout);
+    CHECK(d.rtd.rx_frames == injected);
+    CHECK(lost == 0u);
+    CHECK(perm_frames >= 190u && perm_gap_max <= 50u + LOAD_PASS_MS);
+    CHECK(d.rtd.isr_ring_max_depth <= NET_BOARD_CAN_ISR_RING && d.hal.rx_max_depth <= NET_HAL_RX_CAPACITY);
+    CHECK(d.upper.rx_max_depth <= NET_UPPER_RX_CAPACITY && d.upper.tx_max_depth <= NET_UPPER_TX_CAPACITY);
+    CHECK(d.rtd.uart[0].uart_isr_ring_max_depth <= NET_BOARD_UART_ISR_RING);
+    /* The high-water marks saw the traffic: nine bus frames at once, a
+     * 13-frame UART-M group waiting for the device. */
+    CHECK(d.rtd.isr_ring_max_depth >= 9u && d.upper.tx_max_depth >= 13u && d.upper.tx_deferred >= 1u);
+    /* One UART-M frame leaves per pass: the 13-frame group is out before the
+     * next group 200 ms later. */
+    CHECK(settings_wait_max > 0 && settings_wait_max < 200);
+    return 0;
+}
+
+/* The bus is busy (no ACK): nothing the node offered completes. bus_takes:
+ * the bus takes the one frame that wins arbitration now, which has CAN ID id. */
+static void bus_busy(bool busy) { MockRtd_CanSetAckMissing(BUS, busy); }
+static int bus_takes(uint16_t id)
+{
+    MockCanFrame f;
+    int mb;
+    bus_busy(false);
+    mb = MockRtd_CanTransmitNext(BUS, &f);
+    bus_busy(true);
+    return mb >= 0 && f.id == id;
+}
+
+/* Two C2 commands of one CAN ID while the bus is busy. FlexCAN (and the mock)
+ * send equal identifiers in MB order, so the device holds one frame per CAN
+ * ID: the second door command waits in the service queue until the first is
+ * reported, then goes out. TX_SEQUENCE 1 reaches the bus before 2. */
+static int n21_same_id_order(void)
+{
+    NetUpperCanMessage m;
+    const CanSeen *a, *b;
+    uint32_t deferred0;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    bus_busy(true);                        /* nothing completes */
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    CHECK(tx_warning() == DOMAIN_IF_OK);
+    ++now_ms; pass();                      /* 0x080 -> MB 0, 0x0C0 -> MB 1 */
+    CHECK(tx_door(77u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 1 -> MB 2 */
+    flush();
+    CHECK(bus_takes(0x080u));                    /* MB 0 completes */
+    ++now_ms; pass();                      /* TX facts reported: MB 0 free */
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(tx_door(78u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 2: 0x100 is in the device */
+    flush();
+    CHECK(diag().upper.tx_deferred > deferred0);
+    bus_busy(false);
+    run_to(now_ms + 5u);
+    a = nth_id(0x100u, 0u, 0u);
+    b = nth_id(0x100u, 0u, 1u);
+    CHECK(a != NULL && b != NULL && count_id(0x100u, 0u) == 2u);
+    CHECK(a->m.data.bcm_door_command.command_id == 77u && tx_of(a) == 1u);
+    CHECK(b->m.data.bcm_door_command.command_id == 78u && tx_of(b) == 2u);
+    return 0;
+}
+
+/* Every TX MB busy: both door commands are deferred and offered in
+ * TX_SEQUENCE order; the first takes the highest MB, and the second still
+ * waits for it instead of taking a lower MB that frees first. */
+static int n22_same_id_order_deferred(void)
+{
+    NetUpperCanMessage m;
+    const CanSeen *a, *b;
+    uint32_t deferred0;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    bus_busy(true);
+    CHECK(tx_warning() == DOMAIN_IF_OK);
+    ++now_ms; pass();                      /* 0x0C0 -> MB 0 */
+    CHECK(tx_event(5u) == DOMAIN_IF_OK);   /* 0x160 -> MB 1 */
+    CHECK(tx_climate(70u) == DOMAIN_IF_OK);/* 0x110 -> MB 2 */
+    flush();
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    ++now_ms; pass();                      /* 0x080 -> MB 3 */
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(tx_door(77u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 1: no MB, deferred */
+    flush();
+    CHECK(diag().upper.tx_deferred > deferred0);
+    CHECK(bus_takes(0x080u));                    /* MB 3 completes */
+    ++now_ms; pass();                      /* door 77 -> MB 3 */
+    deferred0 = diag().upper.tx_deferred;
+    CHECK(tx_door(78u) == DOMAIN_IF_OK);   /* TX_SEQUENCE 2: deferred */
+    flush();
+    CHECK(diag().upper.tx_deferred > deferred0);
+    CHECK(bus_takes(0x0C0u));                    /* MB 0 completes */
+    ++now_ms; pass();                      /* door 78 still waits: 0x100 is in MB 3 */
+    bus_busy(false);
+    run_to(now_ms + 5u);
+    a = nth_id(0x100u, 0u, 0u);
+    b = nth_id(0x100u, 0u, 1u);
+    CHECK(a != NULL && b != NULL && count_id(0x100u, 0u) == 2u);
+    CHECK(a->m.data.bcm_door_command.command_id == 77u && tx_of(a) == 1u);
+    CHECK(b->m.data.bcm_door_command.command_id == 78u && tx_of(b) == 2u);
+    CHECK(c2_records_used() == 0u);
+    return 0;
+}
+
+/* Service TX slots (M04) in use now. */
+static unsigned service_slots_used(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    unsigned i, n = 0u;
+    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i) if (a->service->tx[i].state.used) ++n;
+    return n;
+}
+
+/* A door command the controller took, then it failed: a bus-off (the abort
+ * at the link close) or, every other time, a TX timeout abort (no ACK). That
+ * is a failure after the device took the frame (an in-flight failure, no
+ * local failure reason): RxNetworkLocalFailure is not called and nothing is
+ * sent again. Once the service settled it (released, M04 slot retired) the C2
+ * record is retired too, with the last one and a count kept as diagnostics.
+ * 32 such failures, twice the 16 records: no C2 record and no M04 slot is
+ * left, the next command goes out, and so does the periodic
+ * DOMAIN_PERMISSION. */
+static int n23_busoff_command_held(void)
+{
+    NetUpperCanMessage m;
+    const NetDomainC2 *a;
+    const NetDomainC2RetiredTx *last;
+    unsigned i, before, busoffs = 0u;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    a = NetNode_DomainC2();
+    for (i = 0u; i < 2u * NET_UPPER_TX_CAPACITY; ++i) {
+        bus_busy(true);                        /* the bus does not take the frame */
+        CHECK(tx_door(100u + i) == DOMAIN_IF_OK);
+        ++now_ms; pass();                      /* in a TX MB */
+        CHECK(c2_records_used() == 1u);
+        if (i % 2u == 0u) {
+            MockRtd_CanRaiseBusOff(BUS);
+            ++busoffs;
+            bus_busy(false);
+            run_to(now_ms + 1100u);            /* closed, aborted, reopened */
+            CHECK(diag().rtd.busoff_recoveries == busoffs && diag().rtd.can_link_state == 0u);
+        } else {
+            run_to(now_ms + 150u);             /* TX timeout abort */
+            bus_busy(false);
+            run_to(now_ms + 2u);
+        }
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
+        CHECK(a->tx_retired_in_flight == i + 1u && a->tx_retired_unsupported == 0u);
+    }
+    CHECK(diag().rtd.tx_timeout_aborts == NET_UPPER_TX_CAPACITY);
+    last = &a->tx_retired_last;
+    CHECK(last->cause == NET_DOMAIN_C2_RETIRED_IN_FLIGHT && !last->has_reason);
+    CHECK(last->identity.itemKind == NETWORK_LOCAL_ITEM_COMMAND && last->identity.hasCommandId &&
+          last->identity.commandId == 100u + 2u * NET_UPPER_TX_CAPACITY - 1u);
+    CHECK(last->submitted && last->admission_known && last->accepted && last->outcome == NET_TX_FAILED);
+    CHECK(last->identity.elapsedSinceAdmissionMs >= 100u && last->identity.elapsedSinceAdmissionMs < 200u);
+    CHECK(failure_calls == 0u && count_id(0x100u, 0u) == 0u);
+    before = can_count;
+    CHECK(tx_door(200u) == DOMAIN_IF_OK);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 17u, 0u) == DOMAIN_IF_OK);
+    run_to(now_ms + 60u);
+    CHECK(count_id(0x100u, before) == 1u && count_id(0x080u, before) >= 2u);
+    CHECK(c2_records_used() == 0u && failure_calls == 0u);
+    return 0;
+}
+
+/* State relay (C2 TxPort txMobileCisRear): DOMAIN relays the CIS_REAR it
+ * received to the mobile app as UART-M 0x36. Each relay takes a C2 TX record
+ * and its M04 slot is retired once the line took it: 32 relays, twice the 16
+ * service slots, all go out and no record is left. A relay the line does not
+ * take keeps its record until the TX timeout abort releases it; then it is
+ * retired too, without a local failure notice (a relay carries no identity),
+ * and the next relay goes out. */
+static int n24_state_relay_retired(void)
+{
+    NetWireUartFrame fr;
+    NetUpperCanMessage m;
+    unsigned k, relays0, aborts0;
+    uint32_t until;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    relays0 = uart_type_count[0x36u];
+    for (k = 0u; k < 2u * NET_UPPER_TX_CAPACITY; ++k) {
+        m = rear(k + 1u, k + 1u, 10u);
+        CHECK(inject(&m) >= 0);
+        run_to(now_ms + 1u);
+        CHECK(rear_calls == k + 1u);
+        CHECK(port.txMobileCisRear(&last_rear) == DOMAIN_IF_OK);
+        run_to(now_ms + 3u);
+        CHECK(uart_type_count[0x36u] - relays0 == k + 1u);
+        CHECK(c2_records_used() == 0u);
+    }
+    /* The line stops taking bytes: the relay keeps its record while it is on
+     * the line or waits behind another transfer. */
+    uart_line_held = true;
+    aborts0 = diag().rtd.uart[0].uart_tx_timeout_aborts;
+    m = rear(k + 1u, k + 1u, 10u);
+    CHECK(inject(&m) >= 0);
+    run_to(now_ms + 1u);
+    CHECK(port.txMobileCisRear(&last_rear) == DOMAIN_IF_OK);
+    run_to(now_ms + 50u);
+    CHECK(c2_records_used() == 1u && uart_type_count[0x36u] - relays0 == k);
+    until = now_ms + 400u;
+    while (c2_records_used() != 0u && (int32_t)(until - now_ms) > 0) run_to(now_ms + 1u);
+    CHECK(c2_records_used() == 0u && failure_calls == 0u);
+    CHECK(diag().rtd.uart[0].uart_tx_timeout_aborts > aborts0);
+    uart_line_held = false;
+    run_to(now_ms + 300u);
+    m = rear(k + 2u, k + 2u, 10u);
+    CHECK(inject(&m) >= 0);
+    run_to(now_ms + 1u);
+    CHECK(port.txMobileCisRear(&last_rear) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    CHECK(uart_type_count[0x36u] - relays0 == k + 1u && c2_records_used() == 0u);
+    return 0;
+}
+
+/* C2 records with a failure identity that are still in use. */
+static unsigned c2_identity_records(NetworkLocalItemKind_t kind)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    unsigned i, n = 0u;
+    for (i = 0u; i < NET_UPPER_TX_CAPACITY; ++i)
+        if (a->tx[i].used && !a->tx[i].failure_delivered && a->tx[i].identity.itemKind == kind) ++n;
+    return n;
+}
+
+/* One cause, a bus-off, found in two places by a door command that waits in
+ * the service queue behind the one in the device (one frame per CAN ID): the
+ * service drops it once it processed the link close (M04 queue, never
+ * offered), or, when the dispatch runs before the service processed the
+ * close (as when the poll budget left the port error waiting), the Port
+ * returns it (the adapter latched the link fault: offered). Both give the
+ * local failure reason CONTEXT_INVALIDATED_BEFORE_SEND, one notice each, and
+ * the records are retired; the command in the device (an in-flight failure)
+ * is retired without a notice. */
+static int n25_busoff_reason_queue_and_port(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    NetUpperTxSnapshot t;
+    NetTxKey key;
+    unsigned k, calls;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    a = NetNode_DomainC2();
+    for (k = 0u; k < 2u; ++k) {
+        calls = failure_calls;
+        bus_busy(true);
+        CHECK(tx_door(77u + 2u * k) == DOMAIN_IF_OK);
+        ++now_ms; pass();                          /* in a TX MB */
+        CHECK(tx_door(78u + 2u * k) == DOMAIN_IF_OK);
+        key = a->last_tx_key;
+        flush();                                   /* the same CAN ID is in the device: it waits */
+        CHECK(net_upper_tx_snapshot(a->service, key, &t) == NET_OK && t.queued && !t.offered);
+        MockRtd_CanRaiseBusOff(BUS);
+        ++now_ms;
+        (void)net_hal_rtd_drain();                 /* the link close reaches the adapter */
+        if (k == 0u) (void)net_upper_step(a->service, NET_UPPER_POLL_BUDGET); /* processed, then dispatched */
+        else (void)net_upper_dispatch(a->service);                         /* dispatched first */
+        CHECK(net_upper_tx_snapshot(a->service, key, &t) == NET_OK);
+        CHECK(t.admission_known && !t.accepted && !t.submitted && t.local_status == NET_HOLD);
+        CHECK(t.offered == (k == 1u));
+        pass();
+        CHECK(failure_calls == calls + 1u);
+        CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_CONTEXT_INVALIDATED_BEFORE_SEND);
+        CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_COMMAND && last_failure.commandId == 78u + 2u * k);
+        CHECK(a->tx_retired_in_flight == k + 1u && a->tx_retired_last.identity.commandId == 77u + 2u * k);
+        bus_busy(false);
+        run_to(now_ms + 1100u);                    /* reopened */
+        CHECK(diag().rtd.busoff_recoveries == k + 1u && diag().rtd.can_link_state == 0u);
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u && failure_calls == calls + 1u);
+    }
+    return 0;
+}
+
+/* A driver refusal of the submit (FlexCAN_Ip_Send, and Lpuart_Uart_Ip_AsyncSend
+ * on an idle line: ERROR) is a final refusal by the Port (NET_REJECTED): a door
+ * command and an M_RESULT get DRIVER_SUBMISSION_FINAL, one notice each, never
+ * CONTEXT_INVALIDATED_BEFORE_SEND, and their records are retired. The next
+ * ones go out. */
+static int n26_driver_submit_errors(void)
+{
+    NetWireUartFrame fr;
+    NetUpperCanMessage m;
+    unsigned before;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    MockRtd_CanSetSendErrors(BUS, 1u);
+    CHECK(tx_door(90u) == DOMAIN_IF_OK);
+    ++now_ms; pass();
+    CHECK(diag().rtd.tx_send_errors == 1u && failure_calls == 1u);
+    CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+    CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_COMMAND && last_failure.commandId == 90u);
+    CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
+    before = can_count;
+    CHECK(tx_door(91u) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    CHECK(count_id(0x100u, before) == 1u && failure_calls == 1u && c2_records_used() == 0u);
+    before = uart_type_count[0x20u];
+    MockRtd_UartSetSendErrors(UART_M, 1u);
+    CHECK(tx_result(6u) == DOMAIN_IF_OK);
+    ++now_ms; pass();
+    CHECK(diag().rtd.uart[0].uart_tx_send_errors == 1u && failure_calls == 2u);
+    CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+    CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_REQUEST_RESULT && last_failure.hasRequestContext);
+    CHECK(last_failure.requestContext.sessionId == 11u && last_failure.requestContext.requestId == 6u);
+    CHECK(c2_records_used() == 0u);
+    CHECK(tx_result(7u) == DOMAIN_IF_OK);
+    run_to(now_ms + 20u);
+    CHECK(uart_type_count[0x20u] == before + 1u && failure_calls == 2u && c2_records_used() == 0u);
+    return 0;
+}
+
+/* VSS_EVENT (an occurrence) refused by the driver, 32 times, twice the 16
+ * records: DOMAIN answers the notice DOMAIN_IF_UNSUPPORTED (as develop does,
+ * before any effect), so each record is retired, counted with the last one,
+ * and nothing is left. Any other non-OK answer keeps the record held, and so
+ * does DOMAIN_IF_UNSUPPORTED for a command (only an occurrence is retired):
+ * each keeps its C2 record and its M04 slot, with one notice. */
+static int n27_occurrence_unsupported_retired(void)
+{
+    NetUpperCanMessage m;
+    const NetDomainC2 *a;
+    const NetDomainC2RetiredTx *last;
+    unsigned i;
+    occurrence_failure_return = DOMAIN_IF_UNSUPPORTED;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    for (i = 0u; i < 2u * NET_UPPER_TX_CAPACITY; ++i) {
+        MockRtd_CanSetSendErrors(BUS, 1u);
+        CHECK(tx_event(500u + i) == DOMAIN_IF_OK);
+        ++now_ms; pass();
+        CHECK(failure_calls == i + 1u && last_failure.itemKind == NETWORK_LOCAL_ITEM_OCCURRENCE);
+        CHECK(last_failure.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+        CHECK(last_failure.hasOccurrenceId && last_failure.occurrenceId == 500u + i);
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
+        CHECK(a->tx_retired_unsupported == i + 1u && a->tx_retired_in_flight == 0u);
+    }
+    last = &a->tx_retired_last;
+    CHECK(last->cause == NET_DOMAIN_C2_RETIRED_OCCURRENCE_UNSUPPORTED && last->has_reason);
+    CHECK(last->identity.occurrenceId == 500u + 2u * NET_UPPER_TX_CAPACITY - 1u &&
+          last->identity.reason == NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL);
+    CHECK(last->offered && !last->submitted && last->admission_known && !last->accepted && last->local_status == NET_REJECTED);
+    occurrence_failure_return = DOMAIN_IF_NOT_INITIALIZED;
+    MockRtd_CanSetSendErrors(BUS, 1u);
+    CHECK(tx_event(600u) == DOMAIN_IF_OK);
+    run_to(now_ms + 20u);
+    CHECK(failure_calls == 2u * NET_UPPER_TX_CAPACITY + 1u && c2_records_used() == 1u && service_slots_used() == 1u);
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    failure_return = DOMAIN_IF_UNSUPPORTED;
+    MockRtd_CanSetSendErrors(BUS, 1u);
+    CHECK(tx_door(601u) == DOMAIN_IF_OK);
+    run_to(now_ms + 20u);
+    CHECK(failure_calls == 2u * NET_UPPER_TX_CAPACITY + 2u && c2_records_used() == 2u && service_slots_used() == 2u);
+    CHECK(a->tx_retired_unsupported == 2u * NET_UPPER_TX_CAPACITY);
+    return 0;
+}
+
+/* An M_RESULT waits in the service queue (the line stopped taking bytes and
+ * two UART-M frames hold the device's UART room) while the mobile app opens a
+ * new session (M_CONTEXT, device 7, session 12). The service context check
+ * refuses it before it is ever offered (NET_STALE): the local failure reason
+ * is CONTEXT_INVALIDATED_BEFORE_SEND, one notice with the original session 11
+ * and request 9, the record retired, and no M_RESULT goes out, for either
+ * session. */
+static int n28_m_result_session_changed(void)
+{
+    NetWireUartFrame fr;
+    const NetDomainC2 *a;
+    NetUpperTxSnapshot t;
+    NetTxKey key;
+    unsigned results0;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    results0 = uart_type_count[0x20u];
+    uart_line_held = true;
+    CHECK(tx_settings(1u) == DOMAIN_IF_OK);
+    CHECK(tx_settings(2u) == DOMAIN_IF_OK);
+    ++now_ms; pass();                              /* one on the line, one waiting in the device */
+    CHECK(tx_result(9u) == DOMAIN_IF_OK);
+    key = a->last_tx_key;
+    flush();                                       /* no UART room in the device: waits in the service */
+    CHECK(net_upper_tx_snapshot(a->service, key, &t) == NET_OK && t.queued && !t.offered);
+    CHECK(context_frame(2u, 12u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(now_ms + 5u);
+    CHECK(connection_calls == 2u && last_connection.sessionId == 12u);
+    CHECK(failure_calls == 1u && last_failure.reason == NETWORK_LOCAL_FAILURE_CONTEXT_INVALIDATED_BEFORE_SEND);
+    CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_REQUEST_RESULT && last_failure.hasRequestContext);
+    CHECK(last_failure.requestDeviceContextId == 7u && last_failure.requestContext.sessionId == 11u);
+    CHECK(last_failure.requestContext.requestId == 9u);
+    CHECK(c2_identity_records(NETWORK_LOCAL_ITEM_REQUEST_RESULT) == 0u);
+    uart_line_held = false;
+    run_to(now_ms + 300u);
+    CHECK(uart_type_count[0x20u] == results0 && failure_calls == 1u && c2_records_used() == 0u);
+    return 0;
+}
+
+/* An M_RESULT the UART HAL took while another frame was on the line waits in
+ * the HAL queue (submitted). When it cannot start later, because it expired
+ * while waiting or because AsyncSend refuses it then, the HAL reports it not
+ * admitted with that cause (net_hal_rtd_uart.c start_next, NetTxEvent.refusal):
+ * the service keeps it as the local status (NET_EXPIRED, NET_REJECTED), the
+ * adapter gives EXPIRED_BEFORE_SEND or the provisional rule
+ * DRIVER_SUBMISSION_FINAL, DOMAIN is told once with the original device,
+ * session and request, and the record and its M04 slot are retired. 32 of
+ * each: nothing is left (the frames ahead, in-flight failures after the TX
+ * timeout abort, are retired without a notice). The name is kept from the
+ * release that recorded the path as left. */
+static int n29_m_result_hal_queue_left(void)
+{
+    NetWireUartFrame fr;
+    NetDomainC2 *a;
+    unsigned k, expired0, errors0, calls0, notices_expired = 0u, notices_driver = 0u, identity_kept = 0u;
+    const unsigned each = 32u;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    expired0 = diag().rtd.uart[0].uart_tx_expired;
+    errors0 = diag().rtd.uart[0].uart_tx_send_errors;
+    for (k = 0u; k < 2u * each; ++k) {
+        const bool expire = k < each;
+        const uint32_t request = 1001u + 2u * k;
+        /* Waiting expires the second one (its bound is shorter than the
+         * 100 ms TX timeout of the first), or AsyncSend refuses it. */
+        a->config.transmit_policy.maximum_age_ms = expire ? 60u : 65535u + 1000u;
+        uart_line_held = true;
+        CHECK(tx_result(request - 1u) == DOMAIN_IF_OK);    /* on the line: never ends */
+        CHECK(tx_result(request) == DOMAIN_IF_OK);         /* waits in the HAL queue */
+        ++now_ms; pass();
+        if (!expire) MockRtd_UartSetSendErrors(UART_M, 1u);
+        calls0 = failure_calls;
+        run_to(now_ms + 150u);                             /* the first one aborted, the second one refused */
+        uart_line_held = false;
+        run_to(now_ms + 20u);
+        CHECK(failure_calls == calls0 + 1u);               /* told once */
+        CHECK(last_failure.itemKind == NETWORK_LOCAL_ITEM_REQUEST_RESULT && last_failure.link == NETWORK_LINK_UART_M);
+        CHECK(last_failure.reason == (expire ? NETWORK_LOCAL_FAILURE_EXPIRED_BEFORE_SEND
+                                             : NETWORK_LOCAL_FAILURE_DRIVER_SUBMISSION_FINAL));
+        if (expire) ++notices_expired; else ++notices_driver;
+        if (last_failure.hasRequestContext && last_failure.requestDeviceContextId == 7u &&
+            last_failure.requestContext.sessionId == 11u && last_failure.requestContext.requestId == request)
+            ++identity_kept;
+        CHECK(c2_identity_records(NETWORK_LOCAL_ITEM_REQUEST_RESULT) == 0u);
+        CHECK(c2_records_used() == 0u && service_slots_used() == 0u);
+        CHECK(a->tx_retired_in_flight == k + 1u);
+    }
+    run_to(now_ms + 1100u);
+    CHECK(failure_calls == 2u * each);                    /* no second notice later */
+    CHECK(diag().rtd.uart[0].uart_tx_expired == expired0 + each);
+    CHECK(diag().rtd.uart[0].uart_tx_send_errors == errors0 + each);
+    CHECK(identity_kept == 2u * each && c2_records_used() == 0u && service_slots_used() == 0u);
+    printf("after %u expiries and %u start errors in the HAL queue: c2_records=%u service_slots=%u "
+           "notices_expired=%u notices_driver=%u identity_kept=%u\n",
+           each, each, c2_records_used(), service_slots_used(), notices_expired, notices_driver, identity_kept);
+    return 0;
+}
+
+/* A door command whose TX timeout abort does not finish (TIMEOUT): the backend
+ * reports it FAILED and released once and keeps the MB quarantined; the C2
+ * record is retired at once (in-flight), without a notice. The next command
+ * takes another MB. When the controller finishes the abort later (the MB flag
+ * shows it idle) the backend frees the MB without another report: no service
+ * event (tx_stale unchanged), no unexpected event, no C2 record touched.
+ * Configuration: DOMAIN node, S32K344 FlexCAN RTD mock. */
+static int n30_quarantined_late_completion(void)
+{
+    NetUpperCanMessage m;
+    const NetDomainC2 *a;
+    unsigned before, stale0, unexpected0;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms; pass();
+    a = NetNode_DomainC2();
+    bus_busy(true);
+    MockRtd_CanSetAbortResult(BUS, FLEXCAN_STATUS_TIMEOUT);
+    CHECK(tx_door(300u) == DOMAIN_IF_OK);
+    run_to(now_ms + 150u);
+    CHECK(diag().rtd.tx_abort_timeouts == 1u && diag().rtd.tx_quarantined == 1u);
+    CHECK(c2_records_used() == 0u && service_slots_used() == 0u && a->tx_retired_in_flight == 1u);
+    CHECK(a->tx_retired_last.identity.commandId == 300u && a->tx_retired_last.outcome == NET_TX_FAILED);
+    stale0 = diag().upper.tx_stale;
+    unexpected0 = diag().rtd.unexpected_events;
+    bus_busy(false);
+    before = can_count;
+    CHECK(tx_door(301u) == DOMAIN_IF_OK);
+    run_to(now_ms + 500u);
+    CHECK(count_id(0x100u, before) == 1u && diag().rtd.tx_quarantined == 1u && c2_records_used() == 0u);
+    /* The old frame leaves late: its TX_COMPLETE is only an unexpected event
+     * (the transfer was already reported), the MB stays quarantined. */
+    CHECK(MockRtd_CanCompleteAbortingMb(BUS) >= 0);
+    run_to(now_ms + 3u);
+    CHECK(diag().rtd.unexpected_events == unexpected0 + 1u && diag().rtd.tx_quarantined == 1u);
+    CHECK(diag().upper.tx_stale == stale0 && failure_calls == 0u && c2_records_used() == 0u);
+    MockRtd_CanFinishAbort(BUS);
+    run_to(now_ms + 3u);
+    CHECK(diag().rtd.tx_quarantined == 0u && diag().rtd.tx_quarantine_released == 1u);
+    CHECK(diag().upper.tx_stale == stale0 && diag().rtd.unexpected_events == unexpected0 + 1u);
+    CHECK(failure_calls == 0u && c2_records_used() == 0u && a->tx_retired_in_flight == 1u);
+    return 0;
+}
+
+/* CIS_REAR quality of one observation (04_COMMON/10_DATA_AND_ID_RULES.md,
+ * repeat and current quality; DOMAIN develop DomainIfStateBinding_StoreCisRear
+ * takes, for the same BOOT_ID and UPDATE_SEQUENCE with the same distance and
+ * measurement state, the same quality or one drop from usable (VALID, NONE,
+ * OK) to unusable, and answers REJECTED to anything else, which blocks the
+ * route here for the run). Each frame keeps the distance, the measurement
+ * state, BOOT_ID and UPDATE_SEQUENCE, takes the next TX_SEQUENCE and an AGE
+ * grown by the time since the first frame, and changes VALIDITY and
+ * QUALITY_REASON only. Reasons: 3 SENSOR_FAULT (INVALID), 5 STALE, 6 NO_DATA
+ * (net_domain_c2_value_quality_provisional). */
+#define REAR_UPDATE 17u
+#define REAR_AGE0 23u
+static NetUpperCanMessage rear_at(uint32_t tx, uint8_t validity, uint8_t reason, uint32_t at)
+{
+    NetUpperCanMessage m = rear(tx, REAR_UPDATE, (uint16_t)(REAR_AGE0 + (at - START_MS)));
+    m.data.cis_rear.validity = validity;
+    m.data.cis_rear.quality_reason = reason;
+    return m;
+}
+/* The frame arrives at `at` (stamped with that pass) and is handled one ms later. */
+static int rear_send_at(const NetUpperCanMessage *m, uint32_t at)
+{
+    run_to(at);
+    if (inject(m) < 0) return 1;
+    ++now_ms;
+    pass();
+    return 0;
+}
+static bool rear_route_blocked(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    size_t i;
+    for (i = 0u; i < sizeof(a->ingress) / sizeof(a->ingress[0]); ++i)
+        if (a->ingress[i].used && a->ingress[i].link == NET_WIRE_CAN && a->ingress[i].id == 0x0A0u)
+            return a->ingress[i].blocked;
+    return false;
+}
+/* The receive record Network keeps for the route (the last frame it took). */
+static bool rear_record(uint32_t tx, uint8_t validity, uint8_t reason)
+{
+    NetUpperCanMessage m;
+    NetUpperDelivery d;
+    NetSourceStamp s;
+    if (net_upper_received_can(NetNode_DomainC2()->service, 0x0A0u, &m, &d, &s) != NET_OK) return false;
+    return m.data.cis_rear.tx_sequence == tx && m.data.cis_rear.validity == validity &&
+        m.data.cis_rear.quality_reason == reason;
+}
+/* A later observation (next UPDATE_SEQUENCE, usable) is delivered as before. */
+static int rear_next_observation(uint32_t tx, uint32_t at, unsigned calls)
+{
+    NetUpperCanMessage m = rear(tx, REAR_UPDATE + 1u, REAR_AGE0);
+    CHECK(rear_send_at(&m, at) == 0);
+    CHECK(rear_calls == calls && last_rear.distanceQuality.meta.quality == DATA_QUALITY_OK);
+    CHECK(last_rear.distanceQuality.meta.updateSequence == REAR_UPDATE + 1u && !rear_route_blocked());
+    return 0;
+}
+
+/* Usable -> one unusable quality of the same observation: delivered once; the
+ * same unusable quality again is not. In the whole case DOMAIN is called
+ * twice: the usable observation and its withdrawal. */
+static int rear_withdraw(uint8_t reason, DataQuality_t quality)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = rear_at(1u, 1u, 0u, START_MS);
+    CHECK(rear_send_at(&m, START_MS) == 0);
+    CHECK(rear_calls == 1u && last_rear.distanceQuality.meta.quality == DATA_QUALITY_OK);
+    m = rear_at(2u, 0u, reason, START_MS + 50u);
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_calls == 2u && failure_calls == 0u);
+    CHECK(last_rear.distanceQuality.meta.quality == quality);
+    CHECK(last_rear.distanceQuality.validity == VALUE_VALIDITY_INVALID && (unsigned)last_rear.distanceQuality.reason == reason);
+    CHECK(last_rear.sourceGeneration == CIS_BOOT && last_rear.distanceQuality.meta.updateSequence == REAR_UPDATE);
+    CHECK(last_rear.rearDistanceMm == 1234u && last_rear.measurementState == REAR_MEASUREMENT_VALID_DISTANCE);
+    CHECK(last_rear.distanceQuality.meta.ageMs == REAR_AGE0 + 50u + 1u);
+    CHECK(rear_record(2u, 0u, reason) && !rear_route_blocked());
+    m = rear_at(3u, 0u, reason, START_MS + 100u); /* the same unusable quality again */
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_calls == 2u && rear_record(3u, 0u, reason) && failure_calls == 0u);
+    CHECK(last_rear.distanceQuality.meta.quality == quality &&
+        last_rear.distanceQuality.meta.ageMs == REAR_AGE0 + 50u + 1u);
+    return 0;
+}
+static int n31_rear_withdraw_invalid(void) { return rear_withdraw(3u, DATA_QUALITY_INVALID); }
+static int n32_rear_withdraw_stale(void) { return rear_withdraw(5u, DATA_QUALITY_STALE); }
+static int n33_rear_withdraw_no_data(void) { return rear_withdraw(6u, DATA_QUALITY_NO_DATA); }
+
+/* The relay and query projection of the DOMAIN adapter (net_domain_rx.c): it
+ * builds the UART-M message from Network's receive record and gives it only
+ * if the record equals the Owner's state (AGE included). A query of this
+ * device and session, at the time of the last pass. */
+NetStatus nd_projection(NetDomainC2 *, uint16_t, const void *, uint64_t, const NetWireMQueryRaw *,
+    NetUpperQueryOutput *);
+static NetStatus project_query(uint16_t id, const void *owner_state, NetUpperQueryOutput *out)
+{
+    NetWireMQueryRaw q;
+    memset(&q, 0, sizeof(q));
+    q.device_context_id = 7u;
+    q.session_id = 11u;
+    q.query_id = 1u;
+    return nd_projection(NetNode_DomainC2(), id, owner_state, now_ms, &q, out);
+}
+/* The last UART-M frame of a type the ESP32 end took (in the log). */
+static const NetUpperUartMessage *last_uart(uint8_t type)
+{
+    unsigned i = uart_count < UART_LOG ? uart_count : UART_LOG;
+    while (i > 0u) {
+        --i;
+        if (uart_seen[i].m.type == type) return &uart_seen[i].m;
+    }
+    return NULL;
+}
+/* A UART-M context (device 7, session 11) for the relays. */
+static int relay_context(void)
+{
+    NetWireUartFrame fr;
+    CHECK(context_frame(1u, 11u, &fr));
+    CHECK(line_in(fr.bytes, fr.length) == fr.length);
+    run_to(START_MS + 5u);
+    CHECK(connection_calls == 1u);
+    return 0;
+}
+
+/* After the first drop, the same unusable quality again and changes between
+ * unusable qualities are taken by Network without a DOMAIN call: DOMAIN keeps
+ * the first unusable state it was given, and so does Network's record (its
+ * VALIDITY and QUALITY_REASON; TX_SEQUENCE and AGE are the new frame's,
+ * rx_quality_kept counts the kept changes). So the record equals DOMAIN's
+ * state and the UART-M relay and the query answer go out with the first
+ * unusable quality. */
+static int n34_rear_unusable_absorbed(void)
+{
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisRearState_t held;
+    const NetUpperUartMessage *u;
+    unsigned relays0;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    m = rear_at(1u, 1u, 0u, START_MS + 10u);
+    CHECK(rear_send_at(&m, START_MS + 10u) == 0 && rear_calls == 1u);
+    m = rear_at(2u, 0u, 3u, START_MS + 60u);
+    CHECK(rear_send_at(&m, START_MS + 60u) == 0 && rear_calls == 2u);
+    held = last_rear; /* the withdrawal DOMAIN took at START_MS + 61 */
+    m = rear_at(3u, 0u, 3u, START_MS + 110u); /* the same INVALID again */
+    CHECK(rear_send_at(&m, START_MS + 110u) == 0);
+    CHECK(rear_calls == 2u && rear_record(3u, 0u, 3u));
+    m = rear_at(4u, 0u, 5u, START_MS + 160u); /* INVALID -> STALE: the record keeps INVALID */
+    CHECK(rear_send_at(&m, START_MS + 160u) == 0);
+    CHECK(rear_calls == 2u && rear_record(4u, 0u, 3u));
+    m = rear_at(5u, 0u, 6u, START_MS + 210u); /* STALE -> NO_DATA */
+    CHECK(rear_send_at(&m, START_MS + 210u) == 0);
+    CHECK(rear_calls == 2u && rear_record(5u, 0u, 3u) && diag().upper.rx_quality_kept == 2u);
+    CHECK(last_rear.distanceQuality.meta.quality == DATA_QUALITY_INVALID && (unsigned)last_rear.distanceQuality.reason == 3u);
+    CHECK(failure_calls == 0u && !rear_route_blocked());
+    /* DOMAIN's state now: that withdrawal, its AGE grown since it was taken. */
+    held.distanceQuality.meta.ageMs += now_ms - (START_MS + 61u);
+    CHECK(project_query(0x0A0u, &held, &out) == NET_OK);
+    CHECK(out.message.type == 0x36u && out.message.data.m_cis_rear.validity == 0u &&
+        out.message.data.m_cis_rear.quality_reason == 3u && out.message.data.m_cis_rear.original_can_tx_sequence == 5u);
+    relays0 = uart_type_count[0x36u];
+    CHECK(port.txMobileCisRear(&held) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    u = last_uart(0x36u);
+    CHECK(uart_type_count[0x36u] == relays0 + 1u && u != NULL && u->data.m_cis_rear.validity == 0u &&
+        u->data.m_cis_rear.quality_reason == 3u);
+    return rear_next_observation(6u, START_MS + 260u, 3u);
+}
+
+/* The same observation never gets its quality back to usable and never
+ * carries another distance or measurement state: Network holds the frame
+ * (no DOMAIN call, record unchanged), before and after the drop. */
+static int n35_rear_same_observation_held(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = rear_at(1u, 1u, 0u, START_MS);
+    CHECK(rear_send_at(&m, START_MS) == 0 && rear_calls == 1u);
+    m = rear_at(2u, 1u, 0u, START_MS + 50u);
+    m.data.cis_rear.rear_distance_deci_cm = 1300u; /* usable, another distance */
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(3u, 1u, 0u, START_MS + 100u);
+    m.data.cis_rear.proximity_status = 5u; /* usable, INACTIVE */
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(4u, 0u, 3u, START_MS + 150u);
+    m.data.cis_rear.rear_distance_deci_cm = 1300u; /* the drop with another distance */
+    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(5u, 0u, 3u, START_MS + 200u);
+    m.data.cis_rear.proximity_status = 3u; /* the drop with FAULT */
+    CHECK(rear_send_at(&m, START_MS + 200u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(6u, 0u, 3u, START_MS + 250u); /* the drop itself */
+    CHECK(rear_send_at(&m, START_MS + 250u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    m = rear_at(7u, 1u, 0u, START_MS + 300u); /* back to usable */
+    CHECK(rear_send_at(&m, START_MS + 300u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    m = rear_at(8u, 0u, 5u, START_MS + 350u);
+    m.data.cis_rear.rear_distance_deci_cm = 1300u; /* unusable, another distance */
+    CHECK(rear_send_at(&m, START_MS + 350u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    m = rear_at(9u, 0u, 5u, START_MS + 400u);
+    m.data.cis_rear.proximity_status = 4u; /* unusable, RECOVERING */
+    CHECK(rear_send_at(&m, START_MS + 400u) == 0);
+    CHECK(rear_calls == 2u && rear_record(6u, 0u, 3u));
+    CHECK(last_rear.distanceQuality.meta.quality == DATA_QUALITY_INVALID);
+    CHECK(failure_calls == 0u && !rear_route_blocked());
+    return rear_next_observation(10u, START_MS + 450u, 3u);
+}
+
+/* Unchanged by the quality rule: a frame with the same TX_SEQUENCE and other
+ * content is a conflict, and an AGE below the bound of the same observation
+ * (earlier AGE + elapsed) is held. The drop sent correctly afterwards is
+ * still delivered. */
+static int n36_rear_sequence_and_age_held(void)
+{
+    NetUpperCanMessage m;
+    uint32_t conflicts;
+    CHECK(start());
+    m = rear_at(1u, 1u, 0u, START_MS);
+    CHECK(rear_send_at(&m, START_MS) == 0 && rear_calls == 1u);
+    conflicts = diag().upper.rx_conflicts;
+    m = rear_at(1u, 0u, 3u, START_MS + 50u); /* TX_SEQUENCE 1 again, dropped quality */
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_calls == 1u && diag().upper.rx_conflicts == conflicts + 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(2u, 0u, 3u, START_MS + 100u);
+    m.data.cis_rear.source_age_ms = (uint16_t)(REAR_AGE0 + 100u - 1u); /* 1 ms under the bound */
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_calls == 1u && rear_record(1u, 1u, 0u));
+    m = rear_at(3u, 0u, 3u, START_MS + 150u);
+    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
+    CHECK(rear_calls == 2u && last_rear.distanceQuality.meta.quality == DATA_QUALITY_INVALID && rear_record(3u, 0u, 3u));
+    CHECK(failure_calls == 0u && !rear_route_blocked());
+    return rear_next_observation(4u, START_MS + 200u, 3u);
+}
+
+/* CIS_OCCUPANT quality of one observation (Pi BOOT, VISION_SEQUENCE): DOMAIN
+ * develop (CisOccupantManager_ApplyQualityWithdrawal) takes, field by field
+ * (presence, count), a drop to an unusable quality and a change between
+ * unusable ones, and refuses a promotion, another presence, count or vision
+ * function status and an AGE under its own bound (REJECTED, which blocks the
+ * route for the run). Network delivers each such change, holds the rest and
+ * takes a report that differs only in AGE without a call. The barrier stands
+ * open for this Pi BOOT (an applied transition). This mock DOMAIN takes every
+ * call; what the real one answers is checked against DOMAIN develop
+ * (CisOccupantManager), outside this repository. */
+#define PI_BOOT 0x50493031u
+#define OCC_AGE0 40u
+static NetUpperCanMessage occupant_at(uint32_t tx, uint8_t pv, uint8_t pr, uint8_t cv, uint8_t cr, uint32_t at)
+{
+    NetUpperCanMessage m;
+    NetWireCisOccupantRaw *r = &m.data.cis_occupant;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x310u;
+    r->boot_id = CIS_BOOT;
+    r->tx_sequence = tx;
+    r->pi_boot_id = PI_BOOT;
+    r->vision_sequence = 42u;
+    r->vision_age_ms = (uint16_t)(OCC_AGE0 + (at - START_MS));
+    r->occupant_presence = 1u;
+    r->presence_validity = pv;
+    r->presence_reason = pr;
+    r->occupant_count = 2u;
+    r->count_validity = cv;
+    r->count_reason = cr;
+    return m;
+}
+/* The receive record Network keeps for a CAN route: its TX_SEQUENCE. */
+static bool record_tx(uint16_t id, uint32_t tx)
+{
+    NetUpperCanMessage m;
+    NetUpperDelivery d;
+    NetSourceStamp s;
+    if (net_upper_received_can(NetNode_DomainC2()->service, id, &m, &d, &s) != NET_OK) return false;
+    return id == 0x310u ? m.data.cis_occupant.tx_sequence == tx : m.data.cis_environment.tx_sequence == tx;
+}
+static bool quality_is(const ValueQuality_t *q, ValueValidity_t validity, unsigned reason, DataQuality_t quality)
+{
+    return q->validity == validity && (unsigned)q->reason == reason && q->meta.quality == quality;
+}
+/* A CIS frame arrives at `at` and is handled one ms later. */
+static int cis_send_at(const NetUpperCanMessage *m, uint32_t at) { return rear_send_at(m, at); }
+static int n37_occupant_quality_delivered(void)
+{
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisOccupantState_t held;
+    const NetUpperUartMessage *u;
+    unsigned relays0;
+    NetDomainC2 *a;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT;
+    m = occupant_at(1u, 1u, 0u, 1u, 0u, START_MS + 10u);
+    CHECK(cis_send_at(&m, START_MS + 10u) == 0 && occupant_calls == 1u);
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 60u); /* presence OK -> INVALID, count stays OK */
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_VALID, 0u, DATA_QUALITY_OK));
+    CHECK(last_occupant.presenceQuality.meta.updateSequence == 42u && last_occupant.sourceGeneration == PI_BOOT);
+    CHECK(last_occupant.presenceQuality.meta.ageMs == OCC_AGE0 + 60u + 1u);
+    m = occupant_at(3u, 0u, 5u, 1u, 0u, START_MS + 110u); /* presence INVALID -> STALE */
+    CHECK(cis_send_at(&m, START_MS + 110u) == 0 && occupant_calls == 3u);
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+    m = occupant_at(4u, 0u, 6u, 0u, 3u, START_MS + 160u); /* presence STALE -> NO_DATA, count OK -> INVALID */
+    CHECK(cis_send_at(&m, START_MS + 160u) == 0 && occupant_calls == 4u);
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 6u, DATA_QUALITY_NO_DATA));
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    m = occupant_at(5u, 0u, 6u, 0u, 5u, START_MS + 185u); /* count INVALID -> STALE only */
+    CHECK(cis_send_at(&m, START_MS + 185u) == 0 && occupant_calls == 5u);
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 6u, DATA_QUALITY_NO_DATA));
+    held = last_occupant; /* taken at START_MS + 186 */
+    m = occupant_at(6u, 0u, 6u, 0u, 5u, START_MS + 210u); /* only the AGE differs: no call */
+    CHECK(cis_send_at(&m, START_MS + 210u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(7u, 1u, 0u, 0u, 5u, START_MS + 260u); /* presence promoted: held */
+    CHECK(cis_send_at(&m, START_MS + 260u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(8u, 0u, 6u, 1u, 0u, START_MS + 265u); /* count promoted: held */
+    CHECK(cis_send_at(&m, START_MS + 265u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(9u, 0u, 6u, 0u, 5u, START_MS + 270u);
+    m.data.cis_occupant.occupant_presence = 0u; /* another presence: held */
+    CHECK(cis_send_at(&m, START_MS + 270u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(10u, 0u, 6u, 0u, 5u, START_MS + 280u);
+    m.data.cis_occupant.occupant_count = 3u; /* another count: held */
+    CHECK(cis_send_at(&m, START_MS + 280u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(11u, 0u, 6u, 0u, 5u, START_MS + 290u);
+    m.data.cis_occupant.vision_function_status = 2u; /* another vision function status: held */
+    CHECK(cis_send_at(&m, START_MS + 290u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    m = occupant_at(12u, 0u, 5u, 0u, 5u, START_MS + 300u);
+    m.data.cis_occupant.vision_age_ms = (uint16_t)(OCC_AGE0 + 300u - 1u); /* a change 1 ms under the AGE bound: held */
+    CHECK(cis_send_at(&m, START_MS + 300u) == 0 && occupant_calls == 5u && record_tx(0x310u, 6u));
+    CHECK(failure_calls == 0u);
+    /* DOMAIN's state now: the last change it took, AGE grown since (with AGEs
+     * that grow exactly with the time, the field DOMAIN did not change has the
+     * same AGE). The record equals it: no HOLD. */
+    held.presenceQuality.meta.ageMs += now_ms - (START_MS + 186u);
+    held.countQuality.meta.ageMs += now_ms - (START_MS + 186u);
+    CHECK(project_query(0x310u, &held, &out) == NET_OK);
+    CHECK(out.message.type == 0x35u && out.message.data.m_cis_occupant.presence_reason == 6u &&
+        out.message.data.m_cis_occupant.count_reason == 5u);
+    relays0 = uart_type_count[0x35u];
+    CHECK(port.txMobileCisOccupant(&held) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    u = last_uart(0x35u);
+    CHECK(uart_type_count[0x35u] == relays0 + 1u && u != NULL && u->data.m_cis_occupant.count_reason == 5u);
+    return 0;
+}
+
+/* A CIS restart under one Pi BOOT: the restarted CIS (another CAN BOOT_ID,
+ * TX_SEQUENCE from 1) forwards the Pi's repeated judgement, same Pi BOOT and
+ * VISION_SEQUENCE. DOMAIN keys the observation on those two only and keeps it
+ * across the restart, so Network compares the first frame of a new run with
+ * the record of the run before. Each check below is the first frame of another
+ * CIS run while the record is still the one of the first run: a promotion,
+ * another vision function status, an AGE under the bound and an older
+ * judgement are held (DOMAIN would refuse them); a drop to an unusable quality
+ * is delivered, then the same judgement from yet another run is taken without
+ * a call. An older judgement in one CIS run is held too, also exactly half the
+ * number range away. A late frame of an ended run is stale; a new judgement
+ * is delivered, and so is a lower number once the Pi BOOT changed. */
+static NetUpperCanMessage occupant_of_run(uint32_t run, uint32_t tx, uint8_t pv, uint8_t pr, uint8_t cv, uint8_t cr,
+    uint32_t at)
+{
+    NetUpperCanMessage m = occupant_at(tx, pv, pr, cv, cr, at);
+    m.data.cis_occupant.boot_id = CIS_BOOT + run;
+    return m;
+}
+static int n39_occupant_cis_restart(void)
+{
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisOccupantState_t held;
+    NetDomainC2 *a;
+    uint32_t generations, ended;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT;
+    m = occupant_at(1u, 1u, 0u, 1u, 0u, START_MS + 10u);
+    CHECK(cis_send_at(&m, START_MS + 10u) == 0 && occupant_calls == 1u);
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 60u); /* presence OK -> INVALID */
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    m = occupant_at(3u, 1u, 0u, 1u, 0u, START_MS + 70u);
+    m.data.cis_occupant.vision_sequence = 41u; /* an older judgement, same CIS run: held */
+    CHECK(cis_send_at(&m, START_MS + 70u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    generations = diag().upper.generation_changes;
+    m = occupant_of_run(1u, 1u, 1u, 0u, 1u, 0u, START_MS + 110u); /* run 1: presence promoted, held */
+    CHECK(cis_send_at(&m, START_MS + 110u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    m = occupant_of_run(2u, 1u, 0u, 3u, 1u, 0u, START_MS + 120u);
+    m.data.cis_occupant.vision_function_status = 2u; /* run 2: another vision function status, held */
+    CHECK(cis_send_at(&m, START_MS + 120u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    m = occupant_of_run(3u, 1u, 0u, 5u, 1u, 0u, START_MS + 130u);
+    m.data.cis_occupant.vision_age_ms = (uint16_t)(OCC_AGE0 + 130u - 1u); /* run 3: a change 1 ms under the AGE bound */
+    CHECK(cis_send_at(&m, START_MS + 130u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    m = occupant_of_run(4u, 1u, 0u, 3u, 1u, 0u, START_MS + 140u);
+    m.data.cis_occupant.vision_sequence = 41u; /* run 4: an older judgement, held */
+    CHECK(cis_send_at(&m, START_MS + 140u) == 0 && occupant_calls == 2u && record_tx(0x310u, 2u));
+    CHECK(diag().upper.generation_changes == generations);
+    m = occupant_of_run(5u, 1u, 0u, 3u, 0u, 5u, START_MS + 150u); /* run 5: count OK -> STALE, delivered */
+    CHECK(cis_send_at(&m, START_MS + 150u) == 0 && occupant_calls == 3u && record_tx(0x310u, 1u));
+    CHECK(diag().upper.generation_changes == generations + 1u);
+    CHECK(quality_is(&last_occupant.countQuality, VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(last_occupant.sourceGeneration == PI_BOOT && last_occupant.presenceQuality.meta.updateSequence == 42u);
+    held = last_occupant; /* taken at START_MS + 151 */
+    ended = diag().upper.old_generation;
+    m = occupant_at(4u, 0u, 3u, 1u, 0u, START_MS + 160u); /* late frame of the ended first run: stale */
+    CHECK(cis_send_at(&m, START_MS + 160u) == 0 && occupant_calls == 3u && diag().upper.old_generation == ended + 1u);
+    m = occupant_of_run(6u, 1u, 0u, 3u, 0u, 5u, START_MS + 170u); /* run 6: the same judgement, no call */
+    CHECK(cis_send_at(&m, START_MS + 170u) == 0 && occupant_calls == 3u && record_tx(0x310u, 1u));
+    CHECK(diag().upper.generation_changes == generations + 2u);
+    held.presenceQuality.meta.ageMs += now_ms - (START_MS + 151u);
+    held.countQuality.meta.ageMs += now_ms - (START_MS + 151u);
+    CHECK(project_query(0x310u, &held, &out) == NET_OK); /* the record equals DOMAIN's state */
+    m = occupant_of_run(6u, 2u, 1u, 0u, 1u, 0u, START_MS + 200u);
+    m.data.cis_occupant.vision_sequence = 43u; /* a new judgement: delivered */
+    m.data.cis_occupant.vision_age_ms = OCC_AGE0;
+    CHECK(cis_send_at(&m, START_MS + 200u) == 0 && occupant_calls == 4u);
+    CHECK(last_occupant.presenceQuality.meta.updateSequence == 43u &&
+        quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_VALID, 0u, DATA_QUALITY_OK));
+    m = occupant_of_run(6u, 3u, 1u, 0u, 1u, 0u, START_MS + 220u);
+    m.data.cis_occupant.vision_sequence = 43u + 0x80000000u; /* exactly half the range away: older, held */
+    m.data.cis_occupant.vision_age_ms = OCC_AGE0;
+    CHECK(cis_send_at(&m, START_MS + 220u) == 0 && occupant_calls == 4u && record_tx(0x310u, 2u));
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT + 1u; /* the Pi restarted: an applied transition */
+    m = occupant_of_run(6u, 4u, 1u, 0u, 1u, 0u, START_MS + 230u);
+    m.data.cis_occupant.pi_boot_id = PI_BOOT + 1u;
+    m.data.cis_occupant.vision_sequence = 1u; /* a lower number under the new Pi BOOT: delivered */
+    m.data.cis_occupant.vision_age_ms = 5u;
+    CHECK(cis_send_at(&m, START_MS + 230u) == 0 && occupant_calls == 5u && last_occupant.sourceGeneration == PI_BOOT + 1u);
+    CHECK(failure_calls == 0u);
+    return 0;
+}
+
+/* DOMAIN refuses a quality change of the judgement it holds without changing
+ * what it stores (for example an AGE under its bound when its clock is read
+ * after the pass time Network used): DOMAIN_IF_REJECTED drops that frame
+ * alone, the route stays open, the record keeps the last frame DOMAIN took and
+ * the next report of the judgement is offered again; this holds after a CAN
+ * bus-off (new port epoch) and across a CIS restart. The Occupant entry of the
+ * C2 API is replaced here to give the answer; the barrier stands open as in
+ * n37. REJECTED on another Pi BOOT with the same number blocks the route. */
+static DomainIf_Status_t occupant_answer;
+static DomainIf_Status_t occupant_answering(const CisOccupantState_t *s)
+{
+    owner_call();
+    last_occupant = *s;
+    ++occupant_calls;
+    return occupant_answer;
+}
+static bool occupant_route_blocked(void)
+{
+    const NetDomainC2 *a = NetNode_DomainC2();
+    size_t i;
+    for (i = 0u; i < sizeof(a->ingress) / sizeof(a->ingress[0]); ++i)
+        if (a->ingress[i].used && a->ingress[i].link == NET_WIRE_CAN && a->ingress[i].id == 0x310u)
+            return a->ingress[i].blocked;
+    return false;
+}
+/* Start, an applied transition stand-in and the answering Occupant entry, then
+ * judgement 42 taken (OK). */
+static int occupant_answer_start(NetDomainC2 **out)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].open = true;
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT;
+    a->api.RxCisOccupant = occupant_answering;
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_at(1u, 1u, 0u, 1u, 0u, START_MS + 10u);
+    CHECK(cis_send_at(&m, START_MS + 10u) == 0 && occupant_calls == 1u);
+    *out = a;
+    return 0;
+}
+static int n40_occupant_rejected_change_dropped(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    uint32_t bcm_rejected;
+    CHECK(occupant_answer_start(&a) == 0);
+    bcm_rejected = a->rejected_frames;
+    MockRtd_CanRaiseBusOff(BUS); /* the CAN link closes and reopens with a new port epoch */
+    run_to(START_MS + 260u);
+    CHECK(diag().rtd.busoff_recoveries == 1u && diag().rtd.can_link_state == 0u);
+    occupant_answer = DOMAIN_IF_REJECTED;
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 270u); /* presence OK -> INVALID, refused */
+    CHECK(cis_send_at(&m, START_MS + 270u) == 0 && occupant_calls == 2u);
+    CHECK(a->occupant_rejected_frames == 1u && a->last_c2_status == DOMAIN_IF_REJECTED);
+    CHECK(!occupant_route_blocked());
+    m = occupant_of_run(1u, 1u, 0u, 3u, 1u, 0u, START_MS + 320u); /* the restarted CIS, the drop again: refused */
+    CHECK(cis_send_at(&m, START_MS + 320u) == 0 && occupant_calls == 3u);
+    CHECK(a->occupant_rejected_frames == 2u && !occupant_route_blocked());
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_of_run(1u, 2u, 0u, 3u, 1u, 0u, START_MS + 370u); /* the next report of the drop: taken */
+    CHECK(cis_send_at(&m, START_MS + 370u) == 0 && occupant_calls == 4u && record_tx(0x310u, 2u));
+    CHECK(quality_is(&last_occupant.presenceQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(a->rejected_frames == bcm_rejected);
+    occupant_answer = DOMAIN_IF_REJECTED;
+    a->barrier[NET_DOMAIN_C2_OCCUPANT_BARRIER].id = PI_BOOT + 1u; /* the Pi restarted: an applied transition */
+    m = occupant_of_run(1u, 3u, 1u, 0u, 1u, 0u, START_MS + 420u);
+    m.data.cis_occupant.pi_boot_id = PI_BOOT + 1u; /* the same number under another Pi BOOT, refused: blocked */
+    CHECK(cis_send_at(&m, START_MS + 420u) == 0 && occupant_calls == 5u);
+    CHECK(occupant_route_blocked() && a->occupant_rejected_frames == 2u);
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_of_run(1u, 4u, 1u, 0u, 1u, 0u, START_MS + 470u);
+    m.data.cis_occupant.pi_boot_id = PI_BOOT + 1u;
+    m.data.cis_occupant.vision_sequence = 43u;
+    CHECK(cis_send_at(&m, START_MS + 470u) == 0 && occupant_calls == 5u);
+    CHECK(failure_calls == 0u);
+    return 0;
+}
+/* Only DOMAIN_IF_REJECTED is dropped for the judgement DOMAIN holds: another
+ * failure on a report of that judgement blocks the route as before. */
+static int n41_occupant_held_failure_blocks(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    CHECK(occupant_answer_start(&a) == 0);
+    occupant_answer = DOMAIN_IF_NOT_AVAILABLE;
+    m = occupant_at(2u, 0u, 3u, 1u, 0u, START_MS + 60u); /* a drop of the held judgement, not taken */
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    CHECK(occupant_route_blocked() && a->occupant_rejected_frames == 0u && record_tx(0x310u, 1u));
+    occupant_answer = DOMAIN_IF_OK;
+    m = occupant_at(3u, 0u, 3u, 1u, 0u, START_MS + 110u);
+    CHECK(cis_send_at(&m, START_MS + 110u) == 0 && occupant_calls == 2u);
+    return 0;
+}
+/* DOMAIN_IF_REJECTED on a new judgement of the same Pi BOOT blocks the route. */
+static int n42_occupant_new_judgement_rejected_blocks(void)
+{
+    NetUpperCanMessage m;
+    NetDomainC2 *a;
+    CHECK(occupant_answer_start(&a) == 0);
+    occupant_answer = DOMAIN_IF_REJECTED;
+    m = occupant_at(2u, 1u, 0u, 1u, 0u, START_MS + 60u);
+    m.data.cis_occupant.vision_sequence = 43u;
+    m.data.cis_occupant.vision_age_ms = OCC_AGE0;
+    CHECK(cis_send_at(&m, START_MS + 60u) == 0 && occupant_calls == 2u);
+    CHECK(occupant_route_blocked() && a->occupant_rejected_frames == 0u);
+    return 0;
+}
+
+/* CIS_ENVIRONMENT quality per sensor (each with its sequence): DOMAIN develop
+ * (CisEnvironmentManager_Store) overwrites every field it is given, so Network
+ * keeps the guard: under a sensor's sequence another value under the same
+ * quality, a promoted quality and an AGE under the bound are held; a drop to
+ * an unusable quality and a change between unusable ones are delivered with
+ * the value they carry, also in a frame where another sensor has a new
+ * sequence. A report with every sequence and quality the same is taken
+ * without a call. Sensor s: 0 temperature, 1 humidity, 2
+ * illuminance; each AGE grows exactly with the time since its observation. */
+static uint8_t env_validity[3], env_reason[3];
+static uint32_t env_sequence[3], env_since[3];
+static int32_t env_value[3];
+static void env_field(NetWireCisEnvironmentRaw *r, unsigned s, uint8_t validity, uint8_t reason, int32_t value,
+    uint16_t age)
+{
+    switch (s) {
+    case 0u:
+        r->temperature_validity = validity; r->temperature_reason = reason;
+        r->temperature_centi_c = (int16_t)value; r->temperature_sequence = env_sequence[0]; r->temperature_age_ms = age;
+        break;
+    case 1u:
+        r->humidity_validity = validity; r->humidity_reason = reason;
+        r->humidity_centi_percent = (uint16_t)value; r->humidity_sequence = env_sequence[1]; r->humidity_age_ms = age;
+        break;
+    default:
+        r->illuminance_validity = validity; r->illuminance_reason = reason;
+        r->illuminance_lux = (uint32_t)value; r->illuminance_sequence = env_sequence[2]; r->illuminance_age_ms = age;
+        break;
+    }
+}
+static uint16_t env_age(unsigned s, uint32_t at) { return (uint16_t)(100u + 20u * s + (at - env_since[s])); }
+static NetUpperCanMessage environment_now(uint32_t tx, uint32_t at)
+{
+    NetUpperCanMessage m;
+    unsigned s;
+    memset(&m, 0, sizeof(m));
+    m.id = 0x300u;
+    m.data.cis_environment.boot_id = CIS_BOOT;
+    m.data.cis_environment.tx_sequence = tx;
+    for (s = 0u; s < 3u; ++s)
+        env_field(&m.data.cis_environment, s, env_validity[s], env_reason[s], env_value[s], env_age(s, at));
+    return m;
+}
+static const ValueQuality_t *env_quality(const CisCabinEnvironmentState_t *e, unsigned s)
+{
+    return s == 0u ? &e->temperatureQuality : s == 1u ? &e->humidityQuality : &e->illuminanceQuality;
+}
+static int n38_environment_quality_delivered(void)
+{
+    static const uint8_t drops[3] = { 3u, 5u, 6u }; /* INVALID, then STALE, then NO_DATA */
+    static const DataQuality_t dropped[3] = { DATA_QUALITY_INVALID, DATA_QUALITY_STALE, DATA_QUALITY_NO_DATA };
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisCabinEnvironmentState_t held;
+    const NetUpperUartMessage *u;
+    unsigned relays0, calls, s, k;
+    uint32_t tx = 1u, at = START_MS + 10u, taken, grown, kept;
+    NetDomainC2 *a;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].id = CIS_BOOT;
+    for (s = 0u; s < 3u; ++s) {
+        env_validity[s] = 1u; env_reason[s] = 0u; env_sequence[s] = 10u * (s + 1u); env_since[s] = START_MS;
+    }
+    env_value[0] = 2150; env_value[1] = 4500; env_value[2] = 300;
+    m = environment_now(tx, at);
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == 1u);
+    /* Humidity: a new sequence (another value); temperature: OK -> INVALID
+     * under its sequence, in the same frame. */
+    at += 50u; ++tx;
+    env_sequence[1] = 21u; env_since[1] = at; env_value[1] = 4600;
+    env_validity[0] = 0u; env_reason[0] = 3u;
+    m = environment_now(tx, at);
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == 2u);
+    CHECK(last_env.cabinHumidity == 4600u && last_env.humidityQuality.meta.updateSequence == 21u);
+    CHECK(quality_is(&last_env.temperatureQuality, VALUE_VALIDITY_INVALID, 3u, DATA_QUALITY_INVALID));
+    CHECK(last_env.temperatureQuality.meta.updateSequence == 10u && last_env.temperatureQuality.meta.ageMs == env_age(0u, at) + 1u);
+    calls = 2u;
+    /* Every sensor under its sequence: the drops are delivered one by one; a
+     * promotion, another value and a change 1 ms under the AGE bound are held. */
+    for (s = 0u; s < 3u; ++s) {
+        for (k = s == 0u ? 1u : 0u; k < 3u; ++k) {
+            at += 10u; ++tx;
+            env_validity[s] = 0u; env_reason[s] = drops[k];
+            m = environment_now(tx, at);
+            CHECK(cis_send_at(&m, at) == 0 && env_calls == ++calls);
+            CHECK(quality_is(env_quality(&last_env, s), VALUE_VALIDITY_INVALID, drops[k], dropped[k]));
+        }
+        kept = tx;
+        at += 10u;
+        m = environment_now(tx + 1u, at); /* promoted: held */
+        env_field(&m.data.cis_environment, s, 1u, 0u, env_value[s], env_age(s, at));
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+        at += 10u;
+        m = environment_now(tx + 2u, at); /* another value under the same quality: held */
+        env_field(&m.data.cis_environment, s, 0u, 6u, env_value[s] + 1, env_age(s, at));
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+        at += 10u;
+        m = environment_now(tx + 3u, at); /* a change 1 ms under the AGE bound: held */
+        env_field(&m.data.cis_environment, s, 0u, 3u, env_value[s], (uint16_t)(env_age(s, at) - 1u));
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+        tx += 3u;
+    }
+    CHECK(calls == 10u);
+    held = last_env;
+    taken = at - 30u + 1u; /* the last delivered frame: before the three held ones */
+    at += 10u; ++tx;
+    m = environment_now(tx, at); /* the same sequences and qualities: no call */
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, tx));
+    CHECK(failure_calls == 0u);
+    /* DOMAIN's state now: the last frame it took, AGEs grown since. No HOLD. */
+    grown = now_ms - taken;
+    held.temperatureQuality.meta.ageMs += grown;
+    held.humidityQuality.meta.ageMs += grown;
+    held.illuminanceQuality.meta.ageMs += grown;
+    CHECK(project_query(0x300u, &held, &out) == NET_OK);
+    CHECK(out.message.type == 0x34u && out.message.data.m_cis_environment.temperature_reason == 6u &&
+        out.message.data.m_cis_environment.illuminance_reason == 6u &&
+        out.message.data.m_cis_environment.humidity_sequence == 21u);
+    relays0 = uart_type_count[0x34u];
+    CHECK(port.txMobileCisEnvironment(&held) == DOMAIN_IF_OK);
+    run_to(now_ms + 3u);
+    u = last_uart(0x34u);
+    CHECK(uart_type_count[0x34u] == relays0 + 1u && u != NULL && u->data.m_cis_environment.humidity_reason == 6u);
+    return 0;
+}
+
+/* CIS_ENVIRONMENT drop as the CIS sends it: an unusable field keeps its
+ * sequence and carries the invalid encoding of its value (CIS 10_DATA.md:
+ * temperature -32768, humidity 65535, illuminance 0xFFFFFFFF; CIS
+ * fill_environment). The drop is delivered with that value, which is not
+ * compared with the last usable one. Under the same unusable quality another
+ * value is held (the receive record keeps what DOMAIN holds, the query
+ * answers), and a usable value back under the same sequence (a promotion)
+ * stays held. */
+static int n49_environment_drop_invalid_encoding(void)
+{
+    static const int32_t invalid[3] = { -32768, 65535, -1 };
+    NetUpperCanMessage m;
+    NetUpperQueryOutput out;
+    CisCabinEnvironmentState_t held;
+    uint32_t tx = 1u, at = START_MS + 10u, kept, taken, grown;
+    unsigned s, calls;
+    NetDomainC2 *a;
+    snapshot_hook = true;
+    CHECK(start());
+    CHECK(relay_context() == 0);
+    a = NetNode_DomainC2();
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].open = true; /* stands in for an applied transition */
+    a->barrier[NET_DOMAIN_C2_ENVIRONMENT_BARRIER].id = CIS_BOOT;
+    for (s = 0u; s < 3u; ++s) {
+        env_validity[s] = 1u; env_reason[s] = 0u; env_sequence[s] = 10u * (s + 1u); env_since[s] = START_MS;
+    }
+    env_value[0] = 2150; env_value[1] = 4500; env_value[2] = 300;
+    m = environment_now(tx, at);
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == 1u);
+    calls = 1u;
+    for (s = 0u; s < 3u; ++s) {
+        at += 200u; ++tx;
+        env_validity[s] = 0u; env_reason[s] = 5u; env_value[s] = invalid[s]; /* STALE */
+        m = environment_now(tx, at);
+        CHECK(cis_send_at(&m, at) == 0 && env_calls == ++calls && record_tx(0x300u, tx));
+        taken = at + 1u;
+        CHECK(quality_is(env_quality(&last_env, s), VALUE_VALIDITY_INVALID, 5u, DATA_QUALITY_STALE));
+        CHECK(env_quality(&last_env, s)->meta.updateSequence == env_sequence[s]);
+    }
+    CHECK(last_env.cabinTemperature == (int16_t)-32768 && last_env.cabinHumidity == 65535u &&
+        last_env.cabinIlluminance == UINT32_C(0xFFFFFFFF));
+    kept = tx;
+    at += 200u;
+    m = environment_now(tx + 1u, at); /* another value under the same unusable quality: held */
+    env_field(&m.data.cis_environment, 0u, 0u, 5u, 2150, env_age(0u, at));
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+    held = last_env;
+    grown = now_ms - taken;
+    held.temperatureQuality.meta.ageMs += grown;
+    held.humidityQuality.meta.ageMs += grown;
+    held.illuminanceQuality.meta.ageMs += grown;
+    CHECK(project_query(0x300u, &held, &out) == NET_OK); /* the record still matches DOMAIN */
+    at += 200u;
+    m = environment_now(tx + 2u, at); /* usable again under the same sequence: held */
+    env_field(&m.data.cis_environment, 0u, 1u, 0u, 2150, env_age(0u, at));
+    CHECK(cis_send_at(&m, at) == 0 && env_calls == calls && record_tx(0x300u, kept));
+    CHECK(failure_calls == 0u);
+    return 0;
+}
+
+/* AGE on send (u32 -> u16): an AGE past 65535 goes out as the saturated 65535,
+ * whatever the quality (docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md
+ * AGE; sw_detail/functions/CAN_TRANSFER_CONTROL.md "u16 saturates"); the other
+ * fields of the frame go out as submitted. A warning lane whose AGE DOMAIN does
+ * not know (UINT32_MAX, here a disabled occupant warning) does not hold the
+ * rear warning of the same VSS_WARNING_STATE, nor does a lane that kept its
+ * evaluation past 65535 under a restricted or OK quality (the rear activation
+ * AGE too). Events and commands past 65535 go out saturated too (before, the
+ * TxPort call was DOMAIN_IF_NOT_AVAILABLE); the receiving Network drops them on
+ * its delivery AGE bound. */
+static int n50_age_saturated_on_send(void)
+{
+    DomainIf_VssWarningState_t w;
+    DomainIf_VssOneShotEvent_t e;
+    DomainIf_BcmDoorCommand_t c;
+    NetUpperCanMessage m;
+    const CanSeen *f;
+    unsigned from;
+    CHECK(start());
+    m = bcm_status(201u, 1u);
+    CHECK(inject(&m) >= 0);
+    ++now_ms;
+    pass();
+    from = can_count;
+    memset(&w, 0, sizeof(w));
+    w.antiPinchEvidence.availability = FUNCTION_AVAILABILITY_UNSUPPORTED;
+    w.occupantHazardState = OCCUPANT_HAZARD_UNCONFIRMED;
+    w.occupantEvidence.quality = DATA_QUALITY_NO_DATA;
+    w.occupantEvidence.reason = QUALITY_REASON_NO_DATA;
+    w.occupantEvidence.availability = FUNCTION_AVAILABILITY_UNAVAILABLE;
+    w.occupantEvidence.source.ageMs = UINT32_MAX;
+    w.rearObstacleState = REAR_OBSTACLE_STATE_EMERGENCY;
+    w.rearEvidence = evidence(CIS_BOOT, 33u, 40u);
+    w.rearDetectionActivation = REAR_DETECTION_ACTIVE;
+    w.rearActivationMeta.quality = DATA_QUALITY_OK;
+    w.rearActivationMeta.updateSequence = 44u;
+    w.rearActivationMeta.ageMs = 55u;
+    w.rearActivationReason = QUALITY_REASON_NONE;
+    CHECK(port.txVssWarningState(&w) == DOMAIN_IF_OK);
+    run_to(now_ms + 120u);
+    CHECK(count_id(0x0C0u, from) >= 3u);
+    f = nth_id(0x0C0u, from, 0u);
+    CHECK(f != NULL);
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_original_age_ms == UINT16_MAX);
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_quality == 3u /* NO_DATA */ &&
+          f->m.data.vss_warning_state.occupant_hazard_reason == 6u /* NO_DATA */ &&
+          f->m.data.vss_warning_state.occupant_hazard_availability == 2u /* UNAVAILABLE */);
+    CHECK(f->m.data.vss_warning_state.rear_obstacle_state == 2u /* EMERGENCY */ &&
+          f->m.data.vss_warning_state.rear_obstacle_quality == 0u /* OK */ &&
+          f->m.data.vss_warning_state.rear_obstacle_source_sequence == 33u &&
+          f->m.data.vss_warning_state.rear_obstacle_original_age_ms >= 40u &&
+          f->m.data.vss_warning_state.rear_obstacle_original_age_ms < 60u);
+    f = nth_id(0x0C0u, from, count_id(0x0C0u, from) - 1u); /* a repetition: the lane stays saturated */
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_original_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.rear_obstacle_original_age_ms >= 140u);
+    /* a STALE lane and an OK lane that kept their evaluation past 65535 */
+    from = can_count;
+    w.occupantHazardState = OCCUPANT_HAZARD_CLEAR;
+    w.occupantEvidence = evidence(CIS_BOOT, 22u, 70000u);
+    w.occupantEvidence.quality = DATA_QUALITY_STALE;
+    w.occupantEvidence.reason = QUALITY_REASON_STALE;
+    w.rearEvidence = evidence(CIS_BOOT, 34u, 66000u);
+    w.rearActivationMeta.updateSequence = 45u;
+    w.rearActivationMeta.ageMs = 70000u;
+    CHECK(port.txVssWarningState(&w) == DOMAIN_IF_OK);
+    run_to(now_ms + 10u);
+    f = nth_id(0x0C0u, from, 0u);
+    CHECK(f != NULL);
+    CHECK(f->m.data.vss_warning_state.occupant_hazard_original_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.occupant_hazard_quality == 1u /* STALE */ &&
+          f->m.data.vss_warning_state.occupant_hazard_source_sequence == 22u);
+    CHECK(f->m.data.vss_warning_state.rear_obstacle_original_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.rear_obstacle_quality == 0u /* OK */ &&
+          f->m.data.vss_warning_state.rear_obstacle_source_sequence == 34u);
+    CHECK(f->m.data.vss_warning_state.rear_activation_age_ms == UINT16_MAX &&
+          f->m.data.vss_warning_state.rear_activation_sequence == 45u);
+    /* an event and a command past 65535 */
+    from = can_count;
+    memset(&e, 0, sizeof(e));
+    e.event = VSS_EVENT_VEHICLE_WELCOME;
+    e.occurrenceId = 9u;
+    e.meta.quality = DATA_QUALITY_OK;
+    e.meta.ageMs = 70000u;
+    e.availability = FUNCTION_AVAILABILITY_AVAILABLE;
+    CHECK(port.txVssOneShotEvent(&e) == DOMAIN_IF_OK);
+    memset(&c, 0, sizeof(c));
+    c.context.commandId = 91u;
+    c.context.origin = COMMAND_ORIGIN_MOBILE_REQUEST;
+    c.context.commandAgeMs = UINT32_MAX;
+    c.target = DOOR_TARGET_UNLOCK;
+    CHECK(port.txBcmDoorCommand(&c) == DOMAIN_IF_OK);
+    run_to(now_ms + 10u);
+    f = nth_id(0x160u, from, 0u);
+    CHECK(f != NULL && f->m.data.vss_event.occurrence_id == 9u && f->m.data.vss_event.original_age_ms == UINT16_MAX);
+    f = nth_id(0x100u, from, 0u);
+    CHECK(f != NULL && f->m.data.bcm_door_command.command_id == 91u &&
+          f->m.data.bcm_door_command.command_age_ms == UINT16_MAX);
+    CHECK(can_bad == 0u);
+    return 0;
+}
+
+/* DOMAIN_PERMISSION with no power basis: the DOMAIN application submits
+ * UNKNOWN (false, NO_DATA) about every 200 ms. (a) Each submission a new
+ * evaluation (a newer DOMAIN sequence, here 101..110; AGE from that
+ * evaluation): 0x080 stays on the bus every 50 ms, 255 / NO_DATA, Network's
+ * own UPDATE_SEQUENCE 1..10 (one per evaluation), TX_SEQUENCE +1 per frame,
+ * AGE under 200 ms. (b) Then the last evaluation kept as a failed one (the same
+ * DOMAIN sequence, AGE grown from it: 10_DATA_AND_ID_RULES.md
+ * #delta-permission-sequences): the same UPDATE_SEQUENCE goes on, its wire AGE
+ * the real age of the evaluation, until the original AGE reaches 500 ms; then
+ * 0x080 stops for good (the receivers report SOURCE_EXPIRED once the AGE of
+ * the last frame reaches 500 ms: bcm_node.b15_permission_unknown_stream). A
+ * submission of it past the life is refused (REJECTED), one with an AGE below
+ * the accepted one grown by the time since is held (NOT_AVAILABLE). A
+ * resubmission of the kept
+ * evaluation goes out at once (the M04 slot takes the newer submission). */
+#define UNKNOWN_EVALUATIONS 10u
+#define UNKNOWN_SEQUENCE0 100u
+static int n43_permission_unknown_stream(void)
+{
+    const CanSeen *s, *prev = NULL;
+    const NetWireDomainPermissionRaw *p;
+    const uint32_t made = START_MS + 200u * (UNKNOWN_EVALUATIONS - 1u); /* the last evaluation */
+    const uint32_t kept = UNKNOWN_SEQUENCE0 + UNKNOWN_EVALUATIONS;      /* its DOMAIN sequence */
+    static const uint32_t kept_at[7] = { 200u, 250u, 300u, 350u, 400u, 401u, 451u }; /* after `made` */
+    uint32_t e;
+    unsigned k, mark;
+    CHECK(start());
+    for (e = 1u; e <= UNKNOWN_EVALUATIONS; ++e) {
+        run_to(START_MS + 200u * (e - 1u));
+        CHECK(tx_power(false, DATA_QUALITY_NO_DATA, UNKNOWN_SEQUENCE0 + e, 0u) == DOMAIN_IF_OK);
+    }
+    run_to(START_MS + 200u * UNKNOWN_EVALUATIONS - 1u);
+    CHECK(count_id(0x080u, 0u) == 4u * UNKNOWN_EVALUATIONS && can_bad == 0u && allows_from(0u) == 0u);
+    CHECK(consecutive(0x080u, 0u, 1u));
+    for (k = 0u; k < 4u * UNKNOWN_EVALUATIONS; ++k) {
+        s = nth_id(0x080u, 0u, k);
+        p = &s->m.data.domain_permission;
+        CHECK(s->at == START_MS + 1u + 50u * k);
+        CHECK(p->vehicle_power_permission == 255u && p->power_permission_quality == 3u);
+        CHECK(p->power_operation_state == 255u && p->operation_allowed == 0u && p->operation_quality == 3u);
+        CHECK(p->update_sequence == k / 4u + 1u);                    /* Network's number, one per evaluation */
+        CHECK(p->source_age_ms == 1u + 50u * (k % 4u) && p->source_age_ms < 200u);
+        if (prev != NULL) CHECK(s->at - prev->at == 50u);
+        prev = s;
+    }
+    /* (b) The last evaluation kept: same DOMAIN sequence, its real AGE. */
+    mark = can_count;
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, now_ms - made) == DOMAIN_IF_OK);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, 150u) ==
+          DOMAIN_IF_NOT_AVAILABLE);                                  /* below the last submitted AGE */
+    run_to(made + 400u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, now_ms - made) == DOMAIN_IF_OK);
+    run_to(made + 600u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, kept, now_ms - made) ==
+          DOMAIN_IF_REJECTED);                                       /* past the 500 ms life */
+    run_to(made + 1400u);
+    CHECK(count_id(0x080u, mark) == 7u && consecutive(0x080u, 0u, 1u));
+    for (k = 0u; k < 7u; ++k) {
+        s = nth_id(0x080u, mark, k);
+        p = &s->m.data.domain_permission;
+        CHECK(s->at == made + kept_at[k]);
+        CHECK(p->update_sequence == UNKNOWN_EVALUATIONS && p->source_age_ms == s->at - made); /* the real age */
+        CHECK(p->vehicle_power_permission == 255u && p->power_permission_quality == 3u);
+        CHECK(p->power_operation_state == 255u && p->operation_allowed == 0u && p->operation_quality == 3u);
+    }
+    /* The last frame at AGE 451; none at 501 or later, nothing after it. */
+    CHECK(allows_from(0u) == 0u && failure_calls == 0u);
+    return 0;
+}
+
+/* CIS_REAR measurement state changes. The rear sensor of the CIS stops
+ * answering after a valid distance: a frame that keeps the observation
+ * number and changes the distance / state (a no-echo result sent under the
+ * last number) is held, also when it turns to FAULT; DOMAIN keeps the last
+ * valid distance (DOMAIN would refuse that state under the same number: its
+ * rule compares the distance and the state). The same changes each sent
+ * as a new observation (new UPDATE_SEQUENCE, AGE from that measurement) reach
+ * DOMAIN in order: UNAVAILABLE, FAULT, RECOVERING, then a valid distance; a
+ * quality drop of one observation (same distance and state) still goes as its
+ * withdrawal. The route is never blocked. */
+static NetUpperCanMessage rear_obs(uint32_t tx, uint32_t update, uint16_t age, uint16_t distance,
+    uint8_t state, uint8_t validity, uint8_t reason)
+{
+    NetUpperCanMessage m = rear(tx, update, age);
+    m.data.cis_rear.rear_distance_deci_cm = distance;
+    m.data.cis_rear.proximity_status = state;
+    m.data.cis_rear.validity = validity;
+    m.data.cis_rear.quality_reason = reason;
+    return m;
+}
+static int rear_state_is(unsigned calls, uint32_t update, uint16_t distance, RearMeasurementState_t state,
+    DataQuality_t quality)
+{
+    CHECK(rear_calls == calls && !rear_route_blocked() && failure_calls == 0u);
+    CHECK(last_rear.distanceQuality.meta.updateSequence == update && last_rear.rearDistanceMm == distance);
+    CHECK(last_rear.measurementState == state && last_rear.distanceQuality.meta.quality == quality);
+    return 0;
+}
+static int n44_rear_state_change_new_sequence(void)
+{
+    NetUpperCanMessage m;
+    CHECK(start());
+    m = rear_obs(1u, 17u, 23u, 1234u, 0u, 1u, 0u);                    /* valid distance */
+    CHECK(rear_send_at(&m, START_MS) == 0);
+    CHECK(rear_state_is(1u, 17u, 1234u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    /* No echo, the observation number kept: 0xFFFF / UNAVAILABLE / NO_DATA, then FAULT. */
+    m = rear_obs(2u, 17u, 73u, 0xFFFFu, 2u, 0u, 6u);
+    CHECK(rear_send_at(&m, START_MS + 50u) == 0);
+    CHECK(rear_state_is(1u, 17u, 1234u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    CHECK(rear_record(1u, 1u, 0u));
+    m = rear_obs(3u, 17u, 123u, 0xFFFFu, 3u, 0u, 3u);
+    CHECK(rear_send_at(&m, START_MS + 100u) == 0);
+    CHECK(rear_state_is(1u, 17u, 1234u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    CHECK(rear_record(1u, 1u, 0u));
+    /* The same changes, each a new observation. */
+    m = rear_obs(4u, 18u, 5u, 0xFFFFu, 2u, 0u, 6u);                  /* no echo: UNAVAILABLE */
+    CHECK(rear_send_at(&m, START_MS + 150u) == 0);
+    CHECK(rear_state_is(2u, 18u, 0xFFFFu, REAR_MEASUREMENT_UNAVAILABLE, DATA_QUALITY_NO_DATA) == 0);
+    m = rear_obs(5u, 19u, 5u, 0xFFFFu, 3u, 0u, 3u);                  /* failures in a row: FAULT */
+    CHECK(rear_send_at(&m, START_MS + 200u) == 0);
+    CHECK(rear_state_is(3u, 19u, 0xFFFFu, REAR_MEASUREMENT_FAULT, DATA_QUALITY_INVALID) == 0);
+    m = rear_obs(6u, 20u, 5u, 0xFFFFu, 4u, 0u, 8u);                  /* an answer again: RECOVERING */
+    CHECK(rear_send_at(&m, START_MS + 250u) == 0);
+    CHECK(rear_state_is(4u, 20u, 0xFFFFu, REAR_MEASUREMENT_RECOVERING, DATA_QUALITY_INVALID) == 0);
+    m = rear_obs(7u, 21u, 5u, 1500u, 0u, 1u, 0u);                    /* the next answer: a valid distance */
+    CHECK(rear_send_at(&m, START_MS + 300u) == 0);
+    CHECK(rear_state_is(5u, 21u, 1500u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_OK) == 0);
+    m = rear_obs(8u, 21u, 55u, 1500u, 0u, 0u, 5u);                   /* that observation gone stale */
+    CHECK(rear_send_at(&m, START_MS + 350u) == 0);
+    CHECK(rear_state_is(6u, 21u, 1500u, REAR_MEASUREMENT_VALID_DISTANCE, DATA_QUALITY_STALE) == 0);
+    return 0;
+}
+
+/* DOMAIN_PERMISSION resubmitted as the same content (same DOMAIN sequence,
+ * values and qualities). The frames of one UPDATE_SEQUENCE never carry an AGE
+ * below the earlier frames' AGE grown by the time between them: a submission
+ * whose AGE is below the accepted AGE grown by the time since is held
+ * (DOMAIN_IF_NOT_AVAILABLE) and the frames already in the slot go on with
+ * their own AGE; Network makes no new number for it, whatever the values. One
+ * evaluation then lasts its 500 ms original life: every frame carries its time
+ * since the submission, at most 50 ms apart, the last one at `last` (AGE under
+ * 500), nothing after. A kept submission is sent at once and the 50 ms cadence
+ * restarts from it. */
+static int resubmitted_stream(uint8_t power, uint8_t quality, unsigned held, unsigned frames, uint32_t last)
+{
+    const CanSeen *s, *prev = NULL;
+    const NetDomainC2 *a = NetNode_DomainC2();
+    const NetWireDomainPermissionRaw *p;
+    unsigned k;
+    run_to(START_MS + 1000u);
+    CHECK(count_id(0x080u, 0u) == frames && consecutive(0x080u, 0u, 1u) && can_bad == 0u);
+    for (k = 0u; k < frames; ++k) {
+        s = nth_id(0x080u, 0u, k);
+        p = &s->m.data.domain_permission;
+        CHECK(p->update_sequence == 1u && p->source_age_ms == s->at - START_MS);   /* never restarted */
+        CHECK(p->vehicle_power_permission == power && p->power_permission_quality == quality);
+        if (prev != NULL) CHECK(s->at > prev->at && s->at - prev->at <= 50u);
+        prev = s;
+    }
+    CHECK(prev != NULL && prev->at == START_MS + last && last < 500u);
+    CHECK(a != NULL && a->permission.sequence == 1u && a->permission.advanced == 1u);
+    CHECK(a->permission.held_age == held && failure_calls == 0u);
+    return 0;
+}
+/* No success history: the DOMAIN permission manager reports UNKNOWN with
+ * sequence 0 and AGE 0 at every evaluation (no evaluator: NO_DATA each time). */
+static int n45_permission_unevaluated_resubmit_held(void)
+{
+    uint32_t e;
+    CHECK(start());
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 0u, 0u) == DOMAIN_IF_OK);
+    for (e = 1u; e <= 4u; ++e) {
+        run_to(START_MS + 200u * e);
+        CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 0u, 0u) == DOMAIN_IF_NOT_AVAILABLE);
+    }
+    CHECK(resubmitted_stream(255u, 3u, 4u, 10u, 451u) == 0);
+    CHECK(allows_from(0u) == 0u);
+    return 0;
+}
+/* An ALLOW resubmitted with a smaller AGE does not renew it; with its grown
+ * AGE it is kept (the same number), and it ends with its 500 ms life. */
+static int n46_permission_allow_resubmit_held(void)
+{
+    CHECK(start());
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 120u);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 0u) == DOMAIN_IF_NOT_AVAILABLE);
+    run_to(START_MS + 240u);
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 239u) == DOMAIN_IF_NOT_AVAILABLE);  /* 1 ms short */
+    CHECK(tx_power(true, DATA_QUALITY_OK, 5u, 240u) == DOMAIN_IF_OK);             /* kept */
+    CHECK(resubmitted_stream(1u, 0u, 2u, 11u, 491u) == 0);   /* kept at +240: sent at +241 */
+    CHECK(allows_from(0u) == 11u && NetNode_DomainC2()->permission.kept == 1u);
+    return 0;
+}
+/* An evaluation kept as a failed one (same sequence, AGE grown), its AGE
+ * counted on a DOMAIN clock 10 ms behind: held, the frames keep their AGE;
+ * with its grown AGE kept (only the kept counter shows it: the frame at +401
+ * is the periodic one). */
+static int n47_permission_resubmit_clock_short(void)
+{
+    CHECK(start());
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 200u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 190u) == DOMAIN_IF_NOT_AVAILABLE);
+    run_to(START_MS + 400u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 390u) == DOMAIN_IF_NOT_AVAILABLE);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 2u, 400u) == DOMAIN_IF_OK);
+    CHECK(resubmitted_stream(255u, 3u, 2u, 10u, 451u) == 0);
+    CHECK(NetNode_DomainC2()->permission.kept == 1u);
+    return 0;
+}
+
+/* A kept resubmission moves the floor: after an AGE ahead of the time (kept),
+ * a later resubmission between the old floor and the new one is held. Every
+ * frame of the number carries at least the AGE of the one before it grown by
+ * the time between them; the last one before the 500 ms life, nothing after. */
+static int n48_permission_resubmit_after_forward_age(void)
+{
+    const CanSeen *s, *prev = NULL;
+    const NetDomainC2 *a;
+    unsigned k, n;
+    CHECK(start());
+    a = NetNode_DomainC2();
+    CHECK(a != NULL);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 0u) == DOMAIN_IF_OK);
+    run_to(START_MS + 100u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 150u) == DOMAIN_IF_OK);        /* 50 ms ahead: kept */
+    run_to(START_MS + 200u);
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 220u) == DOMAIN_IF_NOT_AVAILABLE); /* below 150 + 100 */
+    CHECK(tx_power(false, DATA_QUALITY_NO_DATA, 3u, 250u) == DOMAIN_IF_OK);
+    run_to(START_MS + 1000u);
+    n = count_id(0x080u, 0u);
+    CHECK(n >= 2u && consecutive(0x080u, 0u, 1u) && can_bad == 0u);
+    for (k = 0u; k < n; ++k) {
+        s = nth_id(0x080u, 0u, k);
+        CHECK(s->m.data.domain_permission.update_sequence == 1u);
+        if (prev != NULL)
+            CHECK(s->m.data.domain_permission.source_age_ms >=
+                  prev->m.data.domain_permission.source_age_ms + (s->at - prev->at));
+        prev = s;
+    }
+    CHECK(prev->at == START_MS + 401u && prev->m.data.domain_permission.source_age_ms == 451u);
+    CHECK(a->permission.kept == 2u && a->permission.held_age == 1u && a->permission.advanced == 1u);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    static const struct { const char *name; int (*run)(void); } cases[] = {
+        { "n01_init", n01_init }, { "n02_init_order", n02_init_order },
+        { "n03_can_rx_to_c2", n03_can_rx_to_c2 }, { "n04_uart_m_context", n04_uart_m_context },
+        { "n05_permission_50ms", n05_permission_50ms },
+        { "n06_permission_withdraw_replaces", n06_permission_withdraw_replaces },
+        { "n06b_withdraw_aged_no_allow", n06b_withdraw_aged_no_allow },
+        { "n07_warning_50ms", n07_warning_50ms }, { "n08_bcm_target_boot", n08_bcm_target_boot },
+        { "n09_alive_250ms", n09_alive_250ms }, { "n09b_alive_change", n09b_alive_change },
+        { "n10_tx_flush_same_pass", n10_tx_flush_same_pass },
+        { "n11_tx_sequence_per_message", n11_tx_sequence_per_message },
+        { "n12_entry_clock_axis", n12_entry_clock_axis },
+        { "n13_composite_field_age", n13_composite_field_age },
+        { "n14_uart_m_receive_policy", n14_uart_m_receive_policy },
+        { "n16_board_transition_binding", n16_board_transition_binding },
+        { "n17_bcm_state_field_age", n17_bcm_state_field_age },
+        { "n18_bcm_result_rejected", n18_bcm_result_rejected },
+        { "n19_busoff_recovery", n19_busoff_recovery },
+        { "n20_uart_m_burst", n20_uart_m_burst }, { "load_doc_traffic", load_doc_traffic },
+        { "n21_same_id_order", n21_same_id_order },
+        { "n22_same_id_order_deferred", n22_same_id_order_deferred },
+        { "n23_busoff_command_held", n23_busoff_command_held },
+        { "n24_state_relay_retired", n24_state_relay_retired },
+        { "n25_busoff_reason_queue_and_port", n25_busoff_reason_queue_and_port },
+        { "n26_driver_submit_errors", n26_driver_submit_errors },
+        { "n27_occurrence_unsupported_retired", n27_occurrence_unsupported_retired },
+        { "n28_m_result_session_changed", n28_m_result_session_changed },
+        { "n29_m_result_hal_queue_left", n29_m_result_hal_queue_left },
+        { "n30_quarantined_late_completion", n30_quarantined_late_completion },
+        { "n31_rear_withdraw_invalid", n31_rear_withdraw_invalid },
+        { "n32_rear_withdraw_stale", n32_rear_withdraw_stale },
+        { "n33_rear_withdraw_no_data", n33_rear_withdraw_no_data },
+        { "n34_rear_unusable_absorbed", n34_rear_unusable_absorbed },
+        { "n35_rear_same_observation_held", n35_rear_same_observation_held },
+        { "n36_rear_sequence_and_age_held", n36_rear_sequence_and_age_held },
+        { "n37_occupant_quality_delivered", n37_occupant_quality_delivered },
+        { "n38_environment_quality_delivered", n38_environment_quality_delivered },
+        { "n39_occupant_cis_restart", n39_occupant_cis_restart },
+        { "n40_occupant_rejected_change_dropped", n40_occupant_rejected_change_dropped },
+        { "n41_occupant_held_failure_blocks", n41_occupant_held_failure_blocks },
+        { "n42_occupant_new_judgement_rejected_blocks", n42_occupant_new_judgement_rejected_blocks },
+        { "n43_permission_unknown_stream", n43_permission_unknown_stream },
+        { "n44_rear_state_change_new_sequence", n44_rear_state_change_new_sequence },
+        { "n45_permission_unevaluated_resubmit_held", n45_permission_unevaluated_resubmit_held },
+        { "n46_permission_allow_resubmit_held", n46_permission_allow_resubmit_held },
+        { "n47_permission_resubmit_clock_short", n47_permission_resubmit_clock_short },
+        { "n48_permission_resubmit_after_forward_age", n48_permission_resubmit_after_forward_age },
+        { "n49_environment_drop_invalid_encoding", n49_environment_drop_invalid_encoding },
+        { "n50_age_saturated_on_send", n50_age_saturated_on_send },
+        { "n15_board_c2_hook", n15_board_c2_hook }
+    };
+    size_t i;
+    if (argc != 2) { fprintf(stderr, "usage: %s <case>\n", argv[0]); return 2; }
+    for (i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        if (strcmp(argv[1], cases[i].name) == 0) {
+            case_name = cases[i].name;
+            return cases[i].run();
+        }
+    }
+    fprintf(stderr, "unknown case %s\n", argv[1]);
+    return 2;
+}

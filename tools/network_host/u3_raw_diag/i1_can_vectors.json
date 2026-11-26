@@ -1,0 +1,156 @@
+{
+  "source_member": "NETWORK_I1_PROVISIONAL_HOST_RESULT/vectors/golden_vectors.json",
+  "source_sha256": "0901621104eb45f9ad157ad1766e5f417e0b222129c1a39aac3753ce2938503a",
+  "derivation": "R4 byte tables -> Python struct.pack + binascii.crc_hqx, frozen before any C codec execution. No codec-generated expected bytes. Envelope-only boundary vectors are not candidate messages.",
+  "selection": "Only the nine existing CIS_REAR / DOMAIN_PERMISSION objects; unchanged field and expected_hex values, original full fixture preserved locally.",
+  "vectors": [
+    {
+      "id": "R01_REAR_LE",
+      "kind": "CIS_REAR",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 287454020,
+        "tx_sequence": 1432778632,
+        "update_sequence": 16909060,
+        "source_age_ms": 4660,
+        "rear_distance_deci_cm": 22136,
+        "validity": 1,
+        "quality_reason": 0,
+        "proximity_status": 0
+      },
+      "expected_hex": "4433221188776655040302013412785601000000"
+    },
+    {
+      "id": "R02_NO_OBJECT",
+      "kind": "CIS_REAR",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 1,
+        "tx_sequence": 2,
+        "update_sequence": 3,
+        "source_age_ms": 100,
+        "rear_distance_deci_cm": 65535,
+        "validity": 1,
+        "quality_reason": 0,
+        "proximity_status": 1
+      },
+      "expected_hex": "0100000002000000030000006400ffff01000100"
+    },
+    {
+      "id": "R03_NO_DATA_MAX",
+      "kind": "CIS_REAR",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 4294967295,
+        "tx_sequence": 4294967295,
+        "update_sequence": 4294967295,
+        "source_age_ms": 65535,
+        "rear_distance_deci_cm": 65535,
+        "validity": 0,
+        "quality_reason": 6,
+        "proximity_status": 2
+      },
+      "expected_hex": "ffffffffffffffffffffffffffffffff00060200"
+    },
+    {
+      "id": "R04_ZERO_COUNTERS",
+      "kind": "CIS_REAR",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 1,
+        "tx_sequence": 0,
+        "update_sequence": 0,
+        "source_age_ms": 0,
+        "rear_distance_deci_cm": 0,
+        "validity": 1,
+        "quality_reason": 0,
+        "proximity_status": 0
+      },
+      "expected_hex": "0100000000000000000000000000000001000000"
+    },
+    {
+      "id": "R05_FAULT_PRESERVE",
+      "kind": "CIS_REAR",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 1,
+        "tx_sequence": 3,
+        "update_sequence": 9,
+        "source_age_ms": 65535,
+        "rear_distance_deci_cm": 240,
+        "validity": 0,
+        "quality_reason": 3,
+        "proximity_status": 3
+      },
+      "expected_hex": "010000000300000009000000fffff00000030300"
+    },
+    {
+      "id": "D01_PERMISSION_LE",
+      "kind": "DOMAIN_PERMISSION",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 2309737967,
+        "tx_sequence": 270544960,
+        "vehicle_power_permission": 1,
+        "power_permission_quality": 0,
+        "power_operation_state": 255,
+        "operation_allowed": 0,
+        "operation_quality": 3,
+        "update_sequence": 287454020,
+        "source_age_ms": 21862
+      },
+      "expected_hex": "efcdab89403020100100ff000344332211665500"
+    },
+    {
+      "id": "D02_UNKNOWN",
+      "kind": "DOMAIN_PERMISSION",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 1,
+        "tx_sequence": 0,
+        "vehicle_power_permission": 255,
+        "power_permission_quality": 3,
+        "power_operation_state": 255,
+        "operation_allowed": 0,
+        "operation_quality": 3,
+        "update_sequence": 0,
+        "source_age_ms": 65535
+      },
+      "expected_hex": "0100000000000000ff03ff000300000000ffff00"
+    },
+    {
+      "id": "D03_STALE_RAW_ALLOW_BITS",
+      "kind": "DOMAIN_PERMISSION",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 4294967295,
+        "tx_sequence": 4294967295,
+        "vehicle_power_permission": 1,
+        "power_permission_quality": 1,
+        "power_operation_state": 1,
+        "operation_allowed": 1,
+        "operation_quality": 2,
+        "update_sequence": 4294967295,
+        "source_age_ms": 65535
+      },
+      "expected_hex": "ffffffffffffffff0101010102ffffffffffff00"
+    },
+    {
+      "id": "D04_ZERO_FIELDS",
+      "kind": "DOMAIN_PERMISSION",
+      "status": "R4_PROPOSED_HOST",
+      "fields": {
+        "boot_id": 1,
+        "tx_sequence": 0,
+        "vehicle_power_permission": 0,
+        "power_permission_quality": 0,
+        "power_operation_state": 0,
+        "operation_allowed": 0,
+        "operation_quality": 0,
+        "update_sequence": 0,
+        "source_age_ms": 0
+      },
+      "expected_hex": "0100000000000000000000000000000000000000"
+    }
+  ]
+}

@@ -1,0 +1,1015 @@
+{
+  "status": "PASS_INDEPENDENT_HOST_GOLDEN_REFERENCE",
+  "client_date": "2026-10-17",
+  "typed_vector_count": 7,
+  "extra_structural_vector_count": 2,
+  "historical_I1_vectors": "NOT_USED; original files and SHA were not authenticated",
+  "candidate_archive_sha256": "f9d803bfdaf2eab1eb1c56581e550f8046b48a34c43e551ee8060878f8ba4b5c",
+  "method": "Handwritten fields -> Python struct.pack little endian -> binascii.crc_hqx; compare fixed C literals. No production codec calls.",
+  "uart_header_offsets": {
+    "SYNC": [
+      0,
+      2
+    ],
+    "VERSION": [
+      2,
+      1
+    ],
+    "TYPE": [
+      3,
+      1
+    ],
+    "P_U16LE": [
+      4,
+      2
+    ],
+    "LINK_SEQUENCE_U16LE": [
+      6,
+      2
+    ],
+    "PAYLOAD": [
+      8,
+      "P"
+    ]
+  },
+  "crc_check_vectors": [
+    {
+      "ascii": "123456789",
+      "crc": "0x29b1",
+      "crc_le_hex": "b129"
+    },
+    {
+      "ascii": "",
+      "crc": "0xffff",
+      "crc_le_hex": "ffff"
+    }
+  ],
+  "source_sha256": {
+    "tests/host/test_wire_can.c": "c903db6f9cff89da073662f708de33cd30dd9fcd66d0286965e4ef459bb0bcb4",
+    "tests/host/test_wire_uart_dto.c": "6ab9b6cffe8bd3c6ec3e68ff916cf9e7bb46a81dc4b0f1be880be73a56164cc5",
+    "tests/host/test_wire_stream.c": "a7e586f1a3e51f23606c96324338c3f16017d95675d249de0772c0f706e01e48"
+  },
+  "typed_vectors": [
+    {
+      "message": "CIS_REAR",
+      "link": "CAN",
+      "id_or_type": "0x0a0",
+      "source_document": "FINAL_98/docs/network/interface/03_COMMUNICATION/10_CAN_FD.md",
+      "test_source": "tests/host/test_wire_can.c",
+      "literal_symbol": "rear_golden",
+      "classification": "NEW_HOST_TYPED_CANDIDATE_VECTOR_NOT_I1_NOT_PRODUCT_APPROVAL",
+      "payload_used_bytes": 19,
+      "fields": [
+        {
+          "field": "BOOT_ID",
+          "payload_offset": 0,
+          "frame_offset": 0,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 16909060,
+          "packed_hex": "04030201"
+        },
+        {
+          "field": "TX_SEQUENCE",
+          "payload_offset": 4,
+          "frame_offset": 4,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 287454020,
+          "packed_hex": "44332211"
+        },
+        {
+          "field": "UPDATE_SEQUENCE",
+          "payload_offset": 8,
+          "frame_offset": 8,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 2712847316,
+          "packed_hex": "d4c3b2a1"
+        },
+        {
+          "field": "SOURCE_AGE",
+          "payload_offset": 12,
+          "frame_offset": 12,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 4660,
+          "packed_hex": "3412"
+        },
+        {
+          "field": "REAR_DISTANCE",
+          "payload_offset": 14,
+          "frame_offset": 14,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 123,
+          "packed_hex": "7b00"
+        },
+        {
+          "field": "VALIDITY",
+          "payload_offset": 16,
+          "frame_offset": 16,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "QUALITY_REASON",
+          "payload_offset": 17,
+          "frame_offset": 17,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "PROXIMITY_STATUS",
+          "payload_offset": 18,
+          "frame_offset": 18,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        }
+      ],
+      "dlc": 11,
+      "standard_11bit": true,
+      "fdf": 1,
+      "brs": 1,
+      "rtr": 0,
+      "padding": {
+        "offset": 19,
+        "length": 1,
+        "hex": "00"
+      },
+      "crc": "NO_APPLICATION_CRC; CAN FD controller CRC is external",
+      "frame_bytes": 20,
+      "frame_hex": "0403020144332211d4c3b2a134127b0001000000",
+      "frame_sha256": "4efc7f8770686e3c1b3a3842237345c5d217dbd97faf30e7a0d34da45dd10eaf",
+      "matches_fixed_c_literal": true
+    },
+    {
+      "message": "DOMAIN_PERMISSION",
+      "link": "CAN",
+      "id_or_type": "0x080",
+      "source_document": "FINAL_98/docs/network/interface/03_COMMUNICATION/10_CAN_FD.md",
+      "test_source": "tests/host/test_wire_can.c",
+      "literal_symbol": "permission_golden",
+      "classification": "NEW_HOST_TYPED_CANDIDATE_VECTOR_NOT_I1_NOT_PRODUCT_APPROVAL",
+      "payload_used_bytes": 19,
+      "fields": [
+        {
+          "field": "BOOT_ID",
+          "payload_offset": 0,
+          "frame_offset": 0,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 270544960,
+          "packed_hex": "40302010"
+        },
+        {
+          "field": "TX_SEQUENCE",
+          "payload_offset": 4,
+          "frame_offset": 4,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 1348497536,
+          "packed_hex": "80706050"
+        },
+        {
+          "field": "VEHICLE_POWER_PERMISSION",
+          "payload_offset": 8,
+          "frame_offset": 8,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "POWER_PERMISSION_QUALITY",
+          "payload_offset": 9,
+          "frame_offset": 9,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "POWER_OPERATION_STATE",
+          "payload_offset": 10,
+          "frame_offset": 10,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 255,
+          "packed_hex": "ff"
+        },
+        {
+          "field": "OPERATION_ALLOWED",
+          "payload_offset": 11,
+          "frame_offset": 11,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "OPERATION_QUALITY",
+          "payload_offset": 12,
+          "frame_offset": 12,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 3,
+          "packed_hex": "03"
+        },
+        {
+          "field": "UPDATE_SEQUENCE",
+          "payload_offset": 13,
+          "frame_offset": 13,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 2309737967,
+          "packed_hex": "efcdab89"
+        },
+        {
+          "field": "SOURCE_AGE",
+          "payload_offset": 17,
+          "frame_offset": 17,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 65244,
+          "packed_hex": "dcfe"
+        }
+      ],
+      "dlc": 11,
+      "standard_11bit": true,
+      "fdf": 1,
+      "brs": 1,
+      "rtr": 0,
+      "padding": {
+        "offset": 19,
+        "length": 1,
+        "hex": "00"
+      },
+      "crc": "NO_APPLICATION_CRC; CAN FD controller CRC is external",
+      "frame_bytes": 20,
+      "frame_hex": "40302010807060500100ff0003efcdab89dcfe00",
+      "frame_sha256": "5d8082fc884ce015bc25e272ef83fdca4dda827a7913c6bc7d32b44e84245daf",
+      "matches_fixed_c_literal": true
+    },
+    {
+      "message": "P_VISION_RESULT",
+      "link": "UART-C",
+      "id_or_type": "0x60",
+      "source_document": "FINAL_98/docs/network/interface/03_COMMUNICATION/30_UART_C.md",
+      "test_source": "tests/host/test_wire_uart_dto.c",
+      "literal_symbol": "golden_vision",
+      "classification": "NEW_HOST_TYPED_CANDIDATE_VECTOR_NOT_I1_NOT_PRODUCT_APPROVAL",
+      "payload_used_bytes": 19,
+      "fields": [
+        {
+          "field": "PI_BOOT_ID",
+          "payload_offset": 0,
+          "frame_offset": 8,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 305419896,
+          "packed_hex": "78563412"
+        },
+        {
+          "field": "VISION_SEQUENCE",
+          "payload_offset": 4,
+          "frame_offset": 12,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 2427178479,
+          "packed_hex": "efcdab90"
+        },
+        {
+          "field": "VISION_AGE",
+          "payload_offset": 8,
+          "frame_offset": 16,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 4660,
+          "packed_hex": "3412"
+        },
+        {
+          "field": "OCCUPANT_PRESENCE",
+          "payload_offset": 10,
+          "frame_offset": 18,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "PRESENCE_VALIDITY",
+          "payload_offset": 11,
+          "frame_offset": 19,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "PRESENCE_REASON",
+          "payload_offset": 12,
+          "frame_offset": 20,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "OCCUPANT_COUNT",
+          "payload_offset": 13,
+          "frame_offset": 21,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 3,
+          "packed_hex": "03"
+        },
+        {
+          "field": "COUNT_VALIDITY",
+          "payload_offset": 14,
+          "frame_offset": 22,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "COUNT_REASON",
+          "payload_offset": 15,
+          "frame_offset": 23,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "VISION_STATUS",
+          "payload_offset": 16,
+          "frame_offset": 24,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 2,
+          "packed_hex": "02"
+        },
+        {
+          "field": "VISION_FAULT_CODE",
+          "payload_offset": 17,
+          "frame_offset": 25,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 0,
+          "packed_hex": "0000"
+        }
+      ],
+      "version": 1,
+      "link_sequence": 23205,
+      "header_hex": "a55a01601300a55a",
+      "crc": {
+        "algorithm": "CRC-16/CCITT-FALSE",
+        "polynomial": "0x1021",
+        "initial": "0xffff",
+        "refin": false,
+        "refout": false,
+        "xorout": 0,
+        "reference": "Python stdlib binascii.crc_hqx(protected_bytes, 0xffff)",
+        "window_frame_start_inclusive": 2,
+        "window_frame_end_inclusive": 26,
+        "protected_length": 25,
+        "protected_hex": "01601300a55a78563412efcdab903412010100030100020000",
+        "numeric_crc": "0x60a7",
+        "wire_crc_le_hex": "a760",
+        "wire_crc_offset": 27,
+        "sync_excluded": true
+      },
+      "frame_bytes": 29,
+      "frame_hex": "a55a01601300a55a78563412efcdab903412010100030100020000a760",
+      "frame_sha256": "181237fd2bcd863961fe67b03f6c607c9858e58aac96f0cb8e2f3596cf58dc0c",
+      "matches_fixed_c_literal": true
+    },
+    {
+      "message": "P_PERMISSION",
+      "link": "UART-C",
+      "id_or_type": "0x62",
+      "source_document": "FINAL_98/docs/network/interface/03_COMMUNICATION/30_UART_C.md",
+      "test_source": "tests/host/test_wire_uart_dto.c",
+      "literal_symbol": "golden_permission",
+      "classification": "NEW_HOST_TYPED_CANDIDATE_VECTOR_NOT_I1_NOT_PRODUCT_APPROVAL",
+      "payload_used_bytes": 15,
+      "fields": [
+        {
+          "field": "CIS_BOOT_ID",
+          "payload_offset": 0,
+          "frame_offset": 8,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 305419896,
+          "packed_hex": "78563412"
+        },
+        {
+          "field": "UPDATE_SEQUENCE",
+          "payload_offset": 4,
+          "frame_offset": 12,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 2427178479,
+          "packed_hex": "efcdab90"
+        },
+        {
+          "field": "VEHICLE_POWER_PERMISSION",
+          "payload_offset": 8,
+          "frame_offset": 16,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "VALUE_QUALITY",
+          "payload_offset": 9,
+          "frame_offset": 17,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "QUALITY_REASON",
+          "payload_offset": 10,
+          "frame_offset": 18,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "USE_LIMIT",
+          "payload_offset": 11,
+          "frame_offset": 19,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 1500,
+          "packed_hex": "dc05"
+        },
+        {
+          "field": "SOURCE_AGE",
+          "payload_offset": 13,
+          "frame_offset": 21,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 499,
+          "packed_hex": "f301"
+        }
+      ],
+      "version": 1,
+      "link_sequence": 23205,
+      "header_hex": "a55a01620f00a55a",
+      "crc": {
+        "algorithm": "CRC-16/CCITT-FALSE",
+        "polynomial": "0x1021",
+        "initial": "0xffff",
+        "refin": false,
+        "refout": false,
+        "xorout": 0,
+        "reference": "Python stdlib binascii.crc_hqx(protected_bytes, 0xffff)",
+        "window_frame_start_inclusive": 2,
+        "window_frame_end_inclusive": 22,
+        "protected_length": 21,
+        "protected_hex": "01620f00a55a78563412efcdab90010000dc05f301",
+        "numeric_crc": "0xd2cb",
+        "wire_crc_le_hex": "cbd2",
+        "wire_crc_offset": 23,
+        "sync_excluded": true
+      },
+      "frame_bytes": 25,
+      "frame_hex": "a55a01620f00a55a78563412efcdab90010000dc05f301cbd2",
+      "frame_sha256": "5a8b36e1e3a59c5597650737f8bb38f4aeb2e797d0c2b968499cec934c4e1813",
+      "matches_fixed_c_literal": true
+    },
+    {
+      "message": "M_CONTEXT",
+      "link": "UART-M",
+      "id_or_type": "0x01",
+      "source_document": "FINAL_98/docs/network/interface/03_COMMUNICATION/20_UART_M.md",
+      "test_source": "tests/host/test_wire_uart_dto.c",
+      "literal_symbol": "golden_context",
+      "classification": "NEW_HOST_TYPED_CANDIDATE_VECTOR_NOT_I1_NOT_PRODUCT_APPROVAL",
+      "payload_used_bytes": 38,
+      "fields": [
+        {
+          "field": "DEVICE_CONTEXT_ID",
+          "payload_offset": 0,
+          "frame_offset": 8,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 305419896,
+          "packed_hex": "78563412"
+        },
+        {
+          "field": "SESSION_ID",
+          "payload_offset": 4,
+          "frame_offset": 12,
+          "width_bytes": 8,
+          "struct_format": "<Q",
+          "input_value": 81985529216486895,
+          "packed_hex": "efcdab8967452301"
+        },
+        {
+          "field": "DEVICE_REGISTRATION_STATE",
+          "payload_offset": 12,
+          "frame_offset": 20,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "BT_CONNECTION_STATE",
+          "payload_offset": 13,
+          "frame_offset": 21,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "APP_ACTIVE_STATE",
+          "payload_offset": 14,
+          "frame_offset": 22,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "APP_QUALITY",
+          "payload_offset": 15,
+          "frame_offset": 23,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "APP_UPDATE_SEQUENCE",
+          "payload_offset": 16,
+          "frame_offset": 24,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 270544960,
+          "packed_hex": "40302010"
+        },
+        {
+          "field": "APP_AGE",
+          "payload_offset": 20,
+          "frame_offset": 28,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 4660,
+          "packed_hex": "3412"
+        },
+        {
+          "field": "PROXIMITY_STATE",
+          "payload_offset": 22,
+          "frame_offset": 30,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "PROXIMITY_VALIDITY",
+          "payload_offset": 23,
+          "frame_offset": 31,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "PROXIMITY_REASON",
+          "payload_offset": 24,
+          "frame_offset": 32,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "PROXIMITY_UPDATE_SEQUENCE",
+          "payload_offset": 25,
+          "frame_offset": 33,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 1348497536,
+          "packed_hex": "80706050"
+        },
+        {
+          "field": "PROXIMITY_AGE",
+          "payload_offset": 29,
+          "frame_offset": 37,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 22136,
+          "packed_hex": "7856"
+        },
+        {
+          "field": "REGISTRATION_CONNECTION_QUALITY",
+          "payload_offset": 31,
+          "frame_offset": 39,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 0,
+          "packed_hex": "00"
+        },
+        {
+          "field": "REGISTRATION_CONNECTION_UPDATE_SEQUENCE",
+          "payload_offset": 32,
+          "frame_offset": 40,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 2427178479,
+          "packed_hex": "efcdab90"
+        },
+        {
+          "field": "REGISTRATION_CONNECTION_AGE",
+          "payload_offset": 36,
+          "frame_offset": 44,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 39612,
+          "packed_hex": "bc9a"
+        }
+      ],
+      "version": 2,
+      "link_sequence": 23205,
+      "header_hex": "a55a02012600a55a",
+      "crc": {
+        "algorithm": "CRC-16/CCITT-FALSE",
+        "polynomial": "0x1021",
+        "initial": "0xffff",
+        "refin": false,
+        "refout": false,
+        "xorout": 0,
+        "reference": "Python stdlib binascii.crc_hqx(protected_bytes, 0xffff)",
+        "window_frame_start_inclusive": 2,
+        "window_frame_end_inclusive": 45,
+        "protected_length": 44,
+        "protected_hex": "02012600a55a78563412efcdab89674523010101000040302010341201010080706050785600efcdab90bc9a",
+        "numeric_crc": "0xfd3d",
+        "wire_crc_le_hex": "3dfd",
+        "wire_crc_offset": 46,
+        "sync_excluded": true
+      },
+      "frame_bytes": 48,
+      "frame_hex": "a55a02012600a55a78563412efcdab89674523010101000040302010341201010080706050785600efcdab90bc9a3dfd",
+      "frame_sha256": "70c68ebb627cf41797b93e5b14396c6a981b704f47ea213d115c468e714cf14c",
+      "matches_fixed_c_literal": true
+    },
+    {
+      "message": "M_REQUEST",
+      "link": "UART-M",
+      "id_or_type": "0x10",
+      "source_document": "FINAL_98/docs/network/interface/03_COMMUNICATION/20_UART_M.md",
+      "test_source": "tests/host/test_wire_uart_dto.c",
+      "literal_symbol": "golden_request",
+      "classification": "NEW_HOST_TYPED_CANDIDATE_VECTOR_NOT_I1_NOT_PRODUCT_APPROVAL",
+      "payload_used_bytes": 24,
+      "fields": [
+        {
+          "field": "DEVICE_CONTEXT_ID",
+          "payload_offset": 0,
+          "frame_offset": 8,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 305419896,
+          "packed_hex": "78563412"
+        },
+        {
+          "field": "SESSION_ID",
+          "payload_offset": 4,
+          "frame_offset": 12,
+          "width_bytes": 8,
+          "struct_format": "<Q",
+          "input_value": 81985529216486895,
+          "packed_hex": "efcdab8967452301"
+        },
+        {
+          "field": "REQUEST_ID",
+          "payload_offset": 12,
+          "frame_offset": 20,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 2427178479,
+          "packed_hex": "efcdab90"
+        },
+        {
+          "field": "REQUEST_KIND",
+          "payload_offset": 16,
+          "frame_offset": 24,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 2,
+          "packed_hex": "02"
+        },
+        {
+          "field": "OPERATION",
+          "payload_offset": 17,
+          "frame_offset": 25,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "ARG_0..1_SIGNED_CENTI_C",
+          "payload_offset": 18,
+          "frame_offset": 26,
+          "width_bytes": 2,
+          "struct_format": "<h",
+          "input_value": -1234,
+          "packed_hex": "2efb"
+        },
+        {
+          "field": "ARG_2..5_RESERVED",
+          "payload_offset": 20,
+          "frame_offset": 28,
+          "width_bytes": 4,
+          "struct_format": "<4s",
+          "input_value": "00000000",
+          "packed_hex": "00000000"
+        }
+      ],
+      "version": 2,
+      "link_sequence": 23205,
+      "header_hex": "a55a02101800a55a",
+      "crc": {
+        "algorithm": "CRC-16/CCITT-FALSE",
+        "polynomial": "0x1021",
+        "initial": "0xffff",
+        "refin": false,
+        "refout": false,
+        "xorout": 0,
+        "reference": "Python stdlib binascii.crc_hqx(protected_bytes, 0xffff)",
+        "window_frame_start_inclusive": 2,
+        "window_frame_end_inclusive": 31,
+        "protected_length": 30,
+        "protected_hex": "02101800a55a78563412efcdab8967452301efcdab9002012efb00000000",
+        "numeric_crc": "0x6881",
+        "wire_crc_le_hex": "8168",
+        "wire_crc_offset": 32,
+        "sync_excluded": true
+      },
+      "frame_bytes": 34,
+      "frame_hex": "a55a02101800a55a78563412efcdab8967452301efcdab9002012efb000000008168",
+      "frame_sha256": "6d959a5db8e75c29924860c426a054568148f6fd0ffc5d8f610668251dd158e2",
+      "matches_fixed_c_literal": true
+    },
+    {
+      "message": "M_RESULT",
+      "link": "UART-M",
+      "id_or_type": "0x20",
+      "source_document": "FINAL_98/docs/network/interface/03_COMMUNICATION/20_UART_M.md",
+      "test_source": "tests/host/test_wire_uart_dto.c",
+      "literal_symbol": "golden_result",
+      "classification": "NEW_HOST_TYPED_CANDIDATE_VECTOR_NOT_I1_NOT_PRODUCT_APPROVAL",
+      "payload_used_bytes": 44,
+      "fields": [
+        {
+          "field": "DEVICE_CONTEXT_ID",
+          "payload_offset": 0,
+          "frame_offset": 8,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 305419896,
+          "packed_hex": "78563412"
+        },
+        {
+          "field": "SESSION_ID",
+          "payload_offset": 4,
+          "frame_offset": 12,
+          "width_bytes": 8,
+          "struct_format": "<Q",
+          "input_value": 12,
+          "packed_hex": "0c00000000000000"
+        },
+        {
+          "field": "DOMAIN_BOOT_ID",
+          "payload_offset": 12,
+          "frame_offset": 20,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 270544960,
+          "packed_hex": "40302010"
+        },
+        {
+          "field": "QUERY_ID",
+          "payload_offset": 16,
+          "frame_offset": 24,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 1348497536,
+          "packed_hex": "80706050"
+        },
+        {
+          "field": "REQUEST_SESSION",
+          "payload_offset": 20,
+          "frame_offset": 28,
+          "width_bytes": 8,
+          "struct_format": "<Q",
+          "input_value": 7,
+          "packed_hex": "0700000000000000"
+        },
+        {
+          "field": "REQUEST_ID",
+          "payload_offset": 28,
+          "frame_offset": 36,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 2427178479,
+          "packed_hex": "efcdab90"
+        },
+        {
+          "field": "RESULT",
+          "payload_offset": 32,
+          "frame_offset": 40,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 2,
+          "packed_hex": "02"
+        },
+        {
+          "field": "RESULT_REASON",
+          "payload_offset": 33,
+          "frame_offset": 41,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 9,
+          "packed_hex": "0900"
+        },
+        {
+          "field": "RESULT_CONFIRMATION",
+          "payload_offset": 35,
+          "frame_offset": 43,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "COMMAND_TARGET",
+          "payload_offset": 36,
+          "frame_offset": 44,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "COMMAND_ID",
+          "payload_offset": 37,
+          "frame_offset": 45,
+          "width_bytes": 4,
+          "struct_format": "<I",
+          "input_value": 287454020,
+          "packed_hex": "44332211"
+        },
+        {
+          "field": "ORIGIN",
+          "payload_offset": 41,
+          "frame_offset": 49,
+          "width_bytes": 1,
+          "struct_format": "<B",
+          "input_value": 1,
+          "packed_hex": "01"
+        },
+        {
+          "field": "RESULT_AGE",
+          "payload_offset": 42,
+          "frame_offset": 50,
+          "width_bytes": 2,
+          "struct_format": "<H",
+          "input_value": 4660,
+          "packed_hex": "3412"
+        }
+      ],
+      "version": 2,
+      "link_sequence": 23205,
+      "header_hex": "a55a02202c00a55a",
+      "crc": {
+        "algorithm": "CRC-16/CCITT-FALSE",
+        "polynomial": "0x1021",
+        "initial": "0xffff",
+        "refin": false,
+        "refout": false,
+        "xorout": 0,
+        "reference": "Python stdlib binascii.crc_hqx(protected_bytes, 0xffff)",
+        "window_frame_start_inclusive": 2,
+        "window_frame_end_inclusive": 51,
+        "protected_length": 50,
+        "protected_hex": "02202c00a55a785634120c0000000000000040302010807060500700000000000000efcdab90020900010144332211013412",
+        "numeric_crc": "0x5da2",
+        "wire_crc_le_hex": "a25d",
+        "wire_crc_offset": 52,
+        "sync_excluded": true
+      },
+      "frame_bytes": 54,
+      "frame_hex": "a55a02202c00a55a785634120c0000000000000040302010807060500700000000000000efcdab90020900010144332211013412a25d",
+      "frame_sha256": "cbea51c5ac04fba0d4c28faa26f79e7b4bc5045ee050bf9302b3d6df16151801",
+      "matches_fixed_c_literal": true
+    }
+  ],
+  "extra_structural_vectors": [
+    {
+      "literal_symbol": "golden_c",
+      "test_source": "tests/host/test_wire_stream.c",
+      "classification": "EXTRA_STRUCTURAL_FRAMING_ONLY_NOT_TYPED_DTO_VECTOR",
+      "payload_generation": "A5 5A then 02..12",
+      "payload_hex": "a55a02030405060708090a0b0c0d0e0f101112",
+      "frame_hex": "a55a016013003412a55a02030405060708090a0b0c0d0e0f10111246ee",
+      "frame_bytes": 29,
+      "link_sequence": 4660,
+      "crc": {
+        "algorithm": "CRC-16/CCITT-FALSE",
+        "polynomial": "0x1021",
+        "initial": "0xffff",
+        "refin": false,
+        "refout": false,
+        "xorout": 0,
+        "reference": "Python stdlib binascii.crc_hqx(protected_bytes, 0xffff)",
+        "window_frame_start_inclusive": 2,
+        "window_frame_end_inclusive": 26,
+        "protected_length": 25,
+        "protected_hex": "016013003412a55a02030405060708090a0b0c0d0e0f101112",
+        "numeric_crc": "0xee46",
+        "wire_crc_le_hex": "46ee",
+        "wire_crc_offset": 27,
+        "sync_excluded": true
+      },
+      "matches_fixed_c_literal": true
+    },
+    {
+      "literal_symbol": "golden_m",
+      "test_source": "tests/host/test_wire_stream.c",
+      "classification": "EXTRA_STRUCTURAL_FRAMING_ONLY_NOT_TYPED_DTO_VECTOR",
+      "payload_generation": "00..25",
+      "payload_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425",
+      "frame_hex": "a55a020126003412000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425ef48",
+      "frame_bytes": 48,
+      "link_sequence": 4660,
+      "crc": {
+        "algorithm": "CRC-16/CCITT-FALSE",
+        "polynomial": "0x1021",
+        "initial": "0xffff",
+        "refin": false,
+        "refout": false,
+        "xorout": 0,
+        "reference": "Python stdlib binascii.crc_hqx(protected_bytes, 0xffff)",
+        "window_frame_start_inclusive": 2,
+        "window_frame_end_inclusive": 45,
+        "protected_length": 44,
+        "protected_hex": "020126003412000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425",
+        "numeric_crc": "0x48ef",
+        "wire_crc_le_hex": "ef48",
+        "wire_crc_offset": 46,
+        "sync_excluded": true
+      },
+      "matches_fixed_c_literal": true
+    }
+  ],
+  "deterministic_random_tests": [
+    {
+      "test_source": "tests/host/test_wire_can.c",
+      "case": "can_randomized",
+      "seed": "0x4319a277",
+      "iterations": 2000,
+      "message_round_trips": 4000,
+      "scope": "CAN2 typed candidate"
+    },
+    {
+      "test_source": "tests/host/test_wire_stream.c",
+      "case": "deterministic_stream_replay",
+      "seed": "0x5eeda731",
+      "rounds": 3000,
+      "accepted_frames": 3000,
+      "scope": "candidate structural UART stream"
+    },
+    {
+      "test_source": "tests/host/test_uart_random_stress.c",
+      "seed": "0xB5E1",
+      "rounds": 500,
+      "frames": 12628,
+      "scope": "preserved v1.1 synthetic fixture, not actual wire CRC"
+    }
+  ],
+  "limits": [
+    "Candidate structure only; product adoption and owner integration remain HOLD.",
+    "No HAL, physical CAN controller CRC, board, runtime permission or TTL acceptance is proven.",
+    "Random test counts describe C tests; this script verifies literal reference bytes and CRC."
+  ]
+}
