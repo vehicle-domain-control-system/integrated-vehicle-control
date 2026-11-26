@@ -7,6 +7,7 @@ typedef struct
     ResultManager_t *resultManager;
     DomainIfResultBinding_TimeProvider_t timeProvider;
     void *timeProviderContext;
+    VssEventManager_t *eventManager;
     bool configured;
 } DomainIfResultBinding_Context_t;
 
@@ -62,6 +63,17 @@ static DomainIf_Status_t DomainIfResultBinding_GetNow(uint32_t *outNowMs)
     return DOMAIN_IF_OK;
 }
 
+DomainIf_Status_t DomainIfResultBinding_ConfigureVssEvents(
+    VssEventManager_t *eventManager)
+{
+    if ((eventManager == NULL) || !eventManager->initialized)
+    {
+        return DOMAIN_IF_INVALID_ARGUMENT;
+    }
+    g_resultBinding.eventManager = eventManager;
+    return DOMAIN_IF_OK;
+}
+
 DomainIf_Status_t DomainIfResultBinding_Configure(
     ResultManager_t *resultManager,
     DomainIfResultBinding_TimeProvider_t timeProvider,
@@ -79,6 +91,7 @@ DomainIf_Status_t DomainIfResultBinding_Configure(
     g_resultBinding.resultManager = resultManager;
     g_resultBinding.timeProvider = timeProvider;
     g_resultBinding.timeProviderContext = timeProviderContext;
+    g_resultBinding.eventManager = NULL;
     g_resultBinding.configured = true;
     return DOMAIN_IF_OK;
 }
@@ -114,6 +127,12 @@ DomainIf_Status_t DomainIf_RxBcmCommandResult(
         return status;
     }
 
+    if (g_resultBinding.eventManager != NULL)
+    {
+        (void)VssEventManager_RecordBcmDoorResult(
+            g_resultBinding.eventManager, result, nowMs);
+    }
+
     /* Core state is committed before the optional observer is notified. */
     return DomainIfCore_NotifyBcmCommandResult(result);
 }
@@ -136,8 +155,29 @@ DomainIf_Status_t DomainIf_RxNetworkLocalFailure(
     }
     if (failure->itemKind == NETWORK_LOCAL_ITEM_OCCURRENCE)
     {
-        /* No occurrence-keyed Application owner is implemented yet. */
-        return DOMAIN_IF_UNSUPPORTED;
+        if (g_resultBinding.eventManager == NULL)
+        {
+            return DOMAIN_IF_UNSUPPORTED;
+        }
+        status = DomainIfResultBinding_GetNow(&nowMs);
+        if (status != DOMAIN_IF_OK)
+        {
+            return status;
+        }
+        switch (VssEventManager_RecordNetworkLocalFailure(
+            g_resultBinding.eventManager, failure, nowMs))
+        {
+            case VSS_EVENT_MANAGER_OK:
+            case VSS_EVENT_MANAGER_DUPLICATE:
+                return DOMAIN_IF_OK;
+            case VSS_EVENT_MANAGER_NOT_FOUND:
+            case VSS_EVENT_MANAGER_GENERATION_MISMATCH:
+                return DOMAIN_IF_REJECTED;
+            case VSS_EVENT_MANAGER_INVALID_ARGUMENT:
+                return DOMAIN_IF_INVALID_ARGUMENT;
+            default:
+                return DOMAIN_IF_NOT_AVAILABLE;
+        }
     }
     if ((failure->itemKind != NETWORK_LOCAL_ITEM_COMMAND) &&
         (failure->itemKind != NETWORK_LOCAL_ITEM_REQUEST_RESULT))

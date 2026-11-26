@@ -20,9 +20,13 @@ static bool DomainIfQueryBinding_AreSlotsDistinct(
     return (slots->bcmDoorState != slots->bcmStatus) &&
            (slots->bcmDoorState != slots->cisRearState) &&
            (slots->bcmDoorState != slots->cisStatus) &&
+           (slots->bcmDoorState != slots->vssStatus) &&
            (slots->bcmStatus != slots->cisRearState) &&
            (slots->bcmStatus != slots->cisStatus) &&
-           (slots->cisRearState != slots->cisStatus);
+           (slots->bcmStatus != slots->vssStatus) &&
+           (slots->cisRearState != slots->cisStatus) &&
+           (slots->cisRearState != slots->vssStatus) &&
+           (slots->cisStatus != slots->vssStatus);
 }
 
 static bool DomainIfQueryBinding_IsSlotReadable(
@@ -92,7 +96,8 @@ static DomainIf_Status_t DomainIfQueryBinding_GetState(
     uint32_t ttlMs,
     void *outValue,
     size_t valueSize,
-    SignalMeta_t *outMeta)
+    SignalMeta_t *outMeta,
+    uint32_t *outLocalElapsedMs)
 {
     VehicleStateManager_Snapshot_t snapshot;
     VehicleStateManager_Status_t managerStatus;
@@ -126,7 +131,18 @@ static DomainIf_Status_t DomainIfQueryBinding_GetState(
     outMeta->quality = quality;
     outMeta->ageMs = snapshot.effectiveAgeMs;
     outMeta->updateSequence = snapshot.updateSequence;
+    if (outLocalElapsedMs != NULL)
+    {
+        *outLocalElapsedMs = snapshot.localElapsedMs;
+    }
     return DOMAIN_IF_OK;
+}
+
+static uint32_t DomainIfQueryBinding_SaturatingAddU32(
+    uint32_t left,
+    uint32_t right)
+{
+    return (right > (UINT32_MAX - left)) ? UINT32_MAX : (left + right);
 }
 
 static DomainIf_Status_t DomainIfQueryBinding_MapResultManagerStatus(
@@ -167,6 +183,7 @@ DomainIf_Status_t DomainIfQueryBinding_ConfigureState(
     DomainIf_BcmStatusReport_t bcmStatus;
     CisRearState_t cisRear;
     DomainIf_CisStatusReport_t cisStatus;
+    DomainIf_VssStateReport_t vssStatus;
 
     if ((stateManager == NULL) || (slotMap == NULL) || (policy == NULL) ||
         !DomainIfQueryBinding_AreSlotsDistinct(slotMap))
@@ -187,7 +204,10 @@ DomainIf_Status_t DomainIfQueryBinding_ConfigureState(
             sizeof(cisRear)) ||
         !DomainIfQueryBinding_IsSlotReadable(
             stateManager, slotMap->cisStatus, &cisStatus,
-            sizeof(cisStatus)))
+            sizeof(cisStatus)) ||
+        !DomainIfQueryBinding_IsSlotReadable(
+            stateManager, slotMap->vssStatus, &vssStatus,
+            sizeof(vssStatus)))
     {
         return DOMAIN_IF_NOT_AVAILABLE;
     }
@@ -249,7 +269,7 @@ DomainIf_Status_t DomainIf_QueryGetBcmDoorState(
     status = DomainIfQueryBinding_GetState(
         g_queryBinding.slots.bcmDoorState, nowMs,
         g_queryBinding.statePolicy.bcmDoorTtlMs,
-        &state, sizeof(state), &state.meta);
+        &state, sizeof(state), &state.meta, NULL);
     if (status == DOMAIN_IF_OK)
     {
         *outState = state;
@@ -276,7 +296,7 @@ DomainIf_Status_t DomainIf_QueryGetBcmStatus(
     status = DomainIfQueryBinding_GetState(
         g_queryBinding.slots.bcmStatus, nowMs,
         g_queryBinding.statePolicy.bcmStatusTtlMs,
-        &state, sizeof(state), &state.meta);
+        &state, sizeof(state), &state.meta, NULL);
     if (status == DOMAIN_IF_OK)
     {
         *outState = state;
@@ -303,7 +323,7 @@ DomainIf_Status_t DomainIf_QueryGetCisRear(
     status = DomainIfQueryBinding_GetState(
         g_queryBinding.slots.cisRearState, nowMs,
         g_queryBinding.statePolicy.cisRearTtlMs,
-        &state, sizeof(state), &state.distanceQuality.meta);
+        &state, sizeof(state), &state.distanceQuality.meta, NULL);
     if (status == DOMAIN_IF_OK)
     {
         *outState = state;
@@ -330,9 +350,43 @@ DomainIf_Status_t DomainIf_QueryGetCisStatus(
     status = DomainIfQueryBinding_GetState(
         g_queryBinding.slots.cisStatus, nowMs,
         g_queryBinding.statePolicy.cisStatusTtlMs,
-        &state, sizeof(state), &state.meta);
+        &state, sizeof(state), &state.meta, NULL);
     if (status == DOMAIN_IF_OK)
     {
+        *outState = state;
+    }
+    return status;
+}
+
+DomainIf_Status_t DomainIf_QueryGetVssStatus(
+    uint32_t nowMs,
+    DomainIf_VssStateReport_t *outState)
+{
+    DomainIf_VssStateReport_t state;
+    DomainIf_Status_t status;
+    uint32_t localElapsedMs;
+
+    if (outState == NULL)
+    {
+        return DOMAIN_IF_INVALID_ARGUMENT;
+    }
+    if (!DomainIf_IsInitialized())
+    {
+        return DOMAIN_IF_NOT_INITIALIZED;
+    }
+    if (g_queryBinding.statePolicy.vssStatusTtlMs == 0U)
+    {
+        return DOMAIN_IF_NOT_AVAILABLE;
+    }
+
+    status = DomainIfQueryBinding_GetState(
+        g_queryBinding.slots.vssStatus, nowMs,
+        g_queryBinding.statePolicy.vssStatusTtlMs,
+        &state, sizeof(state), &state.service.meta, &localElapsedMs);
+    if (status == DOMAIN_IF_OK)
+    {
+        state.lastFaultAgeMs = DomainIfQueryBinding_SaturatingAddU32(
+            state.lastFaultAgeMs, localElapsedMs);
         *outState = state;
     }
     return status;

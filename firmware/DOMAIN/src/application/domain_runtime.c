@@ -1,4 +1,5 @@
 #include "domain_runtime.h"
+#include "domain_snapshot_commit_private.h"
 
 #include <string.h>
 
@@ -26,6 +27,167 @@ static bool DomainRuntime_GetTime(
            runtime->timeProvider(runtime->timeProviderContext, outNowMs);
 }
 
+static bool DomainRuntime_MapDoorQuality(
+    DataQuality_t quality,
+    VehicleStateQuality_t *outQuality)
+{
+    switch (quality)
+    {
+        case DATA_QUALITY_OK:
+            *outQuality = VEHICLE_STATE_QUALITY_OK;
+            return true;
+        case DATA_QUALITY_STALE:
+            *outQuality = VEHICLE_STATE_QUALITY_STALE;
+            return true;
+        case DATA_QUALITY_INVALID:
+            *outQuality = VEHICLE_STATE_QUALITY_INVALID;
+            return true;
+        case DATA_QUALITY_NO_DATA:
+            *outQuality = VEHICLE_STATE_QUALITY_NO_DATA;
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool DomainRuntime_RequestContextProvider(
+    void *context,
+    const DomainIf_MobileRequest_t *request,
+    uint32_t nowMs,
+    RequestManager_AuthContext_t *outAuth,
+    RequestManager_Context_t *outVehicleContext,
+    RequestManager_Policy_t *outPolicy)
+{
+    DomainRuntime_t *runtime = (DomainRuntime_t *)context;
+    VehicleStateManager_Snapshot_t snapshot;
+    DoorState_t door;
+    VehicleStateManager_Status_t stateStatus;
+    RequestManager_FunctionGate_t doorGate;
+    VehicleStateQuality_t aggregateQuality;
+
+    if ((runtime == NULL) || (request == NULL) || (outAuth == NULL) ||
+        (outVehicleContext == NULL) || (outPolicy == NULL) ||
+        !DomainRuntime_IsReady(runtime) ||
+        (runtime->requestAuthorizationProvider == NULL))
+    {
+        return false;
+    }
+    if (!runtime->requestAuthorizationProvider(
+            runtime->requestAuthorizationContext, request, outAuth, &doorGate))
+    {
+        return false;
+    }
+
+    (void)memset(&door, 0, sizeof(door));
+    (void)memset(&snapshot, 0, sizeof(snapshot));
+    (void)memset(outVehicleContext, 0, sizeof(*outVehicleContext));
+    (void)memset(outPolicy, 0, sizeof(*outPolicy));
+    outVehicleContext->door = doorGate;
+
+    stateStatus = VehicleStateManager_GetSnapshot(
+        &runtime->vehicleStateManager,
+        DOMAIN_RUNTIME_STATE_SLOT_BCM_DOOR,
+        nowMs,
+        runtime->bcmDoorStateTtlMs,
+        &door,
+        sizeof(door),
+        &snapshot);
+    if (stateStatus == VEHICLE_STATE_MANAGER_NO_DATA)
+    {
+        outVehicleContext->doorLockState = REQUEST_MANAGER_DOOR_LOCK_UNKNOWN;
+        outVehicleContext->doorOpenState = REQUEST_MANAGER_DOOR_OPEN_UNKNOWN;
+        outVehicleContext->doorLockQuality = VEHICLE_STATE_QUALITY_NO_DATA;
+        outVehicleContext->doorOpenQuality = VEHICLE_STATE_QUALITY_NO_DATA;
+        return true;
+    }
+    if (stateStatus != VEHICLE_STATE_MANAGER_OK)
+    {
+        return false;
+    }
+    aggregateQuality = snapshot.quality;
+    if (aggregateQuality != VEHICLE_STATE_QUALITY_OK)
+    {
+        outVehicleContext->doorLockState = REQUEST_MANAGER_DOOR_LOCK_UNKNOWN;
+        outVehicleContext->doorOpenState = REQUEST_MANAGER_DOOR_OPEN_UNKNOWN;
+        outVehicleContext->doorLockQuality = aggregateQuality;
+        outVehicleContext->doorOpenQuality = aggregateQuality;
+        return true;
+    }
+    if (!DomainRuntime_MapDoorQuality(door.compositeQuality,
+                                      &aggregateQuality) ||
+        (door.compositeState != DOOR_COMPOSITE_STATE_NORMAL))
+    {
+        outVehicleContext->doorLockState = REQUEST_MANAGER_DOOR_LOCK_UNKNOWN;
+        outVehicleContext->doorOpenState = REQUEST_MANAGER_DOOR_OPEN_UNKNOWN;
+        outVehicleContext->doorLockQuality = VEHICLE_STATE_QUALITY_INVALID;
+        outVehicleContext->doorOpenQuality = VEHICLE_STATE_QUALITY_INVALID;
+        return true;
+    }
+    if (aggregateQuality != VEHICLE_STATE_QUALITY_OK)
+    {
+        outVehicleContext->doorLockState = REQUEST_MANAGER_DOOR_LOCK_UNKNOWN;
+        outVehicleContext->doorOpenState = REQUEST_MANAGER_DOOR_OPEN_UNKNOWN;
+        outVehicleContext->doorLockQuality = aggregateQuality;
+        outVehicleContext->doorOpenQuality = aggregateQuality;
+        return true;
+    }
+    if (!DomainRuntime_MapDoorQuality(door.lockQuality,
+                                      &outVehicleContext->doorLockQuality) ||
+        !DomainRuntime_MapDoorQuality(door.openQuality,
+                                      &outVehicleContext->doorOpenQuality))
+    {
+        return false;
+    }
+    switch (door.lockState)
+    {
+        case DOOR_LOCK_STATE_LOCKED:
+            outVehicleContext->doorLockState = REQUEST_MANAGER_DOOR_LOCKED;
+            break;
+        case DOOR_LOCK_STATE_UNLOCKED:
+            outVehicleContext->doorLockState = REQUEST_MANAGER_DOOR_UNLOCKED;
+            break;
+        case DOOR_LOCK_STATE_UNKNOWN:
+        default:
+            outVehicleContext->doorLockState = REQUEST_MANAGER_DOOR_LOCK_UNKNOWN;
+            break;
+    }
+    switch (door.openState)
+    {
+        case DOOR_OPEN_STATE_CLOSED:
+            outVehicleContext->doorOpenState = REQUEST_MANAGER_DOOR_CLOSED;
+            break;
+        case DOOR_OPEN_STATE_OPEN:
+            outVehicleContext->doorOpenState = REQUEST_MANAGER_DOOR_OPEN;
+            break;
+        case DOOR_OPEN_STATE_UNKNOWN:
+        default:
+            outVehicleContext->doorOpenState = REQUEST_MANAGER_DOOR_OPEN_UNKNOWN;
+            break;
+    }
+    return true;
+}
+
+static bool DomainRuntime_RequestTransportAvailable(void *context)
+{
+    return DomainRuntime_IsReady((const DomainRuntime_t *)context);
+}
+
+static DomainIf_Status_t DomainRuntime_SubmitDoorCommand(
+    void *context,
+    const DomainIf_BcmDoorCommand_t *command)
+{
+    (void)context;
+    return DomainIf_TxBcmDoorCommand(command);
+}
+
+static DomainIf_Status_t DomainRuntime_PublishRequestResult(
+    void *context,
+    const DomainIf_MobileRequestResult_t *result)
+{
+    (void)context;
+    return DomainIf_TxMobileRequestResult(result);
+}
+
 static void DomainRuntime_PrepareVehicleStateStorage(
     DomainRuntime_t *runtime)
 {
@@ -49,6 +211,11 @@ static void DomainRuntime_PrepareVehicleStateStorage(
     runtime->vehicleStateSlotConfigs[DOMAIN_RUNTIME_STATE_SLOT_CIS_STATUS]
         .valueCapacity = sizeof(runtime->vehicleStateStorage.cisStatus);
 
+    runtime->vehicleStateSlotConfigs[DOMAIN_RUNTIME_STATE_SLOT_VSS_STATUS]
+        .valueStorage = &runtime->vehicleStateStorage.vssStatus;
+    runtime->vehicleStateSlotConfigs[DOMAIN_RUNTIME_STATE_SLOT_VSS_STATUS]
+        .valueCapacity = sizeof(runtime->vehicleStateStorage.vssStatus);
+
     runtime->vehicleStateSlotMap.bcmDoorState =
         DOMAIN_RUNTIME_STATE_SLOT_BCM_DOOR;
     runtime->vehicleStateSlotMap.bcmStatus =
@@ -57,6 +224,8 @@ static void DomainRuntime_PrepareVehicleStateStorage(
         DOMAIN_RUNTIME_STATE_SLOT_CIS_REAR;
     runtime->vehicleStateSlotMap.cisStatus =
         DOMAIN_RUNTIME_STATE_SLOT_CIS_STATUS;
+    runtime->vehicleStateSlotMap.vssStatus =
+        DOMAIN_RUNTIME_STATE_SLOT_VSS_STATUS;
 }
 
 static DomainRuntime_Status_t DomainRuntime_InitManagers(
@@ -94,6 +263,32 @@ static DomainRuntime_Status_t DomainRuntime_InitManagers(
     }
     runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_RESULT_MANAGER;
 
+    if (VssWarningManager_Init(
+            &runtime->vssWarningManager, &runtime->vehicleStateManager,
+            runtime->vehicleStateSlotMap.cisRearState,
+            DomainIf_TxVssWarningState) != VSS_WARNING_MANAGER_OK)
+    {
+        return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
+    }
+    runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_VSS_WARNING_MANAGER;
+
+    if (VssEventManager_Init(
+            &runtime->vssEventManager, DomainIf_TxVssOneShotEvent) !=
+        VSS_EVENT_MANAGER_OK)
+    {
+        return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
+    }
+    if ((config->vssEventGenerationProvider != NULL) &&
+        (VssEventManager_BindGenerationProvider(
+             &runtime->vssEventManager,
+             config->vssEventGenerationProvider,
+             config->vssEventGenerationProviderContext) !=
+         VSS_EVENT_MANAGER_OK))
+    {
+        return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
+    }
+    runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_VSS_EVENT_MANAGER;
+
     if (PermissionManager_Init(
             &runtime->permissionManager,
             &config->permissionPolicy) != PERMISSION_MANAGER_OK)
@@ -113,26 +308,26 @@ static DomainRuntime_Status_t DomainRuntime_InitManagers(
         return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
     }
 
-    if (config->cisOccupantEnabled &&
+    if ((config->cisOccupantEnabled || config->cisOccupantStorageEnabled) &&
         (CisOccupantManager_Init(
              &runtime->cisOccupantManager,
              &config->cisOccupantPolicy) != CIS_OCCUPANT_MANAGER_OK))
     {
         return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
     }
-    if (config->cisOccupantEnabled)
+    if (config->cisOccupantEnabled || config->cisOccupantStorageEnabled)
     {
         runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_MANAGER;
     }
 
-    if (config->cisOccupantEnabled &&
+    if ((config->cisOccupantEnabled || config->cisOccupantStorageEnabled) &&
         (DomainCisOccupantPriv_Init(
              &runtime->cisOccupantPrivate,
              &runtime->cisOccupantManager) != DOMAIN_CIS_OCCUPANT_PRIV_OK))
     {
         return DOMAIN_RUNTIME_MANAGER_INIT_FAILED;
     }
-    if (config->cisOccupantEnabled)
+    if (config->cisOccupantEnabled || config->cisOccupantStorageEnabled)
     {
         runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_PRIVATE;
     }
@@ -143,6 +338,11 @@ static DomainRuntime_Status_t DomainRuntime_InitC2AndBindings(
     DomainRuntime_t *runtime,
     const DomainRuntime_Config_t *config)
 {
+    DomainRequestCoordinator_Ports_t requestPorts;
+    DomainIf_RxObserver_t observer;
+    DomainIfQueryBinding_StatePolicy_t statePolicy = config->stateQueryPolicy;
+    if (statePolicy.cisRearTtlMs == 0U)
+        statePolicy.cisRearTtlMs = VSS_WARNING_MANAGER_REAR_TTL_MS;
     if (DomainIf_Init() != DOMAIN_IF_OK)
     {
         return DOMAIN_RUNTIME_C2_INIT_FAILED;
@@ -180,10 +380,54 @@ static DomainRuntime_Status_t DomainRuntime_InitC2AndBindings(
     }
     runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_RESULT_BINDING;
 
+    if (DomainIfResultBinding_ConfigureVssEvents(
+            &runtime->vssEventManager) != DOMAIN_IF_OK)
+    {
+        return DOMAIN_RUNTIME_BINDING_INIT_FAILED;
+    }
+
+    if (config->requestCoordinatorEnabled)
+    {
+        (void)memset(&requestPorts, 0, sizeof(requestPorts));
+        requestPorts.getContext = DomainRuntime_RequestContextProvider;
+        requestPorts.isCommandTransportAvailable =
+            DomainRuntime_RequestTransportAvailable;
+        requestPorts.submitDoorCommand = DomainRuntime_SubmitDoorCommand;
+        requestPorts.publishResult = DomainRuntime_PublishRequestResult;
+        requestPorts.context = runtime;
+        if (DomainRequestCoordinator_Attach(
+                &runtime->requestCoordinator,
+                &runtime->commandManager,
+                &runtime->resultManager,
+                runtime->requestTracks,
+                DOMAIN_RUNTIME_REQUEST_TRACK_CAPACITY,
+                &requestPorts) != DOMAIN_REQUEST_COORDINATOR_OK)
+        {
+            return DOMAIN_RUNTIME_BINDING_INIT_FAILED;
+        }
+        if (DomainRequestCoordinator_BindIngress(
+                &runtime->requestCoordinator,
+                runtime->timeProvider,
+                runtime->timeProviderContext,
+                runtime->mobileRequestSourceValidityMs) !=
+            DOMAIN_REQUEST_COORDINATOR_OK)
+        {
+            return DOMAIN_RUNTIME_BINDING_INIT_FAILED;
+        }
+        (void)memset(&observer, 0, sizeof(observer));
+        observer.onBcmCommandResult =
+            DomainRequestCoordinator_OnBcmCommandResult;
+        if (DomainIf_SetRxObserver(&observer) != DOMAIN_IF_OK)
+        {
+            return DOMAIN_RUNTIME_BINDING_INIT_FAILED;
+        }
+    }
+    runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_REQUEST_COORDINATOR;
+
     if (DomainIfQueryBinding_ConfigureState(
             &runtime->vehicleStateManager,
             &runtime->vehicleStateSlotMap,
-            &config->stateQueryPolicy) != DOMAIN_IF_OK)
+            &statePolicy) != DOMAIN_IF_OK)
     {
         return DOMAIN_RUNTIME_BINDING_INIT_FAILED;
     }
@@ -196,7 +440,7 @@ static DomainRuntime_Status_t DomainRuntime_InitC2AndBindings(
     }
     runtime->initStage = DOMAIN_RUNTIME_INIT_STAGE_QUERY_RESULT_BINDING;
 
-    if (config->cisOccupantEnabled)
+    if (config->cisOccupantEnabled || config->cisOccupantStorageEnabled)
     {
         if (DomainIfCisOccupantBinding_Configure(
                 &runtime->cisOccupantManager,
@@ -233,7 +477,10 @@ DomainRuntime_Status_t DomainRuntime_Init(
     uint32_t initialNowMs;
 
     if ((runtime == NULL) || (config == NULL) ||
-        (config->timeProvider == NULL))
+        (config->timeProvider == NULL) ||
+        (config->requestCoordinatorEnabled &&
+         ((config->bcmDoorStateTtlMs == 0U) ||
+          (config->mobileRequestSourceValidityMs == 0U))))
     {
         return DOMAIN_RUNTIME_INVALID_ARGUMENT;
     }
@@ -244,13 +491,23 @@ DomainRuntime_Status_t DomainRuntime_Init(
 
     /* Network ingress is a caller precondition. Never retain an older owner. */
     DomainIfCisOccupantBinding_Reset();
+    DomainRequestCoordinator_ResetBinding();
     (void)memset(runtime, 0, sizeof(*runtime));
     runtime->integrityMarker = DOMAIN_RUNTIME_INTEGRITY_MARKER;
     runtime->timeProvider = config->timeProvider;
     runtime->timeProviderContext = config->timeProviderContext;
     runtime->permissionCoordinatorEnabled =
         config->permissionCoordinatorEnabled;
+    runtime->requestCoordinatorEnabled = config->requestCoordinatorEnabled;
+    runtime->bcmDoorStateTtlMs = config->bcmDoorStateTtlMs;
+    runtime->mobileRequestSourceValidityMs =
+        config->mobileRequestSourceValidityMs;
+    runtime->requestAuthorizationProvider =
+        config->requestAuthorizationProvider;
+    runtime->requestAuthorizationContext =
+        config->requestAuthorizationContext;
     runtime->cisOccupantEnabled = config->cisOccupantEnabled;
+    runtime->cisOccupantStorageEnabled = config->cisOccupantEnabled || config->cisOccupantStorageEnabled;
 
     if (!DomainRuntime_GetTime(runtime, &initialNowMs))
     {
@@ -270,6 +527,7 @@ DomainRuntime_Status_t DomainRuntime_Init(
     if (status != DOMAIN_RUNTIME_OK)
     {
         /* The Network-facing callback tables are kept explicitly unbound. */
+        DomainRequestCoordinator_ResetBinding();
         (void)DomainIf_SetRxObserver(NULL);
         (void)DomainIf_SetTxPort(NULL);
         return status;
@@ -317,6 +575,25 @@ DomainRuntime_Status_t DomainRuntime_Poll(DomainRuntime_t *runtime)
         runtime->lastPermissionCoordinatorStatus =
             PERMISSION_COORDINATOR_NOT_INITIALIZED;
     }
+    if (runtime->requestCoordinatorEnabled)
+    {
+        runtime->lastRequestCoordinatorStatus =
+            DomainRequestCoordinator_Poll(
+                &runtime->requestCoordinator,
+                nowMs,
+                &runtime->lastRequestTimeoutCount);
+    }
+    else
+    {
+        runtime->lastRequestCoordinatorStatus =
+            DOMAIN_REQUEST_COORDINATOR_NOT_INITIALIZED;
+        runtime->lastRequestTimeoutCount = 0U;
+    }
+    runtime->lastVssWarningStatus = VssWarningManager_Poll(
+        &runtime->vssWarningManager, nowMs);
+    runtime->lastVssEventStatus = VssEventManager_Poll(
+        &runtime->vssEventManager, nowMs);
+    DomainSnapshotCommit_Poll(nowMs);
     /*
      * Evaluation and local Network admission failures remain observable in
      * the coordinator and leave Permission fail-closed. They do not stop the
@@ -347,11 +624,14 @@ DomainRuntime_Status_t DomainRuntime_GetSnapshot(
         return DOMAIN_RUNTIME_NOT_INITIALIZED;
     }
 
+    (void)memset(&snapshot, 0, sizeof(snapshot));
     snapshot.initialized = runtime->initialized;
     snapshot.ready = DomainRuntime_IsReady(runtime);
     snapshot.permissionCoordinatorEnabled =
         runtime->permissionCoordinatorEnabled;
+    snapshot.requestCoordinatorEnabled = runtime->requestCoordinatorEnabled;
     snapshot.cisOccupantEnabled = runtime->cisOccupantEnabled;
+    snapshot.cisOccupantStorageEnabled = runtime->cisOccupantStorageEnabled;
     snapshot.initStage = runtime->initStage;
     snapshot.hasPolled = runtime->hasPolled;
     snapshot.lastPollAtMs = runtime->lastPollAtMs;
@@ -359,6 +639,11 @@ DomainRuntime_Status_t DomainRuntime_GetSnapshot(
     snapshot.pollCount = runtime->pollCount;
     snapshot.lastPermissionCoordinatorStatus =
         runtime->lastPermissionCoordinatorStatus;
+    snapshot.lastRequestCoordinatorStatus =
+        runtime->lastRequestCoordinatorStatus;
+    snapshot.lastRequestTimeoutCount = runtime->lastRequestTimeoutCount;
+    snapshot.lastVssWarningStatus = runtime->lastVssWarningStatus;
+    snapshot.lastVssEventStatus = runtime->lastVssEventStatus;
     *outSnapshot = snapshot;
     return DOMAIN_RUNTIME_OK;
 }
@@ -380,6 +665,14 @@ ResultManager_t *DomainRuntime_GetResultManager(DomainRuntime_t *runtime)
     return DomainRuntime_IsReady(runtime) ? &runtime->resultManager : NULL;
 }
 
+DomainRequestCoordinator_t *DomainRuntime_GetRequestCoordinator(
+    DomainRuntime_t *runtime)
+{
+    return DomainRuntime_IsReady(runtime) && runtime->requestCoordinatorEnabled
+               ? &runtime->requestCoordinator
+               : NULL;
+}
+
 PermissionManager_t *DomainRuntime_GetPermissionManager(
     DomainRuntime_t *runtime)
 {
@@ -389,7 +682,7 @@ PermissionManager_t *DomainRuntime_GetPermissionManager(
 CisOccupantManager_t *DomainRuntime_GetCisOccupantManager(
     DomainRuntime_t *runtime)
 {
-    return DomainRuntime_IsReady(runtime) && runtime->cisOccupantEnabled
+    return DomainRuntime_IsReady(runtime) && runtime->cisOccupantStorageEnabled
                ? &runtime->cisOccupantManager
                : NULL;
 }
@@ -397,7 +690,7 @@ CisOccupantManager_t *DomainRuntime_GetCisOccupantManager(
 DomainCisOccupantPriv_t *DomainRuntime_GetCisOccupantPrivate(
     DomainRuntime_t *runtime)
 {
-    return DomainRuntime_IsReady(runtime) && runtime->cisOccupantEnabled
+    return DomainRuntime_IsReady(runtime) && runtime->cisOccupantStorageEnabled
                ? &runtime->cisOccupantPrivate
                : NULL;
 }
@@ -414,4 +707,16 @@ DomainCisEnvironmentPriv_t *DomainRuntime_GetCisEnvironmentPrivate(
 {
     return DomainRuntime_IsReady(runtime) ? &runtime->cisEnvironmentPrivate
                                           : NULL;
+}
+
+VssWarningManager_t *DomainRuntime_GetVssWarningManager(
+    DomainRuntime_t *runtime)
+{
+    return DomainRuntime_IsReady(runtime) ? &runtime->vssWarningManager : NULL;
+}
+
+VssEventManager_t *DomainRuntime_GetVssEventManager(
+    DomainRuntime_t *runtime)
+{
+    return DomainRuntime_IsReady(runtime) ? &runtime->vssEventManager : NULL;
 }

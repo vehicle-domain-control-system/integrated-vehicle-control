@@ -21,6 +21,7 @@ typedef struct
     VehicleStateManager_SlotId_t bcmStatus;
     VehicleStateManager_SlotId_t cisRearState;
     VehicleStateManager_SlotId_t cisStatus;
+    VehicleStateManager_SlotId_t vssStatus;
 } DomainIfStateBinding_SlotMap_t;
 
 /*

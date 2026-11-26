@@ -17,6 +17,7 @@ typedef struct
     uint32_t bcmStatusTtlMs;
     uint32_t cisRearTtlMs;
     uint32_t cisStatusTtlMs;
+    uint32_t vssStatusTtlMs;
 } DomainIfQueryBinding_StatePolicy_t;
 
 /*

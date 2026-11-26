@@ -1,7 +1,37 @@
 #include "Domain_Interface_v0.5_C2_target.h"
 #include "domain_interface_core_internal.h"
+#include "domain_snapshot_commit_private.h"
 
 #include <string.h>
+
+static DomainSnapshotCommit_Observer_t g_commitObserver;
+static DomainSnapshotCommit_Publisher_t g_commitPublisher;
+static DomainSnapshotCommit_Publisher_t g_contextPoll;
+
+void DomainSnapshotCommit_Bind(DomainSnapshotCommit_Observer_t observer,
+                               DomainSnapshotCommit_Publisher_t publisher)
+{
+    if (g_commitObserver != NULL) g_commitObserver(0U, NULL, 0U);
+    g_commitObserver = observer;
+    g_commitPublisher = publisher;
+    if (observer == NULL && publisher == NULL) g_contextPoll = NULL;
+}
+
+void DomainSnapshotCommit_Notify(uint16_t canId, const void *value, size_t size)
+{
+    if (g_commitObserver != NULL) g_commitObserver(canId, value, size);
+}
+
+void DomainSnapshotCommit_Poll(uint32_t nowMs)
+{
+    if (g_contextPoll != NULL) g_contextPoll(nowMs);
+    if (g_commitPublisher != NULL) g_commitPublisher(nowMs);
+}
+
+void DomainSnapshotCommit_SetContextPoll(DomainSnapshotCommit_Publisher_t poll)
+{
+    g_contextPoll = poll;
+}
 
 /*
  * Lifecycle and registration are intentionally single-owner operations.
@@ -782,6 +812,12 @@ bool DomainIfCore_IsCisStatusValid(
     const DomainIf_CisStatusReport_t *state)
 {
     return (state != NULL) && DomainIf_IsCisStatusValid(state);
+}
+
+bool DomainIfCore_IsVssStatusValid(
+    const DomainIf_VssStateReport_t *state)
+{
+    return (state != NULL) && DomainIf_IsVssStatusValid(state);
 }
 
 DomainIf_Status_t DomainIfCore_NotifyBcmStatus(

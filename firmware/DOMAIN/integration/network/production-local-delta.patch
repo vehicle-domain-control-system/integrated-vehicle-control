@@ -1,0 +1,1379 @@
+--- a/firmware/network/nodes/domain/board/s32k344_domain/net_domain_board.c
++++ b/firmware/network/nodes/domain/board/s32k344_domain/net_domain_board.c
+@@ -2,6 +2,10 @@
+ #include "net_domain_board.h"
+ #include <string.h>
+ #include "network/net_boot_id.h"
++
++/* Private Domain commit bridge; receipt identity is never inferred here. */
++extern bool NetDomainSnapshot_Confirm(void *, uint16_t, uint64_t,
++                                      uint32_t, uint32_t);
+ 
+ /* BOOT_ID: the product source is not decided (include/network/net_boot_id.h
+  * also takes a noinit record and the reset cause; the record section and the
+@@ -71,6 +75,61 @@
+  * (NetDomainBoard_SetTransitionBinding); empty until then. */
+ static NetDomainC2TransitionBinding transition_binding;
+ 
++static bool query_add(NetUpperQueryPlan *plan, NetUpperQueryGetter getter,
++                      uint8_t capacity)
++{
++    NetUpperQuerySelection *selection;
++
++    if ((plan == NULL) || (plan->count >= NET_UPPER_QUERY_PLAN_CAPACITY))
++        return false;
++    selection = &plan->selected[plan->count++];
++    selection->getter = getter;
++    selection->selector = 0u;
++    selection->capacity = capacity;
++    return true;
++}
++
++static NetStatus domain_query_plan(void *context,
++                                   const NetWireMQueryRaw *request,
++                                   NetUpperQueryPlan *out)
++{
++    bool specific;
++
++    (void)context;
++    if ((request == NULL) || (out == NULL)) return NET_INVALID_ARGUMENT;
++    memset(out, 0, sizeof(*out));
++    specific = (request->request_session != 0u) &&
++               (request->request_id != 0u);
++    if ((request->request_session == 0u) != (request->request_id == 0u))
++        return NET_HOLD;
++    if (request->query_scope == 2u) return NET_UNSUPPORTED;
++    if ((request->query_scope != 0u) && (request->query_scope != 1u) &&
++        (request->query_scope != 3u)) return NET_UNSUPPORTED;
++
++    if ((request->query_scope == 0u) || (request->query_scope == 3u)) {
++        if (!query_add(out, NET_QUERY_BCM_DOOR, 1u) ||
++            !query_add(out, NET_QUERY_BCM_STATUS, 1u) ||
++            !query_add(out, NET_QUERY_CIS_ENVIRONMENT, 1u) ||
++            !query_add(out, NET_QUERY_CIS_OCCUPANT, 1u) ||
++            !query_add(out, NET_QUERY_CIS_REAR, 1u) ||
++            !query_add(out, NET_QUERY_CIS_STATUS, 1u) ||
++            !query_add(out, NET_QUERY_VSS_STATUS, 1u)) return NET_NO_CAPACITY;
++    }
++    if ((request->query_scope == 1u) || (request->query_scope == 3u)) {
++        if (!query_add(out, specific ? NET_QUERY_REQUEST_RESULT :
++                      NET_QUERY_RECENT_RESULTS, specific ? 1u : 5u))
++            return NET_NO_CAPACITY;
++    }
++    if (request->query_scope == 3u) {
++        /* Availability has no current Domain owner. Selecting the existing
++         * getter slot makes ALL explicitly PARTIAL instead of claiming a
++         * complete vehicle snapshot from the supported subset. */
++        if (!query_add(out, NET_QUERY_AVAILABILITY, 1u))
++            return NET_NO_CAPACITY;
++    }
++    return NET_OK;
++}
++
+ void NetDomainBoard_SetTransitionBinding(const NetDomainC2TransitionBinding *binding)
+ {
+     if (binding == NULL) memset(&transition_binding, 0, sizeof(transition_binding));
+@@ -86,10 +145,12 @@
+  * before the device took it (by its cause: context invalidated or driver
+  * submission final, otherwise held); without them CIS_REAR reception,
+  * DOMAIN_PERMISSION transmission and the three status reports are held, and
+- * such a refused record keeps its C2 and M04 TX slots. The other five stay
++ * such a refused record keeps its C2 and M04 TX slots. The read-only Query
++ * plan exposes only the currently bound Domain getters; WARNING remains
++ * unsupported and ALL deliberately becomes partial. The other four stay
+  * NULL, and their routes are held until the DOMAIN team decides them:
+  * window_permission_bundle, window_alive_bundle, window_event_projection,
+- * select_query_plan, confirm_snapshot. Limits (10_CAN_FD.md): ACCEPT_LIMIT is
++ * confirm_snapshot. Limits (10_CAN_FD.md): ACCEPT_LIMIT is
+  * the 200 ms candidate (the 1 s conflict is OPEN), VSS_EVENT USE_LIMIT the
+  * 500 ms draft. The node root sets BOOT_ID, TX_SEQUENCE start, the M04 slots,
+  * the command target and the CIS transition barriers itself. The transition
+@@ -104,6 +165,8 @@
+     config->permission_bundle = net_domain_c2_permission_bundle_provisional;
+     config->status_quality = net_domain_c2_status_quality_provisional;
+     config->local_failure_reason = net_domain_c2_local_failure_reason_provisional;
++    config->select_query_plan = domain_query_plan;
++    config->confirm_snapshot = NetDomainSnapshot_Confirm;
+     config->command_accept_limit_ms = 200u;
+     config->event_use_limit_ms = 500u;
+     /* Commands, events and UART-M results: the receiver judges the AGE; the
+--- a/firmware/network/include/network/app/net_if_entry.h
++++ b/firmware/network/include/network/app/net_if_entry.h
+@@ -39,4 +39,22 @@
+ void Net_TxFlush(uint32_t nowMs);
+ uint32_t Net_GetBootId(void);
+ 
++/* Hardware preparation is deliberately separate from BOOT_ID and from
++ * physical link health.  PREPARED means that the first Net_Init() completed
++ * the configured CAN/UART RTD prepare and arm sequence without attempting a
++ * rollback.  It does not prove that a transceiver, bus or peer is present.
++ * The state is one-shot for a power cycle; FAILED states are not retried. */
++typedef enum {
++    NET_HARDWARE_INIT_NOT_INITIALIZED = 0,
++    NET_HARDWARE_INIT_INITIALIZING,
++    NET_HARDWARE_INIT_PREPARED,
++    NET_HARDWARE_INIT_FAILED,
++    NET_HARDWARE_INIT_ROLLBACK_FAILED
++} NetHardwareInitStatus;
++
++/* Read-only snapshot. Safe to call while an RTD callback is pending; only the
++ * foreground Net_Init() owner changes the entry state and the backend part is
++ * published under the board IRQ critical section. */
++NetHardwareInitStatus Net_GetHardwareInitStatus(void);
++
+ #endif
+--- /dev/null
++++ b/firmware/network/nodes/domain/include/network/app/net_uart_alive_diagnostic.h
+@@ -0,0 +1,24 @@
++#ifndef NETWORK_APP_NET_UART_ALIVE_DIAGNOSTIC_H
++#define NETWORK_APP_NET_UART_ALIVE_DIAGNOSTIC_H
++
++#include "network/net_types.h"
++
++typedef struct {
++    bool enabled;
++    uint32_t domain_boot_id;
++    uint64_t port_epoch;
++    uint32_t period_ms;
++} NetUartAliveDiagnosticConfig;
++
++typedef enum {
++    NET_UART_ALIVE_DIAG_DISABLED = 0,
++    NET_UART_ALIVE_DIAG_RUNNING,
++    NET_UART_ALIVE_DIAG_FAILED
++} NetUartAliveDiagnosticStatus;
++
++NetStatus NetUartAliveDiagnostic_Init(const NetUartAliveDiagnosticConfig *config);
++NetStatus NetUartAliveDiagnostic_Step(uint32_t now_ms);
++NetStatus NetUartAliveDiagnostic_Stop(void);
++NetUartAliveDiagnosticStatus NetUartAliveDiagnostic_GetStatus(void);
++
++#endif
+--- a/firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_owner_binding.c
++++ b/firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_owner_binding.c
+@@ -1,11 +1,287 @@
+ #include "network/net_domain_c2.h"
+ #include <string.h>
++#include "net_domain_private.h"
++#include "net_domain_snapshot_private.h"
++#include "domain_snapshot_commit_private.h"
++#include "domain_network_admission_bridge_private.h"
++
++typedef struct {
++    uint16_t id;
++    bool valid, pending;
++    uint64_t receipt, lastReceipt, epoch, localEpoch;
++    uint32_t boot, sequence, domainBoot;
++    uint32_t recipientDevice;
++    uint64_t recipientSession, recipientEpoch;
++    NetDomainC2 *adapter;
++} SnapshotCommit;
++
++static SnapshotCommit snapshot[7];
++static NetDomainC2 *publisherAdapter;
++static bool revokeQueuedStates;
++
++NetStatus NetDomainSnapshot_Submit(const NetUpperPortOps *delegate,
++    void *context, const NetUpperPacket *packet, NetTxKey key,
++    uint32_t domainBoot)
++{
++    NetUpperUartMessage message;
++    uint32_t device = 0U, boot = 0U;
++    uint64_t session = 0U;
++    DomainIf_Status_t authority;
++    if (delegate == NULL || delegate->submit == NULL || packet == NULL)
++        return NET_INVALID_ARGUMENT;
++    if (packet->link == NET_WIRE_UART_M) {
++        if (net_upper_uart_decode(NET_WIRE_CANDIDATE_ONLY, NET_WIRE_UART_M,
++                NET_WIRE_DOWNLINK, &packet->uart, &message) != NET_WIRE_OK)
++            return NET_REJECTED;
++        switch (message.type) {
++#define MONITOR_RECIPIENT(type_, member_) \
++        case type_: device = message.data.member_.device_context_id; \
++            session = message.data.member_.session_id; \
++            boot = message.data.member_.domain_boot_id; break
++        MONITOR_RECIPIENT(0x30U, m_bcm_door_state);
++        MONITOR_RECIPIENT(0x33U, m_bcm_status);
++        MONITOR_RECIPIENT(0x34U, m_cis_environment);
++        MONITOR_RECIPIENT(0x35U, m_cis_occupant);
++        MONITOR_RECIPIENT(0x36U, m_cis_rear);
++        MONITOR_RECIPIENT(0x37U, m_cis_status);
++        MONITOR_RECIPIENT(0x3aU, m_vss_status);
++        MONITOR_RECIPIENT(0x20U, m_result);
++        MONITOR_RECIPIENT(0x40U, m_query_end);
++#undef MONITOR_RECIPIENT
++        default: return delegate->submit(context, packet, key);
++        }
++        /* Session IDs alone are not authorization. Reuse the existing P6
++         * Provider and Context TTL check; absent/unbound evidence rejects.
++         * A rejection promises no borrow and the service rejects that queued
++         * record, including when revocation happened in this same RX pass. */
++        if (domainBoot == 0U || boot != domainBoot || device == 0U || session == 0U)
++            return NET_REJECTED;
++        authority = (message.type == 0x20U || message.type == 0x40U)
++            ? DomainIf_ValidatePassiveQueryContext(device, session)
++            : DomainNetworkAdmissionBridgePrivate_ValidateMonitoringContext(device, session);
++        if (authority != DOMAIN_IF_OK) return NET_REJECTED;
++    }
++    return delegate->submit(context, packet, key);
++}
++static struct {
++    bool busy, committed, eligible;
++    SnapshotCommit candidate;
++    NdCanValue expected;
++    SnapshotCommit *slot;
++} capture;
++
++static int snapshot_index(uint16_t id)
++{
++    switch (id) {
++    case 0x200U: return 0; case 0x230U: return 1;
++    case 0x300U: return 2; case 0x310U: return 3;
++    case 0x0a0U: return 4; case 0x320U: return 5;
++    case 0x340U: return 6; default: return -1;
++    }
++}
++
++static size_t snapshot_size(uint16_t id)
++{
++    switch (id) {
++    case 0x200U: return sizeof(DoorState_t);
++    case 0x230U: return sizeof(DomainIf_BcmStatusReport_t);
++    case 0x300U: return sizeof(CisCabinEnvironmentState_t);
++    case 0x310U: return sizeof(CisOccupantState_t);
++    case 0x0a0U: return sizeof(CisRearState_t);
++    case 0x320U: return sizeof(DomainIf_CisStatusReport_t);
++    case 0x340U: return sizeof(DomainIf_VssStateReport_t);
++    default: return 0U;
++    }
++}
++
++static void snapshot_commit(uint16_t id, const void *value, size_t size)
++{
++    int index = snapshot_index(id);
++    if (id == 0U) {
++        revokeQueuedStates = true;
++        memset(snapshot, 0, sizeof(snapshot));
++        memset(&capture, 0, sizeof(capture));
++        return;
++    }
++    if (index < 0) return;
++    snapshot[index].valid = false;
++    snapshot[index].pending = false;
++    if (capture.busy && capture.slot == &snapshot[index]) {
++        capture.committed = capture.eligible && value != NULL &&
++            size == snapshot_size(id) &&
++            memcmp(value, &capture.expected, size) == 0;
++    }
++}
++
++bool NetDomainSnapshot_Begin(NetDomainC2 *a, const NetUpperCanMessage *m,
++    const NetUpperDelivery *d)
++{
++    int index;
++    SnapshotCommit *slot;
++    if (capture.busy || a == NULL || a->service == NULL ||
++        m == NULL || d == NULL) return false;
++    memset(&capture, 0, sizeof(capture));
++    capture.busy = true;
++    publisherAdapter = a;
++    index = snapshot_index(m->id);
++    if (index < 0) return true;
++    slot = &snapshot[index];
++    capture.slot = slot;
++    /* A service/port lifecycle change cannot inherit a prior receipt. */
++    if (slot->adapter != a || slot->domainBoot != a->config.domain_boot ||
++        slot->localEpoch != a->service->config.local_epoch ||
++        slot->epoch != d->capture.port_epoch)
++        memset(slot, 0, sizeof(*slot));
++    capture.candidate = *slot;
++    capture.candidate.id = m->id;
++    capture.candidate.adapter = a;
++    capture.candidate.domainBoot = a->config.domain_boot;
++    capture.candidate.localEpoch = a->service->config.local_epoch;
++    capture.candidate.epoch = d->capture.port_epoch;
++    capture.candidate.receipt = d->receipt_id;
++    capture.candidate.boot = d->source_boot;
++    capture.candidate.sequence = d->source_sequence;
++    /* Recipient binding is independent of CAN source/commit identity and
++     * confers no authentication. Never retarget a pending observation. */
++    capture.candidate.recipientDevice = a->service->context_seen ?
++        a->service->context.device_context_id : 0U;
++    capture.candidate.recipientSession = a->service->context_seen ?
++        a->service->context.session_id : 0U;
++    capture.candidate.recipientEpoch = a->service->context_port_epoch;
++    capture.eligible = !d->repeat && !d->observation_only &&
++        d->capture.timestamp_known && d->receipt_id != 0U &&
++        d->receipt_id > slot->lastReceipt &&
++        nd_map_can(a, m, d->local_elapsed_ms, &capture.expected) == NET_OK;
++    /* A new observation invalidates the old commit even if its Owner rejects. */
++    if (d->receipt_id != slot->receipt) slot->valid = slot->pending = false;
++    return true;
++}
++
++void NetDomainSnapshot_End(NetStatus status)
++{
++    if (!capture.busy) return;
++    if (capture.slot != NULL && capture.committed && status == NET_OK) {
++        *capture.slot = capture.candidate;
++        capture.slot->lastReceipt = capture.slot->receipt;
++        capture.slot->valid = true;
++        capture.slot->pending = capture.slot->recipientDevice != 0U &&
++            capture.slot->recipientSession != 0U &&
++            capture.slot->recipientEpoch == capture.slot->adapter->service->config.port_epoch[NET_WIRE_UART_M];
++    }
++    memset(&capture, 0, sizeof(capture));
++}
++
++bool NetDomainSnapshot_Confirm(void *context, uint16_t id, uint64_t receipt,
++    uint32_t boot, uint32_t sequence)
++{
++    int index = snapshot_index(id);
++    SnapshotCommit *slot;
++    NetUpperCanMessage raw;
++    NetUpperDelivery delivery;
++    NetSourceStamp source;
++    uint32_t rawBoot, rawSequence;
++    (void)context;
++    if (index < 0 || capture.busy) return false;
++    slot = &snapshot[index];
++    if (!slot->valid || slot->receipt != receipt || slot->boot != boot ||
++        slot->sequence != sequence || slot->adapter == NULL) return false;
++    if (!slot->adapter->registered ||
++        slot->domainBoot != slot->adapter->config.domain_boot ||
++        slot->localEpoch != slot->adapter->service->config.local_epoch ||
++        net_upper_received_can(slot->adapter->service, id, &raw, &delivery,
++                               &source) != NET_OK ||
++        delivery.receipt_id != receipt ||
++        delivery.capture.port_epoch != slot->epoch ||
++        net_upper_can_identity(&raw, &rawBoot, &rawSequence) != NET_WIRE_OK ||
++        rawBoot != boot || rawSequence != sequence) {
++        slot->valid = slot->pending = false;
++        return false;
++    }
++    return true;
++}
++
++static void snapshot_publish(uint32_t nowMs)
++{
++    size_t i;
++    /* Context expiry/revocation can occur inside an RX Owner callback. Defer
++     * cancellation to the serialized Poll; never mutate a borrowed TX buffer.
++     * Only the existing state projections are in this publisher's scope. */
++    if (revokeQueuedStates && publisherAdapter != NULL) {
++        NetUpper *service = publisherAdapter->service;
++        bool failed = false;
++        if (service == NULL || service->in_call) return;
++        for (i = 0U; i < NET_UPPER_TX_CAPACITY; ++i) {
++            NetUpperTx *tx = &service->tx[i];
++            uint8_t type = tx->uart.type;
++            if (!tx->state.used || !tx->state.queued || tx->state.submitted ||
++                tx->link != NET_WIRE_UART_M ||
++                !(type == 0x30U || type == 0x33U || type == 0x34U ||
++                  type == 0x35U || type == 0x36U || type == 0x37U || type == 0x3aU))
++                continue;
++            if (net_upper_cancel(service, tx->state.key) != NET_OK) failed = true;
++        }
++        if (failed) return;
++        revokeQueuedStates = false;
++    }
++    for (i = 0U; i < sizeof(snapshot) / sizeof(snapshot[0]); ++i) {
++        SnapshotCommit *s = &snapshot[i];
++        NdCanValue value;
++        DomainIf_Status_t status = DOMAIN_IF_NOT_AVAILABLE;
++        if (s->pending && s->adapter != NULL) {
++            const NetUpper *service = s->adapter->service;
++            if (!service->context_seen || service->link_failed[NET_WIRE_UART_M] ||
++                service->quiescing[NET_WIRE_UART_M] ||
++                service->context_port_epoch != s->recipientEpoch ||
++                service->config.port_epoch[NET_WIRE_UART_M] != s->recipientEpoch ||
++                service->context.device_context_id != s->recipientDevice ||
++                service->context.session_id != s->recipientSession) {
++                s->pending = false;
++            }
++        }
++        if (!s->pending || !NetDomainSnapshot_Confirm(NULL, s->id,
++                s->receipt, s->boot, s->sequence)) continue;
++        /* Existing getters preserve Domain freshness/quality policy. The
++         * existing projection then checks every field against the CAN source.
++         * TTL/quality disagreements stay HOLD rather than becoming fresh. */
++        switch (s->id) {
++#define SNAPSHOT_PUBLISH(id_, member_, getter_, tx_) \
++        case id_: { \
++            if (getter_(nowMs, &value.member_) == DOMAIN_IF_OK) { \
++                status = tx_(&value.member_); \
++            } \
++            break; \
++        }
++        SNAPSHOT_PUBLISH(0x200U, door, DomainIf_QueryGetBcmDoorState, DomainIf_TxMobileBcmDoorState);
++        SNAPSHOT_PUBLISH(0x230U, bcm_status, DomainIf_QueryGetBcmStatus, DomainIf_TxMobileBcmStatus);
++        SNAPSHOT_PUBLISH(0x300U, environment, DomainIf_QueryGetCisEnvironment, DomainIf_TxMobileCisEnvironment);
++        SNAPSHOT_PUBLISH(0x310U, occupant, DomainIf_QueryGetCisOccupant, DomainIf_TxMobileCisOccupant);
++        SNAPSHOT_PUBLISH(0x0a0U, rear, DomainIf_QueryGetCisRear, DomainIf_TxMobileCisRear);
++        SNAPSHOT_PUBLISH(0x320U, cis_status, DomainIf_QueryGetCisStatus, DomainIf_TxMobileCisStatus);
++        SNAPSHOT_PUBLISH(0x340U, vss, DomainIf_QueryGetVssStatus, DomainIf_TxMobileVssStatus);
++#undef SNAPSHOT_PUBLISH
++        default: break;
++        }
++        /* OK is local queue acceptance only. Existing Network queues own
++         * transport retries/completion; backpressure leaves this pending. */
++        if (status == DOMAIN_IF_OK) s->pending = false;
++    }
++}
++
++void NetDomainSnapshot_Bind(void)
++{
++    memset(snapshot, 0, sizeof(snapshot));
++    memset(&capture, 0, sizeof(capture));
++    DomainSnapshotCommit_Bind(snapshot_commit, snapshot_publish);
++    publisherAdapter = NULL;
++    revokeQueuedStates = false;
++}
+ /* References Owner implementations, never defines or changes their ABI. This
+  * object is pulled from the archive only when this explicit binder is used. */
+ void net_domain_c2_pinned_owner_api(NetDomainC2Api *out)
+ {
+     if(out==NULL)return;
+     memset(out,0,sizeof(*out));
++    NetDomainSnapshot_Bind();
+     out->IsInitialized=DomainIf_IsInitialized;
+     out->SetRxObserver=DomainIf_SetRxObserver;
+     out->SetTxPort=DomainIf_SetTxPort;
+@@ -16,13 +292,16 @@
+     out->RxCisStatus=DomainIf_RxCisStatus;
+     out->RxCisCabinEnvironment=DomainIf_RxCisCabinEnvironment;
+     out->RxCisOccupant=DomainIf_RxCisOccupant;
++    out->RxVssState=DomainIf_RxVssState;
+     out->RxNetworkLocalFailure=DomainIf_RxNetworkLocalFailure;
++    out->ValidatePassiveQueryContext=DomainIf_ValidatePassiveQueryContext;
+     out->QueryGetBcmDoorState=DomainIf_QueryGetBcmDoorState;
+     out->QueryGetBcmStatus=DomainIf_QueryGetBcmStatus;
+     out->QueryGetCisRear=DomainIf_QueryGetCisRear;
+     out->QueryGetCisStatus=DomainIf_QueryGetCisStatus;
+     out->QueryGetCisEnvironment=DomainIf_QueryGetCisEnvironment;
+     out->QueryGetCisOccupant=DomainIf_QueryGetCisOccupant;
++    out->QueryGetVssStatus=DomainIf_QueryGetVssStatus;
+     out->QueryGetRequestResult=DomainIf_QueryGetRequestResult;
+     out->QueryGetRecentRequestResults=DomainIf_QueryGetRecentRequestResults;
+ }
+--- a/firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_rx.c
++++ b/firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_rx.c
+@@ -1,4 +1,7 @@
+ #include "net_domain_private.h"
++#if defined(NET_BOARD_DOMAIN_C2_HOOK)
++#include "net_domain_snapshot_private.h"
++#endif
+ NetStatus nd_map_can(NetDomainC2 *a,const NetUpperCanMessage *m,uint64_t elapsed,NdCanValue *out) {
+ if(a==NULL||m==NULL||out==NULL)return NET_INVALID_ARGUMENT;
+ switch(m->id){
+@@ -276,7 +279,7 @@
+ default:return NET_UNSUPPORTED;
+ }
+ }
+-NetStatus nd_rx_can(void *context,const NetUpperCanMessage *m,const NetUpperDelivery *d){
++static NetStatus nd_rx_can_apply(void *context,const NetUpperCanMessage *m,const NetUpperDelivery *d){
+ NetDomainC2 *a=context;
+ NdCanValue value;
+ NetStatus status;
+@@ -334,6 +337,17 @@
+ return nd_rx_call(a,a->api.RxWindowFault(&value.window_fault.fault));
+ default:return NET_UNSUPPORTED;
+ }
++}
++NetStatus nd_rx_can(void *context,const NetUpperCanMessage *m,const NetUpperDelivery *d){
++#if defined(NET_BOARD_DOMAIN_C2_HOOK)
++NetStatus status;
++if(!NetDomainSnapshot_Begin((NetDomainC2 *)context,m,d))return NET_BUSY;
++status=nd_rx_can_apply(context,m,d);
++NetDomainSnapshot_End(status);
++return status;
++#else
++return nd_rx_can_apply(context,m,d);
++#endif
+ }
+ static bool nd_same(uint16_t id,const void *object,const NdCanValue *mapped){
+ switch(id){
+--- /dev/null
++++ b/firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_snapshot_private.h
+@@ -0,0 +1,19 @@
++#ifndef NET_DOMAIN_SNAPSHOT_PRIVATE_H
++#define NET_DOMAIN_SNAPSHOT_PRIVATE_H
++
++#include "network/net_domain_c2.h"
++
++/* DOMAIN/board integration only; does not alter the C2 or wire API. */
++void NetDomainSnapshot_Bind(void);
++bool NetDomainSnapshot_Begin(NetDomainC2 *adapter,
++    const NetUpperCanMessage *message, const NetUpperDelivery *delivery);
++void NetDomainSnapshot_End(NetStatus status);
++bool NetDomainSnapshot_Confirm(void *context, uint16_t id, uint64_t receipt,
++    uint32_t boot, uint32_t sequence);
++/* DOMAIN composition boundary: revalidate addressed monitoring/query frames
++ * immediately before the existing driver port can borrow the packet. */
++NetStatus NetDomainSnapshot_Submit(const NetUpperPortOps *delegate,
++    void *context, const NetUpperPacket *packet, NetTxKey key,
++    uint32_t domainBoot);
++
++#endif
+--- a/firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c
++++ b/firmware/network/nodes/domain/src/l02_typed_handoff/m03_typed_handoff/net_domain_tx.c
+@@ -1,7 +1,6 @@
+ #include "net_domain_private.h"
+-/* u32 AGE to the wire u16: past 65535 it goes out as the saturated 65535, whatever the quality
+- * (04_COMMON/10_DATA_AND_ID_RULES.md AGE). UINT32_MAX is the unknown AGE, as nd_age gives it. */
+-static NetStatus age16(uint32_t age,uint16_t *out){*out=age>UINT16_MAX?UINT16_MAX:(uint16_t)age;
++static NetStatus age16(uint32_t age,uint16_t *out){
++*out=age>UINT16_MAX?UINT16_MAX:(uint16_t)age;
+ return NET_OK;
+ }
+ static NetStatus origin(CommandOrigin_t origin,uint8_t *out){switch(origin){
+--- a/firmware/network/src/node/net_entry.c
++++ b/firmware/network/src/node/net_entry.c
+@@ -26,6 +26,7 @@
+ #include <string.h>
+ #include "network/net_node.h"
+ #include "network/app/net_if_entry.h"
++#include "net_hal_rtd_internal.h"
+ #include "net_board_cfg.h"
+ 
+ #ifdef NET_BOARD_NODE_CONFIG_HOOK
+@@ -37,7 +38,7 @@
+ typedef struct {
+     uint8_t init_result;            /* NetEntryInitResult */
+     uint32_t init_calls, main_calls, now_backward, main_max_us;
+-    bool now_seen;
++    bool init_in_progress, now_seen;
+     uint64_t now_ms;
+ } NetEntry;
+ 
+@@ -45,15 +46,27 @@
+ 
+ static void inc(uint32_t *v) { if (*v != UINT32_MAX) ++*v; }
+ 
++static void finish_init(uint8_t result)
++{
++    uint32_t key = net_board_irq_save();
++    entry.init_result = result;
++    entry.init_in_progress = false;
++    net_board_irq_restore(key);
++}
++
+ void Net_Init(void)
+ {
++    uint32_t key;
+ #ifdef NET_BOARD_NODE_CONFIG_HOOK
+     NetNodeConfig cfg;
+ #endif
+     inc(&entry.init_calls);
+     /* Once per power cycle: a later call never touches the node, whether the
+      * first one succeeded or failed (NetNode_Init itself is fresh-storage only). */
+-    if (entry.init_result != (uint8_t)NET_ENTRY_INIT_NONE) return;
++    if (entry.init_result != (uint8_t)NET_ENTRY_INIT_NONE || entry.init_in_progress) return;
++    key = net_board_irq_save();
++    entry.init_in_progress = true;
++    net_board_irq_restore(key);
+ #ifdef NET_BOARD_NODE_CONFIG_HOOK
+     memset(&cfg, 0, sizeof(cfg));
+     cfg.local_epoch = 1u;           /* NetNodeConfig: any nonzero value, 1 is fine */
+@@ -61,18 +74,18 @@
+     cfg.uart_m_port_epoch = 1u;     /* ignored for a link the node profile lacks */
+     cfg.uart_c_port_epoch = 1u;
+     if (!NET_BOARD_NODE_CONFIG_HOOK(&cfg)) {
+-        entry.init_result = (uint8_t)NET_ENTRY_INIT_CONFIG_REFUSED;
++        finish_init((uint8_t)NET_ENTRY_INIT_CONFIG_REFUSED);
+         return;
+     }
+     /* BOOT_ID 0 is reserved: docs/network/interface/04_COMMON/10_DATA_AND_ID_RULES.md */
+     if (cfg.boot_id == 0u) {
+-        entry.init_result = (uint8_t)NET_ENTRY_INIT_BOOT_ID_ZERO;
++        finish_init((uint8_t)NET_ENTRY_INIT_BOOT_ID_ZERO);
+         return;
+     }
+-    entry.init_result = (uint8_t)(NetNode_Init(&cfg) == NET_OK ? NET_ENTRY_INIT_OK
+-                                                                : NET_ENTRY_INIT_NODE_FAILED);
++    finish_init((uint8_t)(NetNode_Init(&cfg) == NET_OK ? NET_ENTRY_INIT_OK
++                                                        : NET_ENTRY_INIT_NODE_FAILED));
+ #else
+-    entry.init_result = (uint8_t)NET_ENTRY_INIT_NO_CONFIG_HOOK;
++    finish_init((uint8_t)NET_ENTRY_INIT_NO_CONFIG_HOOK);
+ #endif
+ }
+ 
+@@ -129,6 +142,28 @@
+     return entry.init_result == (uint8_t)NET_ENTRY_INIT_OK ? NetNode_GetBootId() : 0u;
+ }
+ 
++NetHardwareInitStatus Net_GetHardwareInitStatus(void)
++{
++    NetHalRtdHardwareInitStatus backend;
++    uint8_t init_result;
++    bool init_in_progress;
++    uint32_t key = net_board_irq_save();
++
++    init_result = entry.init_result;
++    init_in_progress = entry.init_in_progress;
++    net_board_irq_restore(key);
++
++    if (init_in_progress) return NET_HARDWARE_INIT_INITIALIZING;
++    if (init_result == (uint8_t)NET_ENTRY_INIT_NONE) return NET_HARDWARE_INIT_NOT_INITIALIZED;
++
++    backend = net_hal_rtd_hardware_init_status();
++    if (init_result == (uint8_t)NET_ENTRY_INIT_OK && backend == NET_HAL_RTD_HW_PREPARED)
++        return NET_HARDWARE_INIT_PREPARED;
++    if (backend == NET_HAL_RTD_HW_ROLLBACK_FAILED)
++        return NET_HARDWARE_INIT_ROLLBACK_FAILED;
++    return NET_HARDWARE_INIT_FAILED;
++}
++
+ void net_entry_diag(NetNodeDiag *out)
+ {
+     if (out == NULL) return;
+--- a/firmware/network/nodes/domain/src/node/net_node_domain.c
++++ b/firmware/network/nodes/domain/src/node/net_node_domain.c
+@@ -89,6 +89,21 @@
+ static bool init_called, c2_reached;
+ static uint32_t node_boot;
+ 
++#if defined(CPU_S32K344) && defined(NET_BOARD_DOMAIN_C2_HOOK)
++#include "../l02_typed_handoff/m03_typed_handoff/net_domain_snapshot_private.h"
++#include "domain_network_admission_bridge_private.h"
++static DomainNetworkAdmissionBridgePrivate_t monitoring_context;
++static const NetUpperPortOps *domain_driver_ops;
++static NetUpperPortOps domain_port_ops;
++
++static NetStatus domain_port_submit(void *context,
++    const NetUpperPacket *packet, NetTxKey key)
++{
++    return NetDomainSnapshot_Submit(domain_driver_ops, context, packet, key,
++                                    node_boot);
++}
++#endif
++
+ /* M_DOMAIN_ALIVE: the last accepted submission and the counts. */
+ static struct {
+     bool sent;
+@@ -113,6 +128,13 @@
+         c->rx_policy[i].bound = true;
+         c->rx_policy[i].maximum_age_ms = 2000u;
+         c->rx_policy[i].expires_at_equality = true;
++        /* M_CONTEXT has independent source metadata. Optional Proximity may
++         * be NO_DATA/AGE=0xffff; that is not the age of Connection or App.
++         * Keep the existing local delivery bound, while the Domain Owner
++         * checks required source quality and its separately injected lease.
++         * This does not select any Production source/Context TTL. */
++        if (r != NULL && r->link == NET_WIRE_UART_M && r->id_type == 0x01u)
++            c->rx_policy[i].maximum_age_ms += UINT16_MAX;
+         if (r == NULL || r->link != NET_WIRE_CAN) continue;
+         for (k = 0u; k < sizeof(per_field_age) / sizeof(per_field_age[0]); ++k)
+             if (r->id_type == per_field_age[k]) c->rx_per_field_age[i] = true;
+@@ -160,6 +182,16 @@
+     st = net_domain_c2_init(&c2, &service, &query, &api, &cfg);
+     if (st != NET_OK) return st;
+     c2_reached = true;
++#if defined(CPU_S32K344)
++    /* Approved demo trusted-Gateway contract, read-only only. No P6 Provider,
++     * Request Owner, Query privilege or HAL activation is created here. */
++    if (DomainNetworkAdmissionBridgePrivate_InitMonitoring(&monitoring_context, &c2) !=
++        DOMAIN_NETWORK_ADMISSION_BRIDGE_PRIVATE_OK ||
++        DomainNetworkAdmissionBridgePrivate_BindApi(&monitoring_context, &c2.api) !=
++        DOMAIN_NETWORK_ADMISSION_BRIDGE_PRIVATE_OK) return NET_NOT_CONFIGURED;
++    service.config.owner = DomainNetworkAdmissionBridgePrivate_WrapOwner(
++        &monitoring_context, service.config.owner);
++#endif
+     /* SetTxPort; NOT_CONFIGURED while DomainIf is not initialized. */
+     return net_domain_c2_register(&c2);
+ #endif
+@@ -201,6 +233,13 @@
+         c.port_epoch[NET_WIRE_UART_C] = config->can_port_epoch; /* no UART-C: any nonzero epoch */
+         c.profile = NET_WIRE_CANDIDATE_ONLY;
+         c.port = net_hal_rtd_port(&hal);
++#if defined(CPU_S32K344) && defined(NET_BOARD_DOMAIN_C2_HOOK)
++        if (c.port.ops == NULL) return fail(NET_NODE_STAGE_UPPER, NET_NOT_CONFIGURED);
++        domain_driver_ops = c.port.ops;
++        domain_port_ops = *c.port.ops;
++        domain_port_ops.submit = domain_port_submit;
++        c.port.ops = &domain_port_ops;
++#endif
+         c.owner = net_domain_c2_owner(&c2);
+         upper(&c);
+         st = net_upper_init(&service, &c);
+--- a/firmware/network/src/platform/rtd/net_hal_rtd.c
++++ b/firmware/network/src/platform/rtd/net_hal_rtd.c
+@@ -24,6 +24,7 @@
+ 
+ NetHalRtdCore net_hal_rtd_core;
+ #define rtd net_hal_rtd_core
++static volatile NetHalRtdOwner hal_owner;
+ 
+ /* Drain budget: one drain never offers the adapter more entries than its RX
+  * queue holds. The queue is not always empty when a pass starts: a step whose
+@@ -45,6 +46,98 @@
+ #endif
+ 
+ static void inc(uint32_t *v) { if (*v != UINT32_MAX) ++*v; }
++
++bool net_hal_rtd_owner_claim(NetHalRtdOwner owner)
++{
++    bool claimed = false;
++    uint32_t key;
++    if (owner != NET_HAL_RTD_OWNER_PRODUCTION && owner != NET_HAL_RTD_OWNER_UART_DIAGNOSTIC)
++        return false;
++    key = net_board_irq_save();
++    if (hal_owner == NET_HAL_RTD_OWNER_NONE) { hal_owner = owner; claimed = true; }
++    net_board_irq_restore(key);
++    return claimed;
++}
++
++bool net_hal_rtd_owner_release(NetHalRtdOwner owner, bool cleanup_succeeded)
++{
++    bool released = false;
++    uint32_t key = net_board_irq_save();
++    if (hal_owner == owner) {
++        if (cleanup_succeeded) { hal_owner = NET_HAL_RTD_OWNER_NONE; released = true; }
++        else hal_owner = NET_HAL_RTD_OWNER_UNCERTAIN;
++    }
++    net_board_irq_restore(key);
++    return released;
++}
++
++NetHalRtdOwner net_hal_rtd_owner_get(void)
++{
++    NetHalRtdOwner owner;
++    uint32_t key = net_board_irq_save();
++    owner = hal_owner;
++    net_board_irq_restore(key);
++    return owner;
++}
++
++void net_hal_rtd_record_rollback_failure(NetHalRtdRollbackStep step, uint32_t status)
++{
++    if (rtd.rollback_failed_step == (uint8_t)NET_HAL_RTD_ROLLBACK_NONE) {
++        rtd.rollback_failed_step = (uint8_t)step;
++        rtd.rollback_rtd_status = status;
++    }
++}
++
++NetHalRtdHardwareInitStatus net_hal_rtd_hardware_init_status(void)
++{
++    NetHalRtdHardwareInitStatus status;
++    uint32_t key = net_board_irq_save();
++
++    if (rtd.rollback_attempted && !rtd.rollback_succeeded) {
++        status = NET_HAL_RTD_HW_ROLLBACK_FAILED;
++    } else if (rtd.rollback_attempted || rtd.start_failed) {
++        status = NET_HAL_RTD_HW_FAILED;
++    } else if (rtd.started && rtd.diag.started) {
++        status = NET_HAL_RTD_HW_PREPARED;
++    } else if (rtd.init_in_progress) {
++        status = NET_HAL_RTD_HW_INITIALIZING;
++    } else {
++        status = NET_HAL_RTD_HW_NOT_INITIALIZED;
++    }
++    net_board_irq_restore(key);
++    return status;
++}
++
++/* Stop every producer before touching an RTD state object.  On this single
++ * owner target, masking interrupts makes the started=false transition atomic
++ * with respect to all callbacks; a pending callback then observes the closed
++ * gate and never dereferences a deinitialized driver state. */
++static NetStatus rollback_start(NetStatus original_status)
++{
++    uint32_t key;
++    bool ok = true;
++
++    key = net_board_irq_save();
++    rtd.started = false;
++    rtd.diag.started = false;
++    rtd.start_failed = true;
++    rtd.init_in_progress = false;
++    rtd.rollback_in_progress = true;
++    rtd.rollback_attempted = true;
++    net_board_irq_restore(key);
++
++#if UART_LINKS
++    if (!net_hal_rtd_uart_rollback()) ok = false;
++#endif
++    if (!net_hal_rtd_can_rollback()) ok = false;
++
++    key = net_board_irq_save();
++    rtd.rollback_in_progress = false;
++    rtd.rollback_succeeded = ok;
++    net_board_irq_restore(key);
++    (void)net_hal_rtd_owner_release(NET_HAL_RTD_OWNER_PRODUCTION, ok);
++    return original_status;
++}
+ 
+ /* ------------------------------------------------------------- time ----- */
+ uint64_t net_hal_rtd_now_locked(void)
+@@ -184,6 +277,7 @@
+ #if NET_BOARD_UART_C_LINK
+     if (in->uart_c_port_epoch == 0u) return NET_INVALID_ARGUMENT;
+ #endif
++    if (net_hal_rtd_owner_get() != NET_HAL_RTD_OWNER_NONE) return NET_BUSY;
+     memset(&rtd, 0, sizeof(rtd));
+     net_hal_rtd_can_reset();
+     rtd.adapter = adapter;
+@@ -208,28 +302,45 @@
+ NetStatus net_hal_rtd_start(void)
+ {
+     NetStatus st;
+-    if (!rtd.configured || rtd.started) return NET_INVALID_ARGUMENT;
++    uint32_t key;
++    if (!rtd.configured || rtd.started || rtd.start_failed) return NET_INVALID_ARGUMENT;
++    if (!net_hal_rtd_owner_claim(NET_HAL_RTD_OWNER_PRODUCTION)) return NET_BUSY;
++
++    key = net_board_irq_save();
++    rtd.init_in_progress = true;
++    net_board_irq_restore(key);
+ 
+ #if !defined(NET_BOARD_TIME_APP_TICK) && !defined(NET_BOARD_NOW_MS_HOOK)
+     rtd.ticks_per_ms = OsIf_MicrosToTicks(1000U, NET_BOARD_TIME_COUNTER);
+     rtd.diag.ticks_per_ms = rtd.ticks_per_ms;
+-    if (rtd.ticks_per_ms == 0u) { rtd.diag.init_failed_step = NET_HAL_RTD_STEP_TIME; return NET_NOT_CONFIGURED; }
++    if (rtd.ticks_per_ms == 0u) {
++        key = net_board_irq_save();
++        rtd.diag.init_failed_step = NET_HAL_RTD_STEP_TIME;
++        rtd.start_failed = true;
++        rtd.init_in_progress = false;
++        net_board_irq_restore(key);
++        (void)net_hal_rtd_owner_release(NET_HAL_RTD_OWNER_PRODUCTION, true);
++        return NET_NOT_CONFIGURED;
++    }
+     rtd.time_ref = OsIf_GetCounter(NET_BOARD_TIME_COUNTER);
+ #endif
+ 
+     st = net_hal_rtd_can_prepare();
+-    if (st != NET_OK) return st;
++    if (st != NET_OK) return rollback_start(st);
+ #if UART_LINKS
+     net_hal_rtd_uart_prepare();
+ #endif
+     rtd.started = true; /* callbacks may fire from here on */
+     st = net_hal_rtd_can_arm();
+-    if (st != NET_OK) { rtd.started = false; return st; }
++    if (st != NET_OK) return rollback_start(st);
+ #if UART_LINKS
+     st = net_hal_rtd_uart_arm();
+-    if (st != NET_OK) { rtd.started = false; return st; }
+-#endif
++    if (st != NET_OK) return rollback_start(st);
++#endif
++    key = net_board_irq_save();
+     rtd.diag.started = true;
++    rtd.init_in_progress = false;
++    net_board_irq_restore(key);
+     return NET_OK;
+ }
+ 
+@@ -331,3 +442,97 @@
+     net_board_irq_restore(key);
+     return NET_OK;
+ }
++
++NetStatus net_hal_rtd_uart_diagnostic_config(NetHalAdapter *adapter, uint64_t port_epoch,
++                                              NetHalConfig *out)
++{
++#if NET_BOARD_UART_M_LINK
++    NetHalRtdConfig in;
++    NetStatus st;
++    if (adapter == NULL || out == NULL || port_epoch == 0u) return NET_INVALID_ARGUMENT;
++    if (!net_hal_rtd_owner_claim(NET_HAL_RTD_OWNER_UART_DIAGNOSTIC)) return NET_BUSY;
++    memset(&rtd, 0, sizeof(rtd));
++    memset(&in, 0, sizeof(in));
++    memset(out, 0, sizeof(*out));
++    in.can_port_epoch = port_epoch;
++    in.uart_m_port_epoch = port_epoch;
++    rtd.adapter = adapter;
++    rtd.configured = true;
++    rtd.diag.time_source = (uint8_t)TIME_SOURCE;
++    out->binding_selected = true;
++    out->ops = &rtd_ops;
++    out->context = &rtd;
++    st = net_hal_rtd_uart_reset(&in, out);
++    if (st != NET_OK) {
++        (void)net_hal_rtd_owner_release(NET_HAL_RTD_OWNER_UART_DIAGNOSTIC, true);
++        return st;
++    }
++    out->enabled_links = NET_HAL_LINK_BIT(NET_WIRE_UART_M);
++    out->port_epoch[NET_WIRE_CAN] = 0u;
++    return NET_OK;
++#else
++    (void)adapter; (void)port_epoch; (void)out;
++    return NET_NOT_CONFIGURED;
++#endif
++}
++
++NetStatus net_hal_rtd_uart_diagnostic_start(void)
++{
++#if NET_BOARD_UART_M_LINK
++    if (net_hal_rtd_owner_get() != NET_HAL_RTD_OWNER_UART_DIAGNOSTIC || !rtd.configured || rtd.started)
++        return NET_NOT_CONFIGURED;
++#if !defined(NET_BOARD_TIME_APP_TICK) && !defined(NET_BOARD_NOW_MS_HOOK)
++    rtd.ticks_per_ms = OsIf_MicrosToTicks(1000U, NET_BOARD_TIME_COUNTER);
++    if (rtd.ticks_per_ms == 0u) {
++        (void)net_hal_rtd_owner_release(NET_HAL_RTD_OWNER_UART_DIAGNOSTIC, true);
++        return NET_NOT_CONFIGURED;
++    }
++    rtd.time_ref = OsIf_GetCounter(NET_BOARD_TIME_COUNTER);
++#endif
++    net_hal_rtd_uart_prepare();
++    rtd.started = true;
++    rtd.diag.started = true;
++    return NET_OK;
++#else
++    return NET_NOT_CONFIGURED;
++#endif
++}
++
++void net_hal_rtd_uart_diagnostic_service(void)
++{
++#if NET_BOARD_UART_M_LINK
++    if (rtd.started && net_hal_rtd_owner_get() == NET_HAL_RTD_OWNER_UART_DIAGNOSTIC)
++        net_hal_rtd_uart_service(net_hal_rtd_now_locked());
++#endif
++}
++
++uint32_t net_hal_rtd_uart_diagnostic_drain(void)
++{
++#if NET_BOARD_UART_M_LINK
++    size_t room;
++    uint32_t budget = NET_BOARD_ISR_DRAIN_BUDGET;
++    if (!rtd.started || net_hal_rtd_owner_get() != NET_HAL_RTD_OWNER_UART_DIAGNOSTIC) return 0u;
++    room = net_hal_adapter_rx_room(rtd.adapter);
++    if (room < budget) budget = (uint32_t)room;
++    return net_hal_rtd_uart_drain(budget);
++#else
++    return 0u;
++#endif
++}
++
++NetStatus net_hal_rtd_uart_diagnostic_stop(void)
++{
++#if NET_BOARD_UART_M_LINK
++    bool ok;
++    uint32_t key;
++    if (net_hal_rtd_owner_get() != NET_HAL_RTD_OWNER_UART_DIAGNOSTIC) return NET_NOT_CONFIGURED;
++    key = net_board_irq_save();
++    rtd.started = false;
++    rtd.diag.started = false;
++    net_board_irq_restore(key);
++    ok = net_hal_rtd_uart_rollback();
++    return net_hal_rtd_owner_release(NET_HAL_RTD_OWNER_UART_DIAGNOSTIC, ok) ? NET_OK : NET_HOLD;
++#else
++    return NET_NOT_CONFIGURED;
++#endif
++}
+--- a/firmware/network/src/platform/rtd/net_hal_rtd_can.c
++++ b/firmware/network/src/platform/rtd/net_hal_rtd_can.c
+@@ -137,6 +137,8 @@
+     /* RX MBs left without a reception by a refused re-arm in the RX ISR (bit
+      * i: MB RX_FIRST + i); the main context arms them again (rx_retry). */
+     volatile uint32_t rx_unarmed;
++    bool initialized, controller_started;
++    uint8_t rx_configured, rx_armed;
+ } RtdCan;
+ 
+ static RtdCan can;
+@@ -480,14 +482,19 @@
+         .is_remote = FALSE, .is_polling = FALSE
+     };
+     uint32_t i;
+-    if (!step(NET_HAL_RTD_STEP_INIT, FlexCAN_Ip_Init(NET_BOARD_CAN_INSTANCE, &NET_BOARD_CAN_STATE, &NET_BOARD_CAN_CONFIG)) ||
+-        !step(NET_HAL_RTD_STEP_MASK_TYPE, FlexCAN_Ip_SetRxMaskType(NET_BOARD_CAN_INSTANCE, FLEXCAN_RX_MASK_INDIVIDUAL)))
++    if (!step(NET_HAL_RTD_STEP_INIT,
++              FlexCAN_Ip_Init(NET_BOARD_CAN_INSTANCE, &NET_BOARD_CAN_STATE, &NET_BOARD_CAN_CONFIG)))
++        return NET_HOLD;
++    can.initialized = true;
++    if (!step(NET_HAL_RTD_STEP_MASK_TYPE,
++              FlexCAN_Ip_SetRxMaskType(NET_BOARD_CAN_INSTANCE, FLEXCAN_RX_MASK_INDIVIDUAL)))
+         return NET_HOLD;
+     for (i = 0u; i < RX_COUNT; ++i) {
+         uint8 mb = (uint8)(RX_FIRST + i);
+         if (!step(NET_HAL_RTD_STEP_MASK, FlexCAN_Ip_SetRxIndividualMask(NET_BOARD_CAN_INSTANCE, mb, 0U)) ||
+             !step(NET_HAL_RTD_STEP_RX_CONFIG, FlexCAN_Ip_ConfigRxMb(NET_BOARD_CAN_INSTANCE, mb, &rx_info, 0U)))
+             return NET_HOLD;
++        ++can.rx_configured;
+     }
+     /* Low-rate error sources only: per-frame ERR interrupts would storm when
+      * no peer ACKs. Bus errors stay visible through the error counters. */
+@@ -505,10 +512,60 @@
+         uint8 mb = (uint8)(RX_FIRST + i);
+         if (!step(NET_HAL_RTD_STEP_RX_ARM, FlexCAN_Ip_Receive(NET_BOARD_CAN_INSTANCE, mb, &can.rx[i], FALSE)))
+             return NET_HOLD;
++        ++can.rx_armed;
+     }
+     if (!step(NET_HAL_RTD_STEP_START, FlexCAN_Ip_SetStartMode(NET_BOARD_CAN_INSTANCE)))
+         return NET_HOLD;
++    can.controller_started = true;
+     return NET_OK;
++}
++
++static bool rollback_flexcan_step(NetHalRtdRollbackStep step_id, Flexcan_Ip_StatusType status,
++                                  bool no_transfer_is_ok)
++{
++    if (status == FLEXCAN_STATUS_SUCCESS ||
++        (no_transfer_is_ok && status == FLEXCAN_STATUS_NO_TRANSFER_IN_PROGRESS)) return true;
++    net_hal_rtd_record_rollback_failure(step_id, (uint32_t)status);
++    return false;
++}
++
++bool net_hal_rtd_can_rollback(void)
++{
++    uint32_t i;
++    bool ok = true;
++
++    if (!can.initialized) return true;
++
++    /* Only MBs handed to the RTD are aborted.  Reverse order avoids exposing
++     * a lower MB again while a later one is still owned by the controller. */
++    for (i = can.rx_armed; i != 0u; --i) {
++        uint8_t mb = (uint8_t)(RX_FIRST + i - 1u);
++        Flexcan_Ip_StatusType st = FlexCAN_Ip_AbortTransfer(NET_BOARD_CAN_INSTANCE, mb);
++        if (!rollback_flexcan_step(NET_HAL_RTD_ROLLBACK_CAN_ABORT_RX, st, true)) ok = false;
++    }
++    for (i = 0u; i < TX_COUNT; ++i) {
++        if (can.tx[i].busy) {
++            Flexcan_Ip_StatusType st = FlexCAN_Ip_AbortTransfer(
++                NET_BOARD_CAN_INSTANCE, (uint8_t)(TX_FIRST + i));
++            if (!rollback_flexcan_step(NET_HAL_RTD_ROLLBACK_CAN_ABORT_TX, st, true)) ok = false;
++        }
++    }
++    if (can.controller_started) {
++        Flexcan_Ip_StatusType st = FlexCAN_Ip_SetStopMode(NET_BOARD_CAN_INSTANCE);
++        if (!rollback_flexcan_step(NET_HAL_RTD_ROLLBACK_CAN_STOP, st, false)) ok = false;
++        else can.controller_started = false;
++    }
++    {
++        Flexcan_Ip_StatusType st = FlexCAN_Ip_Deinit(NET_BOARD_CAN_INSTANCE);
++        if (!rollback_flexcan_step(NET_HAL_RTD_ROLLBACK_CAN_DEINIT, st, false)) ok = false;
++        else {
++            can.initialized = false;
++            can.controller_started = false;
++            can.rx_configured = 0u;
++            can.rx_armed = 0u;
++        }
++    }
++    return ok;
+ }
+ 
+ /* A quarantined MB (abort timed out) is reused only once its message buffer
+--- a/firmware/network/src/platform/rtd/net_hal_rtd_internal.h
++++ b/firmware/network/src/platform/rtd/net_hal_rtd_internal.h
+@@ -18,6 +18,12 @@
+ /* State shared by every link part. Owned by net_hal_rtd.c. */
+ typedef struct {
+     bool configured, started;   /* started: link callbacks may report from here on */
++    /* Start is one-shot after a hardware failure.  rollback_* is deliberately
++     * private: it records cleanup without changing the public Network ABI. */
++    bool init_in_progress, start_failed;
++    bool rollback_in_progress, rollback_attempted, rollback_succeeded;
++    uint8_t rollback_failed_step;
++    uint32_t rollback_rtd_status;
+     NetHalAdapter *adapter;
+     uint64_t can_epoch;
+     /* time base */
+@@ -25,6 +31,35 @@
+     uint64_t now_ms;
+     NetHalRtdDiag diag;
+ } NetHalRtdCore;
++
++/* Private backend state used by the public entry to distinguish an ordinary
++ * initialization failure from a cleanup failure without exposing RTD details
++ * or changing an existing public diagnostic structure. */
++typedef enum {
++    NET_HAL_RTD_HW_NOT_INITIALIZED = 0,
++    NET_HAL_RTD_HW_INITIALIZING,
++    NET_HAL_RTD_HW_PREPARED,
++    NET_HAL_RTD_HW_FAILED,
++    NET_HAL_RTD_HW_ROLLBACK_FAILED
++} NetHalRtdHardwareInitStatus;
++
++typedef enum {
++    NET_HAL_RTD_ROLLBACK_NONE = 0,
++    NET_HAL_RTD_ROLLBACK_UART_ABORT_TX,
++    NET_HAL_RTD_ROLLBACK_UART_ABORT_RX,
++    NET_HAL_RTD_ROLLBACK_UART_DEINIT,
++    NET_HAL_RTD_ROLLBACK_CAN_ABORT_RX,
++    NET_HAL_RTD_ROLLBACK_CAN_ABORT_TX,
++    NET_HAL_RTD_ROLLBACK_CAN_STOP,
++    NET_HAL_RTD_ROLLBACK_CAN_DEINIT
++} NetHalRtdRollbackStep;
++
++typedef enum {
++    NET_HAL_RTD_OWNER_NONE = 0,
++    NET_HAL_RTD_OWNER_PRODUCTION,
++    NET_HAL_RTD_OWNER_UART_DIAGNOSTIC,
++    NET_HAL_RTD_OWNER_UNCERTAIN
++} NetHalRtdOwner;
+ 
+ extern NetHalRtdCore net_hal_rtd_core;
+ 
+@@ -40,11 +75,17 @@
+  * tick_ahead_max_ms); one before the axis start gives now and counts
+  * tick_unplaceable. */
+ uint64_t net_hal_rtd_place_stamp(uint32_t stamp);
++void net_hal_rtd_record_rollback_failure(NetHalRtdRollbackStep step, uint32_t status);
++NetHalRtdHardwareInitStatus net_hal_rtd_hardware_init_status(void);
++bool net_hal_rtd_owner_claim(NetHalRtdOwner owner);
++bool net_hal_rtd_owner_release(NetHalRtdOwner owner, bool cleanup_succeeded);
++NetHalRtdOwner net_hal_rtd_owner_get(void);
+ 
+ /* CAN part, called by the common part. */
+ void net_hal_rtd_can_reset(void);                   /* from net_hal_rtd_config() */
+ NetStatus net_hal_rtd_can_prepare(void);            /* controller init, masks, RX MB config, error IRQs */
+ NetStatus net_hal_rtd_can_arm(void);                /* after started=true: arm RX MBs, start mode */
++bool net_hal_rtd_can_rollback(void);                 /* main context, callbacks already gated */
+ NetStatus net_hal_rtd_can_submit(const NetHalTransfer *t);
+ void net_hal_rtd_can_service(uint64_t now_ms);      /* stuck-TX abort, error counters */
+ uint32_t net_hal_rtd_can_drain(uint32_t budget);    /* main: ISR ring -> adapter, at most budget entries */
+@@ -56,6 +97,7 @@
+ NetStatus net_hal_rtd_uart_reset(const NetHalRtdConfig *in, NetHalConfig *out);
+ void net_hal_rtd_uart_prepare(void);                /* Lpuart_Uart_Ip_Init per link */
+ NetStatus net_hal_rtd_uart_arm(void);               /* after started=true: first one-byte reception */
++bool net_hal_rtd_uart_rollback(void);                /* main context, callbacks already gated */
+ NetStatus net_hal_rtd_uart_submit(const NetHalTransfer *t);
+ void net_hal_rtd_uart_service(uint64_t now_ms);     /* transfer timeout, waiting transfer, RX re-arm */
+ uint32_t net_hal_rtd_uart_drain(uint32_t budget);   /* main: TX facts + at most budget received bytes */
+@@ -64,4 +106,11 @@
+  * later entry and everything behind it stay for the next poll or pass. */
+ uint32_t net_hal_rtd_uart_drain_until(uint32_t budget, uint64_t limit_ms);
+ 
++NetStatus net_hal_rtd_uart_diagnostic_config(NetHalAdapter *adapter, uint64_t port_epoch,
++                                              NetHalConfig *out);
++NetStatus net_hal_rtd_uart_diagnostic_start(void);
++void net_hal_rtd_uart_diagnostic_service(void);
++uint32_t net_hal_rtd_uart_diagnostic_drain(void);
++NetStatus net_hal_rtd_uart_diagnostic_stop(void);
++
+ #endif
+--- a/firmware/network/src/platform/rtd/net_hal_rtd_uart.c
++++ b/firmware/network/src/platform/rtd/net_hal_rtd_uart.c
+@@ -114,6 +114,7 @@
+     bool abort_wait;    /* timed out, abort refused, driver still sending: retried every pass */
+     uint32_t done_stamp;
+     uint64_t started_at_ms;
++    bool initialized;
+ } UartLink;
+ 
+ static UartLink uart[LINKS];
+@@ -191,7 +192,12 @@
+ void net_hal_rtd_uart_prepare(void)
+ {
+     uint32_t i;
+-    for (i = 0u; i < LINKS; ++i) Lpuart_Uart_Ip_Init(uart[i].instance, uart[i].cfg);
++    for (i = 0u; i < LINKS; ++i) {
++        /* RTD 7.0.1 Init is void.  If it returns, its state pointer is live;
++         * the first AsyncReceive remains the readiness proof. */
++        Lpuart_Uart_Ip_Init(uart[i].instance, uart[i].cfg);
++        uart[i].initialized = true;
++    }
+ }
+ 
+ NetStatus net_hal_rtd_uart_arm(void)
+@@ -208,6 +214,38 @@
+         set_armed(&uart[i], true);
+     }
+     return NET_OK;
++}
++
++static bool rollback_uart_step(NetHalRtdRollbackStep step_id, Lpuart_Uart_Ip_StatusType status)
++{
++    if (status == LPUART_UART_IP_STATUS_SUCCESS) return true;
++    net_hal_rtd_record_rollback_failure(step_id, (uint32_t)status);
++    return false;
++}
++
++bool net_hal_rtd_uart_rollback(void)
++{
++    uint32_t i = LINKS;
++    bool ok = true;
++
++    while (i != 0u) {
++        UartLink *u = &uart[--i];
++        if (!u->initialized) continue;
++
++        if (u->tx_active || u->aborting || u->abort_wait) {
++            if (!rollback_uart_step(NET_HAL_RTD_ROLLBACK_UART_ABORT_TX,
++                                    Lpuart_Uart_Ip_AbortSendingData(u->instance))) ok = false;
++        }
++        if (u->rx_armed) {
++            if (!rollback_uart_step(NET_HAL_RTD_ROLLBACK_UART_ABORT_RX,
++                                    Lpuart_Uart_Ip_AbortReceivingData(u->instance))) ok = false;
++            else set_armed(u, false);
++        }
++        if (!rollback_uart_step(NET_HAL_RTD_ROLLBACK_UART_DEINIT,
++                                Lpuart_Uart_Ip_Deinit(u->instance))) ok = false;
++        else u->initialized = false;
++    }
++    return ok;
+ }
+ 
+ /* ------------------------------------------------------- ISR context ---- */
+--- /dev/null
++++ b/firmware/network/nodes/domain/src/platform/rtd/net_uart_alive_diagnostic.c
+@@ -0,0 +1,164 @@
++#include "network/app/net_uart_alive_diagnostic.h"
++#include "network/net_hal_adapter.h"
++#include "network/net_upper.h"
++#include "network/net_upper_publish.h"
++#include "net_hal_rtd_internal.h"
++#include <string.h>
++
++typedef struct {
++    NetUartAliveDiagnosticStatus status;
++    NetHalAdapter hal;
++    NetUpper upper;
++    NetUpperPublisher publisher;
++    uint32_t boot_id, period_ms;
++    uint32_t last_now_ms32;
++    uint64_t extended_now_ms;
++    bool has_now;
++    bool submitted_once;
++} NetUartAliveDiagnostic;
++
++static NetUartAliveDiagnostic diagnostic;
++
++static bool extend_now_ms(uint32_t now_ms, uint64_t *extended_out)
++{
++    uint32_t elapsed;
++    if (!diagnostic.has_now) {
++        diagnostic.last_now_ms32 = now_ms;
++        diagnostic.extended_now_ms = now_ms;
++        diagnostic.has_now = true;
++    } else {
++        elapsed = now_ms - diagnostic.last_now_ms32;
++        /* A single-owner superloop must be observed at least once per half
++         * uint32 range. A larger delta is indistinguishable from time moving
++         * backwards, so fail closed instead of advancing the schedule. */
++        if (elapsed > INT32_MAX || diagnostic.extended_now_ms > UINT64_MAX - elapsed)
++            return false;
++        diagnostic.last_now_ms32 = now_ms;
++        diagnostic.extended_now_ms += elapsed;
++    }
++    *extended_out = diagnostic.extended_now_ms;
++    return true;
++}
++
++static NetStatus configure_upper(uint64_t epoch)
++{
++    NetHalConfig hal_config;
++    NetUpperConfig upper_config;
++    NetStatus st;
++    size_t i;
++    st = net_hal_rtd_uart_diagnostic_config(&diagnostic.hal, epoch, &hal_config);
++    if (st != NET_OK) return st;
++    st = net_hal_adapter_init(&diagnostic.hal, &hal_config, NET_HAL_S32K344);
++    if (st != NET_OK) return st;
++    memset(&upper_config, 0, sizeof(upper_config));
++    upper_config.node = NET_WIRE_NODE_DOMAIN;
++    upper_config.local_epoch = epoch;
++    for (i = 0u; i < 3u; ++i) upper_config.port_epoch[i] = epoch;
++    upper_config.profile = NET_WIRE_CANDIDATE_ONLY;
++    upper_config.port = net_hal_rtd_port(&diagnostic.hal);
++    upper_config.uart_sequence_bound[NET_WIRE_UART_M - 1u] = true;
++    upper_config.uart_initial_sequence[NET_WIRE_UART_M - 1u] = 1u;
++    return net_upper_init(&diagnostic.upper, &upper_config);
++}
++
++NetStatus NetUartAliveDiagnostic_Init(const NetUartAliveDiagnosticConfig *config)
++{
++    NetStatus st;
++    NetUpperPublishEntry entry;
++    NetUpperPublishConfig publish_config;
++    if (config == NULL) return NET_INVALID_ARGUMENT;
++    if (!config->enabled) return NET_NOT_CONFIGURED;
++    if (config->domain_boot_id == 0u || config->port_epoch == 0u || config->period_ms == 0u)
++        return NET_INVALID_ARGUMENT;
++    if (diagnostic.status != NET_UART_ALIVE_DIAG_DISABLED) return NET_BUSY;
++    memset(&diagnostic, 0, sizeof(diagnostic));
++    st = configure_upper(config->port_epoch);
++    if (st != NET_OK) {
++        (void)net_hal_rtd_uart_diagnostic_stop();
++        return st;
++    }
++    diagnostic.boot_id = config->domain_boot_id;
++    diagnostic.period_ms = config->period_ms;
++    memset(&entry, 0, sizeof(entry));
++    entry.link = NET_WIRE_UART_M; entry.id = 0x02u; entry.period_ms = config->period_ms;
++    entry.age.bound = true; entry.age.maximum_age_ms = UINT64_MAX;
++    memset(&publish_config, 0, sizeof(publish_config));
++    publish_config.entries = &entry; publish_config.entry_count = 1u;
++    st = net_upper_publish_init(&diagnostic.publisher, &diagnostic.upper, &publish_config);
++    if (st != NET_OK) {
++        (void)net_hal_rtd_uart_diagnostic_stop();
++        return st;
++    }
++    st = net_hal_rtd_uart_diagnostic_start();
++    if (st != NET_OK) {
++        (void)net_hal_rtd_uart_diagnostic_stop();
++        diagnostic.status = NET_UART_ALIVE_DIAG_FAILED;
++        return st;
++    }
++    diagnostic.status = NET_UART_ALIVE_DIAG_RUNNING;
++    return NET_OK;
++}
++
++static NetStatus submit_alive(void)
++{
++    NetUpperUartMessage message;
++    memset(&message, 0, sizeof(message));
++    message.link = NET_WIRE_UART_M;
++    message.type = 0x02u;
++    message.data.m_domain_alive.domain_boot_id = diagnostic.boot_id;
++    message.data.m_domain_alive.update_sequence = 0u;
++    message.data.m_domain_alive.source_age_ms = UINT16_MAX;
++    message.data.m_domain_alive.domain_state = 0u;
++    message.data.m_domain_alive.value_quality = 3u;
++    if (net_upper_publish_uart(&diagnostic.publisher, &message, NULL, NULL) != NET_OK) return NET_HOLD;
++    diagnostic.submitted_once = true;
++    return NET_OK;
++}
++
++NetStatus NetUartAliveDiagnostic_Step(uint32_t now_ms)
++{
++    NetStatus st = NET_OK, publish_status;
++    NetUpperPublishView view;
++    uint64_t extended_now_ms;
++    if (diagnostic.status != NET_UART_ALIVE_DIAG_RUNNING) return NET_NOT_CONFIGURED;
++    if (!extend_now_ms(now_ms, &extended_now_ms)) {
++        (void)net_hal_rtd_uart_diagnostic_stop();
++        diagnostic.status = NET_UART_ALIVE_DIAG_FAILED;
++        return NET_HOLD;
++    }
++    (void)net_hal_rtd_set_now(extended_now_ms);
++    (void)net_hal_rtd_uart_diagnostic_drain();
++    (void)net_upper_step(&diagnostic.upper, NET_UPPER_POLL_BUDGET);
++    if (!diagnostic.submitted_once) st = submit_alive();
++    publish_status = net_upper_publish_service(&diagnostic.publisher);
++    if (st == NET_OK && publish_status != NET_OK && publish_status != NET_NO_WORK) st = publish_status;
++    (void)net_upper_step(&diagnostic.upper, NET_UPPER_POLL_BUDGET);
++    net_hal_rtd_uart_diagnostic_service();
++    if (st != NET_OK) {
++        (void)net_hal_rtd_uart_diagnostic_stop();
++        diagnostic.status = NET_UART_ALIVE_DIAG_FAILED;
++        return st;
++    }
++    memset(&view, 0, sizeof(view));
++    if (net_upper_publish_view(&diagnostic.publisher, NET_WIRE_UART_M, 0x02u, &view) == NET_OK &&
++        (view.counters.not_sent != 0u || view.counters.tx_failed != 0u)) {
++        (void)net_hal_rtd_uart_diagnostic_stop();
++        diagnostic.status = NET_UART_ALIVE_DIAG_FAILED;
++        return NET_HOLD;
++    }
++    return st;
++}
++
++NetStatus NetUartAliveDiagnostic_Stop(void)
++{
++    NetStatus st;
++    if (diagnostic.status == NET_UART_ALIVE_DIAG_DISABLED) return NET_NOT_CONFIGURED;
++    st = net_hal_rtd_uart_diagnostic_stop();
++    diagnostic.status = (st == NET_OK) ? NET_UART_ALIVE_DIAG_DISABLED : NET_UART_ALIVE_DIAG_FAILED;
++    return st;
++}
++
++NetUartAliveDiagnosticStatus NetUartAliveDiagnostic_GetStatus(void)
++{
++    return diagnostic.status;
++}

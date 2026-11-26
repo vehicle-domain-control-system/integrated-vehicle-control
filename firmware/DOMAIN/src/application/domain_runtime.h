@@ -2,6 +2,7 @@
 #define DOMAIN_RUNTIME_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "command_manager.h"
@@ -12,8 +13,11 @@
 #include "domain_interface_cis_environment_binding.h"
 #include "domain_interface_query_binding.h"
 #include "domain_interface_result_binding.h"
+#include "domain_request_coordinator.h"
 #include "permission_coordinator.h"
 #include "permission_manager.h"
+#include "vss_event_manager.h"
+#include "vss_warning_manager.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,9 +28,10 @@ extern "C" {
  * or Network contract values. Capacity exhaustion remains an explicit Manager
  * result and never authorizes overwriting a live command or result record.
  */
-#define DOMAIN_RUNTIME_VEHICLE_STATE_SLOT_COUNT 4U
+#define DOMAIN_RUNTIME_VEHICLE_STATE_SLOT_COUNT 5U
 #define DOMAIN_RUNTIME_COMMAND_CAPACITY 8U
 #define DOMAIN_RUNTIME_RESULT_CAPACITY 16U
+#define DOMAIN_RUNTIME_REQUEST_TRACK_CAPACITY DOMAIN_RUNTIME_RESULT_CAPACITY
 
 /*
  * Board adapter contract.
@@ -41,6 +46,12 @@ extern "C" {
 typedef bool (*DomainRuntime_TimeProvider_t)(
     void *context,
     uint32_t *outNowMs);
+
+typedef bool (*DomainRuntime_RequestAuthorizationProvider_t)(
+    void *context,
+    const DomainIf_MobileRequest_t *request,
+    RequestManager_AuthContext_t *outAuth,
+    RequestManager_FunctionGate_t *outDoorGate);
 
 typedef enum
 {
@@ -61,6 +72,9 @@ typedef enum
     DOMAIN_RUNTIME_INIT_STAGE_VEHICLE_STATE_MANAGER,
     DOMAIN_RUNTIME_INIT_STAGE_COMMAND_MANAGER,
     DOMAIN_RUNTIME_INIT_STAGE_RESULT_MANAGER,
+    DOMAIN_RUNTIME_INIT_STAGE_VSS_WARNING_MANAGER,
+    DOMAIN_RUNTIME_INIT_STAGE_VSS_EVENT_MANAGER,
+    DOMAIN_RUNTIME_INIT_STAGE_REQUEST_COORDINATOR,
     DOMAIN_RUNTIME_INIT_STAGE_PERMISSION_MANAGER,
     DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_MANAGER,
     DOMAIN_RUNTIME_INIT_STAGE_CIS_OCCUPANT_PRIVATE,
@@ -80,7 +94,8 @@ typedef enum
     DOMAIN_RUNTIME_STATE_SLOT_BCM_DOOR = 0,
     DOMAIN_RUNTIME_STATE_SLOT_BCM_STATUS,
     DOMAIN_RUNTIME_STATE_SLOT_CIS_REAR,
-    DOMAIN_RUNTIME_STATE_SLOT_CIS_STATUS
+    DOMAIN_RUNTIME_STATE_SLOT_CIS_STATUS,
+    DOMAIN_RUNTIME_STATE_SLOT_VSS_STATUS
 } DomainRuntime_StateSlot_t;
 
 typedef struct
@@ -89,6 +104,12 @@ typedef struct
     void *timeProviderContext;
     CommandManager_CommandId_t firstCommandId;
     ResultManager_Policy_t resultPolicy;
+    /*
+     * Optional trusted Network producer-generation source. When absent or
+     * returning zero, VSS one-shot production remains fail-closed.
+     */
+    VssEventManager_GenerationProvider_t vssEventGenerationProvider;
+    void *vssEventGenerationProviderContext;
     /*
      * Startup-only opt-in. A zero-initialized config preserves the existing
      * Runtime without scheduling or submitting CIS power permission. When
@@ -100,13 +121,31 @@ typedef struct
     PermissionCoordinator_Evaluator_t permissionEvaluator;
     void *permissionEvaluatorContext;
     /*
+     * Startup-only opt-in. Zero keeps request ingress disabled and preserves
+     * existing Runtime/BoardRuntime behavior. Enabling requires a nonzero
+     * BCM Door state TTL. A missing authorization provider remains fail-closed
+     * and rejects requests; it is never replaced with fabricated authority.
+     */
+    bool requestCoordinatorEnabled;
+    uint32_t bcmDoorStateTtlMs;
+    /*
+     * Maximum accepted source age including bounded inbox residence. The
+     * value is supplied by integration policy; Runtime defines no Production
+     * default. It must be nonzero when request ingress is enabled.
+     */
+    uint32_t mobileRequestSourceValidityMs;
+    DomainRuntime_RequestAuthorizationProvider_t requestAuthorizationProvider;
+    void *requestAuthorizationContext;
+    /*
      * Optional startup-only feature selection. A zero-initialized config
-     * keeps CIS Occupant disabled. When false, the policy TTL fields are
-     * ignored and public Occupant Rx/Query return DOMAIN_IF_NOT_AVAILABLE.
+     * keeps CIS Occupant disabled. When both selection flags are false,
+     * policy TTL fields are ignored and Occupant Rx/Query are unavailable.
      * When true, both TTL fields must be nonzero and private BOOT admission
      * is still required before Rx. Runtime toggling is not supported.
      */
     bool cisOccupantEnabled;
+    /* Read-only cache/Query/Publisher opt-in; no Occupant Warning Provider. */
+    bool cisOccupantStorageEnabled;
     CisOccupantManager_Policy_t cisOccupantPolicy;
     DomainIfQueryBinding_StatePolicy_t stateQueryPolicy;
 } DomainRuntime_Config_t;
@@ -117,6 +156,7 @@ typedef struct
     DomainIf_BcmStatusReport_t bcmStatus;
     CisRearState_t cisRear;
     DomainIf_CisStatusReport_t cisStatus;
+    DomainIf_VssStateReport_t vssStatus;
 } DomainRuntime_VehicleStateStorage_t;
 
 typedef struct
@@ -124,13 +164,19 @@ typedef struct
     bool initialized;
     bool ready;
     bool permissionCoordinatorEnabled;
+    bool requestCoordinatorEnabled;
     bool cisOccupantEnabled;
+    bool cisOccupantStorageEnabled;
     DomainRuntime_InitStage_t initStage;
     bool hasPolled;
     uint32_t lastPollAtMs;
     uint32_t lastPollElapsedMs;
     uint32_t pollCount;
     PermissionCoordinator_Status_t lastPermissionCoordinatorStatus;
+    DomainRequestCoordinator_Status_t lastRequestCoordinatorStatus;
+    size_t lastRequestTimeoutCount;
+    VssWarningManager_Status_t lastVssWarningStatus;
+    VssEventManager_Status_t lastVssEventStatus;
 } DomainRuntime_Snapshot_t;
 
 /*
@@ -161,6 +207,17 @@ typedef struct
     ResultManager_t resultManager;
     ResultManager_Slot_t resultSlots[DOMAIN_RUNTIME_RESULT_CAPACITY];
 
+    VssWarningManager_t vssWarningManager;
+    VssEventManager_t vssEventManager;
+
+    DomainRequestCoordinator_t requestCoordinator;
+    DomainRequestCoordinator_Track_t
+        requestTracks[DOMAIN_RUNTIME_REQUEST_TRACK_CAPACITY];
+    uint32_t bcmDoorStateTtlMs;
+    uint32_t mobileRequestSourceValidityMs;
+    DomainRuntime_RequestAuthorizationProvider_t requestAuthorizationProvider;
+    void *requestAuthorizationContext;
+
     PermissionManager_t permissionManager;
     PermissionCoordinator_t permissionCoordinator;
     CisOccupantManager_t cisOccupantManager;
@@ -172,12 +229,18 @@ typedef struct
     bool initialized;
     bool ready;
     bool permissionCoordinatorEnabled;
+    bool requestCoordinatorEnabled;
     bool cisOccupantEnabled;
+    bool cisOccupantStorageEnabled;
     bool hasPolled;
     uint32_t lastPollAtMs;
     uint32_t lastPollElapsedMs;
     uint32_t pollCount;
     PermissionCoordinator_Status_t lastPermissionCoordinatorStatus;
+    DomainRequestCoordinator_Status_t lastRequestCoordinatorStatus;
+    size_t lastRequestTimeoutCount;
+    VssWarningManager_Status_t lastVssWarningStatus;
+    VssEventManager_Status_t lastVssEventStatus;
 } DomainRuntime_t;
 
 /*
@@ -194,9 +257,10 @@ DomainRuntime_Status_t DomainRuntime_Init(
     const DomainRuntime_Config_t *config);
 
 /*
- * Bounded, non-blocking owner-context step. The current Core only samples the
- * injected clock and records rollover-safe loop timing. It does not infer a
- * Permission, dispatch a request, call a TxPort, or perform Network I/O.
+ * Bounded, non-blocking owner-context step. It samples the injected clock and
+ * records rollover-safe loop timing. Mobile request ingress is drained with a
+ * bounded budget here; any resulting TxPort call therefore occurs in the
+ * owner Poll context, never in the Network RX callback context.
  */
 DomainRuntime_Status_t DomainRuntime_Poll(DomainRuntime_t *runtime);
 
@@ -217,6 +281,8 @@ VehicleStateManager_t *DomainRuntime_GetVehicleStateManager(
     DomainRuntime_t *runtime);
 CommandManager_t *DomainRuntime_GetCommandManager(DomainRuntime_t *runtime);
 ResultManager_t *DomainRuntime_GetResultManager(DomainRuntime_t *runtime);
+DomainRequestCoordinator_t *DomainRuntime_GetRequestCoordinator(
+    DomainRuntime_t *runtime);
 PermissionManager_t *DomainRuntime_GetPermissionManager(
     DomainRuntime_t *runtime);
 CisOccupantManager_t *DomainRuntime_GetCisOccupantManager(
@@ -226,6 +292,10 @@ DomainCisOccupantPriv_t *DomainRuntime_GetCisOccupantPrivate(
 CisEnvironmentManager_t *DomainRuntime_GetCisEnvironmentManager(
     DomainRuntime_t *runtime);
 DomainCisEnvironmentPriv_t *DomainRuntime_GetCisEnvironmentPrivate(
+    DomainRuntime_t *runtime);
+VssWarningManager_t *DomainRuntime_GetVssWarningManager(
+    DomainRuntime_t *runtime);
+VssEventManager_t *DomainRuntime_GetVssEventManager(
     DomainRuntime_t *runtime);
 
 #ifdef __cplusplus

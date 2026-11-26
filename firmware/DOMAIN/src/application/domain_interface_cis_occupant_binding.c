@@ -1,4 +1,5 @@
 #include "domain_interface_cis_occupant_binding.h"
+#include "domain_snapshot_commit_private.h"
 
 #include "domain_interface_core_internal.h"
 
@@ -150,6 +151,8 @@ DomainIf_Status_t DomainIf_RxCisOccupant(const CisOccupantState_t *state)
      */
     managerStatus = CisOccupantManager_Store(
         g_cisOccupantBinding.occupantManager, state, nowMs);
+    if (managerStatus == CIS_OCCUPANT_MANAGER_OK)
+        DomainSnapshotCommit_Notify(0x310U, state, sizeof(*state));
     return DomainIfCisOccupantBinding_MapManagerStatus(managerStatus);
 }
 
