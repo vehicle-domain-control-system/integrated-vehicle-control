@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vdcs_accent">#FFECEEF2</color>
+    <color name="vdcs_on_accent">#FF0D0F13</color>
+    <color name="vdcs_accent_container">#FF2A2F38</color>
+    <color name="vdcs_on_accent_container">#FFECEEF2</color>
+
+    <color name="vdcs_background">#FF0D0F13</color>
+    <color name="vdcs_surface">#FF15181E</color>
+    <color name="vdcs_surface_variant">#FF1A1E25</color>
+    <color name="vdcs_on_surface">#FFECEEF2</color>
+    <color name="vdcs_on_surface_variant">#FF9AA3B0</color>
+    <color name="vdcs_outline">#FF6B7380</color>
+    <color name="vdcs_outline_variant">#FF1F242C</color>
+
+    <color name="vdcs_neutral">#FFB7BEC8</color>
+    <color name="vdcs_neutral_container">@color/vdcs_surface_variant</color>
+
+    <color name="vdcs_caution">#FFFF8A3D</color>
+    <color name="vdcs_caution_container">#FF2A1508</color>
+    <color name="vdcs_on_caution_container">#FFE9C9B2</color>
+
+    <color name="vdcs_emergency">#FFFF5252</color>
+    <color name="vdcs_emergency_container">#FF3A1214</color>
+    <color name="vdcs_on_emergency_container">#FFFFD2BF</color>
+
+    <color name="vdcs_interior_light">#FFF5E3B8</color>
+    <color name="vdcs_on_interior_light">#FF2A2110</color>
+
+    <color name="vdcs_ok">#FF3FD18A</color>
+
+    <color name="scene_climate_cool">#FF5AB4FF</color>
+    <color name="scene_climate_heat">#FFFF8A3D</color>
+    <color name="scene_badge_text">#FFFFFFFF</color>
+    <color name="scene_badge_scrim">#FF000000</color>
+    <color name="scene_ground_shadow">#FF000000</color>
+</resources>
